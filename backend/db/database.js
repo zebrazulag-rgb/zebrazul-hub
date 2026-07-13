@@ -1,0 +1,91 @@
+const Database = require('better-sqlite3');
+const path = require('path');
+
+const db = new Database(path.join(__dirname, 'zebrazul_hub.sqlite'));
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('admin','team','client')),
+  client_id INTEGER,
+  avatar_color TEXT DEFAULT '#2563eb',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS clients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  segment TEXT,
+  logo_color TEXT DEFAULT '#0ea5e9',
+  status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
+  responsible_user_id INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (responsible_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS social_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  platform TEXT NOT NULL CHECK(platform IN ('instagram','facebook','tiktok','linkedin','google_business','youtube')),
+  handle TEXT,
+  connected INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  caption TEXT,
+  content_type TEXT DEFAULT 'feed' CHECK(content_type IN ('feed','reels','story','carrossel','artigo')),
+  platforms TEXT DEFAULT '[]',
+  media_url TEXT,
+  scheduled_at TEXT,
+  status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_approval','approved','rejected','scheduled','published')),
+  client_feedback TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS post_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS report_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  platform TEXT NOT NULL CHECK(platform IN ('instagram','facebook','tiktok','linkedin','google_ads','meta_ads','google_business','youtube')),
+  metric_date TEXT NOT NULL,
+  reach INTEGER DEFAULT 0,
+  impressions INTEGER DEFAULT 0,
+  engagement INTEGER DEFAULT 0,
+  followers_delta INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  leads INTEGER DEFAULT 0,
+  spend REAL DEFAULT 0,
+  conversions INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_client ON posts(client_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_client_date ON report_metrics(client_id, metric_date);
+`);
+
+module.exports = db;
