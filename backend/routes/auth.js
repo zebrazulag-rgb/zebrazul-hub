@@ -50,4 +50,13 @@ router.post('/users', authRequired, (req, res) => {
   }
 });
 
+// Lista membros da equipe/admin, usada para atribuir responsáveis em tarefas
+router.get('/team-users', authRequired, (req, res) => {
+  if (!['admin', 'team'].includes(req.user.role)) return res.status(403).json({ error: 'Acesso negado' });
+  const users = db.prepare(
+    `SELECT id, name, avatar_color FROM users WHERE role IN ('admin','team') ORDER BY name`
+  ).all();
+  res.json({ users });
+});
+
 module.exports = router;

@@ -7,6 +7,8 @@ const authRoutes = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const postRoutes = require('./routes/posts');
 const reportRoutes = require('./routes/reports');
+const taskRoutes = require('./routes/tasks');
+const publicRoutes = require('./routes/public');
 
 // Cria os dados iniciais (admin, equipe, cliente de exemplo) automaticamente
 // na primeira vez que o servidor liga, caso o banco ainda esteja vazio.
@@ -16,7 +18,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '15mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'zebrazul-hub-backend' }));
 
@@ -24,6 +26,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/public', publicRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

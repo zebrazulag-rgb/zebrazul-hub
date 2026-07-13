@@ -48,13 +48,35 @@ CREATE TABLE IF NOT EXISTS posts (
   content_type TEXT DEFAULT 'feed' CHECK(content_type IN ('feed','reels','story','carrossel','artigo')),
   platforms TEXT DEFAULT '[]',
   media_url TEXT,
+  media_data TEXT,
+  media_mime TEXT,
   scheduled_at TEXT,
   status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_approval','approved','rejected','scheduled','published')),
   client_feedback TEXT,
+  share_token TEXT UNIQUE,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER,
+  created_by INTEGER NOT NULL,
+  assignee_id INTEGER,
+  title TEXT NOT NULL,
+  description TEXT,
+  due_date TEXT,
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done')),
+  attachment_data TEXT,
+  attachment_mime TEXT,
+  attachment_filename TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS post_comments (
@@ -86,6 +108,19 @@ CREATE TABLE IF NOT EXISTS report_metrics (
 
 CREATE INDEX IF NOT EXISTS idx_posts_client ON posts(client_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_client_date ON report_metrics(client_id, metric_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
 `);
+
+// Migração leve: adiciona colunas novas em bancos já existentes (não falha se já existirem)
+function tryAddColumn(table, column, definition) {
+  try {
+    db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + definition);
+  } catch (err) {
+    // coluna já existe — ignora
+  }
+}
+tryAddColumn('posts', 'media_data', 'TEXT');
+tryAddColumn('posts', 'media_mime', 'TEXT');
+tryAddColumn('posts', 'share_token', 'TEXT');
 
 module.exports = db;

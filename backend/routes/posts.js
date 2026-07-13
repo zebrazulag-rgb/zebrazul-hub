@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, requireRole } = require('../middleware/auth');
 
@@ -45,17 +46,32 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', requireRole('admin', 'team'), (req, res) => {
-  const { client_id, title, caption, content_type, platforms, media_url, scheduled_at, status } = req.body;
+  const { client_id, title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status } = req.body;
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title sao obrigatorios' });
 
   const info = db.prepare(
-    `INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_url, scheduled_at, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     client_id, req.user.id, title, caption || '', content_type || 'feed',
-    JSON.stringify(platforms || []), media_url || null, scheduled_at || null, status || 'draft'
+    JSON.stringify(platforms || []), media_url || null, media_data || null, media_mime || null,
+    scheduled_at || null, status || 'draft'
   );
   res.status(201).json({ id: info.lastInsertRowid });
+});
+
+// Gera (ou retorna, se já existir) o link público de aprovação do post
+router.post('/:id/share', (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post não encontrado' });
+  if (!canAccessClient(req, post.client_id)) return res.status(403).json({ error: 'Acesso negado' });
+
+  let token = post.share_token;
+  if (!token) {
+    token = crypto.randomBytes(16).toString('hex');
+    db.prepare('UPDATE posts SET share_token = ? WHERE id = ?').run(token, req.params.id);
+  }
+  res.json({ token });
 });
 
 router.put('/:id', (req, res) => {
@@ -63,7 +79,7 @@ router.put('/:id', (req, res) => {
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!canAccessClient(req, post.client_id)) return res.status(403).json({ error: 'Acesso negado' });
 
-  const { title, caption, content_type, platforms, media_url, scheduled_at, status, client_feedback } = req.body;
+  const { title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status, client_feedback } = req.body;
 
   // Cliente so pode alterar o status para approved/rejected e deixar feedback
   if (req.user.role === 'client') {
@@ -82,6 +98,8 @@ router.put('/:id', (req, res) => {
       content_type = COALESCE(?, content_type),
       platforms = COALESCE(?, platforms),
       media_url = COALESCE(?, media_url),
+      media_data = COALESCE(?, media_data),
+      media_mime = COALESCE(?, media_mime),
       scheduled_at = COALESCE(?, scheduled_at),
       status = COALESCE(?, status),
       updated_at = datetime('now')
@@ -89,7 +107,7 @@ router.put('/:id', (req, res) => {
   ).run(
     title, caption, content_type,
     platforms ? JSON.stringify(platforms) : null,
-    media_url, scheduled_at, status, req.params.id
+    media_url, media_data, media_mime, scheduled_at, status, req.params.id
   );
   res.json({ ok: true });
 });
