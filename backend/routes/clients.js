@@ -37,10 +37,10 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.put('/:id', requireRole('admin', 'team'), (req, res) => {
-  const { name, segment, logo_color, status } = req.body;
+  const { name, segment, logo_color, status, avatar_data, avatar_mime } = req.body;
   db.prepare(
-    'UPDATE clients SET name = COALESCE(?, name), segment = COALESCE(?, segment), logo_color = COALESCE(?, logo_color), status = COALESCE(?, status) WHERE id = ?'
-  ).run(name, segment, logo_color, status, req.params.id);
+    'UPDATE clients SET name = COALESCE(?, name), segment = COALESCE(?, segment), logo_color = COALESCE(?, logo_color), status = COALESCE(?, status), avatar_data = COALESCE(?, avatar_data), avatar_mime = COALESCE(?, avatar_mime) WHERE id = ?'
+  ).run(name, segment, logo_color, status, avatar_data, avatar_mime, req.params.id);
   res.json({ ok: true });
 });
 

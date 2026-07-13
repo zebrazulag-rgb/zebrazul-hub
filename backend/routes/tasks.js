@@ -9,7 +9,7 @@ router.use(requireRole('admin', 'team'));
 router.get('/', (req, res) => {
   const { status, assignee_id, client_id } = req.query;
   let query = `
-    SELECT t.*, u.name as assignee_name, u.avatar_color as assignee_color, c.name as client_name
+    SELECT t.*, u.name as assignee_name, u.avatar_color as assignee_color, u.avatar_data as assignee_avatar, c.name as client_name
     FROM tasks t
     LEFT JOIN users u ON u.id = t.assignee_id
     LEFT JOIN clients c ON c.id = t.client_id
@@ -60,10 +60,10 @@ router.put('/:id', (req, res) => {
     UPDATE tasks SET
       title = COALESCE(?, title),
       description = COALESCE(?, description),
-      due_date = ?,
-      assignee_id = ?,
+      due_date = COALESCE(?, due_date),
+      assignee_id = COALESCE(?, assignee_id),
       status = COALESCE(?, status),
-      client_id = ?,
+      client_id = COALESCE(?, client_id),
       attachment_data = COALESCE(?, attachment_data),
       attachment_mime = COALESCE(?, attachment_mime),
       attachment_filename = COALESCE(?, attachment_filename),

@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK(role IN ('admin','team','client')),
   client_id INTEGER,
   avatar_color TEXT DEFAULT '#2563eb',
+  avatar_data TEXT,
+  avatar_mime TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
 );
@@ -23,6 +25,8 @@ CREATE TABLE IF NOT EXISTS clients (
   name TEXT NOT NULL,
   segment TEXT,
   logo_color TEXT DEFAULT '#0ea5e9',
+  avatar_data TEXT,
+  avatar_mime TEXT,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
   responsible_user_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
@@ -122,5 +126,9 @@ function tryAddColumn(table, column, definition) {
 tryAddColumn('posts', 'media_data', 'TEXT');
 tryAddColumn('posts', 'media_mime', 'TEXT');
 tryAddColumn('posts', 'share_token', 'TEXT');
+tryAddColumn('users', 'avatar_data', 'TEXT');
+tryAddColumn('users', 'avatar_mime', 'TEXT');
+tryAddColumn('clients', 'avatar_data', 'TEXT');
+tryAddColumn('clients', 'avatar_mime', 'TEXT');
 
 module.exports = db;
