@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Plus, Instagram, Facebook } from 'lucide-react';
+import { Plus, Instagram, Facebook, Trash2 } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
 export default function Clients() {
+  const { user } = useAuth();
+  const { selectedClient, setSelectedClient } = useClientFilter();
   const [clients, setClients] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
@@ -11,6 +15,8 @@ export default function Clients() {
   const [selected, setSelected] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [newAccount, setNewAccount] = useState({ platform: 'instagram', handle: '' });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { loadClients(); }, []);
 
@@ -31,6 +37,20 @@ export default function Clients() {
     const { data } = await api.get(`/clients/${client.id}`);
     setSelected(data.client);
     setAccounts(data.accounts);
+    setConfirmDelete(false);
+  }
+
+  async function deleteClient() {
+    setDeleting(true);
+    try {
+      await api.delete(`/clients/${selected.id}`);
+      if (selectedClient?.id === selected.id) setSelectedClient(null);
+      setSelected(null);
+      setConfirmDelete(false);
+      loadClients();
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function addAccount(e) {
@@ -143,6 +163,31 @@ export default function Clients() {
               <input className="input-field" placeholder="@handle" value={newAccount.handle} onChange={(e) => setNewAccount({ ...newAccount, handle: e.target.value })} />
               <button type="submit" className="btn-secondary shrink-0">Adicionar</button>
             </form>
+
+            {user?.role === 'admin' && (
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                {!confirmDelete ? (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    className="text-sm text-red-600 hover:underline flex items-center gap-1.5"
+                  >
+                    <Trash2 size={14} /> Excluir cliente
+                  </button>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-700 mb-3">
+                      Isso remove permanentemente <strong>{selected.name}</strong>, seus posts, contas conectadas e relatórios. Tarefas e usuários vinculados apenas ficam sem cliente associado. Não pode ser desfeito.
+                    </p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setConfirmDelete(false)} className="btn-secondary text-sm flex-1">Cancelar</button>
+                      <button onClick={deleteClient} disabled={deleting} className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg px-4 py-2 flex-1 transition-colors disabled:opacity-50">
+                        {deleting ? 'Excluindo...' : 'Sim, excluir'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
