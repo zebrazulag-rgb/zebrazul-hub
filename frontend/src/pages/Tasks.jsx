@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Paperclip, Calendar, X } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import TaskFormModal from '../components/TaskFormModal.jsx';
 
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
@@ -9,29 +10,16 @@ const STATUS_COLUMNS = [
   { key: 'done', label: 'Concluída', badge: 'bg-emerald-100 text-emerald-700' }
 ];
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function Tasks() {
   const { selectedClient } = useClientFilter();
   const [tasks, setTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [subtasks, setSubtasks] = useState([]);
   const [dragOverCol, setDragOverCol] = useState(null);
-  const [form, setForm] = useState({
-    title: '', description: '', due_date: '', assignee_id: '', client_id: '',
-    status: 'pending', attachment_data: '', attachment_mime: '', attachment_filename: ''
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
 
   const loadTasks = useCallback(async () => {
     const params = selectedClient ? `?client_id=${selectedClient.id}` : '';
@@ -45,38 +33,27 @@ export default function Tasks() {
     api.get('/clients').then((res) => setClients(res.data.clients));
   }, [loadTasks]);
 
-  useEffect(() => {
-    setForm((f) => ({ ...f, client_id: selectedClient?.id || '' }));
-  }, [selectedClient]);
-
-  async function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await fileToBase64(file);
-    setForm((f) => ({ ...f, attachment_data: dataUrl, attachment_mime: file.type, attachment_filename: file.name }));
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError('');
-    if (!form.title) { setError('Informe um título para a tarefa.'); return; }
-    setSaving(true);
-    try {
-      await api.post('/tasks', form);
-      setShowForm(false);
-      setForm({ title: '', description: '', due_date: '', assignee_id: '', client_id: selectedClient?.id || '', status: 'pending', attachment_data: '', attachment_mime: '', attachment_filename: '' });
-      loadTasks();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao criar tarefa.');
-    } finally {
-      setSaving(false);
-    }
+  async function openTask(taskId) {
+    const { data } = await api.get(`/tasks/${taskId}`);
+    setSelectedTask(data.task);
+    setSubtasks(data.subtasks);
   }
 
   async function updateStatus(taskId, status) {
-    // Atualiza a tela imediatamente (sem esperar o servidor) para o arraste parecer instantâneo
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
     await api.put(`/tasks/${taskId}`, { status });
+  }
+
+  async function updateSubtaskStatus(subtaskId, status) {
+    setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
+    await api.put(`/tasks/${subtaskId}`, { status });
+    loadTasks(); // atualiza o contador de progresso no card
+  }
+
+  async function deleteSubtask(subtaskId) {
+    await api.delete(`/tasks/${subtaskId}`);
+    setSubtasks((prev) => prev.filter((s) => s.id !== subtaskId));
+    loadTasks();
   }
 
   async function deleteTask(id) {
@@ -97,6 +74,12 @@ export default function Tasks() {
     if (!taskId) return;
     const task = tasks.find((t) => t.id === taskId);
     if (task && task.status !== columnKey) updateStatus(taskId, columnKey);
+  }
+
+  function nextStatus(status) {
+    if (status === 'pending') return 'in_progress';
+    if (status === 'in_progress') return 'done';
+    return 'pending';
   }
 
   return (
@@ -134,11 +117,22 @@ export default function Tasks() {
                   key={t.id}
                   draggable
                   onDragStart={(e) => handleDragStart(e, t.id)}
-                  onClick={() => setSelectedTask(t)}
+                  onClick={() => openTask(t.id)}
                   className="card p-4 w-full text-left hover:border-zebrazul-300 transition-colors cursor-grab active:cursor-grabbing"
                 >
                   <p className="font-medium text-slate-800 text-sm">{t.title}</p>
                   {t.client_name && <p className="text-xs text-zebrazul-600 mt-1">{t.client_name}</p>}
+                  {t.subtask_total > 0 && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-zebrazul-500 rounded-full"
+                          style={{ width: `${(t.subtask_done / t.subtask_total) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-400 shrink-0">{t.subtask_done}/{t.subtask_total}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center gap-1.5">
                       {t.assignee_name && (
@@ -172,89 +166,29 @@ export default function Tasks() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
-              <h2 className="font-semibold text-slate-800">Nova tarefa</h2>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Título</label>
-                <input
-                  className="input-field"
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="Ex: Preparar briefing de campanha"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Descrição</label>
-                <textarea
-                  className="input-field min-h-[90px]"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="Detalhe o que precisa ser feito..."
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1">Prazo</label>
-                  <input
-                    type="date"
-                    className="input-field"
-                    value={form.due_date}
-                    onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1">Responsável</label>
-                  <select
-                    className="input-field"
-                    value={form.assignee_id}
-                    onChange={(e) => setForm({ ...form, assignee_id: e.target.value })}
-                  >
-                    <option value="">Sem responsável</option>
-                    {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado (opcional)</label>
-                <select
-                  className="input-field"
-                  value={form.client_id}
-                  onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-                >
-                  <option value="">Nenhum — tarefa interna</option>
-                  {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Anexo</label>
-                <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
-                  <Paperclip size={16} />
-                  {form.attachment_filename || 'Clique para anexar um arquivo'}
-                  <input type="file" className="hidden" onChange={handleFileChange} />
-                </label>
-              </div>
-              {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary flex-1">Cancelar</button>
-                <button type="submit" disabled={saving} className="btn-primary flex-1">
-                  {saving ? 'Criando...' : 'Criar tarefa'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <TaskFormModal
+          teamUsers={teamUsers}
+          clients={clients}
+          defaultClientId={selectedClient?.id}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); loadTasks(); }}
+        />
+      )}
+
+      {showSubtaskForm && selectedTask && (
+        <TaskFormModal
+          teamUsers={teamUsers}
+          clients={clients}
+          defaultClientId={selectedTask.client_id}
+          parentTaskId={selectedTask.id}
+          onClose={() => setShowSubtaskForm(false)}
+          onSaved={() => { setShowSubtaskForm(false); openTask(selectedTask.id); }}
+        />
       )}
 
       {selectedTask && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[88vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-800">{selectedTask.title}</h2>
               <button onClick={() => setSelectedTask(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
@@ -264,9 +198,10 @@ export default function Tasks() {
               {selectedTask.due_date && <p>Prazo: {new Date(selectedTask.due_date).toLocaleDateString('pt-BR')}</p>}
               {selectedTask.assignee_name && <p>Responsável: {selectedTask.assignee_name}</p>}
               {selectedTask.client_name && <p>Cliente: {selectedTask.client_name}</p>}
+              {selectedTask.attachment_filename && <p>Anexo: {selectedTask.attachment_filename}</p>}
             </div>
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-5">
               {STATUS_COLUMNS.map((col) => (
                 <button
                   key={col.key}
@@ -279,8 +214,48 @@ export default function Tasks() {
                 </button>
               ))}
             </div>
-            <button onClick={() => deleteTask(selectedTask.id)} className="text-sm text-red-600 hover:underline">
-              Excluir tarefa
+
+            <div className="border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-slate-700">
+                  Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => s.status === 'done').length}/{subtasks.length})</span>}
+                </p>
+                <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
+                  <ListPlus size={14} /> Adicionar
+                </button>
+              </div>
+              <div className="space-y-2">
+                {subtasks.length === 0 && (
+                  <p className="text-xs text-slate-300 text-center py-4">Nenhuma subtarefa ainda.</p>
+                )}
+                {subtasks.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
+                    <button
+                      onClick={() => updateSubtaskStatus(s.id, nextStatus(s.status))}
+                      className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                        s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300'
+                      }`}
+                      title="Clique para avançar o status"
+                    >
+                      {s.status === 'done' && <span className="text-white text-[10px]">✓</span>}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm truncate ${s.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{s.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {s.assignee_name && <span className="text-[11px] text-slate-400">{s.assignee_name}</span>}
+                        {s.due_date && <span className="text-[11px] text-slate-400">· {new Date(s.due_date).toLocaleDateString('pt-BR')}</span>}
+                      </div>
+                    </div>
+                    <button onClick={() => deleteSubtask(s.id)} className="text-slate-300 hover:text-red-500 shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={() => deleteTask(selectedTask.id)} className="text-sm text-red-600 hover:underline mt-5">
+              Excluir tarefa (e subtarefas)
             </button>
           </div>
         </div>
