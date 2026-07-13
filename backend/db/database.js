@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   client_id INTEGER,
   created_by INTEGER NOT NULL,
   assignee_id INTEGER,
+  parent_task_id INTEGER,
   title TEXT NOT NULL,
   description TEXT,
   due_date TEXT,
@@ -80,7 +81,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS post_comments (
@@ -130,5 +132,6 @@ tryAddColumn('users', 'avatar_data', 'TEXT');
 tryAddColumn('users', 'avatar_mime', 'TEXT');
 tryAddColumn('clients', 'avatar_data', 'TEXT');
 tryAddColumn('clients', 'avatar_mime', 'TEXT');
+tryAddColumn('tasks', 'parent_task_id', 'INTEGER REFERENCES tasks(id)');
 
 module.exports = db;

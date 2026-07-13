@@ -6,14 +6,18 @@ const router = express.Router();
 router.use(authRequired);
 router.use(requireRole('admin', 'team'));
 
+// Lista apenas tarefas de nivel principal (nao mostra subtarefas soltas no quadro),
+// com contagem de progresso das subtarefas de cada uma.
 router.get('/', (req, res) => {
   const { status, assignee_id, client_id } = req.query;
   let query = `
-    SELECT t.*, u.name as assignee_name, u.avatar_color as assignee_color, u.avatar_data as assignee_avatar, c.name as client_name
+    SELECT t.*, u.name as assignee_name, u.avatar_color as assignee_color, u.avatar_data as assignee_avatar, c.name as client_name,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id) as subtask_total,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.status = 'done') as subtask_done
     FROM tasks t
     LEFT JOIN users u ON u.id = t.assignee_id
     LEFT JOIN clients c ON c.id = t.client_id
-    WHERE 1=1
+    WHERE t.parent_task_id IS NULL
   `;
   const params = [];
   if (status) { query += ' AND t.status = ?'; params.push(status); }
@@ -23,7 +27,7 @@ router.get('/', (req, res) => {
 
   const tasks = db.prepare(query).all(...params).map((t) => ({
     ...t,
-    attachment_data: undefined // não envia o base64 pesado na listagem
+    attachment_data: undefined
   }));
   res.json({ tasks });
 });
@@ -36,19 +40,35 @@ router.get('/:id', (req, res) => {
     LEFT JOIN clients c ON c.id = t.client_id
     WHERE t.id = ?
   `).get(req.params.id);
-  if (!task) return res.status(404).json({ error: 'Tarefa não encontrada' });
-  res.json({ task });
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+
+  const subtasks = db.prepare(`
+    SELECT st.id, st.title, st.status, st.due_date, st.attachment_filename,
+           u.name as assignee_name, u.avatar_color as assignee_color, u.avatar_data as assignee_avatar
+    FROM tasks st
+    LEFT JOIN users u ON u.id = st.assignee_id
+    WHERE st.parent_task_id = ?
+    ORDER BY COALESCE(st.due_date, st.created_at) ASC
+  `).all(req.params.id);
+
+  res.json({ task, subtasks });
 });
 
 router.post('/', (req, res) => {
-  const { title, description, due_date, assignee_id, status, client_id, attachment_data, attachment_mime, attachment_filename } = req.body;
-  if (!title) return res.status(400).json({ error: 'Título é obrigatório' });
+  const { title, description, due_date, assignee_id, status, client_id, attachment_data, attachment_mime, attachment_filename, parent_task_id } = req.body;
+  if (!title) return res.status(400).json({ error: 'Titulo e obrigatorio' });
+
+  let finalClientId = client_id || null;
+  if (parent_task_id && !finalClientId) {
+    const parent = db.prepare('SELECT client_id FROM tasks WHERE id = ?').get(parent_task_id);
+    finalClientId = parent && parent.client_id ? parent.client_id : null;
+  }
 
   const info = db.prepare(`
-    INSERT INTO tasks (client_id, created_by, assignee_id, title, description, due_date, status, attachment_data, attachment_mime, attachment_filename)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (client_id, created_by, assignee_id, parent_task_id, title, description, due_date, status, attachment_data, attachment_mime, attachment_filename)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    client_id || null, req.user.id, assignee_id || null, title, description || '',
+    finalClientId, req.user.id, assignee_id || null, parent_task_id || null, title, description || '',
     due_date || null, status || 'pending', attachment_data || null, attachment_mime || null, attachment_filename || null
   );
   res.status(201).json({ id: info.lastInsertRowid });
