@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -19,11 +20,16 @@ function buildMonthGrid(year, month) {
 
 export default function CalendarView() {
   const { user } = useAuth();
+  const { selectedClient } = useClientFilter();
   const [clients, setClients] = useState([]);
-  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : 'all');
+  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || 'all'));
   const [posts, setPosts] = useState([]);
   const [cursor, setCursor] = useState(new Date());
   const [dayPosts, setDayPosts] = useState(null);
+
+  useEffect(() => {
+    if (user?.role !== 'client') setClientId(selectedClient?.id || 'all');
+  }, [selectedClient, user]);
 
   useEffect(() => {
     if (user?.role !== 'client') {

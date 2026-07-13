@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus, ThumbsUp, ThumbsDown, MessageSquare, Calendar, Link2, Check } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import PostModal from '../components/PostModal.jsx';
 import InstagramPreview from '../components/InstagramPreview.jsx';
@@ -16,6 +17,7 @@ const FILTERS = [
 
 export default function Approval() {
   const { user } = useAuth();
+  const { selectedClient } = useClientFilter();
   const [posts, setPosts] = useState([]);
   const [clients, setClients] = useState([]);
   const [filter, setFilter] = useState('all');
@@ -27,9 +29,10 @@ export default function Approval() {
   const [linkCopied, setLinkCopied] = useState(false);
 
   const loadPosts = useCallback(async () => {
-    const { data } = await api.get('/posts');
+    const params = selectedClient ? `?client_id=${selectedClient.id}` : '';
+    const { data } = await api.get(`/posts${params}`);
     setPosts(data.posts);
-  }, []);
+  }, [selectedClient]);
 
   useEffect(() => {
     loadPosts();
@@ -148,6 +151,7 @@ export default function Approval() {
       {showModal && (
         <PostModal
           clients={clients}
+          defaultClientId={selectedClient?.id}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); loadPosts(); }}
         />

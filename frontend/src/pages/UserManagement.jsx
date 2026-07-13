@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Shield, Users as UsersIcon, Building2 } from 'lucide-react';
 import api from '../api';
+import AvatarUpload from '../components/AvatarUpload.jsx';
 
 const ROLE_OPTIONS = [
   { value: 'team', label: 'Equipe Zebrazul', icon: UsersIcon },
@@ -10,6 +11,7 @@ const ROLE_OPTIONS = [
 
 export default function UserManagement() {
   const [clients, setClients] = useState([]);
+  const [users, setUsers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'team', client_id: '' });
   const [error, setError] = useState('');
@@ -18,7 +20,18 @@ export default function UserManagement() {
 
   useEffect(() => {
     api.get('/clients').then((res) => setClients(res.data.clients));
+    loadUsers();
   }, []);
+
+  async function loadUsers() {
+    const { data } = await api.get('/auth/users');
+    setUsers(data.users);
+  }
+
+  async function handleAvatarChange(userId, dataUrl, mime) {
+    await api.put(`/auth/users/${userId}`, { avatar_data: dataUrl, avatar_mime: mime });
+    loadUsers();
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -43,6 +56,7 @@ export default function UserManagement() {
       setSuccess(`Usuário "${form.name}" criado com sucesso.`);
       setForm({ name: '', email: '', password: '', role: 'team', client_id: '' });
       setShowForm(false);
+      loadUsers();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao criar usuário.');
     } finally {
@@ -99,6 +113,31 @@ export default function UserManagement() {
               <p className="text-slate-500">Só vê e aprova o conteúdo do próprio cliente vinculado.</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="font-semibold text-slate-800 mb-4">Todos os usuários ({users.length})</h2>
+        <div className="space-y-3">
+          {users.map((u) => (
+            <div key={u.id} className="flex items-center gap-3 border border-slate-100 rounded-lg p-3">
+              <AvatarUpload
+                imageSrc={u.avatar_data}
+                fallbackText={u.name}
+                fallbackColor={u.avatar_color}
+                size={44}
+                onChange={(dataUrl, mime) => handleAvatarChange(u.id, dataUrl, mime)}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-slate-800 text-sm truncate">{u.name}</p>
+                <p className="text-xs text-slate-400 truncate">{u.email}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="badge bg-slate-100 text-slate-600 capitalize">{roleBadgeLabel(u.role)}</span>
+                {u.client_name && <p className="text-xs text-slate-400 mt-1">{u.client_name}</p>}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -188,4 +227,11 @@ export default function UserManagement() {
       )}
     </div>
   );
+}
+
+function roleBadgeLabel(role) {
+  if (role === 'admin') return 'Admin';
+  if (role === 'team') return 'Equipe';
+  if (role === 'client') return 'Cliente';
+  return role;
 }

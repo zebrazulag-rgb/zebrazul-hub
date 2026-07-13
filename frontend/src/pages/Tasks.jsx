@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Paperclip, Calendar, X } from 'lucide-react';
 import api from '../api';
+import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
@@ -18,11 +19,13 @@ function fileToBase64(file) {
 }
 
 export default function Tasks() {
+  const { selectedClient } = useClientFilter();
   const [tasks, setTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
   const [form, setForm] = useState({
     title: '', description: '', due_date: '', assignee_id: '', client_id: '',
     status: 'pending', attachment_data: '', attachment_mime: '', attachment_filename: ''
@@ -31,15 +34,20 @@ export default function Tasks() {
   const [error, setError] = useState('');
 
   const loadTasks = useCallback(async () => {
-    const { data } = await api.get('/tasks');
+    const params = selectedClient ? `?client_id=${selectedClient.id}` : '';
+    const { data } = await api.get(`/tasks${params}`);
     setTasks(data.tasks);
-  }, []);
+  }, [selectedClient]);
 
   useEffect(() => {
     loadTasks();
     api.get('/auth/team-users').then((res) => setTeamUsers(res.data.users));
     api.get('/clients').then((res) => setClients(res.data.clients));
   }, [loadTasks]);
+
+  useEffect(() => {
+    setForm((f) => ({ ...f, client_id: selectedClient?.id || '' }));
+  }, [selectedClient]);
 
   async function handleFileChange(e) {
     const file = e.target.files?.[0];
@@ -56,7 +64,7 @@ export default function Tasks() {
     try {
       await api.post('/tasks', form);
       setShowForm(false);
-      setForm({ title: '', description: '', due_date: '', assignee_id: '', client_id: '', status: 'pending', attachment_data: '', attachment_mime: '', attachment_filename: '' });
+      setForm({ title: '', description: '', due_date: '', assignee_id: '', client_id: selectedClient?.id || '', status: 'pending', attachment_data: '', attachment_mime: '', attachment_filename: '' });
       loadTasks();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao criar tarefa.');
@@ -65,9 +73,10 @@ export default function Tasks() {
     }
   }
 
-  async function updateStatus(task, status) {
-    await api.put(`/tasks/${task.id}`, { status });
-    loadTasks();
+  async function updateStatus(taskId, status) {
+    // Atualiza a tela imediatamente (sem esperar o servidor) para o arraste parecer instantâneo
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
+    await api.put(`/tasks/${taskId}`, { status });
   }
 
   async function deleteTask(id) {
@@ -76,12 +85,28 @@ export default function Tasks() {
     loadTasks();
   }
 
+  function handleDragStart(e, taskId) {
+    e.dataTransfer.setData('text/task-id', String(taskId));
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDrop(e, columnKey) {
+    e.preventDefault();
+    setDragOverCol(null);
+    const taskId = Number(e.dataTransfer.getData('text/task-id'));
+    if (!taskId) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (task && task.status !== columnKey) updateStatus(taskId, columnKey);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Tarefas</h1>
-          <p className="text-slate-500 mt-1">Organize o trabalho da equipe com prazos e responsáveis.</p>
+          <p className="text-slate-500 mt-1">
+            {selectedClient ? `Tarefas relacionadas a ${selectedClient.name}. Arraste os cards entre as colunas.` : 'Organize o trabalho da equipe com prazos e responsáveis.'}
+          </p>
         </div>
         <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
           <Plus size={18} /> Nova tarefa
@@ -90,27 +115,43 @@ export default function Tasks() {
 
       <div className="grid md:grid-cols-3 gap-5">
         {STATUS_COLUMNS.map((col) => (
-          <div key={col.key} className="space-y-3">
-            <div className="flex items-center gap-2">
+          <div
+            key={col.key}
+            onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
+            onDragLeave={() => setDragOverCol(null)}
+            onDrop={(e) => handleDrop(e, col.key)}
+            className={`space-y-3 rounded-xl p-2 transition-colors ${dragOverCol === col.key ? 'bg-zebrazul-50 ring-2 ring-zebrazul-200' : ''}`}
+          >
+            <div className="flex items-center gap-2 px-1">
               <span className={`badge ${col.badge}`}>{col.label}</span>
               <span className="text-xs text-slate-400">
                 {tasks.filter((t) => t.status === col.key).length}
               </span>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3 min-h-[60px]">
               {tasks.filter((t) => t.status === col.key).map((t) => (
-                <button key={t.id} onClick={() => setSelectedTask(t)} className="card p-4 w-full text-left hover:border-zebrazul-300 transition-colors">
+                <div
+                  key={t.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, t.id)}
+                  onClick={() => setSelectedTask(t)}
+                  className="card p-4 w-full text-left hover:border-zebrazul-300 transition-colors cursor-grab active:cursor-grabbing"
+                >
                   <p className="font-medium text-slate-800 text-sm">{t.title}</p>
                   {t.client_name && <p className="text-xs text-zebrazul-600 mt-1">{t.client_name}</p>}
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center gap-1.5">
                       {t.assignee_name && (
-                        <span
-                          className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                          style={{ backgroundColor: t.assignee_color || '#2563eb' }}
-                        >
-                          {t.assignee_name[0]?.toUpperCase()}
-                        </span>
+                        t.assignee_avatar ? (
+                          <img src={t.assignee_avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+                        ) : (
+                          <span
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                            style={{ backgroundColor: t.assignee_color || '#2563eb' }}
+                          >
+                            {t.assignee_name[0]?.toUpperCase()}
+                          </span>
+                        )
                       )}
                       <span className="text-xs text-slate-400">{t.assignee_name || 'Sem responsável'}</span>
                     </div>
@@ -120,10 +161,10 @@ export default function Tasks() {
                       </span>
                     )}
                   </div>
-                </button>
+                </div>
               ))}
               {tasks.filter((t) => t.status === col.key).length === 0 && (
-                <p className="text-xs text-slate-300 text-center py-6">Nenhuma tarefa aqui.</p>
+                <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
               )}
             </div>
           </div>
@@ -229,7 +270,7 @@ export default function Tasks() {
               {STATUS_COLUMNS.map((col) => (
                 <button
                   key={col.key}
-                  onClick={() => { updateStatus(selectedTask, col.key); setSelectedTask({ ...selectedTask, status: col.key }); }}
+                  onClick={() => { updateStatus(selectedTask.id, col.key); setSelectedTask({ ...selectedTask, status: col.key }); }}
                   className={`flex-1 text-xs font-medium py-2 rounded-lg border transition-colors ${
                     selectedTask.status === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300'
                   }`}

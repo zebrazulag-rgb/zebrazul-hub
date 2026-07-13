@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Instagram, Facebook } from 'lucide-react';
 import api from '../api';
+import AvatarUpload from '../components/AvatarUpload.jsx';
 
 export default function Clients() {
   const [clients, setClients] = useState([]);
@@ -40,6 +41,12 @@ export default function Clients() {
     openClient(selected);
   }
 
+  async function handleAvatarChange(dataUrl, mime) {
+    await api.put(`/clients/${selected.id}`, { avatar_data: dataUrl, avatar_mime: mime });
+    setSelected((prev) => ({ ...prev, avatar_data: dataUrl }));
+    loadClients();
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -56,9 +63,13 @@ export default function Clients() {
         {clients.map((c) => (
           <button key={c.id} onClick={() => openClient(c)} className="card p-5 text-left hover:border-zebrazul-300 transition-colors">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: c.logo_color }}>
-                {c.name[0]}
-              </div>
+              {c.avatar_data ? (
+                <img src={c.avatar_data} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ backgroundColor: c.logo_color }}>
+                  {c.name[0]}
+                </div>
+              )}
               <div>
                 <p className="font-medium text-slate-800">{c.name}</p>
                 <p className="text-xs text-slate-400">{c.segment || 'Sem segmento definido'}</p>
@@ -94,7 +105,20 @@ export default function Clients() {
               <h2 className="font-semibold text-slate-800">{selected.name}</h2>
               <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
-            <p className="text-sm text-slate-500 mb-4">{selected.segment}</p>
+
+            <div className="flex items-center gap-4 mb-4">
+              <AvatarUpload
+                imageSrc={selected.avatar_data}
+                fallbackText={selected.name}
+                fallbackColor={selected.logo_color}
+                size={64}
+                onChange={handleAvatarChange}
+              />
+              <div>
+                <p className="text-sm text-slate-500">{selected.segment}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Clique na foto para trocar o logo</p>
+              </div>
+            </div>
 
             <h3 className="text-sm font-semibold text-slate-700 mb-2">Contas conectadas</h3>
             <ul className="space-y-2 mb-4">

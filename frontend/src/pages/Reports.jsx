@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
 export default function Reports() {
   const { user } = useAuth();
+  const { selectedClient } = useClientFilter();
   const [clients, setClients] = useState([]);
-  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : '');
+  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [metrics, setMetrics] = useState([]);
   const [totals, setTotals] = useState(null);
   const [form, setForm] = useState({ platform: 'meta_ads', metric_date: '', reach: '', impressions: '', engagement: '', clicks: '', leads: '', spend: '', conversions: '' });
@@ -15,10 +17,14 @@ export default function Reports() {
     if (user?.role !== 'client') {
       api.get('/clients').then((res) => {
         setClients(res.data.clients);
-        if (!clientId && res.data.clients.length) setClientId(res.data.clients[0].id);
+        if (!clientId && res.data.clients.length) setClientId(selectedClient?.id || res.data.clients[0].id);
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user?.role !== 'client' && selectedClient) setClientId(selectedClient.id);
+  }, [selectedClient, user]);
 
   useEffect(() => {
     if (clientId) loadReport();
