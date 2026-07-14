@@ -1,39 +1,45 @@
+// Copia o arquivo do banco de dados atual para a pasta de backups, com timestamp no nome.
+// Uso via terminal: npm run backup
+// Também é chamado automaticamente pelo server.js a cada início (sem derrubar o processo em caso de erro).
 const fs = require('fs');
 const path = require('path');
-const db = require('./database');
-const { backupDirectory } = require('./config');
+const { DB_PATH } = require('./database');
 
-function timestamp() {
-  return new Date().toISOString().replace(/[:.]/g, '-');
-}
+function runBackup() {
+  const backupDir = process.env.BACKUP_DIR
+    ? path.resolve(process.env.BACKUP_DIR)
+    : path.join(path.dirname(DB_PATH), 'backups');
 
-async function createBackup(label = 'manual') {
-  fs.mkdirSync(backupDirectory, { recursive: true });
-  const safeLabel = String(label).replace(/[^a-zA-Z0-9_-]/g, '-');
-  const destination = path.join(
-    backupDirectory,
-    `zebrazul-hub-${safeLabel}-${timestamp()}.sqlite`
-  );
+  if (!fs.existsSync(DB_PATH)) {
+    throw new Error('Banco de dados não encontrado em: ' + DB_PATH);
+  }
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
-  await db.backup(destination);
-  pruneBackups(Number(process.env.BACKUP_RETENTION || 20));
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const destination = path.join(backupDir, `zebrazul_hub-${timestamp}.sqlite`);
+  fs.copyFileSync(DB_PATH, destination);
+
+  const retention = Number(process.env.BACKUP_RETENTION) || 14;
+  const files = fs.readdirSync(backupDir)
+    .filter((f) => f.startsWith('zebrazul_hub-') && f.endsWith('.sqlite'))
+    .sort();
+
+  if (files.length > retention) {
+    files.slice(0, files.length - retention).forEach((f) => fs.unlinkSync(path.join(backupDir, f)));
+  }
+
   return destination;
 }
 
-function pruneBackups(retention) {
-  if (!Number.isFinite(retention) || retention < 1 || !fs.existsSync(backupDirectory)) return;
+module.exports = runBackup;
 
-  const backups = fs.readdirSync(backupDirectory)
-    .filter((name) => name.endsWith('.sqlite'))
-    .map((name) => {
-      const fullPath = path.join(backupDirectory, name);
-      return { fullPath, mtime: fs.statSync(fullPath).mtimeMs };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
-
-  for (const backup of backups.slice(retention)) {
-    fs.unlinkSync(backup.fullPath);
+// Executado diretamente via `npm run backup` — nesse caso, pode encerrar o processo com erro.
+if (require.main === module) {
+  try {
+    const destination = runBackup();
+    console.log('Backup criado em:', destination);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
   }
 }
-
-module.exports = { createBackup };

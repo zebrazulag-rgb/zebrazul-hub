@@ -1,6 +1,6 @@
 {
   "name": "zebrazul-hub-backend",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "description": "Backend do Zebrazul Hub - gestao de redes sociais, aprovacao de conteudo e relatorios",
   "main": "server.js",
   "type": "commonjs",
@@ -8,8 +8,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "seed": "node db/seed.js",
-    "backup": "node scripts/backup.js",
-    "restore": "node scripts/restore.js"
+    "backup": "node db/backup.js",
+    "restore": "node db/restore.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",

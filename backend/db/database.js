@@ -1,25 +1,31 @@
 const Database = require('better-sqlite3');
-const fs = require('fs');
 const path = require('path');
-const { databasePath, legacyDatabasePath, persistenceConfigured } = require('./config');
+const fs = require('fs');
 
-fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+const LEGACY_PATH = path.join(__dirname, 'zebrazul_hub.sqlite');
+const DB_PATH = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : LEGACY_PATH;
 
-// Migração automática da instalação antiga: se um banco existia dentro da pasta
-// do código e agora DATABASE_PATH aponta para um volume persistente vazio,
-// transfere o banco antigo antes de abrir a aplicação.
-if (databasePath !== legacyDatabasePath && !fs.existsSync(databasePath) && fs.existsSync(legacyDatabasePath)) {
-  fs.copyFileSync(legacyDatabasePath, databasePath);
-  for (const suffix of ['-wal', '-shm']) {
-    const source = legacyDatabasePath + suffix;
-    if (fs.existsSync(source)) {
-      fs.copyFileSync(source, databasePath + suffix);
-    }
-  }
-  console.log('Banco anterior migrado para o armazenamento persistente.');
+// Garante que o diretório de destino existe (ex: /data em hospedagens com volume persistente)
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
+// Migração automática: se o caminho persistente ainda não tem banco, mas existe um banco
+// legado ao lado do código (versões antigas, sem DATABASE_PATH), copia os dados para lá.
+if (DB_PATH !== LEGACY_PATH && !fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_PATH)) {
+  fs.copyFileSync(LEGACY_PATH, DB_PATH);
+  console.log('Banco legado migrado para o caminho persistente:', DB_PATH);
 }
 
-const db = new Database(databasePath);
+if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_PATH) {
+  console.warn(
+    'AVISO: DATABASE_PATH não está configurado. O banco será salvo dentro da pasta do código ' +
+    'e pode ser apagado a cada novo deploy. Configure DATABASE_PATH apontando para um volume persistente.'
+  );
+}
+
+const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -47,6 +53,7 @@ CREATE TABLE IF NOT EXISTS clients (
   avatar_mime TEXT,
   bio TEXT,
   feed_share_token TEXT,
+  monthly_fee REAL DEFAULT 0,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
   responsible_user_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
@@ -120,6 +127,24 @@ CREATE TABLE IF NOT EXISTS task_assignees (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS financial_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL CHECK(type IN ('revenue','expense')),
+  description TEXT NOT NULL,
+  category TEXT,
+  amount REAL NOT NULL,
+  due_date TEXT NOT NULL,
+  paid_date TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
+  is_recurring INTEGER DEFAULT 0,
+  client_id INTEGER,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS post_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   post_id INTEGER NOT NULL,
@@ -128,26 +153,6 @@ CREATE TABLE IF NOT EXISTS post_comments (
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS financial_entries (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  client_id INTEGER,
-  created_by INTEGER NOT NULL,
-  type TEXT NOT NULL CHECK(type IN ('income','expense')),
-  category TEXT DEFAULT 'Outros',
-  description TEXT NOT NULL,
-  amount REAL NOT NULL,
-  due_date TEXT NOT NULL,
-  paid_date TEXT,
-  status TEXT DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
-  payment_method TEXT,
-  recurring INTEGER DEFAULT 0,
-  notes TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS report_metrics (
@@ -167,11 +172,11 @@ CREATE TABLE IF NOT EXISTS report_metrics (
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_financial_due_date ON financial_entries(due_date);
-CREATE INDEX IF NOT EXISTS idx_financial_client ON financial_entries(client_id);
 CREATE INDEX IF NOT EXISTS idx_posts_client ON posts(client_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_client_date ON report_metrics(client_id, metric_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_financial_entries_due ON financial_entries(due_date);
+CREATE INDEX IF NOT EXISTS idx_financial_entries_client ON financial_entries(client_id);
 `);
 
 // Migração leve: adiciona colunas novas em bancos já existentes (não falha se já existirem)
@@ -198,10 +203,7 @@ tryAddColumn('tasks', 'task_type', "TEXT DEFAULT 'basic'");
 tryAddColumn('tasks', 'video_link', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
-
-Object.defineProperties(db, {
-  storagePath: { value: databasePath, enumerable: true },
-  persistenceConfigured: { value: persistenceConfigured, enumerable: true },
-});
+tryAddColumn('clients', 'monthly_fee', 'REAL DEFAULT 0');
 
 module.exports = db;
+module.exports.DB_PATH = DB_PATH;
