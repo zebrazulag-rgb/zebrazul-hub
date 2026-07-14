@@ -9,6 +9,7 @@ const postRoutes = require('./routes/posts');
 const reportRoutes = require('./routes/reports');
 const taskRoutes = require('./routes/tasks');
 const publicRoutes = require('./routes/public');
+const financeRoutes = require('./routes/finance');
 
 // Cria os dados iniciais (admin, equipe, cliente de exemplo) automaticamente
 // na primeira vez que o servidor liga, caso o banco ainda esteja vazio.
@@ -28,6 +29,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/finance', financeRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

@@ -112,6 +112,26 @@ CREATE TABLE IF NOT EXISTS post_comments (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS financial_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER,
+  created_by INTEGER NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('income','expense')),
+  category TEXT DEFAULT 'Outros',
+  description TEXT NOT NULL,
+  amount REAL NOT NULL,
+  due_date TEXT NOT NULL,
+  paid_date TEXT,
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
+  payment_method TEXT,
+  recurring INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS report_metrics (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL,
@@ -129,6 +149,8 @@ CREATE TABLE IF NOT EXISTS report_metrics (
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_financial_due_date ON financial_entries(due_date);
+CREATE INDEX IF NOT EXISTS idx_financial_client ON financial_entries(client_id);
 CREATE INDEX IF NOT EXISTS idx_posts_client ON posts(client_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_client_date ON report_metrics(client_id, metric_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
