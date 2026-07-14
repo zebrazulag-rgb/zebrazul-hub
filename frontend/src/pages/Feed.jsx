@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Image as ImageIcon, Grid3x3 } from 'lucide-react';
+import { Image as ImageIcon, Grid3x3, Pencil, Check } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -13,6 +13,9 @@ export default function Feed() {
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
   const [openPost, setOpenPost] = useState(null);
+  const [editingBio, setEditingBio] = useState(false);
+  const [bioDraft, setBioDraft] = useState('');
+  const [savingBio, setSavingBio] = useState(false);
 
   useEffect(() => {
     if (user?.role !== 'client') {
@@ -20,6 +23,8 @@ export default function Feed() {
         setClients(res.data.clients);
         if (!clientId && res.data.clients.length) setClientId(selectedClient?.id || res.data.clients[0].id);
       });
+    } else {
+      api.get(`/clients/${user.client_id}`).then((res) => setClients([res.data.client]));
     }
   }, [user]);
 
@@ -31,13 +36,29 @@ export default function Feed() {
     if (!clientId) return;
     api.get(`/posts?client_id=${clientId}`).then((res) => {
       const upcoming = res.data.posts
-        .filter((p) => p.scheduled_at && ['pending_approval', 'approved', 'scheduled'].includes(p.status))
+        .filter((p) => p.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(p.status))
         .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
       setPosts(upcoming);
     });
   }, [clientId]);
 
   const currentClient = clients.find((c) => String(c.id) === String(clientId));
+
+  function startEditBio() {
+    setBioDraft(currentClient?.bio || '');
+    setEditingBio(true);
+  }
+
+  async function saveBio() {
+    setSavingBio(true);
+    try {
+      await api.put(`/clients/${clientId}`, { bio: bioDraft });
+      setClients((prev) => prev.map((c) => (String(c.id) === String(clientId) ? { ...c, bio: bioDraft } : c)));
+      setEditingBio(false);
+    } finally {
+      setSavingBio(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -58,50 +79,97 @@ export default function Feed() {
       )}
 
       {clientId && (
-        <div className="card p-5">
-          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-100">
-            {currentClient?.avatar_data ? (
-              <img src={currentClient.avatar_data} alt="" className="w-14 h-14 rounded-full object-cover" />
-            ) : (
-              <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: currentClient?.logo_color }}>
-                {currentClient?.name?.[0]}
+        <div className="flex justify-center">
+          {/* Moldura de celular */}
+          <div className="w-full max-w-[380px] bg-slate-900 rounded-[2.5rem] p-3 shadow-xl">
+            <div className="bg-white rounded-[2rem] overflow-hidden">
+              <div className="h-6 flex items-center justify-center">
+                <div className="w-20 h-4 bg-slate-900 rounded-full" />
               </div>
-            )}
-            <div>
-              <p className="font-semibold text-slate-800">
-                {currentClient?.name?.toLowerCase().replace(/\s+/g, '_')}
-              </p>
-              <p className="text-xs text-slate-400">{posts.length} publicações programadas</p>
-            </div>
-          </div>
 
-          {posts.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-12">Nenhum post agendado para este cliente ainda.</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-1">
-              {posts.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setOpenPost(p)}
-                  className="relative aspect-square bg-slate-100 overflow-hidden group"
-                >
-                  {p.media_data ? (
-                    <img src={p.media_data} alt="" className="w-full h-full object-cover" />
+              <div className="px-4 pb-4">
+                {/* Cabecalho de perfil, editavel */}
+                <div className="flex items-center gap-4 mb-3">
+                  {currentClient?.avatar_data ? (
+                    <img src={currentClient.avatar_data} alt="" className="w-16 h-16 rounded-full object-cover shrink-0" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <ImageIcon size={24} className="text-slate-300" />
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0" style={{ backgroundColor: currentClient?.logo_color }}>
+                      {currentClient?.name?.[0]}
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
-                    <Grid3x3 size={16} className="text-white" />
-                    <span className="text-white text-[10px] font-medium px-2 text-center">
-                      {new Date(p.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                    </span>
+                  <div className="flex gap-4 text-center flex-1">
+                    <div>
+                      <p className="font-semibold text-sm text-slate-800">{posts.length}</p>
+                      <p className="text-[11px] text-slate-400">publicações</p>
+                    </div>
                   </div>
-                </button>
-              ))}
+                </div>
+
+                <p className="font-semibold text-sm text-slate-800">
+                  {currentClient?.name?.toLowerCase().replace(/\s+/g, '_')}
+                </p>
+
+                {editingBio ? (
+                  <div className="mt-1.5 space-y-2">
+                    <textarea
+                      className="input-field text-xs min-h-[60px]"
+                      value={bioDraft}
+                      onChange={(e) => setBioDraft(e.target.value)}
+                      placeholder="Escreva a bio do perfil..."
+                      maxLength={150}
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditingBio(false)} className="btn-secondary text-xs flex-1 py-1.5">Cancelar</button>
+                      <button onClick={saveBio} disabled={savingBio} className="btn-primary text-xs flex-1 py-1.5 flex items-center justify-center gap-1">
+                        <Check size={12} /> {savingBio ? 'Salvando...' : 'Salvar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-1.5 mt-1">
+                    <p className="text-xs text-slate-500 whitespace-pre-wrap flex-1">
+                      {currentClient?.bio || <span className="text-slate-300">Sem bio definida ainda.</span>}
+                    </p>
+                    {user?.role !== 'client' && (
+                      <button onClick={startEditBio} className="text-slate-300 hover:text-zebrazul-600 shrink-0 mt-0.5">
+                        <Pencil size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-100" />
+
+              {posts.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-12 px-4">Nenhum post agendado para este cliente ainda.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-[2px] bg-slate-100">
+                  {posts.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setOpenPost(p)}
+                      className="relative aspect-square bg-white overflow-hidden group"
+                    >
+                      {p.media_data ? (
+                        <img src={p.media_data} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                          <ImageIcon size={20} className="text-slate-300" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+                        <Grid3x3 size={14} className="text-white" />
+                        <span className="text-white text-[9px] font-medium px-2 text-center">
+                          {new Date(p.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 

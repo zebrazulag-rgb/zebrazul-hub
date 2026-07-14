@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2 } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
@@ -10,8 +11,67 @@ const STATUS_COLUMNS = [
   { key: 'done', label: 'Concluída', badge: 'bg-emerald-100 text-emerald-700' }
 ];
 
+const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+function buildMonthGrid(year, month) {
+  const startWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  return cells;
+}
+
+function TaskCard({ task: t, onClick, onDragStart }) {
+  return (
+    <div
+      draggable={!!onDragStart}
+      onDragStart={onDragStart ? (e) => onDragStart(e, t.id) : undefined}
+      onClick={onClick}
+      className={`card p-4 w-full text-left hover:border-zebrazul-300 transition-colors ${onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+    >
+      <div className="flex items-start gap-2">
+        {t.attachment_data && <img src={t.attachment_data} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />}
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-slate-800 text-sm">{t.title}</p>
+          {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
+        </div>
+      </div>
+      {t.subtask_total > 0 && (
+        <div className="mt-2 flex items-center gap-1.5">
+          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-full bg-zebrazul-500 rounded-full" style={{ width: (t.subtask_done / t.subtask_total * 100) + '%' }} />
+          </div>
+          <span className="text-[10px] text-slate-400 shrink-0">{t.subtask_done}/{t.subtask_total}</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between mt-3">
+        <div className="flex items-center gap-1.5">
+          {t.assignee_name && (
+            t.assignee_avatar ? (
+              <img src={t.assignee_avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+            ) : (
+              <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: t.assignee_color || '#2563eb' }}>
+                {t.assignee_name[0]?.toUpperCase()}
+              </span>
+            )
+          )}
+          <span className="text-xs text-slate-400">{t.assignee_name || 'Sem responsável'}</span>
+        </div>
+        {t.due_date && (
+          <span className="text-xs text-slate-400 flex items-center gap-1">
+            <Calendar size={11} /> {new Date(t.due_date).toLocaleDateString('pt-BR')}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Tasks() {
   const { selectedClient } = useClientFilter();
+  const [view, setView] = useState('kanban');
   const [tasks, setTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
@@ -20,10 +80,14 @@ export default function Tasks() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [subtasks, setSubtasks] = useState([]);
   const [dragOverCol, setDragOverCol] = useState(null);
+  const [cursor, setCursor] = useState(new Date());
+  const [dayTasks, setDayTasks] = useState(null);
+  const [sendingToFeed, setSendingToFeed] = useState(false);
+  const [feedError, setFeedError] = useState('');
 
   const loadTasks = useCallback(async () => {
-    const params = selectedClient ? `?client_id=${selectedClient.id}` : '';
-    const { data } = await api.get(`/tasks${params}`);
+    const params = selectedClient ? ('?client_id=' + selectedClient.id) : '';
+    const { data } = await api.get('/tasks' + params);
     setTasks(data.tasks);
   }, [selectedClient]);
 
@@ -34,32 +98,52 @@ export default function Tasks() {
   }, [loadTasks]);
 
   async function openTask(taskId) {
-    const { data } = await api.get(`/tasks/${taskId}`);
+    const { data } = await api.get('/tasks/' + taskId);
     setSelectedTask(data.task);
     setSubtasks(data.subtasks);
+    setFeedError('');
   }
 
   async function updateStatus(taskId, status) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
-    await api.put(`/tasks/${taskId}`, { status });
+    await api.put('/tasks/' + taskId, { status });
   }
 
   async function updateSubtaskStatus(subtaskId, status) {
     setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
-    await api.put(`/tasks/${subtaskId}`, { status });
-    loadTasks(); // atualiza o contador de progresso no card
+    await api.put('/tasks/' + subtaskId, { status });
+    loadTasks();
   }
 
   async function deleteSubtask(subtaskId) {
-    await api.delete(`/tasks/${subtaskId}`);
+    await api.delete('/tasks/' + subtaskId);
     setSubtasks((prev) => prev.filter((s) => s.id !== subtaskId));
     loadTasks();
   }
 
   async function deleteTask(id) {
-    await api.delete(`/tasks/${id}`);
+    await api.delete('/tasks/' + id);
     setSelectedTask(null);
     loadTasks();
+  }
+
+  async function duplicateTask(id) {
+    await api.post('/tasks/' + id + '/duplicate');
+    setSelectedTask(null);
+    loadTasks();
+  }
+
+  async function sendToFeed(id) {
+    setSendingToFeed(true);
+    setFeedError('');
+    try {
+      const { data } = await api.post('/tasks/' + id + '/add-to-feed');
+      setSelectedTask((prev) => ({ ...prev, feed_post_id: data.post_id }));
+    } catch (err) {
+      setFeedError(err.response?.data?.error || 'Erro ao enviar para o feed.');
+    } finally {
+      setSendingToFeed(false);
+    }
   }
 
   function handleDragStart(e, taskId) {
@@ -82,88 +166,131 @@ export default function Tasks() {
     return 'pending';
   }
 
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const cells = buildMonthGrid(year, month);
+
+  function tasksForDay(day) {
+    if (!day) return [];
+    return tasks.filter((t) => {
+      if (!t.due_date) return false;
+      const d = new Date(t.due_date);
+      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+    });
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Tarefas</h1>
           <p className="text-slate-500 mt-1">
-            {selectedClient ? `Tarefas relacionadas a ${selectedClient.name}. Arraste os cards entre as colunas.` : 'Organize o trabalho da equipe com prazos e responsáveis.'}
+            {selectedClient ? ('Tarefas relacionadas a ' + selectedClient.name + '.') : 'Organize o trabalho da equipe com prazos e responsáveis.'}
           </p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
-          <Plus size={18} /> Nova tarefa
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-slate-100 rounded-lg p-1">
+            <button
+              onClick={() => setView('kanban')}
+              className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'kanban' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}
+            >
+              <LayoutGrid size={14} /> Kanban
+            </button>
+            <button
+              onClick={() => setView('calendar')}
+              className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'calendar' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}
+            >
+              <Calendar size={14} /> Calendário
+            </button>
+          </div>
+          <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
+            <Plus size={18} /> Nova tarefa
+          </button>
+        </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-5">
-        {STATUS_COLUMNS.map((col) => (
-          <div
-            key={col.key}
-            onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
-            onDragLeave={() => setDragOverCol(null)}
-            onDrop={(e) => handleDrop(e, col.key)}
-            className={`space-y-3 rounded-xl p-2 transition-colors ${dragOverCol === col.key ? 'bg-zebrazul-50 ring-2 ring-zebrazul-200' : ''}`}
-          >
-            <div className="flex items-center gap-2 px-1">
-              <span className={`badge ${col.badge}`}>{col.label}</span>
-              <span className="text-xs text-slate-400">
-                {tasks.filter((t) => t.status === col.key).length}
-              </span>
+      {view === 'kanban' && (
+        <div className="grid md:grid-cols-3 gap-5">
+          {STATUS_COLUMNS.map((col) => (
+            <div
+              key={col.key}
+              onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={(e) => handleDrop(e, col.key)}
+              className={'space-y-3 rounded-xl p-2 transition-colors ' + (dragOverCol === col.key ? 'bg-zebrazul-50 ring-2 ring-zebrazul-200' : '')}
+            >
+              <div className="flex items-center gap-2 px-1">
+                <span className={'badge ' + col.badge}>{col.label}</span>
+                <span className="text-xs text-slate-400">{tasks.filter((t) => t.status === col.key).length}</span>
+              </div>
+              <div className="space-y-3 min-h-[60px]">
+                {tasks.filter((t) => t.status === col.key).map((t) => (
+                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={handleDragStart} />
+                ))}
+                {tasks.filter((t) => t.status === col.key).length === 0 && (
+                  <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
+                )}
+              </div>
             </div>
-            <div className="space-y-3 min-h-[60px]">
-              {tasks.filter((t) => t.status === col.key).map((t) => (
-                <div
-                  key={t.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, t.id)}
-                  onClick={() => openTask(t.id)}
-                  className="card p-4 w-full text-left hover:border-zebrazul-300 transition-colors cursor-grab active:cursor-grabbing"
+          ))}
+        </div>
+      )}
+
+      {view === 'calendar' && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={() => setCursor(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+              <ChevronLeft size={20} />
+            </button>
+            <h2 className="font-semibold text-slate-800">{MONTHS[month]} de {year}</h2>
+            <button onClick={() => setCursor(new Date(year, month + 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+              <ChevronRight size={20} />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-1.5 text-center text-xs font-semibold text-slate-400 mb-2">
+            {WEEKDAYS.map((w) => <div key={w}>{w}</div>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {cells.map((day, idx) => {
+              const dayItems = tasksForDay(day);
+              const isToday = day && new Date().toDateString() === new Date(year, month, day).toDateString();
+              return (
+                <button
+                  key={idx}
+                  disabled={!day}
+                  onClick={() => day && dayItems.length > 0 && setDayTasks({ day: day, items: dayItems })}
+                  className={'aspect-square rounded-lg border p-1.5 text-left flex flex-col ' + (!day ? 'border-transparent' : 'border-slate-100 hover:border-zebrazul-300') + ' ' + (isToday ? 'ring-2 ring-zebrazul-400' : '')}
                 >
-                  <p className="font-medium text-slate-800 text-sm">{t.title}</p>
-                  {t.client_name && <p className="text-xs text-zebrazul-600 mt-1">{t.client_name}</p>}
-                  {t.subtask_total > 0 && (
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-zebrazul-500 rounded-full"
-                          style={{ width: `${(t.subtask_done / t.subtask_total) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] text-slate-400 shrink-0">{t.subtask_done}/{t.subtask_total}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between mt-3">
-                    <div className="flex items-center gap-1.5">
-                      {t.assignee_name && (
-                        t.assignee_avatar ? (
-                          <img src={t.assignee_avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
-                        ) : (
-                          <span
-                            className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                            style={{ backgroundColor: t.assignee_color || '#2563eb' }}
-                          >
-                            {t.assignee_name[0]?.toUpperCase()}
-                          </span>
-                        )
+                  {day && (
+                    <>
+                      <span className="text-xs text-slate-500">{day}</span>
+                      {dayItems.length > 0 && (
+                        <span className="mt-auto text-[10px] text-zebrazul-600 font-medium">{dayItems.length} tarefa{dayItems.length > 1 ? 's' : ''}</span>
                       )}
-                      <span className="text-xs text-slate-400">{t.assignee_name || 'Sem responsável'}</span>
-                    </div>
-                    {t.due_date && (
-                      <span className="text-xs text-slate-400 flex items-center gap-1">
-                        <Calendar size={11} /> {new Date(t.due_date).toLocaleDateString('pt-BR')}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                    </>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {dayTasks && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-slate-800">Tarefas — {dayTasks.day} de {MONTHS[month]}</h2>
+              <button onClick={() => setDayTasks(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+            <div className="space-y-3">
+              {dayTasks.items.map((t) => (
+                <TaskCard key={t.id} task={t} onClick={() => { setDayTasks(null); openTask(t.id); }} />
               ))}
-              {tasks.filter((t) => t.status === col.key).length === 0 && (
-                <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
-              )}
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {showForm && (
         <TaskFormModal
@@ -193,27 +320,57 @@ export default function Tasks() {
               <h2 className="font-semibold text-slate-800">{selectedTask.title}</h2>
               <button onClick={() => setSelectedTask(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
-            {selectedTask.description && <p className="text-sm text-slate-600 mb-4 whitespace-pre-wrap">{selectedTask.description}</p>}
+            {selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
+            {selectedTask.attachment_data && (
+              <img src={selectedTask.attachment_data} alt="" className="w-full rounded-lg mb-3 max-h-48 object-cover" />
+            )}
+            {selectedTask.caption && (
+              <div className="bg-slate-50 rounded-lg p-3 mb-3">
+                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Legenda</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedTask.caption}</p>
+              </div>
+            )}
             <div className="text-xs text-slate-500 space-y-1 mb-4">
-              {selectedTask.due_date && <p>Prazo: {new Date(selectedTask.due_date).toLocaleDateString('pt-BR')}</p>}
+              {selectedTask.content_type && <p>Tipo: {selectedTask.content_type}</p>}
+              {selectedTask.due_date && <p>Data de postagem: {new Date(selectedTask.due_date).toLocaleDateString('pt-BR')}</p>}
               {selectedTask.assignee_name && <p>Responsável: {selectedTask.assignee_name}</p>}
               {selectedTask.client_name && <p>Cliente: {selectedTask.client_name}</p>}
-              {selectedTask.attachment_filename && <p>Anexo: {selectedTask.attachment_filename}</p>}
             </div>
+
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
-            <div className="flex gap-2 mb-5">
+            <div className="flex gap-2 mb-4">
               {STATUS_COLUMNS.map((col) => (
                 <button
                   key={col.key}
                   onClick={() => { updateStatus(selectedTask.id, col.key); setSelectedTask({ ...selectedTask, status: col.key }); }}
-                  className={`flex-1 text-xs font-medium py-2 rounded-lg border transition-colors ${
-                    selectedTask.status === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300'
-                  }`}
+                  className={'flex-1 text-xs font-medium py-2 rounded-lg border transition-colors ' + (selectedTask.status === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300')}
                 >
                   {col.label}
                 </button>
               ))}
             </div>
+
+            <div className="flex gap-2 mb-5">
+              <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex-1 flex items-center justify-center gap-1.5">
+                <Copy size={14} /> Duplicar
+              </button>
+              {selectedTask.client_id && (
+                selectedTask.feed_post_id ? (
+                  <Link to="/feed" className="flex-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
+                    <ExternalLink size={14} /> Ver no Feed
+                  </Link>
+                ) : (
+                  <button
+                    onClick={() => sendToFeed(selectedTask.id)}
+                    disabled={sendingToFeed}
+                    className="flex-1 bg-zebrazul-50 text-zebrazul-700 hover:bg-zebrazul-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <Grid3x3 size={14} /> {sendingToFeed ? 'Enviando...' : 'Adicionar à grade'}
+                  </button>
+                )
+              )}
+            </div>
+            {feedError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{feedError}</p>}
 
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between mb-3">
@@ -225,22 +382,18 @@ export default function Tasks() {
                 </button>
               </div>
               <div className="space-y-2">
-                {subtasks.length === 0 && (
-                  <p className="text-xs text-slate-300 text-center py-4">Nenhuma subtarefa ainda.</p>
-                )}
+                {subtasks.length === 0 && <p className="text-xs text-slate-300 text-center py-4">Nenhuma subtarefa ainda.</p>}
                 {subtasks.map((s) => (
                   <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
                     <button
                       onClick={() => updateSubtaskStatus(s.id, nextStatus(s.status))}
-                      className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
-                        s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300'
-                      }`}
+                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
                       title="Clique para avançar o status"
                     >
                       {s.status === 'done' && <span className="text-white text-[10px]">✓</span>}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className={`text-sm truncate ${s.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{s.title}</p>
+                      <p className={'text-sm truncate ' + (s.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.assignee_name && <span className="text-[11px] text-slate-400">{s.assignee_name}</span>}
                         {s.due_date && <span className="text-[11px] text-slate-400">· {new Date(s.due_date).toLocaleDateString('pt-BR')}</span>}

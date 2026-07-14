@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { X, Paperclip } from 'lucide-react';
+import { X, ImagePlus } from 'lucide-react';
 import api from '../api';
+
+const CONTENT_TYPES = ['feed', 'reels', 'story', 'carrossel', 'artigo'];
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -13,7 +15,7 @@ function fileToBase64(file) {
 
 export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, onClose, onSaved }) {
   const [form, setForm] = useState({
-    title: '', description: '', due_date: '', assignee_id: '',
+    title: '', description: '', content_type: '', caption: '', due_date: '', assignee_id: '',
     client_id: defaultClientId || '', status: 'pending',
     attachment_data: '', attachment_mime: '', attachment_filename: ''
   });
@@ -58,21 +60,32 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
               className="input-field"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="Ex: Preparar briefing de campanha"
+              placeholder="Ex: Post institucional - dia das mães"
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Descrição</label>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Ideia do conteúdo</label>
             <textarea
-              className="input-field min-h-[90px]"
+              className="input-field min-h-[70px]"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Detalhe o que precisa ser feito..."
+              placeholder="Descreva o conceito ou briefing do conteúdo..."
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Prazo</label>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Tipo de conteúdo</label>
+              <select
+                className="input-field"
+                value={form.content_type}
+                onChange={(e) => setForm({ ...form, content_type: e.target.value })}
+              >
+                <option value="">Não definido</option>
+                {CONTENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Data de postagem</label>
               <input
                 type="date"
                 className="input-field"
@@ -80,6 +93,17 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
                 onChange={(e) => setForm({ ...form, due_date: e.target.value })}
               />
             </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Legenda</label>
+            <textarea
+              className="input-field min-h-[70px]"
+              value={form.caption}
+              onChange={(e) => setForm({ ...form, caption: e.target.value })}
+              placeholder="Legenda com CTA e hashtags..."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Responsável</label>
               <select
@@ -90,21 +114,6 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
                 <option value="">Sem responsável</option>
                 {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado</label>
-              <select
-                className="input-field"
-                value={form.client_id}
-                onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-                disabled={!!parentTaskId}
-              >
-                <option value="">Nenhum — tarefa interna</option>
-                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              {parentTaskId && <p className="text-xs text-slate-400 mt-1">Herda o cliente da tarefa principal.</p>}
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Status inicial</label>
@@ -120,11 +129,24 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Anexo</label>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado</label>
+            <select
+              className="input-field"
+              value={form.client_id}
+              onChange={(e) => setForm({ ...form, client_id: e.target.value })}
+              disabled={!!parentTaskId}
+            >
+              <option value="">Nenhum — tarefa interna</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {parentTaskId && <p className="text-xs text-slate-400 mt-1">Herda o cliente da tarefa principal.</p>}
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Mídia</label>
             <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
-              <Paperclip size={16} />
-              {form.attachment_filename || 'Clique para anexar um arquivo'}
-              <input type="file" className="hidden" onChange={handleFileChange} />
+              <ImagePlus size={16} />
+              {form.attachment_filename || 'Clique para anexar uma imagem'}
+              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
             </label>
           </div>
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
