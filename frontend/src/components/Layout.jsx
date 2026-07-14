@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck2, CalendarDays, BarChart3, Users, UserCog, ListChecks, LogOut, Grid3x3, WalletCards, X } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck2, BarChart3, Users, UserCog, ListChecks, LogOut, Grid3x3, WalletCards, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import AvatarUpload from './AvatarUpload.jsx';
@@ -46,7 +46,6 @@ export default function Layout({ children }) {
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team'] },
     { to: '/aprovacao', label: 'Aprovação de conteúdo', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
-    { to: '/calendario', label: 'Calendário', icon: CalendarDays, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin', 'team'] },
@@ -131,8 +130,8 @@ export default function Layout({ children }) {
           </button>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-6 py-8">{children}</div>
+      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+        <div className="w-full max-w-6xl mx-auto px-6 py-8 min-w-0">{children}</div>
       </main>
 
       {showProfile && (

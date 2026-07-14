@@ -4,21 +4,21 @@ export default function InstagramPreview({ clientName = 'sua_marca', clientColor
   const initial = clientName?.[0]?.toUpperCase() || 'Z';
 
   return (
-    <div className="w-full max-w-[380px] mx-auto bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+    <div className="w-full max-w-[380px] min-w-0 mx-auto bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2.5">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ring-2 ring-offset-1"
             style={{ backgroundColor: clientColor, ringColor: clientColor }}
           >
             {initial}
           </div>
-          <span className="text-sm font-semibold text-slate-800">
+          <span className="text-sm font-semibold text-slate-800 truncate min-w-0">
             {clientName?.toLowerCase().replace(/\s+/g, '_') || 'sua_marca'}
           </span>
           {contentType === 'reels' && (
-            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">Reels</span>
+            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-medium shrink-0">Reels</span>
           )}
         </div>
         <MoreHorizontal size={18} className="text-slate-400" />
@@ -49,7 +49,7 @@ export default function InstagramPreview({ clientName = 'sua_marca', clientColor
       {/* Legenda */}
       <div className="px-3 pb-3 text-sm text-slate-700">
         <p className="font-semibold text-xs text-slate-800 mb-0.5">124 curtidas</p>
-        <p className="whitespace-pre-wrap break-words leading-snug">
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-snug">
           <span className="font-semibold mr-1.5">
             {clientName?.toLowerCase().replace(/\s+/g, '_') || 'sua_marca'}
           </span>

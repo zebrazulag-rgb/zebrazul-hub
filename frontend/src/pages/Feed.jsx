@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Image as ImageIcon, Grid3x3, Pencil, Check, Link2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Image as ImageIcon, Grid3x3, Pencil, Check, Link2, CalendarDays } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import InstagramPreview from '../components/InstagramPreview.jsx';
+import CalendarView from './CalendarView.jsx';
 
 export default function Feed() {
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeView = searchParams.get('view') === 'calendar' ? 'calendar' : 'grid';
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
@@ -22,28 +26,37 @@ export default function Feed() {
     if (user?.role !== 'client') {
       api.get('/clients').then((res) => {
         setClients(res.data.clients);
-        if (!clientId && res.data.clients.length) setClientId(selectedClient?.id || res.data.clients[0].id);
+        setClientId((current) => current || selectedClient?.id || res.data.clients[0]?.id || '');
       });
-    } else {
+    } else if (user?.client_id) {
       api.get(`/clients/${user.client_id}`).then((res) => setClients([res.data.client]));
     }
-  }, [user]);
+  }, [user, selectedClient]);
 
   useEffect(() => {
     if (user?.role !== 'client' && selectedClient) setClientId(selectedClient.id);
   }, [selectedClient, user]);
 
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId) {
+      setPosts([]);
+      return;
+    }
+
     api.get(`/posts?client_id=${clientId}`).then((res) => {
       const upcoming = res.data.posts
-        .filter((p) => p.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(p.status))
+        .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(post.status))
         .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
       setPosts(upcoming);
     });
   }, [clientId]);
 
-  const currentClient = clients.find((c) => String(c.id) === String(clientId));
+  const currentClient = clients.find((client) => String(client.id) === String(clientId));
+
+  function switchView(view) {
+    setOpenPost(null);
+    setSearchParams(view === 'calendar' ? { view: 'calendar' } : {}, { replace: true });
+  }
 
   function startEditBio() {
     setBioDraft(currentClient?.bio || '');
@@ -54,7 +67,9 @@ export default function Feed() {
     setSavingBio(true);
     try {
       await api.put(`/clients/${clientId}`, { bio: bioDraft });
-      setClients((prev) => prev.map((c) => (String(c.id) === String(clientId) ? { ...c, bio: bioDraft } : c)));
+      setClients((previous) => previous.map((client) => (
+        String(client.id) === String(clientId) ? { ...client, bio: bioDraft } : client
+      )));
       setEditingBio(false);
     } finally {
       setSavingBio(false);
@@ -70,32 +85,60 @@ export default function Feed() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
+    <div className="space-y-6 min-w-0">
+      <div className="flex items-center justify-between flex-wrap gap-4 min-w-0">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-800">Feed</h1>
-          <p className="text-slate-500 mt-1">Prévia de como o perfil vai ficar, com os próximos posts em ordem de data.</p>
+          <p className="text-slate-500 mt-1">
+            {activeView === 'calendar'
+              ? 'Visualize as datas de publicação dentro do planejamento do feed.'
+              : 'Prévia de como o perfil vai ficar, com os próximos posts em ordem de data.'}
+          </p>
         </div>
         {user?.role !== 'client' && clients.length > 0 && (
-          <div className="flex items-center gap-2">
-            <select className="input-field w-56" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <div className="flex items-center gap-2 flex-wrap">
+            <select className="input-field w-56" value={clientId} onChange={(event) => setClientId(event.target.value)}>
+              {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
             </select>
-            <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
-              {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
-              {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
-            </button>
+            {activeView === 'grid' && (
+              <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+                {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
+                {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
+              </button>
+            )}
           </div>
         )}
       </div>
 
+      <div className="inline-flex max-w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        <button
+          onClick={() => switchView('grid')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeView === 'grid' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Grid3x3 size={17} /> Prévia do feed
+        </button>
+        <button
+          onClick={() => switchView('calendar')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeView === 'calendar' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <CalendarDays size={17} /> Calendário
+        </button>
+      </div>
+
       {!clientId && (
-        <p className="text-sm text-slate-400 py-12 text-center">Selecione um cliente para ver o feed.</p>
+        <p className="text-sm text-slate-400 py-12 text-center">Selecione um cliente para visualizar o feed.</p>
       )}
 
-      {clientId && (
+      {clientId && activeView === 'calendar' && (
+        <CalendarView embedded clientId={clientId} />
+      )}
+
+      {clientId && activeView === 'grid' && (
         <div className="flex justify-center">
-          {/* Moldura de celular */}
           <div className="w-full max-w-[380px] bg-slate-900 rounded-[2.5rem] p-3 shadow-xl">
             <div className="bg-white rounded-[2rem] overflow-hidden">
               <div className="h-6 flex items-center justify-center">
@@ -103,12 +146,14 @@ export default function Feed() {
               </div>
 
               <div className="px-4 pb-4">
-                {/* Cabecalho de perfil, editavel */}
                 <div className="flex items-center gap-4 mb-3">
                   {currentClient?.avatar_data ? (
                     <img src={currentClient.avatar_data} alt="" className="w-16 h-16 rounded-full object-cover shrink-0" />
                   ) : (
-                    <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0" style={{ backgroundColor: currentClient?.logo_color }}>
+                    <div
+                      className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
+                      style={{ backgroundColor: currentClient?.logo_color }}
+                    >
                       {currentClient?.name?.[0]}
                     </div>
                   )}
@@ -120,7 +165,7 @@ export default function Feed() {
                   </div>
                 </div>
 
-                <p className="font-semibold text-sm text-slate-800">
+                <p className="font-semibold text-sm text-slate-800 break-words">
                   {currentClient?.name?.toLowerCase().replace(/\s+/g, '_')}
                 </p>
 
@@ -129,7 +174,7 @@ export default function Feed() {
                     <textarea
                       className="input-field text-xs min-h-[60px]"
                       value={bioDraft}
-                      onChange={(e) => setBioDraft(e.target.value)}
+                      onChange={(event) => setBioDraft(event.target.value)}
                       placeholder="Escreva a bio do perfil..."
                       maxLength={150}
                     />
@@ -141,12 +186,12 @@ export default function Feed() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start gap-1.5 mt-1">
-                    <p className="text-xs text-slate-500 whitespace-pre-wrap flex-1">
+                  <div className="flex items-start gap-1.5 mt-1 min-w-0">
+                    <p className="text-xs text-slate-500 whitespace-pre-wrap break-words flex-1 min-w-0">
                       {currentClient?.bio || <span className="text-slate-300">Sem bio definida ainda.</span>}
                     </p>
                     {user?.role !== 'client' && (
-                      <button onClick={startEditBio} className="text-slate-300 hover:text-zebrazul-600 shrink-0 mt-0.5">
+                      <button onClick={startEditBio} className="text-slate-300 hover:text-zebrazul-600 shrink-0 mt-0.5" aria-label="Editar bio">
                         <Pencil size={12} />
                       </button>
                     )}
@@ -160,14 +205,14 @@ export default function Feed() {
                 <p className="text-sm text-slate-400 text-center py-12 px-4">Nenhum post agendado para este cliente ainda.</p>
               ) : (
                 <div className="grid grid-cols-3 gap-[2px] bg-slate-100">
-                  {posts.map((p) => (
+                  {posts.map((post) => (
                     <button
-                      key={p.id}
-                      onClick={() => setOpenPost(p)}
+                      key={post.id}
+                      onClick={() => setOpenPost(post)}
                       className="relative aspect-square bg-white overflow-hidden group"
                     >
-                      {p.media_data ? (
-                        <img src={p.media_data} alt="" className="w-full h-full object-cover" />
+                      {post.media_data ? (
+                        <img src={post.media_data} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-slate-50">
                           <ImageIcon size={20} className="text-slate-300" />
@@ -176,7 +221,7 @@ export default function Feed() {
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
                         <Grid3x3 size={14} className="text-white" />
                         <span className="text-white text-[9px] font-medium px-2 text-center">
-                          {new Date(p.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                          {new Date(post.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                         </span>
                       </div>
                     </button>
@@ -190,13 +235,13 @@ export default function Feed() {
 
       {openPost && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="font-semibold text-slate-800">{openPost.title}</h2>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-6 min-w-0">
+            <div className="flex items-start justify-between gap-4 mb-4 min-w-0">
+              <div className="min-w-0">
+                <h2 className="font-semibold text-slate-800 break-words">{openPost.title}</h2>
                 <StatusBadge status={openPost.status} />
               </div>
-              <button onClick={() => setOpenPost(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+              <button onClick={() => setOpenPost(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0" aria-label="Fechar">×</button>
             </div>
             <InstagramPreview
               clientName={currentClient?.name}

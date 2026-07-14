@@ -77,15 +77,15 @@ export default function PostModal({ clients, defaultClientId, onClose, onSaved }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10">
           <h2 className="font-semibold text-slate-800">Novo conteúdo</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X size={20} />
           </button>
         </div>
-        <div className="grid md:grid-cols-2 gap-6 p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid md:grid-cols-2 gap-6 p-6 min-w-0 max-w-full">
+          <form onSubmit={handleSubmit} className="space-y-4 min-w-0 max-w-full">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Cliente</label>
               <select
@@ -185,7 +185,7 @@ export default function PostModal({ clients, defaultClientId, onClose, onSaved }
             </div>
           </form>
 
-          <div className="bg-slate-50 rounded-xl p-4 flex flex-col items-center justify-start">
+          <div className="bg-slate-50 rounded-xl p-4 flex flex-col items-center justify-start min-w-0 max-w-full overflow-hidden">
             <p className="text-xs font-semibold text-slate-400 uppercase mb-3 self-start">Prévia do Instagram</p>
             <InstagramPreview
               clientName={selectedClient?.name}

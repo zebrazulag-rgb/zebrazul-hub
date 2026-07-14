@@ -8,7 +8,6 @@ import Reports from './pages/Reports.jsx';
 import Clients from './pages/Clients.jsx';
 import UserManagement from './pages/UserManagement.jsx';
 import Tasks from './pages/Tasks.jsx';
-import CalendarView from './pages/CalendarView.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
@@ -29,7 +28,7 @@ export default function App() {
       <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
-      <Route path="/calendario" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />
+      <Route path="/calendario" element={<Navigate to="/feed?view=calendar" replace />} />
       <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
       <Route
         path="/tarefas"
