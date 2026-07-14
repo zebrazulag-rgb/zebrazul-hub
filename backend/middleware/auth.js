@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const db = require('../db/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zebrazul-hub-dev-secret-troque-em-producao';
 
@@ -7,10 +8,21 @@ function authRequired(req, res, next) {
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Token nao fornecido' });
   }
+
   const token = header.split(' ')[1];
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
+    const currentUser = db.prepare(
+      'SELECT id, name, email, role, client_id FROM users WHERE id = ?'
+    ).get(payload.id);
+
+    if (!currentUser) {
+      return res.status(401).json({ error: 'Usuario nao existe mais ou teve o acesso removido' });
+    }
+
+    // Usa sempre o papel e o cliente atuais do banco. Assim, exclusões e mudanças
+    // de permissão passam a valer imediatamente, sem esperar o JWT expirar.
+    req.user = currentUser;
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Token invalido ou expirado' });
