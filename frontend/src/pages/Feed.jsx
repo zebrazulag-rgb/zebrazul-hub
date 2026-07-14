@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Image as ImageIcon, Grid3x3, Pencil, Check } from 'lucide-react';
+import { Image as ImageIcon, Grid3x3, Pencil, Check, Link2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -16,6 +16,7 @@ export default function Feed() {
   const [editingBio, setEditingBio] = useState(false);
   const [bioDraft, setBioDraft] = useState('');
   const [savingBio, setSavingBio] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (user?.role !== 'client') {
@@ -60,6 +61,14 @@ export default function Feed() {
     }
   }
 
+  async function shareFeed() {
+    const { data } = await api.post(`/clients/${clientId}/feed-share`);
+    const url = `${window.location.origin}/grade/${data.token}`;
+    await navigator.clipboard.writeText(url);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2500);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -68,9 +77,15 @@ export default function Feed() {
           <p className="text-slate-500 mt-1">Prévia de como o perfil vai ficar, com os próximos posts em ordem de data.</p>
         </div>
         {user?.role !== 'client' && clients.length > 0 && (
-          <select className="input-field w-56" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="flex items-center gap-2">
+            <select className="input-field w-56" value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+              {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
+              {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
+            </button>
+          </div>
         )}
       </div>
 

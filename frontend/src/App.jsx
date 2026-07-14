@@ -11,6 +11,7 @@ import Tasks from './pages/Tasks.jsx';
 import CalendarView from './pages/CalendarView.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import Feed from './pages/Feed.jsx';
+import PublicFeed from './pages/PublicFeed.jsx';
 
 function ProtectedRoute({ children, roles }) {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/aprovar/:token" element={<PublicApproval />} />
+      <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
       <Route path="/calendario" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />

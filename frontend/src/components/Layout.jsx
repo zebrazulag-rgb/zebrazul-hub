@@ -44,10 +44,10 @@ export default function Layout({ children }) {
 
   const navItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
+    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team'] },
     { to: '/aprovacao', label: 'Aprovação de conteúdo', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/calendario', label: 'Calendário', icon: CalendarDays, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'team'] },
     { to: '/usuarios', label: 'Usuários', icon: UserCog, roles: ['admin'] }

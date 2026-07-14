@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -10,6 +10,8 @@ const STATUS_COLUMNS = [
   { key: 'in_progress', label: 'Em andamento', badge: 'bg-amber-100 text-amber-700' },
   { key: 'done', label: 'Concluída', badge: 'bg-emerald-100 text-emerald-700' }
 ];
+
+const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -23,16 +25,43 @@ function buildMonthGrid(year, month) {
   return cells;
 }
 
+function AssigneeStack({ assignees }) {
+  if (!assignees || assignees.length === 0) {
+    return <span className="text-xs text-slate-400">Sem responsável</span>;
+  }
+  return (
+    <div className="flex items-center -space-x-1.5">
+      {assignees.slice(0, 3).map((a) => (
+        a.avatar_data ? (
+          <img key={a.id} src={a.avatar_data} alt="" className="w-5 h-5 rounded-full object-cover ring-2 ring-white" />
+        ) : (
+          <span key={a.id} className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold ring-2 ring-white" style={{ backgroundColor: a.avatar_color || '#2563eb' }}>
+            {a.name[0]?.toUpperCase()}
+          </span>
+        )
+      ))}
+      {assignees.length > 3 && <span className="text-[10px] text-slate-400 ml-2">+{assignees.length - 3}</span>}
+    </div>
+  );
+}
+
 function TaskCard({ task: t, onClick, onDragStart }) {
+  const TypeIcon = TYPE_ICON[t.task_type] || FileText;
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart ? (e) => onDragStart(e, t.id) : undefined}
       onClick={onClick}
-      className={`card p-4 w-full text-left hover:border-zebrazul-300 transition-colors ${onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+      className={'card p-4 w-full text-left hover:border-zebrazul-300 transition-colors ' + (onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')}
     >
       <div className="flex items-start gap-2">
-        {t.attachment_data && <img src={t.attachment_data} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />}
+        {t.attachment_data ? (
+          <img src={t.attachment_data} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+        ) : (
+          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+            <TypeIcon size={16} className="text-slate-400" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-800 text-sm">{t.title}</p>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
@@ -47,18 +76,7 @@ function TaskCard({ task: t, onClick, onDragStart }) {
         </div>
       )}
       <div className="flex items-center justify-between mt-3">
-        <div className="flex items-center gap-1.5">
-          {t.assignee_name && (
-            t.assignee_avatar ? (
-              <img src={t.assignee_avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
-            ) : (
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ backgroundColor: t.assignee_color || '#2563eb' }}>
-                {t.assignee_name[0]?.toUpperCase()}
-              </span>
-            )
-          )}
-          <span className="text-xs text-slate-400">{t.assignee_name || 'Sem responsável'}</span>
-        </div>
+        <AssigneeStack assignees={t.assignees} />
         {t.due_date && (
           <span className="text-xs text-slate-400 flex items-center gap-1">
             <Calendar size={11} /> {new Date(t.due_date).toLocaleDateString('pt-BR')}
@@ -75,6 +93,7 @@ export default function Tasks() {
   const [tasks, setTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
+  const [localClientId, setLocalClientId] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -85,11 +104,17 @@ export default function Tasks() {
   const [sendingToFeed, setSendingToFeed] = useState(false);
   const [feedError, setFeedError] = useState('');
 
+  useEffect(() => {
+    setLocalClientId(selectedClient?.id ? String(selectedClient.id) : 'all');
+  }, [selectedClient]);
+
+  const effectiveClientId = localClientId !== 'all' ? localClientId : null;
+
   const loadTasks = useCallback(async () => {
-    const params = selectedClient ? ('?client_id=' + selectedClient.id) : '';
+    const params = effectiveClientId ? ('?client_id=' + effectiveClientId) : '';
     const { data } = await api.get('/tasks' + params);
     setTasks(data.tasks);
-  }, [selectedClient]);
+  }, [effectiveClientId]);
 
   useEffect(() => {
     loadTasks();
@@ -184,22 +209,18 @@ export default function Tasks() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Tarefas</h1>
-          <p className="text-slate-500 mt-1">
-            {selectedClient ? ('Tarefas relacionadas a ' + selectedClient.name + '.') : 'Organize o trabalho da equipe com prazos e responsáveis.'}
-          </p>
+          <p className="text-slate-500 mt-1">Organize o trabalho da equipe com prazos e responsáveis.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <select className="input-field w-48" value={localClientId} onChange={(e) => setLocalClientId(e.target.value)}>
+            <option value="all">Todos os clientes</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
           <div className="flex bg-slate-100 rounded-lg p-1">
-            <button
-              onClick={() => setView('kanban')}
-              className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'kanban' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}
-            >
+            <button onClick={() => setView('kanban')} className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'kanban' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}>
               <LayoutGrid size={14} /> Kanban
             </button>
-            <button
-              onClick={() => setView('calendar')}
-              className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'calendar' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}
-            >
+            <button onClick={() => setView('calendar')} className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'calendar' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}>
               <Calendar size={14} /> Calendário
             </button>
           </div>
@@ -296,7 +317,7 @@ export default function Tasks() {
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
-          defaultClientId={selectedClient?.id}
+          defaultClientId={effectiveClientId}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); loadTasks(); }}
         />
@@ -321,8 +342,21 @@ export default function Tasks() {
               <button onClick={() => setSelectedTask(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
             {selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
-            {selectedTask.attachment_data && (
+
+            {selectedTask.media_gallery && selectedTask.media_gallery.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto mb-3">
+                {selectedTask.media_gallery.map((m, idx) => (
+                  <img key={idx} src={m.data} alt="" className="w-20 h-20 rounded-lg object-cover shrink-0" />
+                ))}
+              </div>
+            )}
+            {(!selectedTask.media_gallery || selectedTask.media_gallery.length === 0) && selectedTask.attachment_data && (
               <img src={selectedTask.attachment_data} alt="" className="w-full rounded-lg mb-3 max-h-48 object-cover" />
+            )}
+            {selectedTask.video_link && (
+              <a href={selectedTask.video_link} target="_blank" rel="noreferrer" className="text-sm text-zebrazul-600 hover:underline block mb-3">
+                🎬 Abrir vídeo
+              </a>
             )}
             {selectedTask.caption && (
               <div className="bg-slate-50 rounded-lg p-3 mb-3">
@@ -331,10 +365,10 @@ export default function Tasks() {
               </div>
             )}
             <div className="text-xs text-slate-500 space-y-1 mb-4">
-              {selectedTask.content_type && <p>Tipo: {selectedTask.content_type}</p>}
-              {selectedTask.due_date && <p>Data de postagem: {new Date(selectedTask.due_date).toLocaleDateString('pt-BR')}</p>}
-              {selectedTask.assignee_name && <p>Responsável: {selectedTask.assignee_name}</p>}
+              {selectedTask.content_type && <p>Tipo de conteúdo: {selectedTask.content_type}</p>}
+              {selectedTask.due_date && <p>Data: {new Date(selectedTask.due_date).toLocaleDateString('pt-BR')}</p>}
               {selectedTask.client_name && <p>Cliente: {selectedTask.client_name}</p>}
+              {selectedTask.assignees && selectedTask.assignees.length > 0 && <p>Responsáveis: {selectedTask.assignees.map((a) => a.name).join(', ')}</p>}
             </div>
 
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
@@ -354,7 +388,7 @@ export default function Tasks() {
               <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex-1 flex items-center justify-center gap-1.5">
                 <Copy size={14} /> Duplicar
               </button>
-              {selectedTask.client_id && (
+              {selectedTask.task_type === 'post' && selectedTask.client_id && (
                 selectedTask.feed_post_id ? (
                   <Link to="/feed" className="flex-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
                     <ExternalLink size={14} /> Ver no Feed
@@ -395,7 +429,7 @@ export default function Tasks() {
                     <div className="min-w-0 flex-1">
                       <p className={'text-sm truncate ' + (s.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {s.assignee_name && <span className="text-[11px] text-slate-400">{s.assignee_name}</span>}
+                        {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {s.due_date && <span className="text-[11px] text-slate-400">· {new Date(s.due_date).toLocaleDateString('pt-BR')}</span>}
                       </div>
                     </div>

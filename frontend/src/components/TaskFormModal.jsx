@@ -1,8 +1,14 @@
 import { useState } from 'react';
-import { X, ImagePlus } from 'lucide-react';
+import { X, ImagePlus, FileText, Grid3x3, Video, Trash2 } from 'lucide-react';
 import api from '../api';
 
 const CONTENT_TYPES = ['feed', 'reels', 'story', 'carrossel', 'artigo'];
+
+const TASK_TYPES = [
+  { value: 'basic', label: 'Tarefa básica', icon: FileText },
+  { value: 'post', label: 'Post', icon: Grid3x3 },
+  { value: 'video', label: 'Gravação e Edição de Vídeo', icon: Video }
+];
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -13,20 +19,60 @@ function fileToBase64(file) {
   });
 }
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, onClose, onSaved }) {
   const [form, setForm] = useState({
-    title: '', description: '', content_type: '', caption: '', due_date: '', assignee_id: '',
+    task_type: 'basic', title: '', description: '', content_type: '', caption: '',
+    video_link: '', due_date: todayISO(), assignee_ids: [],
     client_id: defaultClientId || '', status: 'pending',
-    attachment_data: '', attachment_mime: '', attachment_filename: ''
+    attachment_data: '', attachment_mime: '', attachment_filename: '', media_gallery: []
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   async function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await fileToBase64(file);
-    setForm((f) => ({ ...f, attachment_data: dataUrl, attachment_mime: file.type, attachment_filename: file.name }));
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const converted = await Promise.all(files.map(async (file) => ({
+      data: await fileToBase64(file), mime: file.type, filename: file.name
+    })));
+    setForm((f) => {
+      const gallery = [...f.media_gallery, ...converted];
+      return {
+        ...f,
+        media_gallery: gallery,
+        // mantém o primeiro item também como attachment_data (usado no envio pro Feed)
+        attachment_data: f.attachment_data || converted[0].data,
+        attachment_mime: f.attachment_mime || converted[0].mime,
+        attachment_filename: f.attachment_filename || converted[0].filename
+      };
+    });
+  }
+
+  function removeMedia(idx) {
+    setForm((f) => {
+      const gallery = f.media_gallery.filter((_, i) => i !== idx);
+      const first = gallery[0];
+      return {
+        ...f,
+        media_gallery: gallery,
+        attachment_data: first?.data || '',
+        attachment_mime: first?.mime || '',
+        attachment_filename: first?.filename || ''
+      };
+    });
+  }
+
+  function toggleAssignee(userId) {
+    setForm((f) => ({
+      ...f,
+      assignee_ids: f.assignee_ids.includes(userId)
+        ? f.assignee_ids.filter((id) => id !== userId)
+        : [...f.assignee_ids, userId]
+    }));
   }
 
   async function handleSubmit(e) {
@@ -44,6 +90,9 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     }
   }
 
+  const isPost = form.task_type === 'post';
+  const isVideo = form.task_type === 'video';
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -55,100 +104,163 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
+            <label className="text-sm font-medium text-slate-700 block mb-2">Tipo de tarefa</label>
+            <div className="grid grid-cols-3 gap-2">
+              {TASK_TYPES.map((tt) => (
+                <button
+                  type="button"
+                  key={tt.value}
+                  onClick={() => setForm({ ...form, task_type: tt.value })}
+                  className={`flex flex-col items-center gap-1.5 py-3 rounded-lg border text-xs font-medium transition-colors ${
+                    form.task_type === tt.value ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300'
+                  }`}
+                >
+                  <tt.icon size={16} />
+                  {tt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">Título</label>
             <input
               className="input-field"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="Ex: Post institucional - dia das mães"
+              placeholder={isPost ? 'Ex: Post institucional - dia das mães' : isVideo ? 'Ex: Vídeo depoimento cliente' : 'Ex: Organizar planilha de métricas'}
             />
           </div>
+
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Ideia do conteúdo</label>
+            <label className="text-sm font-medium text-slate-700 block mb-1">
+              {isPost ? 'Ideia do conteúdo' : isVideo ? 'Roteiro / briefing' : 'Descrição'}
+            </label>
             <textarea
               className="input-field min-h-[70px]"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Descreva o conceito ou briefing do conteúdo..."
+              placeholder="Detalhe o que precisa ser feito..."
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          {isPost && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 block mb-1">Tipo de conteúdo</label>
+                  <select className="input-field" value={form.content_type} onChange={(e) => setForm({ ...form, content_type: e.target.value })}>
+                    <option value="">Não definido</option>
+                    {CONTENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700 block mb-1">Data de postagem</label>
+                  <input type="date" className="input-field" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Legenda</label>
+                <textarea className="input-field min-h-[70px]" value={form.caption} onChange={(e) => setForm({ ...form, caption: e.target.value })} placeholder="Legenda com CTA e hashtags..." />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Mídia (pode anexar mais de uma)</label>
+                <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
+                  <ImagePlus size={16} />
+                  Clique para anexar imagens
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+                </label>
+                {form.media_gallery.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {form.media_gallery.map((m, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={m.data} alt="" className="w-14 h-14 rounded-lg object-cover" />
+                        <button type="button" onClick={() => removeMedia(idx)} className="absolute -top-1.5 -right-1.5 bg-white rounded-full shadow p-0.5 text-red-500">
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {isVideo && (
+            <>
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Prazo</label>
+                <input type="date" className="input-field" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Link do vídeo (Drive, YouTube não listado, etc.)</label>
+                <input className="input-field" value={form.video_link} onChange={(e) => setForm({ ...form, video_link: e.target.value })} placeholder="https://..." />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Thumbnail / referência (opcional)</label>
+                <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
+                  <ImagePlus size={16} />
+                  {form.attachment_filename || 'Clique para anexar uma imagem'}
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                </label>
+              </div>
+            </>
+          )}
+
+          {!isPost && !isVideo && (
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Tipo de conteúdo</label>
-              <select
-                className="input-field"
-                value={form.content_type}
-                onChange={(e) => setForm({ ...form, content_type: e.target.value })}
-              >
-                <option value="">Não definido</option>
-                {CONTENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Prazo</label>
+              <input type="date" className="input-field" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
             </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Data de postagem</label>
-              <input
-                type="date"
-                className="input-field"
-                value={form.due_date}
-                onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-              />
-            </div>
-          </div>
+          )}
+
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Legenda</label>
-            <textarea
-              className="input-field min-h-[70px]"
-              value={form.caption}
-              onChange={(e) => setForm({ ...form, caption: e.target.value })}
-              placeholder="Legenda com CTA e hashtags..."
-            />
+            <label className="text-sm font-medium text-slate-700 block mb-2">Responsáveis</label>
+            <div className="flex flex-wrap gap-2">
+              {teamUsers.map((u) => (
+                <button
+                  type="button"
+                  key={u.id}
+                  onClick={() => toggleAssignee(u.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    form.assignee_ids.includes(u.id) ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300'
+                  }`}
+                >
+                  {u.name}
+                </button>
+              ))}
+            </div>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Responsável</label>
-              <select
-                className="input-field"
-                value={form.assignee_id}
-                onChange={(e) => setForm({ ...form, assignee_id: e.target.value })}
-              >
-                <option value="">Sem responsável</option>
-                {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado</label>
+              <select className="input-field" value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })} disabled={!!parentTaskId}>
+                <option value="">Nenhum — tarefa interna</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Status inicial</label>
-              <select
-                className="input-field"
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-              >
+              <select className="input-field" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
                 <option value="pending">Pendente</option>
                 <option value="in_progress">Em andamento</option>
                 <option value="done">Concluída</option>
               </select>
             </div>
           </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado</label>
-            <select
-              className="input-field"
-              value={form.client_id}
-              onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-              disabled={!!parentTaskId}
-            >
-              <option value="">Nenhum — tarefa interna</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            {parentTaskId && <p className="text-xs text-slate-400 mt-1">Herda o cliente da tarefa principal.</p>}
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Mídia</label>
-            <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
-              <ImagePlus size={16} />
-              {form.attachment_filename || 'Clique para anexar uma imagem'}
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-            </label>
-          </div>
+
+          {!isPost && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Anexo</label>
+              <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
+                <ImagePlus size={16} />
+                {form.attachment_filename || 'Clique para anexar um arquivo'}
+                <input type="file" className="hidden" onChange={handleFileChange} />
+              </label>
+            </div>
+          )}
+
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
