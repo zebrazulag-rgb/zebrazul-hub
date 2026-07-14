@@ -1,7 +1,25 @@
 const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
+const { databasePath, legacyDatabasePath, persistenceConfigured } = require('./config');
 
-const db = new Database(path.join(__dirname, 'zebrazul_hub.sqlite'));
+fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+
+// Migração automática da instalação antiga: se um banco existia dentro da pasta
+// do código e agora DATABASE_PATH aponta para um volume persistente vazio,
+// transfere o banco antigo antes de abrir a aplicação.
+if (databasePath !== legacyDatabasePath && !fs.existsSync(databasePath) && fs.existsSync(legacyDatabasePath)) {
+  fs.copyFileSync(legacyDatabasePath, databasePath);
+  for (const suffix of ['-wal', '-shm']) {
+    const source = legacyDatabasePath + suffix;
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, databasePath + suffix);
+    }
+  }
+  console.log('Banco anterior migrado para o armazenamento persistente.');
+}
+
+const db = new Database(databasePath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -180,5 +198,10 @@ tryAddColumn('tasks', 'task_type', "TEXT DEFAULT 'basic'");
 tryAddColumn('tasks', 'video_link', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
+
+Object.defineProperties(db, {
+  storagePath: { value: databasePath, enumerable: true },
+  persistenceConfigured: { value: persistenceConfigured, enumerable: true },
+});
 
 module.exports = db;
