@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, ThumbsUp, ThumbsDown, MessageSquare, Calendar, Link2, Check } from 'lucide-react';
+import { Plus, ThumbsUp, ThumbsDown, MessageSquare, Calendar, Link2, Check, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -27,6 +27,7 @@ export default function Approval() {
   const [commentText, setCommentText] = useState('');
   const [feedback, setFeedback] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [confirmDeletePost, setConfirmDeletePost] = useState(false);
 
   const loadPosts = useCallback(async () => {
     const params = selectedClient ? `?client_id=${selectedClient.id}` : '';
@@ -47,11 +48,19 @@ export default function Approval() {
     setComments(data.comments);
     setFeedback(data.post.client_feedback || '');
     setLinkCopied(false);
+    setConfirmDeletePost(false);
     // Cliente enxerga apenas o próprio registro; garante o nome/cor para a prévia do Instagram
     if (user?.role === 'client' && !clients.find((c) => c.id === data.post.client_id)) {
       const clientRes = await api.get(`/clients/${data.post.client_id}`);
       setClients((prev) => [...prev, clientRes.data.client]);
     }
+  }
+
+  async function deletePost() {
+    await api.delete(`/posts/${selectedPost.id}`);
+    setSelectedPost(null);
+    setConfirmDeletePost(false);
+    loadPosts();
   }
 
   async function handleDecision(status) {
@@ -181,6 +190,24 @@ export default function Approval() {
                     {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
                     {linkCopied ? 'Link copiado!' : 'Copiar link de aprovação para o cliente'}
                   </button>
+                )}
+
+                {user?.role !== 'client' && (
+                  <div>
+                    {!confirmDeletePost ? (
+                      <button onClick={() => setConfirmDeletePost(true)} className="text-sm text-red-600 hover:underline flex items-center gap-1.5">
+                        <Trash2 size={14} /> Excluir conteúdo
+                      </button>
+                    ) : (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                        <p className="text-sm text-red-700 mb-3">Excluir este conteúdo permanentemente? Não pode ser desfeito.</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => setConfirmDeletePost(false)} className="btn-secondary text-sm flex-1">Cancelar</button>
+                          <button onClick={deletePost} className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg px-4 py-2 flex-1 transition-colors">Sim, excluir</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {user?.role === 'client' && ['pending_approval', 'approved', 'rejected'].includes(selectedPost.status) && (
