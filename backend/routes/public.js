@@ -59,4 +59,19 @@ router.post('/posts/:token/comments', (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+// Consulta o feed de um cliente pelo token publico - sem autenticacao
+router.get('/feed/:token', (req, res) => {
+  const client = db.prepare('SELECT id, name, logo_color, avatar_data, bio FROM clients WHERE feed_share_token = ?').get(req.params.token);
+  if (!client) return res.status(404).json({ error: 'Link invalido ou expirado' });
+
+  const posts = db.prepare(`
+    SELECT id, title, caption, content_type, media_data, scheduled_at, status
+    FROM posts
+    WHERE client_id = ? AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','scheduled','draft')
+    ORDER BY scheduled_at ASC
+  `).all(client.id);
+
+  res.json({ client, posts });
+});
+
 module.exports = router;

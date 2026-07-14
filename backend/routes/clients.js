@@ -49,6 +49,19 @@ router.delete('/:id', requireRole('admin'), (req, res) => {
   res.json({ ok: true });
 });
 
+// Gera (ou retorna, se ja existir) o link publico do feed do cliente
+router.post('/:id/feed-share', requireRole('admin', 'team'), (req, res) => {
+  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+
+  let token = client.feed_share_token;
+  if (!token) {
+    token = require('crypto').randomBytes(16).toString('hex');
+    db.prepare('UPDATE clients SET feed_share_token = ? WHERE id = ?').run(token, req.params.id);
+  }
+  res.json({ token });
+});
+
 router.post('/:id/accounts', requireRole('admin', 'team'), (req, res) => {
   const { platform, handle } = req.body;
   if (!platform) return res.status(400).json({ error: 'Plataforma e obrigatoria' });

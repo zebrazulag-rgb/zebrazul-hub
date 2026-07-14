@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS clients (
   avatar_data TEXT,
   avatar_mime TEXT,
   bio TEXT,
+  feed_share_token TEXT,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
   responsible_user_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
@@ -71,10 +72,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_by INTEGER NOT NULL,
   assignee_id INTEGER,
   parent_task_id INTEGER,
+  task_type TEXT DEFAULT 'basic' CHECK(task_type IN ('basic','post','video')),
   title TEXT NOT NULL,
   description TEXT,
   content_type TEXT,
   caption TEXT,
+  video_link TEXT,
+  media_gallery TEXT,
   due_date TEXT,
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done')),
   attachment_data TEXT,
@@ -88,6 +92,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
   FOREIGN KEY (feed_post_id) REFERENCES posts(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_assignees (
+  task_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  PRIMARY KEY (task_id, user_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS post_comments (
@@ -142,5 +154,9 @@ tryAddColumn('tasks', 'parent_task_id', 'INTEGER REFERENCES tasks(id)');
 tryAddColumn('tasks', 'content_type', 'TEXT');
 tryAddColumn('tasks', 'caption', 'TEXT');
 tryAddColumn('tasks', 'feed_post_id', 'INTEGER REFERENCES posts(id)');
+tryAddColumn('tasks', 'task_type', "TEXT DEFAULT 'basic'");
+tryAddColumn('tasks', 'video_link', 'TEXT');
+tryAddColumn('tasks', 'media_gallery', 'TEXT');
+tryAddColumn('clients', 'feed_share_token', 'TEXT');
 
 module.exports = db;
