@@ -6,8 +6,6 @@ const router = express.Router();
 router.use(authRequired);
 router.use(requireRole('admin', 'team'));
 
-// Lista apenas tarefas de nivel principal (nao mostra subtarefas soltas no quadro),
-// com contagem de progresso das subtarefas de cada uma.
 router.get('/', (req, res) => {
   const { status, assignee_id, client_id } = req.query;
   let query = `
@@ -34,7 +32,7 @@ router.get('/', (req, res) => {
 
 router.get('/:id', (req, res) => {
   const task = db.prepare(`
-    SELECT t.*, u.name as assignee_name, c.name as client_name
+    SELECT t.*, u.name as assignee_name, c.name as client_name, c.logo_color as client_color
     FROM tasks t
     LEFT JOIN users u ON u.id = t.assignee_id
     LEFT JOIN clients c ON c.id = t.client_id
@@ -55,7 +53,7 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { title, description, due_date, assignee_id, status, client_id, attachment_data, attachment_mime, attachment_filename, parent_task_id } = req.body;
+  const { title, description, content_type, caption, due_date, assignee_id, status, client_id, attachment_data, attachment_mime, attachment_filename, parent_task_id } = req.body;
   if (!title) return res.status(400).json({ error: 'Titulo e obrigatorio' });
 
   let finalClientId = client_id || null;
@@ -65,21 +63,24 @@ router.post('/', (req, res) => {
   }
 
   const info = db.prepare(`
-    INSERT INTO tasks (client_id, created_by, assignee_id, parent_task_id, title, description, due_date, status, attachment_data, attachment_mime, attachment_filename)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (client_id, created_by, assignee_id, parent_task_id, title, description, content_type, caption, due_date, status, attachment_data, attachment_mime, attachment_filename)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     finalClientId, req.user.id, assignee_id || null, parent_task_id || null, title, description || '',
-    due_date || null, status || 'pending', attachment_data || null, attachment_mime || null, attachment_filename || null
+    content_type || null, caption || null, due_date || null, status || 'pending',
+    attachment_data || null, attachment_mime || null, attachment_filename || null
   );
   res.status(201).json({ id: info.lastInsertRowid });
 });
 
 router.put('/:id', (req, res) => {
-  const { title, description, due_date, assignee_id, status, client_id, attachment_data, attachment_mime, attachment_filename } = req.body;
+  const { title, description, content_type, caption, due_date, assignee_id, status, client_id, attachment_data, attachment_mime, attachment_filename } = req.body;
   db.prepare(`
     UPDATE tasks SET
       title = COALESCE(?, title),
       description = COALESCE(?, description),
+      content_type = COALESCE(?, content_type),
+      caption = COALESCE(?, caption),
       due_date = COALESCE(?, due_date),
       assignee_id = COALESCE(?, assignee_id),
       status = COALESCE(?, status),
@@ -90,7 +91,7 @@ router.put('/:id', (req, res) => {
       updated_at = datetime('now')
     WHERE id = ?
   `).run(
-    title, description, due_date || null, assignee_id || null, status,
+    title, description, content_type, caption, due_date || null, assignee_id || null, status,
     client_id || null, attachment_data, attachment_mime, attachment_filename, req.params.id
   );
   res.json({ ok: true });
@@ -99,6 +100,40 @@ router.put('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// Duplica uma tarefa (sem duplicar as subtarefas, sem manter o vinculo com o feed)
+router.post('/:id/duplicate', (req, res) => {
+  const t = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+
+  const info = db.prepare(`
+    INSERT INTO tasks (client_id, created_by, assignee_id, parent_task_id, title, description, content_type, caption, due_date, status, attachment_data, attachment_mime, attachment_filename)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+  `).run(
+    t.client_id, req.user.id, t.assignee_id, t.parent_task_id, `${t.title} (cópia)`, t.description,
+    t.content_type, t.caption, t.due_date, t.attachment_data, t.attachment_mime, t.attachment_filename
+  );
+  res.status(201).json({ id: info.lastInsertRowid });
+});
+
+// Envia a tarefa de conteudo pronta para o Feed, criando um post vinculado
+router.post('/:id/add-to-feed', (req, res) => {
+  const t = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!t.client_id) return res.status(400).json({ error: 'A tarefa precisa estar vinculada a um cliente' });
+  if (!t.attachment_data) return res.status(400).json({ error: 'Anexe uma imagem antes de enviar para o feed' });
+
+  const info = db.prepare(`
+    INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_data, media_mime, scheduled_at, status)
+    VALUES (?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, 'draft')
+  `).run(
+    t.client_id, req.user.id, t.title, t.caption || '', t.content_type || 'feed',
+    t.attachment_data, t.attachment_mime, t.due_date || null
+  );
+
+  db.prepare('UPDATE tasks SET feed_post_id = ? WHERE id = ?').run(info.lastInsertRowid, t.id);
+  res.status(201).json({ post_id: info.lastInsertRowid });
 });
 
 module.exports = router;

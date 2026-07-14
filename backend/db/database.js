@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS clients (
   logo_color TEXT DEFAULT '#0ea5e9',
   avatar_data TEXT,
   avatar_mime TEXT,
+  bio TEXT,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
   responsible_user_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
@@ -72,17 +73,21 @@ CREATE TABLE IF NOT EXISTS tasks (
   parent_task_id INTEGER,
   title TEXT NOT NULL,
   description TEXT,
+  content_type TEXT,
+  caption TEXT,
   due_date TEXT,
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done')),
   attachment_data TEXT,
   attachment_mime TEXT,
   attachment_filename TEXT,
+  feed_post_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE
+  FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (feed_post_id) REFERENCES posts(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS post_comments (
@@ -132,6 +137,10 @@ tryAddColumn('users', 'avatar_data', 'TEXT');
 tryAddColumn('users', 'avatar_mime', 'TEXT');
 tryAddColumn('clients', 'avatar_data', 'TEXT');
 tryAddColumn('clients', 'avatar_mime', 'TEXT');
+tryAddColumn('clients', 'bio', 'TEXT');
 tryAddColumn('tasks', 'parent_task_id', 'INTEGER REFERENCES tasks(id)');
+tryAddColumn('tasks', 'content_type', 'TEXT');
+tryAddColumn('tasks', 'caption', 'TEXT');
+tryAddColumn('tasks', 'feed_post_id', 'INTEGER REFERENCES posts(id)');
 
 module.exports = db;
