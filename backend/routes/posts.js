@@ -79,36 +79,66 @@ router.put('/:id', (req, res) => {
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!canAccessClient(req, post.client_id)) return res.status(403).json({ error: 'Acesso negado' });
 
-  const { title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status, client_feedback } = req.body;
+  const { status, client_feedback } = req.body;
 
   // Cliente so pode alterar o status para approved/rejected e deixar feedback
   if (req.user.role === 'client') {
     if (status && !['approved', 'rejected'].includes(status)) {
       return res.status(403).json({ error: 'Cliente so pode aprovar ou reprovar' });
     }
-    db.prepare('UPDATE posts SET status = COALESCE(?, status), client_feedback = COALESCE(?, client_feedback), updated_at = datetime(\'now\') WHERE id = ?')
-      .run(status, client_feedback, req.params.id);
+    db.prepare(
+      `UPDATE posts SET
+        status = COALESCE(?, status),
+        client_feedback = COALESCE(?, client_feedback),
+        updated_at = datetime('now')
+       WHERE id = ?`
+    ).run(status, client_feedback, req.params.id);
     return res.json({ ok: true });
   }
 
-  db.prepare(
-    `UPDATE posts SET
-      title = COALESCE(?, title),
-      caption = COALESCE(?, caption),
-      content_type = COALESCE(?, content_type),
-      platforms = COALESCE(?, platforms),
-      media_url = COALESCE(?, media_url),
-      media_data = COALESCE(?, media_data),
-      media_mime = COALESCE(?, media_mime),
-      scheduled_at = COALESCE(?, scheduled_at),
-      status = COALESCE(?, status),
-      updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(
-    title, caption, content_type,
-    platforms ? JSON.stringify(platforms) : null,
-    media_url, media_data, media_mime, scheduled_at, status, req.params.id
-  );
+  if (Object.prototype.hasOwnProperty.call(req.body, 'client_id')) {
+    const targetClient = db.prepare('SELECT id FROM clients WHERE id = ?').get(req.body.client_id);
+    if (!targetClient) return res.status(400).json({ error: 'Cliente invalido' });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'title') && !String(req.body.title || '').trim()) {
+    return res.status(400).json({ error: 'Titulo e obrigatorio' });
+  }
+
+  const allowedFields = [
+    'client_id',
+    'title',
+    'caption',
+    'content_type',
+    'platforms',
+    'media_url',
+    'media_data',
+    'media_mime',
+    'scheduled_at',
+    'status',
+    'client_feedback',
+  ];
+
+  const updates = [];
+  const values = [];
+  for (const field of allowedFields) {
+    if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
+    updates.push(`${field} = ?`);
+    if (field === 'platforms') {
+      values.push(JSON.stringify(req.body.platforms || []));
+    } else if (field === 'title') {
+      values.push(String(req.body.title).trim());
+    } else {
+      values.push(req.body[field] === '' ? null : req.body[field]);
+    }
+  }
+
+  if (updates.length > 0) {
+    db.prepare(
+      `UPDATE posts SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ?`
+    ).run(...values, req.params.id);
+  }
+
   res.json({ ok: true });
 });
 
