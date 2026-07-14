@@ -12,6 +12,7 @@ import CalendarView from './pages/CalendarView.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
+import Finance from './pages/Finance.jsx';
 
 function ProtectedRoute({ children, roles }) {
   const { user } = useAuth();
@@ -39,6 +40,14 @@ export default function App() {
         }
       />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+      <Route
+        path="/financeiro"
+        element={
+          <ProtectedRoute roles={['admin', 'team']}>
+            <Finance />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/clientes"
         element={

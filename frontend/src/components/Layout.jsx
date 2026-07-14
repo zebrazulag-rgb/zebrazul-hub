@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck2, CalendarDays, BarChart3, Users, UserCog, ListChecks, LogOut, Grid3x3, X } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck2, CalendarDays, BarChart3, Users, UserCog, ListChecks, LogOut, Grid3x3, WalletCards, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import AvatarUpload from './AvatarUpload.jsx';
@@ -49,6 +49,7 @@ export default function Layout({ children }) {
     { to: '/calendario', label: 'Calendário', icon: CalendarDays, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
+    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin', 'team'] },
     { to: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'team'] },
     { to: '/usuarios', label: 'Usuários', icon: UserCog, roles: ['admin'] }
   ];
