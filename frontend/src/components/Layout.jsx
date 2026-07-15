@@ -48,7 +48,7 @@ export default function Layout({ children }) {
     { to: '/aprovacao', label: 'Aprovação de conteúdo', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
-    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin', 'team'] },
+    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
     { to: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'team'] },
     { to: '/usuarios', label: 'Usuários', icon: UserCog, roles: ['admin'] }
   ];
@@ -62,7 +62,7 @@ export default function Layout({ children }) {
       )}
       <aside className="w-64 bg-zebrazul-900 text-white flex flex-col shrink-0">
         <div className="px-6 py-5 border-b border-white/10">
-          <h1 className="text-lg font-bold tracking-tight">Zebrazul Hub</h1>
+          <h1 className="text-lg font-bold tracking-tight">Zebra Hub</h1>
           <p className="text-xs text-zebrazul-100/70 mt-0.5">Gestão de conteúdo & tráfego</p>
         </div>
 

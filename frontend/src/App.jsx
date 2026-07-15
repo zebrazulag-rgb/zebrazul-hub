@@ -42,7 +42,7 @@ export default function App() {
       <Route
         path="/financeiro"
         element={
-          <ProtectedRoute roles={['admin', 'team']}>
+          <ProtectedRoute roles={['admin']}>
             <Finance />
           </ProtectedRoute>
         }

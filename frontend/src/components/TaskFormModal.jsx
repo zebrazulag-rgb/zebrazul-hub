@@ -23,13 +23,24 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    task_type: 'basic', title: '', description: '', content_type: '', caption: '',
-    video_link: '', due_date: todayISO(), assignee_ids: [],
-    client_id: defaultClientId || '', status: 'pending',
-    attachment_data: '', attachment_mime: '', attachment_filename: '', media_gallery: []
-  });
+export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, taskToEdit, onClose, onSaved }) {
+  const isEditing = Boolean(taskToEdit?.id);
+  const [form, setForm] = useState(() => ({
+    task_type: taskToEdit?.task_type || 'basic',
+    title: taskToEdit?.title || '',
+    description: taskToEdit?.description || '',
+    content_type: taskToEdit?.content_type || '',
+    caption: taskToEdit?.caption || '',
+    video_link: taskToEdit?.video_link || '',
+    due_date: taskToEdit?.due_date ? taskToEdit.due_date.slice(0, 10) : todayISO(),
+    assignee_ids: taskToEdit?.assignees?.map((a) => a.id) || [],
+    client_id: taskToEdit?.client_id || defaultClientId || '',
+    status: taskToEdit?.status || 'pending',
+    attachment_data: taskToEdit?.attachment_data || '',
+    attachment_mime: taskToEdit?.attachment_mime || '',
+    attachment_filename: taskToEdit?.attachment_filename || '',
+    media_gallery: taskToEdit?.media_gallery || []
+  }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -81,10 +92,14 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     if (!form.title) { setError('Informe um título para a tarefa.'); return; }
     setSaving(true);
     try {
-      await api.post('/tasks', { ...form, parent_task_id: parentTaskId || null });
+      if (isEditing) {
+        await api.put(`/tasks/${taskToEdit.id}`, form);
+      } else {
+        await api.post('/tasks', { ...form, parent_task_id: parentTaskId || null });
+      }
       onSaved();
     } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao criar tarefa.');
+      setError(err.response?.data?.error || (isEditing ? 'Erro ao editar tarefa.' : 'Erro ao criar tarefa.'));
     } finally {
       setSaving(false);
     }
@@ -97,7 +112,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
-          <h2 className="font-semibold text-slate-800">{parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
+          <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X size={20} />
           </button>
@@ -265,7 +280,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
             <button type="submit" disabled={saving} className="btn-primary flex-1">
-              {saving ? 'Criando...' : parentTaskId ? 'Criar subtarefa' : 'Criar tarefa'}
+              {saving ? 'Salvando...' : isEditing ? 'Salvar alterações' : parentTaskId ? 'Criar subtarefa' : 'Criar tarefa'}
             </button>
           </div>
         </form>

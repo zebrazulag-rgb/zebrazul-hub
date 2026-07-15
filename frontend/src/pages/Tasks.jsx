@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -97,6 +97,7 @@ export default function Tasks() {
   const [showForm, setShowForm] = useState(false);
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
   const [subtasks, setSubtasks] = useState([]);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [cursor, setCursor] = useState(new Date());
@@ -334,6 +335,20 @@ export default function Tasks() {
         />
       )}
 
+      {editingTask && (
+        <TaskFormModal
+          teamUsers={teamUsers}
+          clients={clients}
+          taskToEdit={editingTask}
+          onClose={() => setEditingTask(null)}
+          onSaved={() => {
+            setEditingTask(null);
+            setSelectedTask(null);
+            loadTasks();
+          }}
+        />
+      )}
+
       {selectedTask && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[88vh] overflow-y-auto p-6">
@@ -384,8 +399,11 @@ export default function Tasks() {
               ))}
             </div>
 
-            <div className="flex gap-2 mb-5">
-              <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex-1 flex items-center justify-center gap-1.5">
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              <button onClick={() => setEditingTask(selectedTask)} className="btn-primary text-sm flex items-center justify-center gap-1.5">
+                <Pencil size={14} /> Editar tarefa
+              </button>
+              <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex items-center justify-center gap-1.5">
                 <Copy size={14} /> Duplicar
               </button>
               {selectedTask.task_type === 'post' && selectedTask.client_id && (
