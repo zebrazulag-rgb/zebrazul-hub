@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X } from 'lucide-react';
+import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X, Download, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -10,7 +10,7 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Administrador', icon: Shield }
 ];
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '' };
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '', client_ids: [] };
 
 export default function UserManagement() {
   const { user: currentUser, refreshUser } = useAuth();
@@ -25,15 +25,56 @@ export default function UserManagement() {
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [storageStatus, setStorageStatus] = useState(null);
+  const [loadingStorage, setLoadingStorage] = useState(true);
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
 
   useEffect(() => {
     api.get('/clients').then((res) => setClients(res.data.clients));
     loadUsers();
+    loadStorageStatus();
   }, []);
 
   async function loadUsers() {
     const { data } = await api.get('/auth/users');
     setUsers(data.users);
+  }
+
+  async function loadStorageStatus() {
+    setLoadingStorage(true);
+    try {
+      const { data } = await api.get('/system/status');
+      setStorageStatus(data);
+    } catch (err) {
+      setStorageStatus({ storage_safe: false, error: err.response?.data?.error || 'Nao foi possivel verificar o armazenamento.' });
+    } finally {
+      setLoadingStorage(false);
+    }
+  }
+
+  async function downloadBackup() {
+    clearMessages();
+    setDownloadingBackup(true);
+    try {
+      const response = await api.get('/system/backup/download', { responseType: 'blob' });
+      const disposition = response.headers['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || `zebrazul-hub-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setSuccess('Backup baixado com sucesso. Guarde este arquivo antes de publicar uma nova versao.');
+      await loadStorageStatus();
+    } catch (err) {
+      setError('Nao foi possivel baixar o backup do banco.');
+    } finally {
+      setDownloadingBackup(false);
+    }
   }
 
   async function handleAvatarChange(userId, dataUrl, mime) {
@@ -70,7 +111,8 @@ export default function UserManagement() {
         ...form,
         name: form.name.trim(),
         email: form.email.trim(),
-        client_id: form.role === 'client' ? form.client_id : null
+        client_id: form.role === 'client' ? form.client_id : null,
+        client_ids: form.role === 'team' ? form.client_ids : []
       });
       setSuccess(`Usuário "${form.name}" criado com sucesso.`);
       setForm(EMPTY_FORM);
@@ -91,7 +133,8 @@ export default function UserManagement() {
       email: user.email || '',
       password: '',
       role: user.role || 'team',
-      client_id: user.client_id || ''
+      client_id: user.client_id || '',
+      client_ids: user.client_ids || []
     });
   }
 
@@ -110,7 +153,8 @@ export default function UserManagement() {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
         role: editForm.role,
-        client_id: editForm.role === 'client' ? editForm.client_id : null
+        client_id: editForm.role === 'client' ? editForm.client_id : null,
+        client_ids: editForm.role === 'team' ? editForm.client_ids : []
       };
       if (editForm.password) payload.password = editForm.password;
 
@@ -176,11 +220,55 @@ export default function UserManagement() {
         </div>
       )}
 
+
+      <div className={`card p-5 border-2 ${loadingStorage ? 'border-slate-200' : storageStatus?.storage_safe ? 'border-emerald-200' : 'border-red-200'}`}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${storageStatus?.storage_safe ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+              {loadingStorage ? <RefreshCw size={21} className="animate-spin" /> : storageStatus?.storage_safe ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-semibold text-slate-800">Proteção dos dados</h2>
+                {!loadingStorage && (
+                  <span className={`badge ${storageStatus?.storage_safe ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                    {storageStatus?.storage_safe ? 'Armazenamento protegido' : 'Armazenamento não protegido'}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-slate-500 mt-1 break-words">
+                {loadingStorage
+                  ? 'Verificando onde o banco de dados esta sendo salvo...'
+                  : storageStatus?.storage_safe
+                    ? 'O banco esta fora da pasta do codigo e pode continuar intacto nas proximas atualizacoes.'
+                    : 'Nao publique uma nova versao enquanto o volume persistente nao estiver configurado.'}
+              </p>
+              {storageStatus?.storage_safe && (
+                <div className="mt-3 text-xs text-slate-500 space-y-1 break-all">
+                  <p><strong className="text-slate-600">Banco:</strong> {storageStatus.database_directory}/{storageStatus.database_file}</p>
+                  <p><strong className="text-slate-600">Ultimo backup:</strong> {storageStatus.last_backup ? formatBackupDate(storageStatus.last_backup.created_at) : 'Nenhum backup localizado'}</p>
+                  <p><strong className="text-slate-600">Identificador:</strong> {storageStatus.installation_id || 'Nao informado'}</p>
+                </div>
+              )}
+              {storageStatus?.error && <p className="text-xs text-red-600 mt-2">{storageStatus.error}</p>}
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap shrink-0">
+            <button onClick={loadStorageStatus} disabled={loadingStorage} className="btn-secondary flex items-center gap-2 text-sm">
+              <RefreshCw size={16} className={loadingStorage ? 'animate-spin' : ''} /> Verificar
+            </button>
+            <button onClick={downloadBackup} disabled={downloadingBackup || !storageStatus?.storage_safe} className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download size={16} /> {downloadingBackup ? 'Preparando...' : 'Baixar backup'}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="card p-5">
         <h2 className="font-semibold text-slate-800 mb-3">Papéis disponíveis</h2>
         <div className="grid md:grid-cols-3 gap-4 text-sm">
           <RoleDescription icon={Shield} title="Administrador" description="Acesso total, incluindo criar, editar e apagar usuários." />
-          <RoleDescription icon={UsersIcon} title="Equipe Zebrazul" description="Cria clientes, posts e métricas de todos os clientes." />
+          <RoleDescription icon={UsersIcon} title="Equipe Zebrazul" description="Acessa somente os clientes definidos pelo administrador." />
           <RoleDescription icon={Building2} title="Cliente" description="Só vê e aprova o conteúdo do próprio cliente vinculado." />
         </div>
       </div>
@@ -208,7 +296,12 @@ export default function UserManagement() {
                 </div>
                 <div className="text-right shrink-0">
                   <span className="badge bg-slate-100 text-slate-600 capitalize">{roleBadgeLabel(user.role)}</span>
-                  {user.client_name && <p className="text-xs text-slate-400 mt-1 max-w-40 truncate">{user.client_name}</p>}
+                  {user.client_name && <p className="text-xs text-slate-400 mt-1 max-w-48 truncate">{user.client_name}</p>}
+                  {user.role === 'team' && (
+                    <p className="text-xs text-slate-400 mt-1 max-w-56 line-clamp-2">
+                      {user.client_names?.length ? user.client_names.join(', ') : 'Sem clientes liberados'}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
                   <button
@@ -377,7 +470,12 @@ function UserFormModal({
                 <button
                   type="button"
                   key={role.value}
-                  onClick={() => !lockRole && setForm({ ...form, role: role.value, client_id: role.value === 'client' ? form.client_id : '' })}
+                  onClick={() => !lockRole && setForm({
+                    ...form,
+                    role: role.value,
+                    client_id: role.value === 'client' ? form.client_id : '',
+                    client_ids: role.value === 'team' ? (form.client_ids || []) : []
+                  })}
                   disabled={lockRole}
                   className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-lg border text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
                     form.role === role.value
@@ -407,6 +505,41 @@ function UserFormModal({
               </select>
             </div>
           )}
+          {form.role === 'team' && (
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <label className="text-sm font-medium text-slate-700">Clientes com acesso</label>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <button type="button" className="text-zebrazul-600 hover:underline" onClick={() => setForm({ ...form, client_ids: clients.map((client) => client.id) })}>Todos</button>
+                  <span className="text-slate-300">•</span>
+                  <button type="button" className="text-slate-500 hover:underline" onClick={() => setForm({ ...form, client_ids: [] })}>Limpar</button>
+                </div>
+              </div>
+              <div className="border border-slate-200 rounded-xl max-h-48 overflow-y-auto p-2 space-y-1">
+                {clients.length === 0 && <p className="text-xs text-slate-400 text-center py-4">Nenhum cliente cadastrado.</p>}
+                {clients.map((client) => {
+                  const selected = (form.client_ids || []).includes(client.id);
+                  return (
+                    <label key={client.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${selected ? 'bg-zebrazul-50' : 'hover:bg-slate-50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => setForm({
+                          ...form,
+                          client_ids: selected
+                            ? form.client_ids.filter((id) => id !== client.id)
+                            : [...(form.client_ids || []), client.id]
+                        })}
+                        className="rounded border-slate-300 text-zebrazul-600 focus:ring-zebrazul-500"
+                      />
+                      <span className="text-sm text-slate-700">{client.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.</p>
+            </div>
+          )}
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
@@ -418,6 +551,19 @@ function UserFormModal({
       </div>
     </div>
   );
+}
+
+
+function formatBackupDate(value) {
+  if (!value) return 'Nao informado';
+  try {
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short'
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
 }
 
 function roleBadgeLabel(role) {
