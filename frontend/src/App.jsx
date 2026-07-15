@@ -12,6 +12,7 @@ import PublicApproval from './pages/PublicApproval.jsx';
 import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import Finance from './pages/Finance.jsx';
+import ActionPlan from './pages/ActionPlan.jsx';
 
 function ProtectedRoute({ children, roles }) {
   const { user, checkingSession } = useAuth();
@@ -34,11 +35,12 @@ export default function App() {
       <Route
         path="/tarefas"
         element={
-          <ProtectedRoute roles={['admin', 'team']}>
+          <ProtectedRoute roles={['admin', 'team', 'client']}>
             <Tasks />
           </ProtectedRoute>
         }
       />
+      <Route path="/plano-de-acao" element={<ProtectedRoute><ActionPlan /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route
         path="/financeiro"

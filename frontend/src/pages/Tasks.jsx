@@ -3,6 +3,7 @@ import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLef
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
 
 const STATUS_COLUMNS = [
@@ -85,6 +86,7 @@ function TaskCard({ task: t, onClick, onDragStart }) {
 
 export default function Tasks() {
   const { selectedClient } = useClientFilter();
+  const { user } = useAuth();
   const [view, setView] = useState('kanban');
   const [tasks, setTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
@@ -94,6 +96,7 @@ export default function Tasks() {
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
+  const [editingSubtask, setEditingSubtask] = useState(null);
   const [subtasks, setSubtasks] = useState([]);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [cursor, setCursor] = useState(new Date());
@@ -103,8 +106,8 @@ export default function Tasks() {
   const [taskError, setTaskError] = useState('');
 
   useEffect(() => {
-    setLocalClientId(selectedClient?.id ? String(selectedClient.id) : 'all');
-  }, [selectedClient]);
+    setLocalClientId(user?.role === 'client' ? String(user.client_id || '') : (selectedClient?.id ? String(selectedClient.id) : 'all'));
+  }, [selectedClient, user?.role, user?.client_id]);
 
   const effectiveClientId = localClientId !== 'all' ? localClientId : null;
 
@@ -196,6 +199,18 @@ export default function Tasks() {
     await api.put('/tasks/' + taskId, { status });
   }
 
+  async function editSubtask(subtaskId) {
+    try {
+      const [{ data: detail }, { data: media }] = await Promise.all([
+        api.get('/tasks/' + subtaskId),
+        api.get('/tasks/' + subtaskId + '/media')
+      ]);
+      setEditingSubtask({ ...detail.task, ...media.media, media_loaded: true });
+    } catch (error) {
+      setTaskError(error.response?.data?.error || 'Não foi possível abrir a subtarefa para edição.');
+    }
+  }
+
   async function updateSubtaskStatus(subtaskId, status) {
     setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
     await api.put('/tasks/' + subtaskId, { status });
@@ -253,6 +268,11 @@ export default function Tasks() {
     return 'pending';
   }
 
+  const canModifySelectedTask = selectedTask && (
+    ['admin', 'team'].includes(user?.role) ||
+    (user?.role === 'client' && Number(selectedTask.created_by) === Number(user.id) && selectedTask.status === 'pending')
+  );
+
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const cells = buildMonthGrid(year, month);
@@ -274,10 +294,12 @@ export default function Tasks() {
           <p className="text-slate-500 mt-1">Organize o trabalho da equipe com prazos e responsáveis.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <select className="input-field w-48" value={localClientId} onChange={(e) => setLocalClientId(e.target.value)}>
-            <option value="all">Todos os clientes</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          {user?.role !== 'client' && (
+            <select className="input-field w-48" value={localClientId} onChange={(e) => setLocalClientId(e.target.value)}>
+              <option value="all">Todos os clientes</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
           <div className="flex bg-slate-100 rounded-lg p-1">
             <button onClick={() => setView('kanban')} className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'kanban' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}>
               <LayoutGrid size={14} /> Kanban
@@ -310,7 +332,7 @@ export default function Tasks() {
               </div>
               <div className="space-y-3 min-h-[60px]">
                 {tasks.filter((t) => t.status === col.key).map((t) => (
-                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={handleDragStart} />
+                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} />
                 ))}
                 {tasks.filter((t) => t.status === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
@@ -382,6 +404,7 @@ export default function Tasks() {
           teamUsers={teamUsers}
           clients={clients}
           defaultClientId={effectiveClientId}
+          userRole={user?.role}
           onClose={() => setShowForm(false)}
           onSaved={(task) => { setShowForm(false); upsertTaskSummary(task); }}
         />
@@ -393,6 +416,7 @@ export default function Tasks() {
           clients={clients}
           defaultClientId={selectedTask.client_id}
           parentTaskId={selectedTask.id}
+          userRole={user?.role}
           onClose={() => setShowSubtaskForm(false)}
           onSaved={() => { setShowSubtaskForm(false); openTask(selectedTask.id); loadTasks(); }}
         />
@@ -403,11 +427,27 @@ export default function Tasks() {
           teamUsers={teamUsers}
           clients={clients}
           taskToEdit={editingTask}
+          userRole={user?.role}
           onClose={() => setEditingTask(null)}
           onSaved={(task) => {
             setEditingTask(null);
             setSelectedTask(null);
             upsertTaskSummary(task);
+          }}
+        />
+      )}
+
+      {editingSubtask && (
+        <TaskFormModal
+          teamUsers={teamUsers}
+          clients={clients}
+          taskToEdit={editingSubtask}
+          userRole={user?.role}
+          onClose={() => setEditingSubtask(null)}
+          onSaved={() => {
+            setEditingSubtask(null);
+            if (selectedTask) openTask(selectedTask.id);
+            loadTasks();
           }}
         />
       )}
@@ -457,6 +497,7 @@ export default function Tasks() {
               {selectedTask.assignees && selectedTask.assignees.length > 0 && <p>Responsáveis: {selectedTask.assignees.map((a) => a.name).join(', ')}</p>}
             </div>
 
+            {user?.role !== 'client' && <>
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
             <div className="flex gap-2 mb-4">
               {STATUS_COLUMNS.map((col) => (
@@ -468,16 +509,20 @@ export default function Tasks() {
                   {col.label}
                 </button>
               ))}
-            </div>
+            </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
-              <button onClick={editSelectedTask} disabled={selectedTask.details_loading} className="btn-primary text-sm flex items-center justify-center gap-1.5 disabled:opacity-50">
-                <Pencil size={14} /> {selectedTask.media_loading ? 'Preparando...' : 'Editar tarefa'}
-              </button>
-              <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex items-center justify-center gap-1.5">
-                <Copy size={14} /> Duplicar
-              </button>
-              {selectedTask.task_type === 'post' && selectedTask.client_id && (
+              {canModifySelectedTask && (
+                <button onClick={editSelectedTask} disabled={selectedTask.details_loading} className="btn-primary text-sm flex items-center justify-center gap-1.5 disabled:opacity-50">
+                  <Pencil size={14} /> {selectedTask.media_loading ? 'Preparando...' : 'Editar tarefa'}
+                </button>
+              )}
+              {user?.role !== 'client' && (
+                <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex items-center justify-center gap-1.5">
+                  <Copy size={14} /> Duplicar
+                </button>
+              )}
+              {user?.role !== 'client' && selectedTask.task_type === 'post' && selectedTask.client_id && (
                 selectedTask.feed_post_id ? (
                   <Link to="/feed" className="flex-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
                     <ExternalLink size={14} /> Ver no Feed
@@ -500,16 +545,18 @@ export default function Tasks() {
                 <p className="text-sm font-semibold text-slate-700">
                   Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => s.status === 'done').length}/{subtasks.length})</span>}
                 </p>
-                <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
-                  <ListPlus size={14} /> Adicionar
-                </button>
+                {user?.role !== 'client' && (
+                  <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
+                    <ListPlus size={14} /> Adicionar
+                  </button>
+                )}
               </div>
               <div className="space-y-2">
                 {subtasks.length === 0 && <p className="text-xs text-slate-300 text-center py-4">Nenhuma subtarefa ainda.</p>}
                 {subtasks.map((s) => (
                   <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
                     <button
-                      onClick={() => updateSubtaskStatus(s.id, nextStatus(s.status))}
+                      onClick={() => user?.role !== 'client' && updateSubtaskStatus(s.id, nextStatus(s.status))}
                       className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
                       title="Clique para avançar o status"
                     >
@@ -522,17 +569,26 @@ export default function Tasks() {
                         {s.due_date && <span className="text-[11px] text-slate-400">· {new Date(s.due_date).toLocaleDateString('pt-BR')}</span>}
                       </div>
                     </div>
-                    <button onClick={() => deleteSubtask(s.id)} className="text-slate-300 hover:text-red-500 shrink-0">
-                      <Trash2 size={14} />
-                    </button>
+                    {(['admin', 'team'].includes(user?.role) || (user?.role === 'client' && Number(s.created_by) === Number(user.id) && s.status === 'pending')) && (
+                      <>
+                        <button onClick={() => editSubtask(s.id)} className="text-slate-300 hover:text-zebrazul-600 shrink-0" title="Editar subtarefa">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => deleteSubtask(s.id)} className="text-slate-300 hover:text-red-500 shrink-0">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
 
-            <button onClick={() => deleteTask(selectedTask.id)} className="text-sm text-red-600 hover:underline mt-5">
-              Excluir tarefa (e subtarefas)
-            </button>
+            {canModifySelectedTask && (
+              <button onClick={() => deleteTask(selectedTask.id)} className="text-sm text-red-600 hover:underline mt-5">
+                Excluir tarefa (e subtarefas)
+              </button>
+            )}
           </div>
         </div>
       )}

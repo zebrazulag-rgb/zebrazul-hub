@@ -23,7 +23,7 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, taskToEdit, onClose, onSaved }) {
+export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
   const isEditing = Boolean(taskToEdit?.id);
   const [form, setForm] = useState(() => ({
     task_type: taskToEdit?.task_type || 'basic',
@@ -291,14 +291,14 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado</label>
-              <select className="input-field" value={form.client_id} onChange={(e) => changeClient(e.target.value)} disabled={!!parentTaskId}>
+              <select className="input-field" value={form.client_id} onChange={(e) => changeClient(e.target.value)} disabled={!!parentTaskId || userRole === 'client'}>
                 <option value="">Nenhum — tarefa interna</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Status inicial</label>
-              <select className="input-field" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              <select className="input-field" value={form.status} disabled={userRole === 'client'} onChange={(e) => setForm({ ...form, status: e.target.value })}>
                 <option value="pending">Pendente</option>
                 <option value="in_progress">Em andamento</option>
                 <option value="done">Concluída</option>

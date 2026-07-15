@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck2, BarChart3, Users, UserCog, ListChecks, LogOut, Grid3x3, WalletCards, X } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck2, BarChart3, Users, UserCog, ListChecks, LogOut, Grid3x3, WalletCards, X, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import AvatarUpload from './AvatarUpload.jsx';
@@ -54,7 +54,8 @@ export default function Layout({ children }) {
 
   const navItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team'] },
+    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'] },
+    { to: '/plano-de-acao', label: 'Plano de Ação', icon: Target, roles: ['admin', 'team', 'client'] },
     { to: '/aprovacao', label: 'Aprovação de conteúdo', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
