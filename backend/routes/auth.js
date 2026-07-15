@@ -134,13 +134,16 @@ router.post('/users', authRequired, (req, res) => {
 
 // Lista membros da equipe/admin, usada para atribuir responsáveis em tarefas.
 router.get('/team-users', authRequired, (req, res) => {
-  if (!['admin', 'team'].includes(req.user.role)) return res.status(403).json({ error: 'Acesso negado' });
-  const users = db.prepare(
+  let users = db.prepare(
     `SELECT id, name, role, avatar_color, avatar_data FROM users WHERE role IN ('admin','team') ORDER BY name`
   ).all().map((user) => ({
     ...user,
     client_ids: user.role === 'admin' ? [] : getUserClientIds(user.id),
   }));
+  if (req.user.role === 'client') {
+    const clientId = Number(req.user.client_id);
+    users = users.filter((user) => user.role === 'admin' || user.client_ids.includes(clientId));
+  }
   res.json({ users });
 });
 

@@ -12,6 +12,7 @@ const taskRoutes = require('./routes/tasks');
 const publicRoutes = require('./routes/public');
 const financeRoutes = require('./routes/finance');
 const systemRoutes = require('./routes/system');
+const actionPlanRoutes = require('./routes/actionPlans');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
@@ -45,6 +46,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/action-plans', actionPlanRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);

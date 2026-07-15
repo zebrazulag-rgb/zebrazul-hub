@@ -4,10 +4,24 @@ const { authRequired, requireRole, canAccessClient } = require('../middleware/au
 
 const router = express.Router();
 router.use(authRequired);
-router.use(requireRole('admin', 'team'));
+router.use(requireRole('admin', 'team', 'client'));
 
 function canAccessTask(user, task) {
   return task && (task.client_id === null || task.client_id === undefined || canAccessClient(user, task.client_id));
+}
+
+function canModifyTask(user, task) {
+  if (!task) return false;
+  if (['admin', 'team'].includes(user.role)) return true;
+  return user.role === 'client' && Number(task.created_by) === Number(user.id) && task.status === 'pending';
+}
+
+function ensureModifyTask(req, res, task) {
+  if (!canModifyTask(req.user, task)) {
+    res.status(403).json({ error: 'Clientes só podem editar ou apagar tarefas próprias que ainda estão pendentes' });
+    return false;
+  }
+  return true;
 }
 
 function ensureTaskAccess(req, res, task) {
@@ -128,6 +142,9 @@ router.get('/', (req, res) => {
     } else {
       query += ' AND t.client_id IS NULL';
     }
+  } else if (req.user.role === 'client') {
+    query += ' AND t.client_id = ?';
+    params.push(Number(req.user.client_id));
   }
 
   if (status) { query += ' AND t.status = ?'; params.push(status); }
@@ -185,7 +202,7 @@ router.get('/:id', (req, res) => {
   task.assignees = attachAssignees([{ id: task.id }])[0].assignees;
 
   const subtaskRows = db.prepare(`
-    SELECT st.id, st.client_id, st.title, st.status, st.due_date, st.attachment_filename,
+    SELECT st.id, st.client_id, st.created_by, st.title, st.status, st.due_date, st.attachment_filename,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment
     FROM tasks st
     WHERE st.parent_task_id = ?
@@ -204,7 +221,7 @@ router.post('/', (req, res) => {
   } = req.body;
   if (!String(title || '').trim()) return res.status(400).json({ error: 'Titulo e obrigatorio' });
 
-  let finalClientId = client_id ? Number(client_id) : null;
+  let finalClientId = req.user.role === 'client' ? Number(req.user.client_id) : (client_id ? Number(client_id) : null);
   if (parent_task_id) {
     const parent = db.prepare('SELECT id, client_id FROM tasks WHERE id = ?').get(parent_task_id);
     if (!parent) return res.status(404).json({ error: 'Tarefa principal nao encontrada' });
@@ -212,7 +229,8 @@ router.post('/', (req, res) => {
     if (!finalClientId) finalClientId = parent.client_id || null;
   }
   if (!ensureClientAccess(req, res, finalClientId)) return;
-  const assigneeValidation = validateAssigneesForClient(finalClientId, assignee_ids);
+  const finalAssigneeIds = Array.isArray(assignee_ids) ? assignee_ids : [];
+  const assigneeValidation = validateAssigneesForClient(finalClientId, finalAssigneeIds);
   if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
 
   const createTask = db.transaction(() => {
@@ -223,10 +241,10 @@ router.post('/', (req, res) => {
       finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
       content_type || null, caption || null, video_link || null,
       Array.isArray(media_gallery) ? JSON.stringify(media_gallery) : null,
-      due_date || null, status || 'pending',
+      due_date || null, req.user.role === 'client' ? 'pending' : (status || 'pending'),
       attachment_data || null, attachment_mime || null, attachment_filename || null
     );
-    setAssignees(info.lastInsertRowid, assignee_ids);
+    setAssignees(info.lastInsertRowid, finalAssigneeIds);
     return info.lastInsertRowid;
   });
 
@@ -238,15 +256,18 @@ router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, existing)) return;
+  if (!ensureModifyTask(req, res, existing)) return;
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'title') && !String(req.body.title || '').trim()) {
     return res.status(400).json({ error: 'Titulo e obrigatorio' });
   }
 
-  const targetClientId = Object.prototype.hasOwnProperty.call(req.body, 'client_id')
+  const targetClientId = req.user.role === 'client'
+    ? Number(req.user.client_id)
+    : Object.prototype.hasOwnProperty.call(req.body, 'client_id')
     ? (req.body.client_id ? Number(req.body.client_id) : null)
     : existing.client_id;
-  if (Object.prototype.hasOwnProperty.call(req.body, 'client_id')) {
+  if (req.user.role !== 'client' && Object.prototype.hasOwnProperty.call(req.body, 'client_id')) {
     if (!ensureClientAccess(req, res, targetClientId)) return;
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')) {
@@ -254,7 +275,10 @@ router.put('/:id', (req, res) => {
     if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
   }
 
-  const allowedFields = [
+  const allowedFields = req.user.role === 'client' ? [
+    'title', 'description', 'task_type', 'content_type', 'caption', 'video_link',
+    'media_gallery', 'due_date', 'attachment_data', 'attachment_mime', 'attachment_filename'
+  ] : [
     'title', 'description', 'task_type', 'content_type', 'caption', 'video_link',
     'media_gallery', 'due_date', 'status', 'client_id',
     'attachment_data', 'attachment_mime', 'attachment_filename'
@@ -294,11 +318,13 @@ router.delete('/:id', (req, res) => {
   const task = db.prepare('SELECT id, client_id FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
+  const completeTask = db.prepare('SELECT id, client_id, created_by, status FROM tasks WHERE id = ?').get(req.params.id);
+  if (!ensureModifyTask(req, res, completeTask)) return;
   db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 
-router.post('/:id/duplicate', (req, res) => {
+router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
@@ -321,7 +347,7 @@ router.post('/:id/duplicate', (req, res) => {
   res.status(201).json({ id, task: getTaskSummary(id) });
 });
 
-router.post('/:id/add-to-feed', (req, res) => {
+router.post('/:id/add-to-feed', requireRole('admin', 'team'), (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;

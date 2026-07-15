@@ -187,6 +187,42 @@ CREATE TABLE IF NOT EXISTS report_metrics (
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
 
+
+
+CREATE TABLE IF NOT EXISTS action_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  year INTEGER NOT NULL,
+  what_we_want TEXT,
+  why_we_want TEXT,
+  how_we_will_do TEXT,
+  manifesto TEXT,
+  diagnosis TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(client_id, year),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS action_plan_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  action_plan_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  due_date TEXT,
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done')),
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (action_plan_id) REFERENCES action_plans(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_action_plans_client_year ON action_plans(client_id, year);
+CREATE INDEX IF NOT EXISTS idx_action_plan_tasks_plan ON action_plan_tasks(action_plan_id, status);
+
 CREATE INDEX IF NOT EXISTS idx_financial_due_date ON financial_entries(due_date);
 CREATE INDEX IF NOT EXISTS idx_financial_client ON financial_entries(client_id);
 CREATE INDEX IF NOT EXISTS idx_posts_client ON posts(client_id);
@@ -251,7 +287,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '14', datetime('now'))
+   VALUES ('schema_version', '15', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
