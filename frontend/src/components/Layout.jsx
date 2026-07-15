@@ -16,20 +16,10 @@ export default function Layout({ children }) {
   const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
-    if (user?.role === 'client') return;
-    let active = true;
-    api.get('/clients').then((res) => {
-      if (!active) return;
-      const nextClients = res.data.clients || [];
-      setClients(nextClients);
-      if (selectedClient && !nextClients.some((client) => client.id === selectedClient.id)) {
-        setSelectedClient(null);
-      }
-    }).catch(() => {
-      if (active) setClients([]);
-    });
-    return () => { active = false; };
-  }, [user?.id, user?.role, user?.client_ids?.join(','), selectedClient?.id, setSelectedClient]);
+    if (user?.role !== 'client') {
+      api.get('/clients').then((res) => setClients(res.data.clients));
+    }
+  }, [user]);
 
   function handleLogout() {
     logout();
@@ -72,7 +62,7 @@ export default function Layout({ children }) {
       )}
       <aside className="w-64 bg-zebrazul-900 text-white flex flex-col shrink-0">
         <div className="px-6 py-5 border-b border-white/10">
-          <h1 className="text-lg font-bold tracking-tight">Zebrahub</h1>
+          <h1 className="text-lg font-bold tracking-tight">Zebra Hub</h1>
           <p className="text-xs text-zebrazul-100/70 mt-0.5">Gestão de conteúdo & tráfego</p>
         </div>
 

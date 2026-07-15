@@ -43,7 +43,6 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [mediaDirty, setMediaDirty] = useState(!isEditing);
 
   async function handleFileChange(e) {
     const files = Array.from(e.target.files || []);
@@ -51,7 +50,6 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     const converted = await Promise.all(files.map(async (file) => ({
       data: await fileToBase64(file), mime: file.type, filename: file.name
     })));
-    setMediaDirty(true);
     setForm((f) => {
       const gallery = [...f.media_gallery, ...converted];
       return {
@@ -66,7 +64,6 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
   }
 
   function removeMedia(idx) {
-    setMediaDirty(true);
     setForm((f) => {
       const gallery = f.media_gallery.filter((_, i) => i !== idx);
       const first = gallery[0];
@@ -89,49 +86,18 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     }));
   }
 
-  function changeClient(clientId) {
-    const normalizedClientId = Number(clientId) || null;
-    setForm((current) => ({
-      ...current,
-      client_id: clientId,
-      assignee_ids: current.assignee_ids.filter((userId) => {
-        const member = teamUsers.find((item) => item.id === userId);
-        if (!member || member.role === 'admin' || !normalizedClientId) return true;
-        return (member.client_ids || []).includes(normalizedClientId);
-      })
-    }));
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     if (!form.title) { setError('Informe um título para a tarefa.'); return; }
     setSaving(true);
     try {
-      const payload = {
-        task_type: form.task_type,
-        title: form.title,
-        description: form.description,
-        content_type: form.content_type,
-        caption: form.caption,
-        video_link: form.video_link,
-        due_date: form.due_date || null,
-        assignee_ids: form.assignee_ids,
-        client_id: form.client_id || null,
-        status: form.status
-      };
-
-      if (!isEditing || mediaDirty) {
-        payload.media_gallery = form.media_gallery;
-        payload.attachment_data = form.attachment_data || null;
-        payload.attachment_mime = form.attachment_mime || null;
-        payload.attachment_filename = form.attachment_filename || null;
+      if (isEditing) {
+        await api.put(`/tasks/${taskToEdit.id}`, form);
+      } else {
+        await api.post('/tasks', { ...form, parent_task_id: parentTaskId || null });
       }
-
-      const response = isEditing
-        ? await api.put(`/tasks/${taskToEdit.id}`, payload)
-        : await api.post('/tasks', { ...payload, parent_task_id: parentTaskId || null });
-      onSaved(response.data.task || null);
+      onSaved();
     } catch (err) {
       setError(err.response?.data?.error || (isEditing ? 'Erro ao editar tarefa.' : 'Erro ao criar tarefa.'));
     } finally {
@@ -141,12 +107,6 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
 
   const isPost = form.task_type === 'post';
   const isVideo = form.task_type === 'video';
-  const selectedClientId = Number(form.client_id) || null;
-  const visibleTeamUsers = teamUsers.filter((member) => {
-    if (member.role === 'admin' || !selectedClientId) return true;
-    if ((member.client_ids || []).includes(selectedClientId)) return true;
-    return form.assignee_ids.includes(member.id);
-  });
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
@@ -272,7 +232,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-2">Responsáveis</label>
             <div className="flex flex-wrap gap-2">
-              {visibleTeamUsers.map((u) => (
+              {teamUsers.map((u) => (
                 <button
                   type="button"
                   key={u.id}
@@ -284,14 +244,13 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
                   {u.name}
                 </button>
               ))}
-              {visibleTeamUsers.length === 0 && <p className="text-xs text-slate-400">Nenhum membro tem acesso a este cliente.</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado</label>
-              <select className="input-field" value={form.client_id} onChange={(e) => changeClient(e.target.value)} disabled={!!parentTaskId}>
+              <select className="input-field" value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })} disabled={!!parentTaskId}>
                 <option value="">Nenhum — tarefa interna</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>

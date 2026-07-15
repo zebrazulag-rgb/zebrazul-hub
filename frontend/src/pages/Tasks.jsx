@@ -55,9 +55,13 @@ function TaskCard({ task: t, onClick, onDragStart }) {
       className={'card p-4 w-full text-left hover:border-zebrazul-300 transition-colors ' + (onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')}
     >
       <div className="flex items-start gap-2">
-        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-          <TypeIcon size={16} className="text-slate-400" />
-        </div>
+        {t.attachment_data ? (
+          <img src={t.attachment_data} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+        ) : (
+          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+            <TypeIcon size={16} className="text-slate-400" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-800 text-sm">{t.title}</p>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
@@ -100,7 +104,6 @@ export default function Tasks() {
   const [dayTasks, setDayTasks] = useState(null);
   const [sendingToFeed, setSendingToFeed] = useState(false);
   const [feedError, setFeedError] = useState('');
-  const [taskError, setTaskError] = useState('');
 
   useEffect(() => {
     setLocalClientId(selectedClient?.id ? String(selectedClient.id) : 'all');
@@ -116,79 +119,15 @@ export default function Tasks() {
 
   useEffect(() => {
     loadTasks();
+    api.get('/auth/team-users').then((res) => setTeamUsers(res.data.users));
+    api.get('/clients').then((res) => setClients(res.data.clients));
   }, [loadTasks]);
 
-  useEffect(() => {
-    Promise.all([api.get('/auth/team-users'), api.get('/clients')])
-      .then(([teamResponse, clientResponse]) => {
-        setTeamUsers(teamResponse.data.users || []);
-        setClients(clientResponse.data.clients || []);
-      })
-      .catch(() => {});
-  }, []);
-
-  function upsertTaskSummary(task) {
-    if (!task) return;
-    setTasks((previous) => {
-      if (effectiveClientId && String(task.client_id || '') !== String(effectiveClientId)) {
-        return previous.filter((item) => item.id !== task.id);
-      }
-      const exists = previous.some((item) => item.id === task.id);
-      const next = exists
-        ? previous.map((item) => item.id === task.id ? { ...item, ...task } : item)
-        : [...previous, task];
-      return next.sort((a, b) => String(a.due_date || a.created_at || '').localeCompare(String(b.due_date || b.created_at || '')));
-    });
-  }
-
-  async function loadTaskMedia(taskId) {
-    try {
-      const { data } = await api.get('/tasks/' + taskId + '/media');
-      setSelectedTask((previous) => previous?.id === taskId
-        ? { ...previous, ...data.media, media_loaded: true, media_loading: false }
-        : previous);
-      return data.media;
-    } catch {
-      setSelectedTask((previous) => previous?.id === taskId
-        ? { ...previous, media_loaded: true, media_loading: false }
-        : previous);
-      return null;
-    }
-  }
-
   async function openTask(taskId) {
-    const summary = tasks.find((task) => task.id === taskId);
-    setSelectedTask({
-      ...(summary || { id: taskId, title: 'Carregando tarefa...' }),
-      details_loading: true,
-      media_loading: true,
-      media_loaded: false
-    });
-    setSubtasks([]);
+    const { data } = await api.get('/tasks/' + taskId);
+    setSelectedTask(data.task);
+    setSubtasks(data.subtasks);
     setFeedError('');
-    setTaskError('');
-
-    try {
-      const { data } = await api.get('/tasks/' + taskId);
-      setSelectedTask((previous) => previous?.id === taskId
-        ? { ...previous, ...data.task, details_loading: false }
-        : previous);
-      setSubtasks(data.subtasks || []);
-      loadTaskMedia(taskId);
-    } catch (error) {
-      setTaskError(error.response?.data?.error || 'Não foi possível abrir esta tarefa.');
-      setSelectedTask((previous) => previous?.id === taskId ? null : previous);
-    }
-  }
-
-  async function editSelectedTask() {
-    if (!selectedTask) return;
-    let completeTask = selectedTask;
-    if (!selectedTask.media_loaded) {
-      const media = await loadTaskMedia(selectedTask.id);
-      if (media) completeTask = { ...selectedTask, ...media, media_loaded: true, media_loading: false };
-    }
-    setEditingTask(completeTask);
   }
 
   async function updateStatus(taskId, status) {
@@ -210,14 +149,14 @@ export default function Tasks() {
 
   async function deleteTask(id) {
     await api.delete('/tasks/' + id);
-    setTasks((previous) => previous.filter((task) => task.id !== id));
     setSelectedTask(null);
+    loadTasks();
   }
 
   async function duplicateTask(id) {
-    const { data } = await api.post('/tasks/' + id + '/duplicate');
-    upsertTaskSummary(data.task);
+    await api.post('/tasks/' + id + '/duplicate');
     setSelectedTask(null);
+    loadTasks();
   }
 
   async function sendToFeed(id) {
@@ -291,8 +230,6 @@ export default function Tasks() {
           </button>
         </div>
       </div>
-
-      {taskError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{taskError}</p>}
 
       {view === 'kanban' && (
         <div className="grid md:grid-cols-3 gap-5">
@@ -383,7 +320,7 @@ export default function Tasks() {
           clients={clients}
           defaultClientId={effectiveClientId}
           onClose={() => setShowForm(false)}
-          onSaved={(task) => { setShowForm(false); upsertTaskSummary(task); }}
+          onSaved={() => { setShowForm(false); loadTasks(); }}
         />
       )}
 
@@ -394,7 +331,7 @@ export default function Tasks() {
           defaultClientId={selectedTask.client_id}
           parentTaskId={selectedTask.id}
           onClose={() => setShowSubtaskForm(false)}
-          onSaved={() => { setShowSubtaskForm(false); openTask(selectedTask.id); loadTasks(); }}
+          onSaved={() => { setShowSubtaskForm(false); openTask(selectedTask.id); }}
         />
       )}
 
@@ -404,10 +341,10 @@ export default function Tasks() {
           clients={clients}
           taskToEdit={editingTask}
           onClose={() => setEditingTask(null)}
-          onSaved={(task) => {
+          onSaved={() => {
             setEditingTask(null);
             setSelectedTask(null);
-            upsertTaskSummary(task);
+            loadTasks();
           }}
         />
       )}
@@ -419,16 +356,8 @@ export default function Tasks() {
               <h2 className="font-semibold text-slate-800">{selectedTask.title}</h2>
               <button onClick={() => setSelectedTask(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
-            {selectedTask.details_loading ? (
-              <div className="space-y-3 mb-4">
-                <div className="h-3 bg-slate-100 rounded animate-pulse" />
-                <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
-              </div>
-            ) : selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
+            {selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
 
-            {selectedTask.media_loading && selectedTask.has_attachment && (
-              <div className="h-24 rounded-lg bg-slate-100 animate-pulse mb-3 flex items-center justify-center text-xs text-slate-400">Carregando mídia...</div>
-            )}
             {selectedTask.media_gallery && selectedTask.media_gallery.length > 0 && (
               <div className="flex gap-2 overflow-x-auto mb-3">
                 {selectedTask.media_gallery.map((m, idx) => (
@@ -471,8 +400,8 @@ export default function Tasks() {
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-5">
-              <button onClick={editSelectedTask} disabled={selectedTask.details_loading} className="btn-primary text-sm flex items-center justify-center gap-1.5 disabled:opacity-50">
-                <Pencil size={14} /> {selectedTask.media_loading ? 'Preparando...' : 'Editar tarefa'}
+              <button onClick={() => setEditingTask(selectedTask)} className="btn-primary text-sm flex items-center justify-center gap-1.5">
+                <Pencil size={14} /> Editar tarefa
               </button>
               <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex items-center justify-center gap-1.5">
                 <Copy size={14} /> Duplicar

@@ -14,8 +14,7 @@ import PublicFeed from './pages/PublicFeed.jsx';
 import Finance from './pages/Finance.jsx';
 
 function ProtectedRoute({ children, roles }) {
-  const { user, checkingSession } = useAuth();
-  if (checkingSession) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando Zebrahub...</div>;
+  const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
