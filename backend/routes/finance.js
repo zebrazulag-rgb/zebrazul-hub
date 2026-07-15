@@ -4,184 +4,218 @@ const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authRequired);
-router.use(requireRole('admin', 'team'));
+router.use(requireRole('admin'));
 
-function monthBounds(month) {
-  const parts = month.split('-').map(Number);
-  const y = parts[0];
-  const m = parts[1];
-  const start = month + '-01';
-  const lastDay = new Date(y, m, 0).getDate();
-  const end = month + '-' + String(lastDay).padStart(2, '0');
-  return { start: start, end: end };
+function normalizeEntry(entry) {
+  if (!entry) return entry;
+  const today = new Date().toISOString().slice(0, 10);
+  const computedStatus = entry.status === 'pending' && entry.due_date < today ? 'overdue' : entry.status;
+  return { ...entry, status: computedStatus, recurring: Boolean(entry.recurring) };
 }
 
-router.get('/summary', (req, res) => {
-  const month = req.query.month || new Date().toISOString().slice(0, 7);
-  const bounds = monthBounds(month);
-  const start = bounds.start;
-  const end = bounds.end;
-
-  const recurringRevenue = db.prepare(
-    "SELECT COALESCE(SUM(monthly_fee), 0) as total FROM clients WHERE status = 'active'"
-  ).get().total;
-
-  function row(type, status, dateField) {
-    const q = 'SELECT COALESCE(SUM(amount), 0) as total FROM financial_entries WHERE type = ? AND status = ? AND ' + dateField + ' BETWEEN ? AND ?';
-    return db.prepare(q).get(type, status, start, end).total;
-  }
-
-  const receitasRecebidas = row('revenue', 'paid', 'paid_date');
-  const valoresAReceber = row('revenue', 'pending', 'due_date');
-  const despesasPagas = row('expense', 'paid', 'paid_date');
-  const despesasAPagar = row('expense', 'pending', 'due_date');
-
-  const saldoRealizado = (recurringRevenue + receitasRecebidas) - despesasPagas;
-  const saldoProjetado = saldoRealizado + valoresAReceber - despesasAPagar;
-
-  res.json({
-    month: month,
-    recurring_revenue: recurringRevenue,
-    receitas_recebidas: receitasRecebidas,
-    valores_a_receber: valoresAReceber,
-    despesas_pagas: despesasPagas,
-    despesas_a_pagar: despesasAPagar,
-    saldo_realizado: saldoRealizado,
-    saldo_projetado: saldoProjetado,
-    active_clients: db.prepare("SELECT COUNT(*) as c FROM clients WHERE status = 'active'").get().c
-  });
-});
-
-function buildEntriesQuery(req) {
-  const month = req.query.month;
-  const client_id = req.query.client_id;
-  const type = req.query.type;
-  const status = req.query.status;
-  let query = 'SELECT fe.*, c.name as client_name FROM financial_entries fe LEFT JOIN clients c ON c.id = fe.client_id WHERE 1=1';
+function buildFilters(query) {
+  const clauses = [];
   const params = [];
-  if (month) {
-    const bounds = monthBounds(month);
-    query += ' AND fe.due_date BETWEEN ? AND ?';
-    params.push(bounds.start, bounds.end);
+
+  if (query.month && /^\d{4}-\d{2}$/.test(query.month)) {
+    clauses.push("substr(due_date, 1, 7) = ?");
+    params.push(query.month);
   }
-  if (client_id) { query += ' AND fe.client_id = ?'; params.push(client_id); }
-  if (type) { query += ' AND fe.type = ?'; params.push(type); }
-  if (status) { query += ' AND fe.status = ?'; params.push(status); }
-  query += ' ORDER BY fe.due_date DESC';
-  return { query: query, params: params };
+
+  if (query.client_id && query.client_id !== 'all') {
+    clauses.push('financial_entries.client_id = ?');
+    params.push(Number(query.client_id));
+  }
+
+  if (query.type && ['income', 'expense'].includes(query.type)) {
+    clauses.push('type = ?');
+    params.push(query.type);
+  }
+
+  if (query.status && ['pending', 'paid', 'overdue', 'cancelled'].includes(query.status)) {
+    if (query.status === 'overdue') {
+      clauses.push("status = 'pending' AND due_date < date('now')");
+    } else if (query.status === 'pending') {
+      clauses.push("status = 'pending' AND due_date >= date('now')");
+    } else {
+      clauses.push('status = ?');
+      params.push(query.status);
+    }
+  }
+
+  return {
+    where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
+    params
+  };
 }
 
-router.get('/entries', (req, res) => {
-  const built = buildEntriesQuery(req);
-  res.json({ entries: db.prepare(built.query).all(...built.params) });
-});
+router.get('/', (req, res) => {
+  const { where, params } = buildFilters(req.query);
+  const rows = db.prepare(
+    `SELECT financial_entries.*, clients.name AS client_name
+     FROM financial_entries
+     LEFT JOIN clients ON clients.id = financial_entries.client_id
+     ${where}
+     ORDER BY due_date ASC, financial_entries.id DESC`
+  ).all(...params).map(normalizeEntry);
 
-router.get('/entries/export', (req, res) => {
-  const built = buildEntriesQuery(req);
-  const entries = db.prepare(built.query).all(...built.params);
+  const summary = rows.reduce((acc, item) => {
+    if (item.status === 'cancelled') return acc;
 
-  const header = 'Tipo,Descricao,Categoria,Valor,Vencimento,Pagamento,Situacao,Recorrente,Cliente\n';
-  const rows = entries.map(function (e) {
-    return [
-      e.type === 'revenue' ? 'Receita' : 'Despesa',
-      '"' + (e.description || '').replace(/"/g, '""') + '"',
-      e.category || '',
-      e.amount,
-      e.due_date,
-      e.paid_date || '',
-      e.status === 'paid' ? 'Pago' : e.status === 'cancelled' ? 'Cancelado' : 'Pendente',
-      e.is_recurring ? 'Sim' : 'Não',
-      e.client_name || ''
-    ].join(',');
+    if (item.type === 'income') {
+      acc.income_total += item.amount;
+      if (item.status === 'paid') acc.income_paid += item.amount;
+      else acc.income_pending += item.amount;
+    } else {
+      acc.expense_total += item.amount;
+      if (item.status === 'paid') acc.expense_paid += item.amount;
+      else acc.expense_pending += item.amount;
+    }
+
+    return acc;
+  }, {
+    income_total: 0,
+    income_paid: 0,
+    income_pending: 0,
+    expense_total: 0,
+    expense_paid: 0,
+    expense_pending: 0
   });
 
-  const csv = header + rows.join('\n');
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="financeiro.csv"');
-  res.send('\uFEFF' + csv);
+  summary.balance_realized = summary.income_paid - summary.expense_paid;
+  summary.balance_projected = summary.income_total - summary.expense_total;
+
+  res.json({ entries: rows, summary });
 });
 
-router.get('/cashflow', (req, res) => {
-  const month = req.query.month || new Date().toISOString().slice(0, 7);
-  const bounds = monthBounds(month);
+router.post('/', (req, res) => {
+  const {
+    client_id,
+    type,
+    category,
+    description,
+    amount,
+    due_date,
+    paid_date,
+    status,
+    payment_method,
+    recurring,
+    notes
+  } = req.body;
 
-  const entries = db.prepare(
-    "SELECT due_date, type, amount FROM financial_entries WHERE status != 'cancelled' AND due_date BETWEEN ? AND ? ORDER BY due_date ASC"
-  ).all(bounds.start, bounds.end);
-
-  const byDay = {};
-  entries.forEach(function (e) {
-    if (!byDay[e.due_date]) byDay[e.due_date] = { date: e.due_date, revenue: 0, expense: 0 };
-    if (e.type === 'revenue') byDay[e.due_date].revenue += e.amount;
-    else byDay[e.due_date].expense += e.amount;
-  });
-
-  res.json({ days: Object.values(byDay) });
-});
-
-router.post('/entries', (req, res) => {
-  const type = req.body.type;
-  const description = req.body.description;
-  const category = req.body.category;
-  const amount = req.body.amount;
-  const due_date = req.body.due_date;
-  const client_id = req.body.client_id;
-  const is_recurring = req.body.is_recurring;
-
-  if (!type || !description || !amount || !due_date) {
-    return res.status(400).json({ error: 'Preencha tipo, descrição, valor e vencimento' });
+  if (!['income', 'expense'].includes(type)) {
+    return res.status(400).json({ error: 'Tipo financeiro invalido' });
   }
+  if (!description || !String(description).trim()) {
+    return res.status(400).json({ error: 'Descricao e obrigatoria' });
+  }
+  if (!Number(amount) || Number(amount) <= 0) {
+    return res.status(400).json({ error: 'Valor deve ser maior que zero' });
+  }
+  if (!due_date) {
+    return res.status(400).json({ error: 'Data de vencimento e obrigatoria' });
+  }
+
+  const normalizedStatus = ['pending', 'paid', 'cancelled'].includes(status) ? status : 'pending';
+  const normalizedPaidDate = normalizedStatus === 'paid' ? (paid_date || new Date().toISOString().slice(0, 10)) : null;
+
   const info = db.prepare(
-    'INSERT INTO financial_entries (type, description, category, amount, due_date, client_id, created_by, is_recurring) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(type, description, category || null, amount, due_date, client_id || null, req.user.id, is_recurring ? 1 : 0);
-  res.status(201).json({ id: info.lastInsertRowid });
+    `INSERT INTO financial_entries
+      (client_id, created_by, type, category, description, amount, due_date, paid_date, status, payment_method, recurring, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    client_id ? Number(client_id) : null,
+    req.user.id,
+    type,
+    category || 'Outros',
+    String(description).trim(),
+    Number(amount),
+    due_date,
+    normalizedPaidDate,
+    normalizedStatus,
+    payment_method || null,
+    recurring ? 1 : 0,
+    notes || null
+  );
+
+  const entry = db.prepare(
+    `SELECT financial_entries.*, clients.name AS client_name
+     FROM financial_entries
+     LEFT JOIN clients ON clients.id = financial_entries.client_id
+     WHERE financial_entries.id = ?`
+  ).get(info.lastInsertRowid);
+
+  res.status(201).json({ entry: normalizeEntry(entry) });
 });
 
-router.put('/entries/:id', (req, res) => {
-  const description = req.body.description;
-  const category = req.body.category;
-  const amount = req.body.amount;
-  const due_date = req.body.due_date;
-  const client_id = req.body.client_id;
-  const is_recurring = req.body.is_recurring;
+router.put('/:id', (req, res) => {
+  const current = db.prepare('SELECT * FROM financial_entries WHERE id = ?').get(req.params.id);
+  if (!current) return res.status(404).json({ error: 'Lancamento nao encontrado' });
+
+  const next = {
+    client_id: req.body.client_id === '' ? null : (req.body.client_id ?? current.client_id),
+    type: req.body.type ?? current.type,
+    category: req.body.category ?? current.category,
+    description: req.body.description ?? current.description,
+    amount: req.body.amount ?? current.amount,
+    due_date: req.body.due_date ?? current.due_date,
+    paid_date: req.body.paid_date ?? current.paid_date,
+    status: req.body.status ?? current.status,
+    payment_method: req.body.payment_method ?? current.payment_method,
+    recurring: req.body.recurring ?? Boolean(current.recurring),
+    notes: req.body.notes ?? current.notes
+  };
+
+  if (!['income', 'expense'].includes(next.type)) {
+    return res.status(400).json({ error: 'Tipo financeiro invalido' });
+  }
+  if (!String(next.description || '').trim()) {
+    return res.status(400).json({ error: 'Descricao e obrigatoria' });
+  }
+  if (!Number(next.amount) || Number(next.amount) <= 0) {
+    return res.status(400).json({ error: 'Valor deve ser maior que zero' });
+  }
+  if (!next.due_date) {
+    return res.status(400).json({ error: 'Data de vencimento e obrigatoria' });
+  }
+  if (!['pending', 'paid', 'cancelled'].includes(next.status)) next.status = 'pending';
+  if (next.status === 'paid' && !next.paid_date) next.paid_date = new Date().toISOString().slice(0, 10);
+  if (next.status !== 'paid') next.paid_date = null;
 
   db.prepare(
-    "UPDATE financial_entries SET description = COALESCE(?, description), category = COALESCE(?, category), amount = COALESCE(?, amount), due_date = COALESCE(?, due_date), client_id = ?, is_recurring = COALESCE(?, is_recurring), updated_at = datetime('now') WHERE id = ?"
-  ).run(description, category, amount, due_date, client_id || null, is_recurring === undefined ? null : (is_recurring ? 1 : 0), req.params.id);
-  res.json({ ok: true });
+    `UPDATE financial_entries SET
+      client_id = ?, type = ?, category = ?, description = ?, amount = ?, due_date = ?,
+      paid_date = ?, status = ?, payment_method = ?, recurring = ?, notes = ?,
+      updated_at = datetime('now')
+     WHERE id = ?`
+  ).run(
+    next.client_id ? Number(next.client_id) : null,
+    next.type,
+    next.category || 'Outros',
+    String(next.description).trim(),
+    Number(next.amount),
+    next.due_date,
+    next.paid_date || null,
+    next.status,
+    next.payment_method || null,
+    next.recurring ? 1 : 0,
+    next.notes || null,
+    req.params.id
+  );
+
+  const entry = db.prepare(
+    `SELECT financial_entries.*, clients.name AS client_name
+     FROM financial_entries
+     LEFT JOIN clients ON clients.id = financial_entries.client_id
+     WHERE financial_entries.id = ?`
+  ).get(req.params.id);
+
+  res.json({ entry: normalizeEntry(entry) });
 });
 
-router.put('/entries/:id/settle', (req, res) => {
-  const paidDate = req.body.paid_date || new Date().toISOString().slice(0, 10);
-  db.prepare("UPDATE financial_entries SET status = 'paid', paid_date = ?, updated_at = datetime('now') WHERE id = ?")
-    .run(paidDate, req.params.id);
-  res.json({ ok: true });
-});
-
-router.put('/entries/:id/cancel', (req, res) => {
-  db.prepare("UPDATE financial_entries SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(req.params.id);
-  res.json({ ok: true });
-});
-
-router.put('/entries/:id/reopen', (req, res) => {
-  db.prepare("UPDATE financial_entries SET status = 'pending', paid_date = NULL, updated_at = datetime('now') WHERE id = ?").run(req.params.id);
-  res.json({ ok: true });
-});
-
-router.delete('/entries/:id', (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas administradores podem excluir lançamentos' });
-  db.prepare('DELETE FROM financial_entries WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
-});
-
-router.get('/clients', (req, res) => {
-  const clients = db.prepare("SELECT id, name, status, monthly_fee, logo_color, avatar_data FROM clients ORDER BY name").all();
-  res.json({ clients: clients });
-});
-
-router.put('/clients/:id/fee', (req, res) => {
-  const monthly_fee = req.body.monthly_fee;
-  db.prepare('UPDATE clients SET monthly_fee = ? WHERE id = ?').run(monthly_fee || 0, req.params.id);
+router.delete('/:id', requireRole('admin'), (req, res) => {
+  const info = db.prepare('DELETE FROM financial_entries WHERE id = ?').run(req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'Lancamento nao encontrado' });
   res.json({ ok: true });
 });
 
