@@ -18,7 +18,7 @@ function buildFilters(query) {
   const params = [];
 
   if (query.month && /^\d{4}-\d{2}$/.test(query.month)) {
-    clauses.push("substr(due_date, 1, 7) = ?");
+    clauses.push("substr(financial_entries.due_date, 1, 7) = ?");
     params.push(query.month);
   }
 
@@ -28,17 +28,17 @@ function buildFilters(query) {
   }
 
   if (query.type && ['income', 'expense'].includes(query.type)) {
-    clauses.push('type = ?');
+    clauses.push('financial_entries.type = ?');
     params.push(query.type);
   }
 
   if (query.status && ['pending', 'paid', 'overdue', 'cancelled'].includes(query.status)) {
     if (query.status === 'overdue') {
-      clauses.push("status = 'pending' AND due_date < date('now')");
+      clauses.push("financial_entries.status = 'pending' AND financial_entries.due_date < date('now')");
     } else if (query.status === 'pending') {
-      clauses.push("status = 'pending' AND due_date >= date('now')");
+      clauses.push("financial_entries.status = 'pending' AND financial_entries.due_date >= date('now')");
     } else {
-      clauses.push('status = ?');
+      clauses.push('financial_entries.status = ?');
       params.push(query.status);
     }
   }
@@ -56,7 +56,7 @@ router.get('/', (req, res) => {
      FROM financial_entries
      LEFT JOIN clients ON clients.id = financial_entries.client_id
      ${where}
-     ORDER BY due_date ASC, financial_entries.id DESC`
+     ORDER BY financial_entries.due_date ASC, financial_entries.id DESC`
   ).all(...params).map(normalizeEntry);
 
   const summary = rows.reduce((acc, item) => {

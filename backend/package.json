@@ -1,7 +1,7 @@
 {
   "name": "zebrazul-hub-backend",
   "version": "1.2.0",
-  "description": "Backend do Zebrazul Hub - gestao de redes sociais, aprovacao de conteudo e relatorios",
+  "description": "Backend do Zebrahub - gestao de redes sociais, aprovacao de conteudo e relatorios",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

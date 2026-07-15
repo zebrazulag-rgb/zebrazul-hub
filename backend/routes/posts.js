@@ -1,14 +1,31 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
-const { authRequired, requireRole } = require('../middleware/auth');
+const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authRequired);
 
-function canAccessClient(req, clientId) {
-  if (req.user.role === 'client') return req.user.client_id === Number(clientId);
-  return true; // admin e team veem tudo
+function ensureClientAccess(req, res, clientId) {
+  if (!canAccessClient(req.user, clientId)) {
+    res.status(403).json({ error: 'Voce nao tem acesso a este cliente' });
+    return false;
+  }
+  return true;
+}
+
+function appendPostScope(req, query, params) {
+  if (req.user.role === 'admin') return query;
+  if (req.user.role === 'client') {
+    query += ' AND client_id = ?';
+    params.push(req.user.client_id);
+    return query;
+  }
+  if (!req.user.client_ids.length) return `${query} AND 0`;
+  const placeholders = req.user.client_ids.map(() => '?').join(',');
+  query += ` AND client_id IN (${placeholders})`;
+  params.push(...req.user.client_ids);
+  return query;
 }
 
 router.get('/', (req, res) => {
@@ -16,12 +33,12 @@ router.get('/', (req, res) => {
   let query = 'SELECT * FROM posts WHERE 1=1';
   const params = [];
 
-  if (req.user.role === 'client') {
+  query = appendPostScope(req, query, params);
+
+  if (client_id) {
+    if (!ensureClientAccess(req, res, client_id)) return;
     query += ' AND client_id = ?';
-    params.push(req.user.client_id);
-  } else if (client_id) {
-    query += ' AND client_id = ?';
-    params.push(client_id);
+    params.push(Number(client_id));
   }
 
   if (status) {
@@ -37,7 +54,7 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
-  if (!canAccessClient(req, post.client_id)) return res.status(403).json({ error: 'Acesso negado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
   const comments = db.prepare(
     `SELECT pc.*, u.name as user_name, u.role as user_role FROM post_comments pc
      JOIN users u ON u.id = pc.user_id WHERE pc.post_id = ? ORDER BY pc.created_at ASC`
@@ -48,6 +65,7 @@ router.get('/:id', (req, res) => {
 router.post('/', requireRole('admin', 'team'), (req, res) => {
   const { client_id, title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status } = req.body;
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title sao obrigatorios' });
+  if (!ensureClientAccess(req, res, client_id)) return;
 
   const info = db.prepare(
     `INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status)
@@ -60,11 +78,10 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
   res.status(201).json({ id: info.lastInsertRowid });
 });
 
-// Gera (ou retorna, se já existir) o link público de aprovação do post
 router.post('/:id/share', (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: 'Post não encontrado' });
-  if (!canAccessClient(req, post.client_id)) return res.status(403).json({ error: 'Acesso negado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
 
   let token = post.share_token;
   if (!token) {
@@ -77,11 +94,10 @@ router.post('/:id/share', (req, res) => {
 router.put('/:id', (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
-  if (!canAccessClient(req, post.client_id)) return res.status(403).json({ error: 'Acesso negado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
 
   const { status, client_feedback } = req.body;
 
-  // Cliente so pode alterar o status para approved/rejected e deixar feedback
   if (req.user.role === 'client') {
     if (status && !['approved', 'rejected'].includes(status)) {
       return res.status(403).json({ error: 'Cliente so pode aprovar ou reprovar' });
@@ -99,6 +115,7 @@ router.put('/:id', (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'client_id')) {
     const targetClient = db.prepare('SELECT id FROM clients WHERE id = ?').get(req.body.client_id);
     if (!targetClient) return res.status(400).json({ error: 'Cliente invalido' });
+    if (!ensureClientAccess(req, res, req.body.client_id)) return;
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'title') && !String(req.body.title || '').trim()) {
@@ -143,6 +160,9 @@ router.put('/:id', (req, res) => {
 });
 
 router.delete('/:id', requireRole('admin', 'team'), (req, res) => {
+  const post = db.prepare('SELECT client_id FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
   db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
@@ -150,7 +170,7 @@ router.delete('/:id', requireRole('admin', 'team'), (req, res) => {
 router.post('/:id/comments', (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
-  if (!canAccessClient(req, post.client_id)) return res.status(403).json({ error: 'Acesso negado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
 
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'Mensagem obrigatoria' });
