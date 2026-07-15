@@ -10,7 +10,7 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Administrador', icon: Shield }
 ];
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '' };
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '', client_ids: [] };
 
 export default function UserManagement() {
   const { user: currentUser, refreshUser } = useAuth();
@@ -111,7 +111,8 @@ export default function UserManagement() {
         ...form,
         name: form.name.trim(),
         email: form.email.trim(),
-        client_id: form.role === 'client' ? form.client_id : null
+        client_id: form.role === 'client' ? form.client_id : null,
+        client_ids: form.role === 'team' ? form.client_ids : []
       });
       setSuccess(`Usuário "${form.name}" criado com sucesso.`);
       setForm(EMPTY_FORM);
@@ -132,7 +133,8 @@ export default function UserManagement() {
       email: user.email || '',
       password: '',
       role: user.role || 'team',
-      client_id: user.client_id || ''
+      client_id: user.client_id || '',
+      client_ids: user.client_ids || []
     });
   }
 
@@ -151,7 +153,8 @@ export default function UserManagement() {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
         role: editForm.role,
-        client_id: editForm.role === 'client' ? editForm.client_id : null
+        client_id: editForm.role === 'client' ? editForm.client_id : null,
+        client_ids: editForm.role === 'team' ? editForm.client_ids : []
       };
       if (editForm.password) payload.password = editForm.password;
 
@@ -265,7 +268,7 @@ export default function UserManagement() {
         <h2 className="font-semibold text-slate-800 mb-3">Papéis disponíveis</h2>
         <div className="grid md:grid-cols-3 gap-4 text-sm">
           <RoleDescription icon={Shield} title="Administrador" description="Acesso total, incluindo criar, editar e apagar usuários." />
-          <RoleDescription icon={UsersIcon} title="Equipe Zebrazul" description="Cria clientes, posts e métricas de todos os clientes." />
+          <RoleDescription icon={UsersIcon} title="Equipe Zebrazul" description="Acessa somente os clientes definidos pelo administrador." />
           <RoleDescription icon={Building2} title="Cliente" description="Só vê e aprova o conteúdo do próprio cliente vinculado." />
         </div>
       </div>
@@ -293,7 +296,12 @@ export default function UserManagement() {
                 </div>
                 <div className="text-right shrink-0">
                   <span className="badge bg-slate-100 text-slate-600 capitalize">{roleBadgeLabel(user.role)}</span>
-                  {user.client_name && <p className="text-xs text-slate-400 mt-1 max-w-40 truncate">{user.client_name}</p>}
+                  {user.client_name && <p className="text-xs text-slate-400 mt-1 max-w-48 truncate">{user.client_name}</p>}
+                  {user.role === 'team' && (
+                    <p className="text-xs text-slate-400 mt-1 max-w-56 line-clamp-2">
+                      {user.client_names?.length ? user.client_names.join(', ') : 'Sem clientes liberados'}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
                   <button
@@ -462,7 +470,12 @@ function UserFormModal({
                 <button
                   type="button"
                   key={role.value}
-                  onClick={() => !lockRole && setForm({ ...form, role: role.value, client_id: role.value === 'client' ? form.client_id : '' })}
+                  onClick={() => !lockRole && setForm({
+                    ...form,
+                    role: role.value,
+                    client_id: role.value === 'client' ? form.client_id : '',
+                    client_ids: role.value === 'team' ? (form.client_ids || []) : []
+                  })}
                   disabled={lockRole}
                   className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-lg border text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
                     form.role === role.value
@@ -490,6 +503,41 @@ function UserFormModal({
                   <option key={client.id} value={client.id}>{client.name}</option>
                 ))}
               </select>
+            </div>
+          )}
+          {form.role === 'team' && (
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <label className="text-sm font-medium text-slate-700">Clientes com acesso</label>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <button type="button" className="text-zebrazul-600 hover:underline" onClick={() => setForm({ ...form, client_ids: clients.map((client) => client.id) })}>Todos</button>
+                  <span className="text-slate-300">•</span>
+                  <button type="button" className="text-slate-500 hover:underline" onClick={() => setForm({ ...form, client_ids: [] })}>Limpar</button>
+                </div>
+              </div>
+              <div className="border border-slate-200 rounded-xl max-h-48 overflow-y-auto p-2 space-y-1">
+                {clients.length === 0 && <p className="text-xs text-slate-400 text-center py-4">Nenhum cliente cadastrado.</p>}
+                {clients.map((client) => {
+                  const selected = (form.client_ids || []).includes(client.id);
+                  return (
+                    <label key={client.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${selected ? 'bg-zebrazul-50' : 'hover:bg-slate-50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => setForm({
+                          ...form,
+                          client_ids: selected
+                            ? form.client_ids.filter((id) => id !== client.id)
+                            : [...(form.client_ids || []), client.id]
+                        })}
+                        className="rounded border-slate-300 text-zebrazul-600 focus:ring-zebrazul-500"
+                      />
+                      <span className="text-sm text-slate-700">{client.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.</p>
             </div>
           )}
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}

@@ -28,7 +28,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zebrazul-900 via-zebrazul-700 to-zebrazul-500 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Zebra Hub</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Zebrahub</h1>
           <p className="text-zebrazul-100 mt-1">Gestão de redes sociais, aprovação e relatórios</p>
         </div>
         <div className="card p-8">
