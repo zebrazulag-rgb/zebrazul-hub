@@ -4,18 +4,9 @@ require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
 const backendRoot = path.resolve(__dirname, '..');
 
-/**
- * Em desenvolvimento:
- * backendRoot = /projeto/backend
- * projectRoot = /projeto
- *
- * No Railway:
- * backendRoot = /app
- * projectRoot = /app
- *
- * Isso evita que o projectRoot vire "/" e considere
- * incorretamente que /data está "dentro do projeto".
- */
+// Em projetos locais, o backend normalmente está em /projeto/backend.
+// No Railway, o conteúdo do backend pode ser copiado diretamente para /app.
+// Evita que projectRoot vire "/" e classifique /data como parte do código.
 const projectRoot =
   path.basename(backendRoot) === 'backend'
     ? path.resolve(backendRoot, '..')
@@ -24,8 +15,7 @@ const projectRoot =
 const legacyDatabasePath = path.join(__dirname, 'zebrazul_hub.sqlite');
 const nodeEnvironment = String(process.env.NODE_ENV || 'production').toLowerCase();
 const isProduction = nodeEnvironment === 'production';
-const allowUnsafeStorage =
-  String(process.env.ALLOW_UNSAFE_STORAGE || 'false').toLowerCase() === 'true';
+const allowUnsafeStorage = String(process.env.ALLOW_UNSAFE_STORAGE || 'false').toLowerCase() === 'true';
 
 const persistentRoot =
   process.env.PERSISTENT_DATA_DIR ||
@@ -33,9 +23,7 @@ const persistentRoot =
   process.env.RAILWAY_VOLUME_MOUNT_PATH ||
   '';
 
-const persistenceConfigured = Boolean(
-  process.env.DATABASE_PATH || persistentRoot
-);
+const persistenceConfigured = Boolean(process.env.DATABASE_PATH || persistentRoot);
 
 const configuredDatabasePath = process.env.DATABASE_PATH
   ? path.resolve(process.env.DATABASE_PATH)
@@ -49,37 +37,18 @@ const backupDirectory = process.env.BACKUP_DIR
 
 function isInside(childPath, parentPath) {
   const relative = path.relative(parentPath, childPath);
-  return (
-    relative === '' ||
-    (!relative.startsWith('..') && !path.isAbsolute(relative))
-  );
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 const databaseInsideCode = isInside(configuredDatabasePath, projectRoot);
-const databaseInsideTemp = isInside(
-  configuredDatabasePath,
-  path.resolve(os.tmpdir())
-);
-
-const storageSafe =
-  persistenceConfigured &&
-  !databaseInsideCode &&
-  !databaseInsideTemp;
+const databaseInsideTemp = isInside(configuredDatabasePath, path.resolve(os.tmpdir()));
+const storageSafe = persistenceConfigured && !databaseInsideCode && !databaseInsideTemp;
 
 if (isProduction && !allowUnsafeStorage && !storageSafe) {
   const reasons = [];
-
-  if (!persistenceConfigured) {
-    reasons.push('DATABASE_PATH ou PERSISTENT_DATA_DIR nao foi configurado');
-  }
-
-  if (databaseInsideCode) {
-    reasons.push('o banco esta dentro da pasta do codigo');
-  }
-
-  if (databaseInsideTemp) {
-    reasons.push('o banco esta dentro de uma pasta temporaria');
-  }
+  if (!persistenceConfigured) reasons.push('DATABASE_PATH ou PERSISTENT_DATA_DIR nao foi configurado');
+  if (databaseInsideCode) reasons.push('o banco esta dentro da pasta do codigo');
+  if (databaseInsideTemp) reasons.push('o banco esta dentro de uma pasta temporaria');
 
   throw new Error(
     [

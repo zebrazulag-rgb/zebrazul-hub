@@ -14,9 +14,8 @@ const financeRoutes = require('./routes/finance');
 const systemRoutes = require('./routes/system');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
+const { getHealthStatus } = require('./db/health');
 
-// Dados demonstrativos nunca devem reaparecer silenciosamente em produção.
-// O seed só roda quando for habilitado explicitamente no ambiente.
 if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
   const allowDemoInProduction = String(process.env.ALLOW_DEMO_SEED_IN_PRODUCTION || 'false').toLowerCase() === 'true';
   if (String(process.env.NODE_ENV || 'production').toLowerCase() === 'production' && !allowDemoInProduction) {
@@ -33,12 +32,10 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
-app.get('/api/health', (req, res) => res.json({
-  ok: true,
-  service: 'zebrahub-backend',
-  persistent_storage: db.persistenceConfigured,
-  storage_safe: db.storageSafe,
-}));
+app.get('/api/health', (req, res) => {
+  const health = getHealthStatus();
+  res.status(health.ok ? 200 : 503).json(health);
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
@@ -50,35 +47,45 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/system', systemRoutes);
 
 app.use((err, req, res, next) => {
-  console.error(err);
+  console.error('[HTTP] Erro nao tratado:', err);
   res.status(500).json({ error: 'Erro interno do servidor' });
 });
 
-app.listen(PORT, async () => {
-  console.log(`Zebrahub backend rodando na porta ${PORT}`);
-  console.log(`Banco em uso: ${db.storagePath}`);
+async function runAutomaticBackup(label) {
+  try {
+    const backup = await createBackup(label);
+    console.log(`[BACKUP] Criado e verificado: ${backup}`);
+  } catch (error) {
+    console.error(`[BACKUP] Falha no backup ${label}:`, error.message);
+  }
+}
 
-  console.log(`Armazenamento persistente protegido: ${db.storageSafe ? 'SIM' : 'NAO'}`);
+app.listen(PORT, async () => {
+  const health = getHealthStatus();
+  console.log('==============================================');
+  console.log(`Zebrahub backend v${health.version}`);
+  console.log(`Porta: ${PORT}`);
+  console.log(`Banco: ${db.storagePath}`);
+  console.log(`Banco conectado: ${health.database.ok ? 'SIM' : 'NAO'}`);
+  console.log(`Integridade: ${health.database.integrity || 'indisponivel'}`);
+  console.log(`Volume persistente: ${health.storage.persistence_configured ? 'CONFIGURADO' : 'NAO CONFIGURADO'}`);
+  console.log(`Armazenamento seguro: ${health.storage.safe ? 'SIM' : 'NAO'}`);
+  console.log(`Diretorio de backups: ${health.backup.directory}`);
+  console.log('==============================================');
 
   if (String(process.env.AUTO_BACKUP_ON_START || 'true').toLowerCase() === 'true') {
-    try {
-      const backup = await createBackup('startup');
-      console.log(`Backup automatico criado: ${backup}`);
-    } catch (error) {
-      console.error('Nao foi possivel criar o backup automatico:', error.message);
-    }
+    await runAutomaticBackup('startup');
   }
 
   const intervalHours = Number(process.env.AUTO_BACKUP_INTERVAL_HOURS || 24);
   if (Number.isFinite(intervalHours) && intervalHours > 0) {
-    const interval = setInterval(async () => {
-      try {
-        const backup = await createBackup('scheduled');
-        console.log(`Backup agendado criado: ${backup}`);
-      } catch (error) {
-        console.error('Nao foi possivel criar o backup agendado:', error.message);
-      }
-    }, intervalHours * 60 * 60 * 1000);
+    console.log(`[BACKUP] Agendamento ativo: a cada ${intervalHours} hora(s).`);
+    const interval = setInterval(
+      () => runAutomaticBackup('scheduled'),
+      intervalHours * 60 * 60 * 1000
+    );
     interval.unref();
+  } else {
+    console.warn('[BACKUP] Backup agendado desativado por configuracao.');
   }
 });
