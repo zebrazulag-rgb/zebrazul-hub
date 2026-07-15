@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS clients (
   FOREIGN KEY (responsible_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_client_access (
+  user_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, client_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS social_accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL,
@@ -183,6 +192,9 @@ CREATE INDEX IF NOT EXISTS idx_financial_client ON financial_entries(client_id);
 CREATE INDEX IF NOT EXISTS idx_posts_client ON posts(client_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_client_date ON report_metrics(client_id, metric_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent_status ON tasks(parent_task_id, status);
+CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id, task_id);
+CREATE INDEX IF NOT EXISTS idx_user_client_access_client ON user_client_access(client_id, user_id);
 `);
 
 // Migração leve: adiciona colunas novas em bancos já existentes (não falha se já existirem)
@@ -220,9 +232,26 @@ if (!installationId) {
   db.prepare("INSERT INTO system_meta (key, value) VALUES ('installation_id', ?)").run(randomUUID());
 }
 
+// Na primeira atualização para o controle por cliente, preserva o comportamento
+// anterior: membros de equipe já existentes começam com acesso aos clientes atuais.
+// Depois disso, novos acessos passam a ser definidos explicitamente pelo administrador.
+const accessMigration = db.prepare("SELECT value FROM system_meta WHERE key = 'team_client_access_initialized'").get();
+if (!accessMigration) {
+  const initializeTeamAccess = db.transaction(() => {
+    db.prepare(`
+      INSERT OR IGNORE INTO user_client_access (user_id, client_id)
+      SELECT u.id, c.id
+      FROM users u CROSS JOIN clients c
+      WHERE u.role = 'team'
+    `).run();
+    db.prepare("INSERT INTO system_meta (key, value) VALUES ('team_client_access_initialized', '1')").run();
+  });
+  initializeTeamAccess();
+}
+
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '12', datetime('now'))
+   VALUES ('schema_version', '14', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

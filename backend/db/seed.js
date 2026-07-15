@@ -4,11 +4,6 @@ const db = require('./database');
 const hash = (pw) => bcrypt.hashSync(pw, 10);
 
 function seed() {
-  if (process.env.SEED_DEMO_DATA === 'false') {
-    console.log('SEED_DEMO_DATA=false — seed demonstrativo desativado.');
-    return;
-  }
-
   const clientCount = db.prepare('SELECT COUNT(*) as c FROM clients').get().c;
   if (clientCount > 0) {
     console.log('Banco ja possui dados. Seed ignorado.');

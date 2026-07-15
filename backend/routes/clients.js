@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db/database');
-const { authRequired, requireRole } = require('../middleware/auth');
+const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authRequired);
@@ -13,10 +13,6 @@ const SOCIAL_PLATFORMS = new Set([
   'google_business',
   'youtube',
 ]);
-
-function scopeClientId(req) {
-  return req.user.role === 'client' ? req.user.client_id : null;
-}
 
 function normalizeSocialAccounts(value) {
   if (!value) return null;
@@ -46,19 +42,33 @@ function replaceSocialAccounts(clientId, accounts) {
   }
 }
 
+function ensureClientAccess(req, res, clientId) {
+  if (!canAccessClient(req.user, clientId)) {
+    res.status(403).json({ error: 'Voce nao tem acesso a este cliente' });
+    return false;
+  }
+  return true;
+}
+
 router.get('/', (req, res) => {
-  const forcedId = scopeClientId(req);
-  const rows = forcedId
-    ? db.prepare('SELECT * FROM clients WHERE id = ?').all(forcedId)
-    : db.prepare('SELECT * FROM clients ORDER BY name').all();
+  let rows;
+  if (req.user.role === 'admin') {
+    rows = db.prepare('SELECT * FROM clients ORDER BY name').all();
+  } else if (req.user.role === 'client') {
+    rows = req.user.client_id
+      ? db.prepare('SELECT * FROM clients WHERE id = ?').all(req.user.client_id)
+      : [];
+  } else if (req.user.client_ids.length) {
+    const placeholders = req.user.client_ids.map(() => '?').join(',');
+    rows = db.prepare(`SELECT * FROM clients WHERE id IN (${placeholders}) ORDER BY name`).all(...req.user.client_ids);
+  } else {
+    rows = [];
+  }
   res.json({ clients: rows });
 });
 
 router.get('/:id', (req, res) => {
-  const forcedId = scopeClientId(req);
-  if (forcedId && Number(req.params.id) !== forcedId) {
-    return res.status(403).json({ error: 'Acesso negado' });
-  }
+  if (!ensureClientAccess(req, res, req.params.id)) return;
 
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
@@ -108,6 +118,10 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
     );
 
     replaceSocialAccounts(info.lastInsertRowid, accounts);
+    if (req.user.role === 'team') {
+      db.prepare('INSERT OR IGNORE INTO user_client_access (user_id, client_id) VALUES (?, ?)')
+        .run(req.user.id, info.lastInsertRowid);
+    }
     return info.lastInsertRowid;
   });
 
@@ -116,6 +130,8 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.put('/:id', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
 
@@ -168,6 +184,7 @@ router.delete('/:id', requireRole('admin'), (req, res) => {
 });
 
 router.post('/:id/feed-share', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
 
@@ -180,6 +197,7 @@ router.post('/:id/feed-share', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.post('/:id/accounts', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
   const { platform, handle } = req.body;
   if (!SOCIAL_PLATFORMS.has(platform)) {
     return res.status(400).json({ error: 'Plataforma invalida' });
@@ -195,6 +213,9 @@ router.post('/:id/accounts', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.delete('/accounts/:accountId', requireRole('admin', 'team'), (req, res) => {
+  const account = db.prepare('SELECT client_id FROM social_accounts WHERE id = ?').get(req.params.accountId);
+  if (!account) return res.status(404).json({ error: 'Conta social nao encontrada' });
+  if (!ensureClientAccess(req, res, account.client_id)) return;
   db.prepare('DELETE FROM social_accounts WHERE id = ?').run(req.params.accountId);
   res.json({ ok: true });
 });

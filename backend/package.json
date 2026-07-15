@@ -1,15 +1,16 @@
 {
   "name": "zebrazul-hub-backend",
-  "version": "1.0.0",
-  "description": "Backend do Zebrazul Hub - gestao de redes sociais, aprovacao de conteudo e relatorios",
+  "version": "1.2.0",
+  "description": "Backend do Zebrahub - gestao de redes sociais, aprovacao de conteudo e relatorios",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "seed": "node db/seed.js",
-    "backup": "node db/backup.js",
-    "restore": "node db/restore.js"
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
+    "check:storage": "node scripts/check-storage.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
