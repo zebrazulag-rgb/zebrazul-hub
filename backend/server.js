@@ -35,7 +35,7 @@ app.use(express.json({ limit: '15mb' }));
 
 app.get('/api/health', (req, res) => res.json({
   ok: true,
-  service: 'zebrahub-backend',
+  service: 'zebrazul-hub-backend',
   persistent_storage: db.persistenceConfigured,
   storage_safe: db.storageSafe,
 }));
@@ -55,7 +55,7 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Zebrahub backend rodando na porta ${PORT}`);
+  console.log(`Zebrazul Hub backend rodando na porta ${PORT}`);
   console.log(`Banco em uso: ${db.storagePath}`);
 
   console.log(`Armazenamento persistente protegido: ${db.storageSafe ? 'SIM' : 'NAO'}`);

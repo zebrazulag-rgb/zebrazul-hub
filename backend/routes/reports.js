@@ -1,22 +1,15 @@
 const express = require('express');
 const db = require('../db/database');
-const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
+const { authRequired, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authRequired);
 
-function ensureClientAccess(req, res, clientId) {
-  if (!canAccessClient(req.user, clientId)) {
-    res.status(403).json({ error: 'Voce nao tem acesso a este cliente' });
-    return false;
-  }
-  return true;
-}
-
 router.get('/:clientId', (req, res) => {
   const clientId = Number(req.params.clientId);
-  if (!ensureClientAccess(req, res, clientId)) return;
-
+  if (req.user.role === 'client' && req.user.client_id !== clientId) {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
   const { from, to } = req.query;
   let query = 'SELECT * FROM report_metrics WHERE client_id = ?';
   const params = [clientId];
@@ -37,8 +30,6 @@ router.get('/:clientId', (req, res) => {
 
 router.post('/:clientId', requireRole('admin', 'team'), (req, res) => {
   const clientId = Number(req.params.clientId);
-  if (!ensureClientAccess(req, res, clientId)) return;
-
   const { platform, metric_date, reach, impressions, engagement, followers_delta, clicks, leads, spend, conversions } = req.body;
   if (!platform || !metric_date) return res.status(400).json({ error: 'platform e metric_date sao obrigatorios' });
 
@@ -54,9 +45,6 @@ router.post('/:clientId', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.delete('/entry/:id', requireRole('admin', 'team'), (req, res) => {
-  const metric = db.prepare('SELECT client_id FROM report_metrics WHERE id = ?').get(req.params.id);
-  if (!metric) return res.status(404).json({ error: 'Metrica nao encontrada' });
-  if (!ensureClientAccess(req, res, metric.client_id)) return;
   db.prepare('DELETE FROM report_metrics WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
