@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS posts (
   media_url TEXT,
   media_data TEXT,
   media_mime TEXT,
+  media_gallery TEXT,
   scheduled_at TEXT,
   status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_approval','approved','rejected','scheduled','published')),
   client_feedback TEXT,
@@ -259,6 +260,7 @@ tryAddColumn('tasks', 'caption', 'TEXT');
 tryAddColumn('tasks', 'feed_post_id', 'INTEGER REFERENCES posts(id)');
 tryAddColumn('tasks', 'task_type', "TEXT DEFAULT 'basic'");
 tryAddColumn('tasks', 'video_link', 'TEXT');
+tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
 

@@ -352,14 +352,18 @@ router.post('/:id/add-to-feed', requireRole('admin', 'team'), (req, res) => {
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
   if (!task.client_id) return res.status(400).json({ error: 'A tarefa precisa estar vinculada a um cliente' });
-  if (!task.attachment_data) return res.status(400).json({ error: 'Anexe ao menos uma imagem antes de enviar para o feed' });
+  const taskGallery = parseGallery(task.media_gallery);
+  if (!task.attachment_data && taskGallery.length === 0) return res.status(400).json({ error: 'Anexe ao menos uma imagem antes de enviar para o feed' });
 
   const info = db.prepare(`
-    INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_data, media_mime, scheduled_at, status)
-    VALUES (?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, 'draft')
+    INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_data, media_mime, media_gallery, scheduled_at, status)
+    VALUES (?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft')
   `).run(
     task.client_id, req.user.id, task.title, task.caption || '', task.content_type || 'feed',
-    task.attachment_data, task.attachment_mime, task.due_date || null
+    task.attachment_data || taskGallery[0]?.data || null,
+    task.attachment_mime || taskGallery[0]?.mime || null,
+    taskGallery.length ? JSON.stringify(taskGallery) : null,
+    task.due_date || null
   );
 
   db.prepare('UPDATE tasks SET feed_post_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(info.lastInsertRowid, task.id);

@@ -3,10 +3,25 @@ const db = require('../db/database');
 
 const router = express.Router();
 
+function parseGallery(value, fallbackData = null, fallbackMime = null) {
+  if (value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return fallbackData ? [{ data: fallbackData, mime: fallbackMime || 'image/jpeg', filename: '' }] : [];
+}
+
+function normalizePost(post) {
+  if (!post) return post;
+  return { ...post, media_gallery: parseGallery(post.media_gallery, post.media_data, post.media_mime) };
+}
+
 // Consulta um post pelo token de compartilhamento - sem autenticação
 router.get('/posts/:token', (req, res) => {
   const post = db.prepare(`
-    SELECT p.id, p.title, p.caption, p.content_type, p.platforms, p.media_url, p.media_data, p.media_mime,
+    SELECT p.id, p.title, p.caption, p.content_type, p.platforms, p.media_url, p.media_data, p.media_mime, p.media_gallery,
            p.scheduled_at, p.status, p.client_feedback, c.name as client_name, c.logo_color as client_color
     FROM posts p
     JOIN clients c ON c.id = p.client_id
@@ -21,7 +36,7 @@ router.get('/posts/:token', (req, res) => {
     WHERE pc.post_id = ? ORDER BY pc.created_at ASC
   `).all(post.id);
 
-  res.json({ post, comments });
+  res.json({ post: normalizePost(post), comments });
 });
 
 // Cliente aprova ou reprova pelo link público, com feedback opcional
@@ -65,13 +80,13 @@ router.get('/feed/:token', (req, res) => {
   if (!client) return res.status(404).json({ error: 'Link invalido ou expirado' });
 
   const posts = db.prepare(`
-    SELECT id, title, caption, content_type, media_data, scheduled_at, status
+    SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status
     FROM posts
     WHERE client_id = ? AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','scheduled','draft')
     ORDER BY scheduled_at ASC
   `).all(client.id);
 
-  res.json({ client, posts });
+  res.json({ client, posts: posts.map(normalizePost) });
 });
 
 module.exports = router;

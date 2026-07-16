@@ -6,6 +6,30 @@ const { authRequired, requireRole, canAccessClient } = require('../middleware/au
 const router = express.Router();
 router.use(authRequired);
 
+function parseGallery(value, fallbackData = null, fallbackMime = null) {
+  if (Array.isArray(value)) return value;
+  if (value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return fallbackData ? [{ data: fallbackData, mime: fallbackMime || 'image/jpeg', filename: '' }] : [];
+}
+
+function serializeGallery(value, fallbackData = null, fallbackMime = null) {
+  const gallery = parseGallery(value, fallbackData, fallbackMime);
+  return gallery.length ? JSON.stringify(gallery) : null;
+}
+
+function normalizePost(post) {
+  if (!post) return post;
+  return {
+    ...post,
+    media_gallery: parseGallery(post.media_gallery, post.media_data, post.media_mime),
+  };
+}
+
 function ensureClientAccess(req, res, clientId) {
   if (!canAccessClient(req.user, clientId)) {
     res.status(403).json({ error: 'Voce nao tem acesso a este cliente' });
@@ -47,7 +71,7 @@ router.get('/', (req, res) => {
   }
 
   query += ' ORDER BY COALESCE(scheduled_at, created_at) ASC';
-  const posts = db.prepare(query).all(...params);
+  const posts = db.prepare(query).all(...params).map(normalizePost);
   res.json({ posts });
 });
 
@@ -59,20 +83,23 @@ router.get('/:id', (req, res) => {
     `SELECT pc.*, u.name as user_name, u.role as user_role FROM post_comments pc
      JOIN users u ON u.id = pc.user_id WHERE pc.post_id = ? ORDER BY pc.created_at ASC`
   ).all(req.params.id);
-  res.json({ post, comments });
+  res.json({ post: normalizePost(post), comments });
 });
 
 router.post('/', requireRole('admin', 'team'), (req, res) => {
-  const { client_id, title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status } = req.body;
+  const { client_id, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status } = req.body;
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title sao obrigatorios' });
   if (!ensureClientAccess(req, res, client_id)) return;
 
   const info = db.prepare(
-    `INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, scheduled_at, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     client_id, req.user.id, title, caption || '', content_type || 'feed',
-    JSON.stringify(platforms || []), media_url || null, media_data || null, media_mime || null,
+    JSON.stringify(platforms || []), media_url || null,
+    media_data || media_gallery?.[0]?.data || null,
+    media_mime || media_gallery?.[0]?.mime || null,
+    serializeGallery(media_gallery, media_data, media_mime),
     scheduled_at || null, status || 'draft'
   );
   res.status(201).json({ id: info.lastInsertRowid });
@@ -131,6 +158,7 @@ router.put('/:id', (req, res) => {
     'media_url',
     'media_data',
     'media_mime',
+    'media_gallery',
     'scheduled_at',
     'status',
     'client_feedback',
@@ -143,10 +171,25 @@ router.put('/:id', (req, res) => {
     updates.push(`${field} = ?`);
     if (field === 'platforms') {
       values.push(JSON.stringify(req.body.platforms || []));
+    } else if (field === 'media_gallery') {
+      values.push(serializeGallery(req.body.media_gallery, req.body.media_data, req.body.media_mime));
     } else if (field === 'title') {
       values.push(String(req.body.title).trim());
     } else {
       values.push(req.body[field] === '' ? null : req.body[field]);
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'media_gallery')) {
+    const gallery = parseGallery(req.body.media_gallery);
+    const first = gallery[0] || null;
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'media_data')) {
+      updates.push('media_data = ?');
+      values.push(first?.data || null);
+    }
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'media_mime')) {
+      updates.push('media_mime = ?');
+      values.push(first?.mime || null);
     }
   }
 
