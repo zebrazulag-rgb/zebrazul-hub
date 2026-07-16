@@ -291,7 +291,11 @@ export default function Tasks() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Tarefas</h1>
-          <p className="text-slate-500 mt-1">Organize o trabalho da equipe com prazos e responsáveis.</p>
+          <p className="text-slate-500 mt-1">
+            {user?.role === 'client'
+              ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe o andamento.'
+              : 'Organize o trabalho da equipe com prazos e responsáveis.'}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {user?.role !== 'client' && (
@@ -524,7 +528,7 @@ export default function Tasks() {
               )}
               {user?.role !== 'client' && selectedTask.task_type === 'post' && selectedTask.client_id && (
                 selectedTask.feed_post_id ? (
-                  <Link to="/feed" className="flex-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
+                  <Link to={`/feed?client_id=${selectedTask.client_id}`} className="flex-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
                     <ExternalLink size={14} /> Ver no Feed
                   </Link>
                 ) : (
@@ -571,8 +575,12 @@ export default function Tasks() {
                     </div>
                     {(['admin', 'team'].includes(user?.role) || (user?.role === 'client' && Number(s.created_by) === Number(user.id) && s.status === 'pending')) && (
                       <>
-                        <button onClick={() => editSubtask(s.id)} className="text-slate-300 hover:text-zebrazul-600 shrink-0" title="Editar subtarefa">
-                          <Pencil size={14} />
+                        <button
+                          onClick={() => editSubtask(s.id)}
+                          className="text-xs text-zebrazul-600 hover:bg-zebrazul-50 rounded-md px-2 py-1 flex items-center gap-1 shrink-0"
+                          title="Editar subtarefa"
+                        >
+                          <Pencil size={13} /> Editar
                         </button>
                         <button onClick={() => deleteSubtask(s.id)} className="text-slate-300 hover:text-red-500 shrink-0">
                           <Trash2 size={14} />

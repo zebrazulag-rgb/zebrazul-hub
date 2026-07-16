@@ -179,7 +179,14 @@ export default function Approval() {
               className="w-full flex-1 flex items-center gap-3 text-left min-w-0 overflow-hidden"
             >
               {post.media_data && (
-                <img src={post.media_data} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                <div className="relative shrink-0">
+                  <img src={post.media_data} alt="" className="w-12 h-14 rounded-lg object-cover" />
+                  {post.media_gallery?.length > 1 && (
+                    <span className="absolute -right-1.5 -top-1.5 min-w-5 h-5 px-1 rounded-full bg-zebrazul-600 text-white text-[10px] font-bold flex items-center justify-center">
+                      {post.media_gallery.length}
+                    </span>
+                  )}
+                </div>
               )}
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex items-center gap-2 mb-1 min-w-0 flex-wrap">

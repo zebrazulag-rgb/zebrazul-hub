@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, ImagePlus } from 'lucide-react';
+import { X, ImagePlus, Trash2 } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
 
@@ -33,6 +33,17 @@ function parsePlatforms(value) {
   }
 }
 
+function parseGallery(post) {
+  if (Array.isArray(post?.media_gallery)) return post.media_gallery;
+  try {
+    const parsed = JSON.parse(post?.media_gallery || '[]');
+    if (Array.isArray(parsed) && parsed.length) return parsed;
+  } catch {}
+  return post?.media_data
+    ? [{ data: post.media_data, mime: post.media_mime || 'image/jpeg', filename: '' }]
+    : [];
+}
+
 function toLocalDateTimeInput(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -51,8 +62,7 @@ function emptyForm(defaultClientId) {
     platforms: ['instagram'],
     scheduled_at: '',
     status: 'draft',
-    media_data: '',
-    media_mime: '',
+    media_gallery: [],
   };
 }
 
@@ -66,8 +76,7 @@ function postToForm(post, defaultClientId) {
     platforms: parsePlatforms(post.platforms),
     scheduled_at: toLocalDateTimeInput(post.scheduled_at),
     status: post.status || 'draft',
-    media_data: post.media_data || '',
-    media_mime: post.media_mime || '',
+    media_gallery: parseGallery(post),
   };
 }
 
@@ -91,14 +100,35 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   }
 
   async function handleFileChange(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.size > 8 * 1024 * 1024) {
-      setError('Imagem muito grande — envie um arquivo de até 8MB.');
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const tooLarge = files.find((file) => file.size > 8 * 1024 * 1024);
+    if (tooLarge) {
+      setError(`A imagem “${tooLarge.name}” ultrapassa 8MB.`);
+      event.target.value = '';
       return;
     }
-    const dataUrl = await fileToBase64(file);
-    setForm((current) => ({ ...current, media_data: dataUrl, media_mime: file.type }));
+
+    const converted = await Promise.all(files.map(async (file) => ({
+      data: await fileToBase64(file),
+      mime: file.type,
+      filename: file.name,
+    })));
+
+    setForm((current) => ({
+      ...current,
+      media_gallery: [...current.media_gallery, ...converted],
+    }));
+    setError('');
+    event.target.value = '';
+  }
+
+  function removeMedia(index) {
+    setForm((current) => ({
+      ...current,
+      media_gallery: current.media_gallery.filter((_, itemIndex) => itemIndex !== index),
+    }));
   }
 
   async function handleSubmit(event) {
@@ -112,10 +142,13 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
 
     setSaving(true);
     try {
+      const firstMedia = form.media_gallery[0] || null;
       const payload = {
         ...form,
         client_id: Number(form.client_id),
         title: form.title.trim(),
+        media_data: firstMedia?.data || null,
+        media_mime: firstMedia?.mime || null,
         scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
       };
 
@@ -136,7 +169,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0">
+      <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10">
           <div>
             <h2 className="font-semibold text-slate-800">
@@ -176,12 +209,33 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Imagem do post</label>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Imagens do conteúdo</label>
               <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-4 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
                 <ImagePlus size={18} />
-                {form.media_data ? 'Trocar imagem' : 'Clique para anexar uma imagem'}
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                Adicionar uma ou mais imagens
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
               </label>
+              {form.media_gallery.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
+                  {form.media_gallery.map((item, index) => (
+                    <div key={`${item.filename || 'imagem'}-${index}`} className="relative aspect-[4/5] rounded-lg overflow-hidden bg-slate-100 group">
+                      <img src={item.data} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeMedia(index)}
+                        className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-white/95 text-red-600 shadow flex items-center justify-center opacity-90 hover:opacity-100"
+                        title="Remover imagem"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white rounded-full px-2 py-0.5 text-[10px]">
+                        {index + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-slate-400 mt-2">A primeira imagem será usada como capa na grade.</p>
             </div>
 
             <div>
@@ -268,7 +322,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
             <InstagramPreview
               clientName={selectedClient?.name}
               clientColor={selectedClient?.logo_color}
-              imageSrc={form.media_data}
+              images={form.media_gallery}
               caption={form.caption}
               contentType={form.content_type}
             />

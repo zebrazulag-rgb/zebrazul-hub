@@ -10,11 +10,12 @@ import CalendarView from './CalendarView.jsx';
 
 export default function Feed() {
   const { user } = useAuth();
-  const { selectedClient } = useClientFilter();
+  const { selectedClient, setSelectedClient } = useClientFilter();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeView = searchParams.get('view') === 'calendar' ? 'calendar' : 'grid';
   const [clients, setClients] = useState([]);
-  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
+  const requestedClientId = searchParams.get('client_id');
+  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (requestedClientId || selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
   const [openPost, setOpenPost] = useState(null);
   const [editingBio, setEditingBio] = useState(false);
@@ -25,13 +26,19 @@ export default function Feed() {
   useEffect(() => {
     if (user?.role !== 'client') {
       api.get('/clients').then((res) => {
-        setClients(res.data.clients);
-        setClientId((current) => current || selectedClient?.id || res.data.clients[0]?.id || '');
+        const availableClients = res.data.clients || [];
+        setClients(availableClients);
+        const requested = requestedClientId
+          ? availableClients.find((client) => String(client.id) === String(requestedClientId))
+          : null;
+        const nextClient = requested || selectedClient || availableClients[0] || null;
+        setClientId((current) => requested?.id || current || nextClient?.id || '');
+        if (requested) setSelectedClient(requested);
       });
     } else if (user?.client_id) {
       api.get(`/clients/${user.client_id}`).then((res) => setClients([res.data.client]));
     }
-  }, [user, selectedClient]);
+  }, [user, selectedClient, requestedClientId, setSelectedClient]);
 
   useEffect(() => {
     if (user?.role !== 'client' && selectedClient) setClientId(selectedClient.id);
@@ -55,7 +62,7 @@ export default function Feed() {
 
   function switchView(view) {
     setOpenPost(null);
-    setSearchParams(view === 'calendar' ? { view: 'calendar' } : {}, { replace: true });
+    setSearchParams(view === 'calendar' ? { view: 'calendar', client_id: String(clientId || '') } : { client_id: String(clientId || '') }, { replace: true });
   }
 
   function startEditBio() {
@@ -97,7 +104,19 @@ export default function Feed() {
         </div>
         {user?.role !== 'client' && clients.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
-            <select className="input-field w-56" value={clientId} onChange={(event) => setClientId(event.target.value)}>
+            <select
+              className="input-field w-56"
+              value={clientId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                setClientId(nextId);
+                const nextClient = clients.find((client) => String(client.id) === String(nextId));
+                if (nextClient) setSelectedClient(nextClient);
+                setSearchParams(activeView === 'calendar'
+                  ? { view: 'calendar', client_id: nextId }
+                  : { client_id: nextId }, { replace: true });
+              }}
+            >
               {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
             </select>
             {activeView === 'grid' && (
@@ -209,7 +228,7 @@ export default function Feed() {
                     <button
                       key={post.id}
                       onClick={() => setOpenPost(post)}
-                      className="relative aspect-square bg-white overflow-hidden group"
+                      className="relative aspect-[4/5] bg-white overflow-hidden group"
                     >
                       {post.media_data ? (
                         <img src={post.media_data} alt="" className="w-full h-full object-cover" />
@@ -247,6 +266,7 @@ export default function Feed() {
               clientName={currentClient?.name}
               clientColor={currentClient?.logo_color}
               imageSrc={openPost.media_data}
+              images={openPost.media_gallery}
               caption={openPost.caption}
               contentType={openPost.content_type}
             />

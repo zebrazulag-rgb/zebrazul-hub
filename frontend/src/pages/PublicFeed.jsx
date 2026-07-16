@@ -69,7 +69,7 @@ export default function PublicFeed() {
           ) : (
             <div className="grid grid-cols-3 gap-[2px] bg-slate-100">
               {posts.map((p) => (
-                <button key={p.id} onClick={() => setOpenPost(p)} className="relative aspect-square bg-white overflow-hidden">
+                <button key={p.id} onClick={() => setOpenPost(p)} className="relative aspect-[4/5] bg-white overflow-hidden">
                   {p.media_data ? (
                     <img src={p.media_data} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -95,6 +95,7 @@ export default function PublicFeed() {
               clientName={client.name}
               clientColor={client.logo_color}
               imageSrc={openPost.media_data}
+              images={openPost.media_gallery}
               caption={openPost.caption}
               contentType={openPost.content_type}
             />
