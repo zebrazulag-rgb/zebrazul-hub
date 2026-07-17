@@ -7,13 +7,40 @@ const router = express.Router();
 router.use(authRequired);
 
 function parseGallery(value, fallbackData = null, fallbackMime = null) {
-  if (Array.isArray(value)) return value;
-  if (value) {
+  let source = value;
+
+  for (let attempt = 0; attempt < 3 && typeof source === 'string'; attempt += 1) {
     try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {}
+      source = JSON.parse(source);
+    } catch {
+      break;
+    }
   }
+
+  if (source && !Array.isArray(source) && typeof source === 'object') {
+    source = source.media_gallery || source.gallery || source.images || source.items || source.files || [];
+  }
+
+  const gallery = Array.isArray(source)
+    ? source
+        .map((item) => {
+          if (!item) return null;
+          if (typeof item === 'string') return { data: item, mime: 'image/jpeg', filename: '' };
+          if (typeof item !== 'object') return null;
+
+          const data = item.data || item.url || item.src || item.preview || item.dataUrl || item.media_data || item.file_data;
+          if (!data) return null;
+          return {
+            ...item,
+            data,
+            mime: item.mime || item.type || item.media_mime || 'image/jpeg',
+            filename: item.filename || item.name || '',
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  if (gallery.length) return gallery;
   return fallbackData ? [{ data: fallbackData, mime: fallbackMime || 'image/jpeg', filename: '' }] : [];
 }
 
@@ -84,6 +111,20 @@ router.get('/:id', (req, res) => {
      JOIN users u ON u.id = pc.user_id WHERE pc.post_id = ? ORDER BY pc.created_at ASC`
   ).all(req.params.id);
   res.json({ post: normalizePost(post), comments });
+});
+
+
+// Retorna explicitamente todos os slides do post. Esse endpoint evita que a
+// prévia do Feed dependa apenas da imagem de capa quando o conteúdo é carrossel.
+router.get('/:id/gallery', (req, res) => {
+  const post = db.prepare(
+    'SELECT id, client_id, media_data, media_mime, media_gallery FROM posts WHERE id = ?'
+  ).get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
+
+  const gallery = parseGallery(post.media_gallery, post.media_data, post.media_mime);
+  res.json({ gallery, count: gallery.length });
 });
 
 router.post('/', requireRole('admin', 'team'), (req, res) => {
