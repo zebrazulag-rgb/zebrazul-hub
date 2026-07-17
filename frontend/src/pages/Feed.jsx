@@ -98,6 +98,15 @@ export default function Feed() {
     }
   }
 
+  async function openFeedPost(post) {
+    try {
+      const { data } = await api.get(`/posts/${post.id}`);
+      setOpenPost(data.post);
+    } catch {
+      setOpenPost(post);
+    }
+  }
+
   async function shareFeed() {
     const { data } = await api.post(`/clients/${clientId}/feed-share`);
     const url = `${window.location.origin}/grade/${data.token}`;
@@ -176,7 +185,7 @@ export default function Feed() {
           <InstagramProfileMockup
             client={currentClient}
             posts={posts}
-            onPostClick={setOpenPost}
+            onPostClick={openFeedPost}
             editable={user?.role !== 'client'}
             onEdit={startEditProfile}
           />

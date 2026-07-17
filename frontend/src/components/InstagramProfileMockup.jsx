@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, Grid3x3, Link2, MoreVertical, SquareUserRound, UserPlus } from 'lucide-react';
+import { ArrowLeft, Bell, Grid3x3, Images, Link2, MoreVertical, SquareUserRound, UserPlus } from 'lucide-react';
 
 function formatMetric(value) {
   const number = Number(value || 0);
@@ -76,11 +76,19 @@ export default function InstagramProfileMockup({ client, posts, onPostClick, edi
         <p className="px-5 py-16 text-center text-sm text-slate-400">Nenhum post agendado ainda.</p>
       ) : (
         <div className="grid grid-cols-3 gap-[3px] bg-white p-[3px]">
-          {posts.map((post) => (
-            <button key={post.id} onClick={() => onPostClick?.(post)} className="relative aspect-[4/5] overflow-hidden bg-slate-100">
-              {post.media_data ? <img src={post.media_data} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-slate-100" />}
-            </button>
-          ))}
+          {posts.map((post) => {
+            const galleryCount = Array.isArray(post.media_gallery) ? post.media_gallery.length : 0;
+            return (
+              <button key={post.id} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100">
+                {post.media_data ? <img src={post.media_data} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /> : <div className="h-full w-full bg-slate-100" />}
+                {galleryCount > 1 && (
+                  <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white shadow">
+                    <Images size={13} /> {galleryCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

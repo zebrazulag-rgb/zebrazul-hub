@@ -1,5 +1,40 @@
-import { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Heart,
+  MessageCircle,
+  Send,
+  Bookmark,
+  MoreHorizontal,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
+
+function normalizeGallery(images, imageSrc) {
+  let source = images;
+
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = [];
+    }
+  }
+
+  const normalized = Array.isArray(source)
+    ? source
+        .map((item) => {
+          if (!item) return null;
+          if (typeof item === 'string') return { data: item };
+          if (typeof item === 'object' && item.data) return item;
+          if (typeof item === 'object' && item.url) return { ...item, data: item.url };
+          return null;
+        })
+        .filter(Boolean)
+    : [];
+
+  if (!normalized.length && imageSrc) normalized.push({ data: imageSrc });
+  return normalized;
+}
 
 export default function InstagramPreview({
   clientName = 'sua_marca',
@@ -7,20 +42,61 @@ export default function InstagramPreview({
   imageSrc,
   images = [],
   caption,
-  contentType = 'feed'
+  contentType = 'feed',
 }) {
   const initial = clientName?.[0]?.toUpperCase() || 'Z';
-  const gallery = images?.length ? images : (imageSrc ? [{ data: imageSrc }] : []);
+  const gallery = useMemo(() => normalizeGallery(images, imageSrc), [images, imageSrc]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const pointerStartX = useRef(null);
 
   useEffect(() => {
-    if (activeIndex >= gallery.length) setActiveIndex(0);
-  }, [gallery.length, activeIndex]);
+    setActiveIndex(0);
+  }, [gallery.length, imageSrc]);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (gallery.length <= 1) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setActiveIndex((current) => Math.max(0, current - 1));
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setActiveIndex((current) => Math.min(gallery.length - 1, current + 1));
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [gallery.length]);
 
   const activeImage = gallery[activeIndex]?.data;
+  const hasPrevious = activeIndex > 0;
+  const hasNext = activeIndex < gallery.length - 1;
+
+  function goPrevious() {
+    if (hasPrevious) setActiveIndex((current) => current - 1);
+  }
+
+  function goNext() {
+    if (hasNext) setActiveIndex((current) => current + 1);
+  }
+
+  function handlePointerDown(event) {
+    pointerStartX.current = event.clientX;
+  }
+
+  function handlePointerUp(event) {
+    if (pointerStartX.current === null || gallery.length <= 1) return;
+    const distance = event.clientX - pointerStartX.current;
+    pointerStartX.current = null;
+    if (Math.abs(distance) < 45) return;
+    if (distance < 0) goNext();
+    else goPrevious();
+  }
 
   return (
-    <div className="w-full max-w-[380px] min-w-0 mx-auto bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+    <div className="w-full max-w-[420px] min-w-0 mx-auto bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
       <div className="flex items-center justify-between px-3 py-2.5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div
@@ -39,9 +115,14 @@ export default function InstagramPreview({
         <MoreHorizontal size={18} className="text-slate-400" />
       </div>
 
-      <div className="relative w-full aspect-[4/5] bg-slate-100 flex items-center justify-center overflow-hidden">
+      <div
+        className="relative w-full aspect-[4/5] bg-slate-100 flex items-center justify-center overflow-hidden touch-pan-y select-none"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => { pointerStartX.current = null; }}
+      >
         {activeImage ? (
-          <img src={activeImage} alt="Preview do post" className="w-full h-full object-cover" />
+          <img src={activeImage} alt={`Slide ${activeIndex + 1} do post`} className="w-full h-full object-contain bg-black" draggable="false" />
         ) : (
           <div className="text-center px-6">
             <p className="text-sm text-slate-400">Nenhuma imagem anexada ainda</p>
@@ -51,23 +132,27 @@ export default function InstagramPreview({
 
         {gallery.length > 1 && (
           <>
-            <button
-              type="button"
-              onClick={() => setActiveIndex((current) => (current - 1 + gallery.length) % gallery.length)}
-              className="absolute left-2 w-8 h-8 rounded-full bg-black/45 text-white flex items-center justify-center"
-              aria-label="Imagem anterior"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveIndex((current) => (current + 1) % gallery.length)}
-              className="absolute right-2 w-8 h-8 rounded-full bg-black/45 text-white flex items-center justify-center"
-              aria-label="Próxima imagem"
-            >
-              <ChevronRight size={18} />
-            </button>
-            <span className="absolute top-2 right-2 bg-black/60 text-white rounded-full px-2 py-1 text-[10px]">
+            {hasPrevious && (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); goPrevious(); }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/55 text-white flex items-center justify-center shadow-lg hover:bg-black/70 transition-colors"
+                aria-label="Slide anterior"
+              >
+                <ChevronLeft size={24} />
+              </button>
+            )}
+            {hasNext && (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); goNext(); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/55 text-white flex items-center justify-center shadow-lg hover:bg-black/70 transition-colors"
+                aria-label="Próximo slide"
+              >
+                <ChevronRight size={24} />
+              </button>
+            )}
+            <span className="absolute top-3 right-3 bg-black/65 text-white rounded-full px-2.5 py-1 text-[11px] font-semibold">
               {activeIndex + 1}/{gallery.length}
             </span>
           </>
@@ -75,14 +160,17 @@ export default function InstagramPreview({
       </div>
 
       {gallery.length > 1 && (
-        <div className="flex justify-center gap-1.5 py-2">
+        <div className="flex justify-center gap-1.5 py-2.5" aria-label="Slides do carrossel">
           {gallery.map((_, index) => (
             <button
               type="button"
               key={index}
               onClick={() => setActiveIndex(index)}
-              className={`w-1.5 h-1.5 rounded-full ${index === activeIndex ? 'bg-zebrazul-600' : 'bg-slate-300'}`}
-              aria-label={`Ver imagem ${index + 1}`}
+              className={`rounded-full transition-all ${
+                index === activeIndex ? 'w-2 h-2 bg-zebrazul-600' : 'w-1.5 h-1.5 bg-slate-300 hover:bg-slate-400'
+              }`}
+              aria-label={`Ver slide ${index + 1}`}
+              aria-current={index === activeIndex ? 'true' : undefined}
             />
           ))}
         </div>
