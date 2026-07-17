@@ -12,12 +12,16 @@ import {
 function normalizeGallery(images, imageSrc) {
   let source = images;
 
-  if (typeof source === 'string') {
+  for (let attempt = 0; attempt < 3 && typeof source === 'string'; attempt += 1) {
     try {
       source = JSON.parse(source);
     } catch {
-      source = [];
+      break;
     }
+  }
+
+  if (source && !Array.isArray(source) && typeof source === 'object') {
+    source = source.media_gallery || source.gallery || source.images || source.items || source.files || [];
   }
 
   const normalized = Array.isArray(source)
@@ -25,9 +29,10 @@ function normalizeGallery(images, imageSrc) {
         .map((item) => {
           if (!item) return null;
           if (typeof item === 'string') return { data: item };
-          if (typeof item === 'object' && item.data) return item;
-          if (typeof item === 'object' && item.url) return { ...item, data: item.url };
-          return null;
+          if (typeof item !== 'object') return null;
+
+          const data = item.data || item.url || item.src || item.preview || item.dataUrl || item.media_data || item.file_data;
+          return data ? { ...item, data } : null;
         })
         .filter(Boolean)
     : [];

@@ -98,12 +98,83 @@ export default function Feed() {
     }
   }
 
+  function normalizeGalleryValue(value) {
+    let source = value;
+
+    for (let attempt = 0; attempt < 3 && typeof source === 'string'; attempt += 1) {
+      try {
+        source = JSON.parse(source);
+      } catch {
+        break;
+      }
+    }
+
+    if (source && !Array.isArray(source) && typeof source === 'object') {
+      source = source.media_gallery || source.gallery || source.images || source.items || source.files || [];
+    }
+
+    if (!Array.isArray(source)) return [];
+
+    return source
+      .map((item) => {
+        if (!item) return null;
+        if (typeof item === 'string') return { data: item };
+        if (typeof item !== 'object') return null;
+
+        const data = item.data || item.url || item.src || item.preview || item.dataUrl || item.media_data || item.file_data;
+        return data ? { ...item, data } : null;
+      })
+      .filter(Boolean);
+  }
+
+  function galleryFromPost(post) {
+    if (!post) return [];
+    const candidates = [
+      post.media_gallery,
+      post.gallery,
+      post.images,
+      post.media_files,
+      post.attachments,
+    ].map(normalizeGalleryValue);
+
+    const richest = candidates.reduce((best, current) => (
+      current.length > best.length ? current : best
+    ), []);
+
+    if (richest.length) return richest;
+    return post.media_data ? [{ data: post.media_data, mime: post.media_mime || 'image/jpeg' }] : [];
+  }
+
   async function openFeedPost(post) {
+    // Abre imediatamente com os dados já disponíveis na grade.
+    const listGallery = galleryFromPost(post);
+    setOpenPost({ ...post, media_gallery: listGallery });
+
     try {
-      const { data } = await api.get(`/posts/${post.id}`);
-      setOpenPost(data.post);
+      const [detailResult, galleryResult] = await Promise.allSettled([
+        api.get(`/posts/${post.id}`),
+        api.get(`/posts/${post.id}/gallery`),
+      ]);
+
+      const detailedPost = detailResult.status === 'fulfilled'
+        ? detailResult.value.data.post
+        : null;
+      const endpointGallery = galleryResult.status === 'fulfilled'
+        ? normalizeGalleryValue(galleryResult.value.data.gallery)
+        : [];
+      const detailedGallery = galleryFromPost(detailedPost);
+
+      const richestGallery = [listGallery, detailedGallery, endpointGallery]
+        .reduce((best, current) => (current.length > best.length ? current : best), []);
+
+      setOpenPost({
+        ...post,
+        ...(detailedPost || {}),
+        media_gallery: richestGallery,
+        media_data: richestGallery[0]?.data || detailedPost?.media_data || post.media_data || null,
+      });
     } catch {
-      setOpenPost(post);
+      // Mantém a prévia aberta com os dados da listagem.
     }
   }
 
