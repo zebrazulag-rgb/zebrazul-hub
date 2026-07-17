@@ -151,6 +151,15 @@ router.put('/:id', requireRole('admin', 'team'), (req, res) => {
     'avatar_data',
     'avatar_mime',
     'bio',
+    'instagram_username',
+    'instagram_display_name',
+    'instagram_posts_count',
+    'instagram_followers_count',
+    'instagram_following_count',
+    'instagram_link',
+    'instagram_primary_action',
+    'instagram_secondary_action',
+    'instagram_tertiary_action',
   ];
 
   const updates = [];

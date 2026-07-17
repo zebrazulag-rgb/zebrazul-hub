@@ -76,7 +76,7 @@ router.post('/posts/:token/comments', (req, res) => {
 
 // Consulta o feed de um cliente pelo token publico - sem autenticacao
 router.get('/feed/:token', (req, res) => {
-  const client = db.prepare('SELECT id, name, logo_color, avatar_data, bio FROM clients WHERE feed_share_token = ?').get(req.params.token);
+  const client = db.prepare('SELECT id, name, logo_color, avatar_data, bio, instagram_username, instagram_display_name, instagram_posts_count, instagram_followers_count, instagram_following_count, instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action FROM clients WHERE feed_share_token = ?').get(req.params.token);
   if (!client) return res.status(404).json({ error: 'Link invalido ou expirado' });
 
   const posts = db.prepare(`
