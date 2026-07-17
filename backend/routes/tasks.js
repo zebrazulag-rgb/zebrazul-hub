@@ -110,6 +110,37 @@ function validateAssigneesForClient(clientId, assigneeIds) {
   return { ok: true };
 }
 
+
+function getAccessibleParentOptions(user, task) {
+  let query = `
+    SELECT
+      t.id, t.client_id, t.title, t.status, t.due_date,
+      c.name AS client_name
+    FROM tasks t
+    LEFT JOIN clients c ON c.id = t.client_id
+    WHERE t.parent_task_id IS NULL
+      AND t.id != ?
+  `;
+  const params = [Number(task.id)];
+
+  if (task.client_id) {
+    query += ' AND t.client_id = ?';
+    params.push(Number(task.client_id));
+  } else {
+    query += ' AND t.client_id IS NULL';
+  }
+
+  if (user.role === 'team') {
+    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
+    params.push(Number(user.id));
+  } else if (user.role === 'client') {
+    query += ' AND 1 = 0';
+  }
+
+  query += ' ORDER BY COALESCE(t.due_date, t.created_at) ASC, t.title COLLATE NOCASE ASC';
+  return db.prepare(query).all(...params);
+}
+
 function parseGallery(value) {
   if (!value) return [];
   try {
@@ -167,6 +198,52 @@ router.get('/', (req, res) => {
 
   const tasks = attachAssignees(db.prepare(query).all(...params));
   res.json({ tasks });
+});
+
+
+router.get('/:id/parent-options', requireRole('admin', 'team'), (req, res) => {
+  const task = db.prepare('SELECT id, client_id, parent_task_id FROM tasks WHERE id = ?').get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, task)) return;
+
+  const childCount = db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ?').get(task.id).total;
+  const options = getAccessibleParentOptions(req.user, task);
+  res.json({ options, child_count: Number(childCount || 0) });
+});
+
+router.put('/:id/convert-to-subtask', requireRole('admin', 'team'), (req, res) => {
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, task)) return;
+  if (!ensureModifyTask(req, res, task)) return;
+
+  const parentId = Number(req.body.parent_task_id);
+  if (!parentId) return res.status(400).json({ error: 'Selecione a tarefa principal' });
+  if (parentId === Number(task.id)) return res.status(400).json({ error: 'Uma tarefa nao pode ser subtarefa dela mesma' });
+
+  const childCount = db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ?').get(task.id).total;
+  if (Number(childCount || 0) > 0) {
+    return res.status(400).json({ error: 'Esta tarefa possui subtarefas. Mova ou remova essas subtarefas antes da conversao.' });
+  }
+
+  const parent = db.prepare('SELECT id, client_id, parent_task_id FROM tasks WHERE id = ?').get(parentId);
+  if (!parent) return res.status(404).json({ error: 'Tarefa principal nao encontrada' });
+  if (parent.parent_task_id) return res.status(400).json({ error: 'Selecione uma tarefa principal, nao uma subtarefa' });
+  if (!ensureTaskAccess(req, res, parent)) return;
+
+  const taskClientId = task.client_id ? Number(task.client_id) : null;
+  const parentClientId = parent.client_id ? Number(parent.client_id) : null;
+  if (taskClientId !== parentClientId) {
+    return res.status(400).json({ error: 'A tarefa e a tarefa principal precisam pertencer ao mesmo cliente' });
+  }
+
+  db.prepare(`
+    UPDATE tasks
+    SET parent_task_id = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(parentId, task.id);
+
+  res.json({ ok: true, task_id: Number(task.id), parent_task_id: parentId });
 });
 
 // Mídias são carregadas separadamente para o modal abrir imediatamente.
