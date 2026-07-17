@@ -34,7 +34,7 @@ export default function PublicFeed() {
 
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4 flex justify-center">
-      <div className="w-full max-w-[380px] bg-slate-900 rounded-[2.5rem] p-3 shadow-xl h-fit">
+      <div className="w-full max-w-[760px] bg-slate-900 rounded-[2.5rem] p-3 shadow-xl h-fit">
         <div className="bg-white rounded-[2rem] overflow-hidden">
           <div className="h-6 flex items-center justify-center">
             <div className="w-20 h-4 bg-slate-900 rounded-full" />
@@ -71,7 +71,7 @@ export default function PublicFeed() {
               {posts.map((p) => (
                 <button key={p.id} onClick={() => setOpenPost(p)} className="relative aspect-[4/5] bg-white overflow-hidden">
                   {p.media_data ? (
-                    <img src={p.media_data} alt="" className="w-full h-full object-cover" />
+                    <img src={p.media_data} alt="" className="w-full h-full object-contain bg-white" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-slate-50">
                       <ImageIcon size={20} className="text-slate-300" />

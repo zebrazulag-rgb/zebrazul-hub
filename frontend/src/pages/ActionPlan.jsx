@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Circle, Clock3, Pencil, Plus, Save, Target, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CheckCircle2, Circle, Clock3, Pencil, Plus, Target, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -16,6 +16,8 @@ export default function ActionPlan() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState('idle');
+  const dirtyRef = useRef(false);
   const [message, setMessage] = useState('');
   const [taskForm, setTaskForm] = useState(EMPTY_TASK);
   const [editingTaskId, setEditingTaskId] = useState(null);
@@ -44,6 +46,8 @@ export default function ActionPlan() {
     setMessage('');
     try {
       const { data } = await api.get('/action-plans', { params: { client_id: clientId, year } });
+      dirtyRef.current = false;
+      setSaveState('idle');
       setPlan(data.plan);
       setTasks(data.tasks || []);
     } catch (error) {
@@ -56,23 +60,34 @@ export default function ActionPlan() {
   useEffect(() => { loadPlan(); }, [loadPlan]);
 
   function updatePlan(field, value) {
+    dirtyRef.current = true;
+    setSaveState('pending');
     setPlan((current) => ({ ...(current || {}), [field]: value }));
   }
 
-  async function savePlan() {
-    if (!clientId || !plan) return;
+  const savePlan = useCallback(async (planToSave) => {
+    if (!clientId || !planToSave) return;
     setSaving(true);
+    setSaveState('saving');
     setMessage('');
     try {
-      const { data } = await api.put('/action-plans', { ...plan, client_id: clientId, year });
+      const { data } = await api.put('/action-plans', { ...planToSave, client_id: clientId, year });
+      dirtyRef.current = false;
       setPlan(data.plan);
-      setMessage('Plano de Ação salvo com sucesso.');
+      setSaveState('saved');
     } catch (error) {
-      setMessage(error.response?.data?.error || 'Não foi possível salvar.');
+      setSaveState('error');
+      setMessage(error.response?.data?.error || 'Não foi possível salvar automaticamente.');
     } finally {
       setSaving(false);
     }
-  }
+  }, [clientId, year]);
+
+  useEffect(() => {
+    if (!plan || !clientId || !dirtyRef.current) return undefined;
+    const timer = window.setTimeout(() => savePlan(plan), 900);
+    return () => window.clearTimeout(timer);
+  }, [plan, clientId, savePlan]);
 
   async function saveTask(event) {
     event.preventDefault();
@@ -141,9 +156,17 @@ export default function ActionPlan() {
             </select>
           )}
           <input type="number" min="2020" max="2100" className="input-field w-28" value={year} onChange={(e) => setYear(Number(e.target.value))} />
-          <button className="btn-primary flex items-center gap-2" onClick={savePlan} disabled={saving || loading}>
-            <Save size={16} /> {saving ? 'Salvando...' : 'Salvar plano'}
-          </button>
+          <div className="min-w-[150px] text-right text-sm">
+            {saving || saveState === 'saving' ? (
+              <span className="text-amber-600">Salvando automaticamente...</span>
+            ) : saveState === 'saved' ? (
+              <span className="text-emerald-600">Alterações salvas</span>
+            ) : saveState === 'error' ? (
+              <span className="text-red-600">Erro ao salvar</span>
+            ) : (
+              <span className="text-slate-400">Salvamento automático</span>
+            )}
+          </div>
         </div>
       </div>
 

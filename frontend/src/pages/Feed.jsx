@@ -158,7 +158,7 @@ export default function Feed() {
 
       {clientId && activeView === 'grid' && (
         <div className="flex justify-center">
-          <div className="w-full max-w-[380px] bg-slate-900 rounded-[2.5rem] p-3 shadow-xl">
+          <div className="w-full max-w-[760px] bg-slate-900 rounded-[2.5rem] p-3 shadow-xl">
             <div className="bg-white rounded-[2rem] overflow-hidden">
               <div className="h-6 flex items-center justify-center">
                 <div className="w-20 h-4 bg-slate-900 rounded-full" />
@@ -231,7 +231,7 @@ export default function Feed() {
                       className="relative aspect-[4/5] bg-white overflow-hidden group"
                     >
                       {post.media_data ? (
-                        <img src={post.media_data} alt="" className="w-full h-full object-cover" />
+                        <img src={post.media_data} alt="" className="w-full h-full object-contain bg-white" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-slate-50">
                           <ImageIcon size={20} className="text-slate-300" />
