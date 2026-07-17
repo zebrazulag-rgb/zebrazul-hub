@@ -71,6 +71,7 @@ export default function PublicApproval() {
           clientName={post.client_name}
           clientColor={post.client_color}
           imageSrc={post.media_data || post.media_url}
+          images={post.media_gallery}
           caption={post.caption}
           contentType={post.content_type}
         />

@@ -264,8 +264,14 @@ export default function Feed() {
       )}
 
       {editingProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !savingProfile) setEditingProfile(false);
+          }}
+          role="presentation"
+        >
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">
             <div className="mb-5 flex items-center justify-between">
               <div><h2 className="text-lg font-bold text-slate-800">Editar perfil do Feed</h2><p className="text-sm text-slate-500">As informações abaixo aparecem na prévia do Instagram.</p></div>
               <button onClick={() => setEditingProfile(false)} className="text-2xl text-slate-400">×</button>
@@ -292,8 +298,14 @@ export default function Feed() {
       )}
 
       {openPost && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-6 min-w-0">
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setOpenPost(null);
+          }}
+          role="presentation"
+        >
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-6 min-w-0" role="dialog" aria-modal="true">
             <div className="flex items-start justify-between gap-4 mb-4 min-w-0">
               <div className="min-w-0">
                 <h2 className="font-semibold text-slate-800 break-words">{openPost.title}</h2>

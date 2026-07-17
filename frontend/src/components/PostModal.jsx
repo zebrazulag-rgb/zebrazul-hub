@@ -90,6 +90,15 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
     setForm(postToForm(post, defaultClientId));
   }, [post, defaultClientId]);
 
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !saving) onClose?.();
+    }
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, saving]);
+
   function togglePlatform(platform) {
     setForm((current) => ({
       ...current,
@@ -168,8 +177,19 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const selectedClient = clients.find((client) => String(client.id) === String(form.client_id));
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
-      <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0">
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose?.();
+      }}
+      role="presentation"
+    >
+      <div
+        className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0"
+        role="dialog"
+        aria-modal="true"
+        aria-label={isEditing ? 'Editar conteúdo' : 'Novo conteúdo'}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10">
           <div>
             <h2 className="font-semibold text-slate-800">

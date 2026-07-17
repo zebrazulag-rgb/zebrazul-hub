@@ -25,6 +25,40 @@ const FILTERS = [
   { key: 'draft', label: 'Rascunhos' },
 ];
 
+function normalizeGallery(value, fallbackData = null, fallbackMime = null) {
+  let source = value;
+
+  for (let attempt = 0; attempt < 3 && typeof source === 'string'; attempt += 1) {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      break;
+    }
+  }
+
+  if (source && !Array.isArray(source) && typeof source === 'object') {
+    source = source.media_gallery || source.gallery || source.images || source.items || source.files || [];
+  }
+
+  const gallery = Array.isArray(source)
+    ? source
+        .map((item) => {
+          if (!item) return null;
+          if (typeof item === 'string') return { data: item };
+          if (typeof item !== 'object') return null;
+          const data = item.data || item.url || item.src || item.preview || item.dataUrl || item.media_data || item.file_data;
+          return data ? { ...item, data } : null;
+        })
+        .filter(Boolean)
+    : [];
+
+  if (!gallery.length && fallbackData) {
+    gallery.push({ data: fallbackData, mime: fallbackMime || 'image/jpeg' });
+  }
+
+  return gallery;
+}
+
 export default function Approval() {
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
@@ -52,9 +86,41 @@ export default function Approval() {
     }
   }, [loadPosts, user]);
 
+  useEffect(() => {
+    if (!selectedPost) return undefined;
+
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setSelectedPost(null);
+    }
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [selectedPost]);
+
   async function openPost(post) {
-    const { data } = await api.get(`/posts/${post.id}`);
-    setSelectedPost(data.post);
+    const [detailResult, galleryResult] = await Promise.allSettled([
+      api.get(`/posts/${post.id}`),
+      api.get(`/posts/${post.id}/gallery`),
+    ]);
+
+    if (detailResult.status !== 'fulfilled') {
+      throw detailResult.reason;
+    }
+
+    const { data } = detailResult.value;
+    const detailedGallery = normalizeGallery(
+      data.post.media_gallery,
+      data.post.media_data,
+      data.post.media_mime
+    );
+    const endpointGallery = galleryResult.status === 'fulfilled'
+      ? normalizeGallery(galleryResult.value.data.gallery)
+      : [];
+    const richestGallery = endpointGallery.length > detailedGallery.length
+      ? endpointGallery
+      : detailedGallery;
+
+    setSelectedPost({ ...data.post, media_gallery: richestGallery });
     setComments(data.comments);
     setFeedback(data.post.client_feedback || '');
     setLinkCopied(false);
@@ -255,8 +321,14 @@ export default function Approval() {
       )}
 
       {selectedPost && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0">
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedPost(null);
+          }}
+          role="presentation"
+        >
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0" role="dialog" aria-modal="true">
             <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 sticky top-0 bg-white rounded-t-2xl z-10 min-w-0">
               <div className="min-w-0 flex-1">
                 <h2 className="font-semibold text-slate-800 break-words [overflow-wrap:anywhere]">
@@ -375,9 +447,11 @@ export default function Approval() {
               <div className="bg-slate-50 rounded-xl p-4 flex flex-col items-center min-w-0 max-w-full overflow-hidden">
                 <p className="text-xs font-semibold text-slate-400 uppercase mb-3 self-start">Prévia do Instagram</p>
                 <InstagramPreview
+                  key={selectedPost.id}
                   clientName={clientOfSelected?.name}
                   clientColor={clientOfSelected?.logo_color}
                   imageSrc={selectedPost.media_data}
+                  images={selectedPost.media_gallery}
                   caption={selectedPost.caption}
                   contentType={selectedPost.content_type}
                 />
