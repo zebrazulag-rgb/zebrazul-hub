@@ -7,7 +7,18 @@ router.use(authRequired);
 router.use(requireRole('admin', 'team', 'client'));
 
 function canAccessTask(user, task) {
-  return task && (task.client_id === null || task.client_id === undefined || canAccessClient(user, task.client_id));
+  if (!task) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'client') {
+    return Number(task.client_id) === Number(user.client_id);
+  }
+  if (user.role === 'team') {
+    const assigned = db.prepare(
+      'SELECT 1 FROM task_assignees WHERE task_id = ? AND user_id = ?'
+    ).get(task.id, user.id);
+    return Boolean(assigned);
+  }
+  return false;
 }
 
 function canModifyTask(user, task) {
@@ -135,13 +146,8 @@ router.get('/', (req, res) => {
   const params = [];
 
   if (req.user.role === 'team') {
-    if (req.user.client_ids.length) {
-      const placeholders = req.user.client_ids.map(() => '?').join(',');
-      query += ` AND (t.client_id IS NULL OR t.client_id IN (${placeholders}))`;
-      params.push(...req.user.client_ids);
-    } else {
-      query += ' AND t.client_id IS NULL';
-    }
+    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
+    params.push(Number(req.user.id));
   } else if (req.user.role === 'client') {
     query += ' AND t.client_id = ?';
     params.push(Number(req.user.client_id));
@@ -201,13 +207,19 @@ router.get('/:id', (req, res) => {
 
   task.assignees = attachAssignees([{ id: task.id }])[0].assignees;
 
-  const subtaskRows = db.prepare(`
+  let subtaskQuery = `
     SELECT st.id, st.client_id, st.created_by, st.title, st.status, st.due_date, st.attachment_filename,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment
     FROM tasks st
     WHERE st.parent_task_id = ?
-    ORDER BY COALESCE(st.due_date, st.created_at) ASC
-  `).all(req.params.id);
+  `;
+  const subtaskParams = [req.params.id];
+  if (req.user.role === 'team') {
+    subtaskQuery += ' AND st.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
+    subtaskParams.push(Number(req.user.id));
+  }
+  subtaskQuery += ' ORDER BY COALESCE(st.due_date, st.created_at) ASC';
+  const subtaskRows = db.prepare(subtaskQuery).all(...subtaskParams);
   const subtasks = attachAssignees(subtaskRows);
 
   res.json({ task, subtasks });
