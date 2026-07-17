@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
@@ -107,7 +108,7 @@ function ClientFormModal({ mode, initialData, onClose, onSubmit }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
+    <ModalBackdrop onClose={onClose} disabled={saving} className="z-[60]">
       <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
         <div className="px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10 flex items-center justify-between gap-4">
           <div>
@@ -238,7 +239,7 @@ function ClientFormModal({ mode, initialData, onClose, onSubmit }) {
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 
@@ -387,7 +388,7 @@ export default function Clients() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <ModalBackdrop onClose={() => !deleting && setSelected(null)} disabled={deleting}>
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
             <div className="px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10 flex items-center justify-between gap-4">
               <div className="min-w-0">
@@ -476,7 +477,7 @@ export default function Clients() {
               )}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

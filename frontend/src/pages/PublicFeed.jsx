@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import InstagramPreview from '../components/InstagramPreview.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
 const publicApi = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
 
@@ -28,12 +29,12 @@ export default function PublicFeed() {
     <div className="min-h-screen bg-slate-100 px-3 py-8 flex justify-center">
       <InstagramProfileMockup client={client} posts={posts} onPostClick={setOpenPost} />
       {openPost && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <ModalBackdrop onClose={() => setOpenPost(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4"><h2 className="font-semibold text-slate-800">{openPost.title}</h2><button onClick={() => setOpenPost(null)} className="text-slate-400 text-xl">×</button></div>
             <InstagramPreview clientName={client.name} clientColor={client.logo_color} imageSrc={openPost.media_data} images={openPost.media_gallery} caption={openPost.caption} contentType={openPost.content_type} />
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

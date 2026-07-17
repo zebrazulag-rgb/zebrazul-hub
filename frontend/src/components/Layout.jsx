@@ -4,6 +4,7 @@ import { LayoutDashboard, CalendarCheck2, BarChart3, Users, UserCog, ListChecks,
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import AvatarUpload from './AvatarUpload.jsx';
+import ModalBackdrop from './ModalBackdrop.jsx';
 import api from '../api';
 
 export default function Layout({ children }) {
@@ -146,7 +147,7 @@ export default function Layout({ children }) {
       </main>
 
       {showProfile && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <ModalBackdrop onClose={() => !savingProfile && setShowProfile(false)} disabled={savingProfile}>
           <div className="bg-white rounded-2xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-semibold text-slate-800">Meu perfil</h2>
@@ -170,7 +171,7 @@ export default function Layout({ children }) {
               {savingProfile ? 'Salvando...' : 'Salvar'}
             </button>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

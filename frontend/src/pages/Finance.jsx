@@ -18,6 +18,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
 const emptySummary = {
   income_total: 0,
@@ -432,7 +433,7 @@ export default function Finance() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <ModalBackdrop onClose={() => !saving && setShowForm(false)} disabled={saving} className="overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-2xl my-6 shadow-xl">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200">
               <div>
@@ -544,7 +545,7 @@ export default function Finance() {
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

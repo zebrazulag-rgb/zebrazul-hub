@@ -9,6 +9,7 @@ import InstagramPreview from '../components/InstagramPreview.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import CalendarView from './CalendarView.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
 export default function Feed() {
   const { user } = useAuth();
@@ -264,13 +265,7 @@ export default function Feed() {
       )}
 
       {editingProfile && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !savingProfile) setEditingProfile(false);
-          }}
-          role="presentation"
-        >
+        <ModalBackdrop onClose={() => setEditingProfile(false)} disabled={savingProfile} className="bg-black/45">
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">
             <div className="mb-5 flex items-center justify-between">
               <div><h2 className="text-lg font-bold text-slate-800">Editar perfil do Feed</h2><p className="text-sm text-slate-500">As informações abaixo aparecem na prévia do Instagram.</p></div>
@@ -294,17 +289,11 @@ export default function Feed() {
             </div>
             <div className="mt-6 flex gap-3 border-t border-slate-100 pt-4"><button onClick={() => setEditingProfile(false)} className="btn-secondary flex-1">Cancelar</button><button onClick={saveProfile} disabled={savingProfile} className="btn-primary flex-1">{savingProfile ? 'Salvando...' : 'Salvar perfil'}</button></div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {openPost && (
-        <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setOpenPost(null);
-          }}
-          role="presentation"
-        >
+        <ModalBackdrop onClose={() => setOpenPost(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-6 min-w-0" role="dialog" aria-modal="true">
             <div className="flex items-start justify-between gap-4 mb-4 min-w-0">
               <div className="min-w-0">
@@ -325,7 +314,7 @@ export default function Feed() {
               Programado para {new Date(openPost.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' })}
             </p>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

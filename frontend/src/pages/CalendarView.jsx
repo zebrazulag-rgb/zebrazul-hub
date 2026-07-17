@@ -4,6 +4,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -153,7 +154,7 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
       )}
 
       {dayPosts && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <ModalBackdrop onClose={() => setDayPosts(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between gap-4 mb-4">
               <h2 className="font-semibold text-slate-800 min-w-0 break-words">
@@ -182,7 +183,7 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
               ))}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X, Download, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const ROLE_OPTIONS = [
@@ -364,7 +365,7 @@ export default function UserManagement() {
       )}
 
       {deleteUser && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <ModalBackdrop onClose={() => !deleting && setDeleteUser(null)} disabled={deleting}>
           <div className="bg-white rounded-2xl w-full max-w-sm p-6">
             <div className="w-11 h-11 rounded-full bg-red-50 text-red-600 flex items-center justify-center mb-4">
               <Trash2 size={21} />
@@ -381,7 +382,7 @@ export default function UserManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );
@@ -415,7 +416,7 @@ function UserFormModal({
   lockRole = false
 }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+    <ModalBackdrop onClose={onClose} disabled={saving}>
       <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-6">
         <div className="flex items-center justify-between gap-4 mb-4">
           <h2 className="font-semibold text-slate-800 min-w-0 break-words">{title}</h2>
@@ -549,7 +550,7 @@ function UserFormModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 

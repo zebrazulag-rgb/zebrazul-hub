@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, ImagePlus, FileText, Grid3x3, Video, Trash2 } from 'lucide-react';
 import api from '../api';
+import ModalBackdrop from './ModalBackdrop.jsx';
 
 const CONTENT_TYPES = ['feed', 'reels', 'story', 'carrossel', 'artigo'];
 
@@ -149,7 +150,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
   });
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]">
+    <ModalBackdrop onClose={onClose} disabled={saving} className="z-[60]">
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
           <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
@@ -326,6 +327,6 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

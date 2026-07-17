@@ -16,6 +16,7 @@ import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import PostModal from '../components/PostModal.jsx';
 import InstagramPreview from '../components/InstagramPreview.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
 const FILTERS = [
   { key: 'all', label: 'Todos' },
@@ -86,16 +87,6 @@ export default function Approval() {
     }
   }, [loadPosts, user]);
 
-  useEffect(() => {
-    if (!selectedPost) return undefined;
-
-    function closeOnEscape(event) {
-      if (event.key === 'Escape') setSelectedPost(null);
-    }
-
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [selectedPost]);
 
   async function openPost(post) {
     const [detailResult, galleryResult] = await Promise.allSettled([
@@ -321,13 +312,7 @@ export default function Approval() {
       )}
 
       {selectedPost && (
-        <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedPost(null);
-          }}
-          role="presentation"
-        >
+        <ModalBackdrop onClose={() => setSelectedPost(null)}>
           <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0" role="dialog" aria-modal="true">
             <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 sticky top-0 bg-white rounded-t-2xl z-10 min-w-0">
               <div className="min-w-0 flex-1">
@@ -458,7 +443,7 @@ export default function Approval() {
               </div>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

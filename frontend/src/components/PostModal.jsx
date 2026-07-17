@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, ImagePlus, Trash2 } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
+import ModalBackdrop from './ModalBackdrop.jsx';
 
 const PLATFORM_OPTIONS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube'];
 const CONTENT_TYPES = ['feed', 'reels', 'story', 'carrossel', 'artigo'];
@@ -90,14 +91,6 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
     setForm(postToForm(post, defaultClientId));
   }, [post, defaultClientId]);
 
-  useEffect(() => {
-    function closeOnEscape(event) {
-      if (event.key === 'Escape' && !saving) onClose?.();
-    }
-
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose, saving]);
 
   function togglePlatform(platform) {
     setForm((current) => ({
@@ -177,13 +170,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const selectedClient = clients.find((client) => String(client.id) === String(form.client_id));
 
   return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !saving) onClose?.();
-      }}
-      role="presentation"
-    >
+    <ModalBackdrop onClose={onClose} disabled={saving} className="z-[60]">
       <div
         className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0"
         role="dialog"
@@ -349,6 +336,6 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

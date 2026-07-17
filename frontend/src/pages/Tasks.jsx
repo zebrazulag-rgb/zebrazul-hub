@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
+import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
@@ -104,6 +105,12 @@ export default function Tasks() {
   const [sendingToFeed, setSendingToFeed] = useState(false);
   const [feedError, setFeedError] = useState('');
   const [taskError, setTaskError] = useState('');
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [parentOptions, setParentOptions] = useState([]);
+  const [selectedParentId, setSelectedParentId] = useState('');
+  const [loadingParentOptions, setLoadingParentOptions] = useState(false);
+  const [convertingTask, setConvertingTask] = useState(false);
+  const [convertError, setConvertError] = useState('');
 
   useEffect(() => {
     setLocalClientId(user?.role === 'client' ? String(user.client_id || '') : (selectedClient?.id ? String(selectedClient.id) : 'all'));
@@ -221,6 +228,50 @@ export default function Tasks() {
     await api.delete('/tasks/' + subtaskId);
     setSubtasks((prev) => prev.filter((s) => s.id !== subtaskId));
     loadTasks();
+  }
+
+  async function openConvertToSubtask() {
+    if (!selectedTask) return;
+    setShowConvertModal(true);
+    setParentOptions([]);
+    setSelectedParentId('');
+    setConvertError('');
+    setLoadingParentOptions(true);
+    try {
+      const { data } = await api.get('/tasks/' + selectedTask.id + '/parent-options');
+      setParentOptions(data.options || []);
+      if (data.options?.length === 1) setSelectedParentId(String(data.options[0].id));
+      if (Number(data.child_count || 0) > 0) {
+        setConvertError('Esta tarefa possui subtarefas. Mova ou remova essas subtarefas antes da conversão.');
+      }
+    } catch (error) {
+      setConvertError(error.response?.data?.error || 'Não foi possível carregar as tarefas disponíveis.');
+    } finally {
+      setLoadingParentOptions(false);
+    }
+  }
+
+  async function convertToSubtask() {
+    if (!selectedTask || !selectedParentId) {
+      setConvertError('Selecione a tarefa principal.');
+      return;
+    }
+    setConvertingTask(true);
+    setConvertError('');
+    try {
+      const parentId = Number(selectedParentId);
+      await api.put('/tasks/' + selectedTask.id + '/convert-to-subtask', { parent_task_id: parentId });
+      setShowConvertModal(false);
+      setSelectedParentId('');
+      setTasks((previous) => previous.filter((task) => task.id !== selectedTask.id));
+      setSelectedTask(null);
+      await loadTasks();
+      await openTask(parentId);
+    } catch (error) {
+      setConvertError(error.response?.data?.error || 'Não foi possível transformar a tarefa em subtarefa.');
+    } finally {
+      setConvertingTask(false);
+    }
   }
 
   async function deleteTask(id) {
@@ -388,7 +439,7 @@ export default function Tasks() {
       )}
 
       {dayTasks && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <ModalBackdrop onClose={() => setDayTasks(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-800">Tarefas — {dayTasks.day} de {MONTHS[month]}</h2>
@@ -400,7 +451,7 @@ export default function Tasks() {
               ))}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {showForm && (
@@ -456,8 +507,60 @@ export default function Tasks() {
         />
       )}
 
+      {showConvertModal && selectedTask && (
+        <ModalBackdrop onClose={() => !convertingTask && setShowConvertModal(false)} disabled={convertingTask} className="z-[70]">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h2 className="font-semibold text-slate-800">Transformar em subtarefa</h2>
+                <p className="text-sm text-slate-500 mt-1">Escolha a tarefa principal onde “{selectedTask.title}” será colocada.</p>
+              </div>
+              <button onClick={() => setShowConvertModal(false)} disabled={convertingTask} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+
+            {loadingParentOptions ? (
+              <div className="h-20 rounded-xl bg-slate-100 animate-pulse" />
+            ) : (
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Tarefa principal</label>
+                <select
+                  className="input-field"
+                  value={selectedParentId}
+                  onChange={(event) => setSelectedParentId(event.target.value)}
+                  disabled={convertingTask || subtasks.length > 0}
+                >
+                  <option value="">Selecione uma tarefa</option>
+                  {parentOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title}{option.client_name ? ` — ${option.client_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {parentOptions.length === 0 && !convertError && (
+                  <p className="text-xs text-slate-400 mt-2">Nenhuma tarefa principal elegível foi encontrada para este cliente.</p>
+                )}
+              </div>
+            )}
+
+            {convertError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-4">{convertError}</p>}
+
+            <div className="flex gap-3 mt-6">
+              <button type="button" onClick={() => setShowConvertModal(false)} disabled={convertingTask} className="btn-secondary flex-1">Cancelar</button>
+              <button
+                type="button"
+                onClick={convertToSubtask}
+                disabled={convertingTask || loadingParentOptions || !selectedParentId || subtasks.length > 0}
+                className="btn-primary flex-1 disabled:opacity-50"
+              >
+                {convertingTask ? 'Movendo...' : 'Transformar'}
+              </button>
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
       {selectedTask && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <ModalBackdrop onClose={() => setSelectedTask(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[88vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-800">{selectedTask.title}</h2>
@@ -524,6 +627,15 @@ export default function Tasks() {
               {user?.role !== 'client' && (
                 <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex items-center justify-center gap-1.5">
                   <Copy size={14} /> Duplicar
+                </button>
+              )}
+              {user?.role !== 'client' && !selectedTask.parent_task_id && (
+                <button
+                  onClick={openConvertToSubtask}
+                  className="btn-secondary text-sm flex items-center justify-center gap-1.5"
+                  title={subtasks.length > 0 ? 'Mova ou remova as subtarefas atuais antes da conversão' : 'Escolher uma tarefa principal'}
+                >
+                  <ListTree size={14} /> Tornar subtarefa
                 </button>
               )}
               {user?.role !== 'client' && selectedTask.task_type === 'post' && selectedTask.client_id && (
@@ -598,7 +710,7 @@ export default function Tasks() {
               </button>
             )}
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );
