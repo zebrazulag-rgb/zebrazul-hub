@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Image as ImageIcon, Grid3x3, Pencil, Check, Link2, CalendarDays } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import InstagramPreview from '../components/InstagramPreview.jsx';
+import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
+import AvatarUpload from '../components/AvatarUpload.jsx';
 import CalendarView from './CalendarView.jsx';
 
 export default function Feed() {
@@ -18,9 +20,9 @@ export default function Feed() {
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (requestedClientId || selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
   const [openPost, setOpenPost] = useState(null);
-  const [editingBio, setEditingBio] = useState(false);
-  const [bioDraft, setBioDraft] = useState('');
-  const [savingBio, setSavingBio] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({});
+  const [savingProfile, setSavingProfile] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
@@ -65,21 +67,34 @@ export default function Feed() {
     setSearchParams(view === 'calendar' ? { view: 'calendar', client_id: String(clientId || '') } : { client_id: String(clientId || '') }, { replace: true });
   }
 
-  function startEditBio() {
-    setBioDraft(currentClient?.bio || '');
-    setEditingBio(true);
+  function startEditProfile() {
+    setProfileDraft({
+      instagram_username: currentClient?.instagram_username || currentClient?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || '',
+      instagram_display_name: currentClient?.instagram_display_name || currentClient?.name || '',
+      bio: currentClient?.bio || '',
+      instagram_posts_count: currentClient?.instagram_posts_count ?? posts.length,
+      instagram_followers_count: currentClient?.instagram_followers_count ?? 0,
+      instagram_following_count: currentClient?.instagram_following_count ?? 0,
+      instagram_link: currentClient?.instagram_link || '',
+      instagram_primary_action: currentClient?.instagram_primary_action || 'Seguindo',
+      instagram_secondary_action: currentClient?.instagram_secondary_action || 'Mensagem',
+      instagram_tertiary_action: currentClient?.instagram_tertiary_action || 'Contato',
+      avatar_data: currentClient?.avatar_data || null,
+      avatar_mime: currentClient?.avatar_mime || null,
+    });
+    setEditingProfile(true);
   }
 
-  async function saveBio() {
-    setSavingBio(true);
+  async function saveProfile() {
+    setSavingProfile(true);
     try {
-      await api.put(`/clients/${clientId}`, { bio: bioDraft });
+      await api.put(`/clients/${clientId}`, profileDraft);
       setClients((previous) => previous.map((client) => (
-        String(client.id) === String(clientId) ? { ...client, bio: bioDraft } : client
+        String(client.id) === String(clientId) ? { ...client, ...profileDraft } : client
       )));
-      setEditingBio(false);
+      setEditingProfile(false);
     } finally {
-      setSavingBio(false);
+      setSavingProfile(false);
     }
   }
 
@@ -158,96 +173,40 @@ export default function Feed() {
 
       {clientId && activeView === 'grid' && (
         <div className="flex justify-center">
-          <div className="w-full max-w-[760px] bg-slate-900 rounded-[2.5rem] p-3 shadow-xl">
-            <div className="bg-white rounded-[2rem] overflow-hidden">
-              <div className="h-6 flex items-center justify-center">
-                <div className="w-20 h-4 bg-slate-900 rounded-full" />
-              </div>
+          <InstagramProfileMockup
+            client={currentClient}
+            posts={posts}
+            onPostClick={setOpenPost}
+            editable={user?.role !== 'client'}
+            onEdit={startEditProfile}
+          />
+        </div>
+      )}
 
-              <div className="px-4 pb-4">
-                <div className="flex items-center gap-4 mb-3">
-                  {currentClient?.avatar_data ? (
-                    <img src={currentClient.avatar_data} alt="" className="w-16 h-16 rounded-full object-cover shrink-0" />
-                  ) : (
-                    <div
-                      className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
-                      style={{ backgroundColor: currentClient?.logo_color }}
-                    >
-                      {currentClient?.name?.[0]}
-                    </div>
-                  )}
-                  <div className="flex gap-4 text-center flex-1">
-                    <div>
-                      <p className="font-semibold text-sm text-slate-800">{posts.length}</p>
-                      <p className="text-[11px] text-slate-400">publicações</p>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="font-semibold text-sm text-slate-800 break-words">
-                  {currentClient?.name?.toLowerCase().replace(/\s+/g, '_')}
-                </p>
-
-                {editingBio ? (
-                  <div className="mt-1.5 space-y-2">
-                    <textarea
-                      className="input-field text-xs min-h-[60px]"
-                      value={bioDraft}
-                      onChange={(event) => setBioDraft(event.target.value)}
-                      placeholder="Escreva a bio do perfil..."
-                      maxLength={150}
-                    />
-                    <div className="flex gap-2">
-                      <button onClick={() => setEditingBio(false)} className="btn-secondary text-xs flex-1 py-1.5">Cancelar</button>
-                      <button onClick={saveBio} disabled={savingBio} className="btn-primary text-xs flex-1 py-1.5 flex items-center justify-center gap-1">
-                        <Check size={12} /> {savingBio ? 'Salvando...' : 'Salvar'}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start gap-1.5 mt-1 min-w-0">
-                    <p className="text-xs text-slate-500 whitespace-pre-wrap break-words flex-1 min-w-0">
-                      {currentClient?.bio || <span className="text-slate-300">Sem bio definida ainda.</span>}
-                    </p>
-                    {user?.role !== 'client' && (
-                      <button onClick={startEditBio} className="text-slate-300 hover:text-zebrazul-600 shrink-0 mt-0.5" aria-label="Editar bio">
-                        <Pencil size={12} />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t border-slate-100" />
-
-              {posts.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-12 px-4">Nenhum post agendado para este cliente ainda.</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-[2px] bg-slate-100">
-                  {posts.map((post) => (
-                    <button
-                      key={post.id}
-                      onClick={() => setOpenPost(post)}
-                      className="relative aspect-[4/5] bg-white overflow-hidden group"
-                    >
-                      {post.media_data ? (
-                        <img src={post.media_data} alt="" className="w-full h-full object-contain bg-white" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-50">
-                          <ImageIcon size={20} className="text-slate-300" />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
-                        <Grid3x3 size={14} className="text-white" />
-                        <span className="text-white text-[9px] font-medium px-2 text-center">
-                          {new Date(post.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+      {editingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div><h2 className="text-lg font-bold text-slate-800">Editar perfil do Feed</h2><p className="text-sm text-slate-500">As informações abaixo aparecem na prévia do Instagram.</p></div>
+              <button onClick={() => setEditingProfile(false)} className="text-2xl text-slate-400">×</button>
             </div>
+            <div className="mb-5 flex items-center gap-4">
+              <AvatarUpload imageSrc={profileDraft.avatar_data} fallbackText={currentClient?.name} fallbackColor={currentClient?.logo_color} size={86} onChange={(data, mime) => setProfileDraft((v) => ({ ...v, avatar_data: data, avatar_mime: mime }))} />
+              <p className="text-sm text-slate-500">Clique na foto para alterar o avatar do perfil.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Usuário do Instagram" value={profileDraft.instagram_username} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_username: v }))} placeholder="institutoespinel" />
+              <Field label="Nome exibido" value={profileDraft.instagram_display_name} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_display_name: v }))} placeholder="Instituto Espinel | Natal RN" />
+              <Field label="Posts" type="number" value={profileDraft.instagram_posts_count} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_posts_count: Number(v) }))} />
+              <Field label="Seguidores" type="number" value={profileDraft.instagram_followers_count} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_followers_count: Number(v) }))} />
+              <Field label="Seguindo" type="number" value={profileDraft.instagram_following_count} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_following_count: Number(v) }))} />
+              <Field label="Link da bio" value={profileDraft.instagram_link} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_link: v }))} placeholder="linktr.ee/perfil" />
+              <Field label="Botão 1" value={profileDraft.instagram_primary_action} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_primary_action: v }))} />
+              <Field label="Botão 2" value={profileDraft.instagram_secondary_action} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_secondary_action: v }))} />
+              <Field label="Botão 3" value={profileDraft.instagram_tertiary_action} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_tertiary_action: v }))} />
+              <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Bio</label><textarea className="input-field min-h-[110px]" value={profileDraft.bio || ''} onChange={(e) => setProfileDraft((p) => ({ ...p, bio: e.target.value }))} /></div>
+            </div>
+            <div className="mt-6 flex gap-3 border-t border-slate-100 pt-4"><button onClick={() => setEditingProfile(false)} className="btn-secondary flex-1">Cancelar</button><button onClick={saveProfile} disabled={savingProfile} className="btn-primary flex-1">{savingProfile ? 'Salvando...' : 'Salvar perfil'}</button></div>
           </div>
         </div>
       )}
@@ -278,4 +237,9 @@ export default function Feed() {
       )}
     </div>
   );
+}
+
+
+function Field({ label, value, onChange, placeholder = '', type = 'text' }) {
+  return <div><label className="mb-1 block text-sm font-medium text-slate-700">{label}</label><input type={type} className="input-field" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} /></div>;
 }
