@@ -14,10 +14,12 @@ const financeRoutes = require('./routes/finance');
 const systemRoutes = require('./routes/system');
 const actionPlanRoutes = require('./routes/actionPlans');
 const metaRoutes = require('./routes/meta');
+const metaOrganicRoutes = require('./routes/metaOrganic');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
 const { syncAllConnectedAccounts, currentMonthRange } = require('./services/metaSync');
+const { syncAllOrganicAccounts, currentMonthRange: currentOrganicMonthRange } = require('./services/metaOrganicSync');
 
 if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
   const allowDemoInProduction = String(process.env.ALLOW_DEMO_SEED_IN_PRODUCTION || 'false').toLowerCase() === 'true';
@@ -50,6 +52,7 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/action-plans', actionPlanRoutes);
 app.use('/api/meta', metaRoutes);
+app.use('/api/meta-organic', metaOrganicRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);
@@ -62,6 +65,22 @@ async function runAutomaticBackup(label) {
     console.log(`[BACKUP] Criado e verificado: ${backup}`);
   } catch (error) {
     console.error(`[BACKUP] Falha no backup ${label}:`, error.message);
+  }
+}
+
+
+async function runAutomaticOrganicSync(label) {
+  if (!String(process.env.META_ORGANIC_ACCESS_TOKEN || '').trim()) {
+    console.log(`[META ORGANIC] Sincronizacao ${label} ignorada: token organico nao configurado.`);
+    return;
+  }
+
+  try {
+    const range = currentOrganicMonthRange();
+    const result = await syncAllOrganicAccounts(range);
+    console.log(`[META ORGANIC] Sincronizacao ${label}: ${result.success}/${result.total} conta(s) atualizada(s), ${result.failed} falha(s), periodo ${range.from} a ${range.to}.`);
+  } catch (error) {
+    console.error(`[META ORGANIC] Falha na sincronizacao ${label}:`, error.message);
   }
 }
 
@@ -123,5 +142,22 @@ app.listen(PORT, async () => {
     metaInterval.unref();
   } else {
     console.warn('[META] Sincronizacao automatica desativada por configuracao.');
+  }
+
+
+  if (String(process.env.META_ORGANIC_AUTO_SYNC_ON_START || process.env.META_AUTO_SYNC_ON_START || 'false').toLowerCase() === 'true') {
+    await runAutomaticOrganicSync('startup');
+  }
+
+  const organicIntervalHours = Number(process.env.META_ORGANIC_AUTO_SYNC_INTERVAL_HOURS || process.env.META_AUTO_SYNC_INTERVAL_HOURS || 24);
+  if (Number.isFinite(organicIntervalHours) && organicIntervalHours > 0) {
+    console.log(`[META ORGANIC] Sincronizacao automatica ativa: a cada ${organicIntervalHours} hora(s).`);
+    const organicInterval = setInterval(
+      () => runAutomaticOrganicSync('scheduled'),
+      organicIntervalHours * 60 * 60 * 1000
+    );
+    organicInterval.unref();
+  } else {
+    console.warn('[META ORGANIC] Sincronizacao automatica desativada por configuracao.');
   }
 });

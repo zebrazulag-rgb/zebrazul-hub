@@ -292,6 +292,95 @@ CREATE TABLE IF NOT EXISTS meta_campaign_snapshots (
   FOREIGN KEY (meta_account_id) REFERENCES meta_ad_accounts(id) ON DELETE CASCADE
 );
 
+
+CREATE TABLE IF NOT EXISTS meta_organic_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL UNIQUE,
+  asset_key TEXT NOT NULL UNIQUE,
+  page_id TEXT UNIQUE,
+  page_name TEXT,
+  page_username TEXT,
+  page_picture_url TEXT,
+  instagram_account_id TEXT UNIQUE,
+  instagram_username TEXT,
+  instagram_name TEXT,
+  instagram_picture_url TEXT,
+  last_synced_at TEXT,
+  last_sync_status TEXT DEFAULT 'never' CHECK(last_sync_status IN ('never','syncing','success','error')),
+  last_sync_error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_organic_daily_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organic_account_id INTEGER NOT NULL,
+  platform TEXT NOT NULL CHECK(platform IN ('facebook','instagram')),
+  metric_date TEXT NOT NULL,
+  reach REAL DEFAULT 0,
+  views REAL DEFAULT 0,
+  impressions REAL DEFAULT 0,
+  interactions REAL DEFAULT 0,
+  engaged_accounts REAL DEFAULT 0,
+  followers REAL DEFAULT 0,
+  followers_delta REAL DEFAULT 0,
+  profile_views REAL DEFAULT 0,
+  website_clicks REAL DEFAULT 0,
+  posts_published REAL DEFAULT 0,
+  synced_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(organic_account_id, platform, metric_date),
+  FOREIGN KEY (organic_account_id) REFERENCES meta_organic_accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_organic_report_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organic_account_id INTEGER NOT NULL,
+  platform TEXT NOT NULL CHECK(platform IN ('facebook','instagram')),
+  date_from TEXT NOT NULL,
+  date_to TEXT NOT NULL,
+  followers REAL DEFAULT 0,
+  followers_delta REAL DEFAULT 0,
+  reach REAL DEFAULT 0,
+  views REAL DEFAULT 0,
+  impressions REAL DEFAULT 0,
+  interactions REAL DEFAULT 0,
+  engaged_accounts REAL DEFAULT 0,
+  profile_views REAL DEFAULT 0,
+  website_clicks REAL DEFAULT 0,
+  posts_count REAL DEFAULT 0,
+  engagement_rate REAL DEFAULT 0,
+  synced_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(organic_account_id, platform, date_from, date_to),
+  FOREIGN KEY (organic_account_id) REFERENCES meta_organic_accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_organic_content_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organic_account_id INTEGER NOT NULL,
+  platform TEXT NOT NULL CHECK(platform IN ('facebook','instagram')),
+  date_from TEXT NOT NULL,
+  date_to TEXT NOT NULL,
+  content_id TEXT NOT NULL,
+  content_type TEXT,
+  caption TEXT,
+  permalink TEXT,
+  thumbnail_url TEXT,
+  published_at TEXT,
+  reach REAL DEFAULT 0,
+  views REAL DEFAULT 0,
+  impressions REAL DEFAULT 0,
+  interactions REAL DEFAULT 0,
+  likes REAL DEFAULT 0,
+  comments REAL DEFAULT 0,
+  shares REAL DEFAULT 0,
+  saves REAL DEFAULT 0,
+  clicks REAL DEFAULT 0,
+  synced_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(organic_account_id, platform, date_from, date_to, content_id),
+  FOREIGN KEY (organic_account_id) REFERENCES meta_organic_accounts(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS action_plans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL,
@@ -324,6 +413,10 @@ CREATE TABLE IF NOT EXISTS action_plan_tasks (
 );
 
 
+CREATE INDEX IF NOT EXISTS idx_meta_organic_accounts_client ON meta_organic_accounts(client_id);
+CREATE INDEX IF NOT EXISTS idx_meta_organic_daily_account_date ON meta_organic_daily_metrics(organic_account_id, platform, metric_date);
+CREATE INDEX IF NOT EXISTS idx_meta_organic_report_period ON meta_organic_report_snapshots(organic_account_id, platform, date_from, date_to);
+CREATE INDEX IF NOT EXISTS idx_meta_organic_content_period ON meta_organic_content_snapshots(organic_account_id, platform, date_from, date_to, interactions);
 CREATE INDEX IF NOT EXISTS idx_meta_accounts_client ON meta_ad_accounts(client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_daily_account_date ON meta_daily_metrics(meta_account_id, metric_date);
 CREATE INDEX IF NOT EXISTS idx_meta_report_period ON meta_report_snapshots(meta_account_id, date_from, date_to);
