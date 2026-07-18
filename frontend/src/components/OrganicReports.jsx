@@ -64,7 +64,7 @@ function assetLabel(asset) {
   return [page, instagram].filter(Boolean).join(' • ') || asset.asset_key;
 }
 
-export default function OrganicReports({ clientId, from, to, user }) {
+export default function OrganicReports({ clientId, from, to, user, refreshKey = 0 }) {
   const [status, setStatus] = useState({ configured: false, api_version: null });
   const [report, setReport] = useState(null);
   const [assets, setAssets] = useState([]);
@@ -85,7 +85,7 @@ export default function OrganicReports({ clientId, from, to, user }) {
 
   useEffect(() => {
     if (clientId) loadReport();
-  }, [clientId, from, to]);
+  }, [clientId, from, to, refreshKey]);
 
   async function loadReport() {
     setLoading(true);
@@ -253,85 +253,23 @@ export default function OrganicReports({ clientId, from, to, user }) {
           </div>
         </div>
 
-        <div className="grid gap-5 p-6 lg:grid-cols-[1.35fr_1fr]">
-          <div className="soft-panel p-5">
-            {hasConnection ? (
-              <div className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <ProfileConnection
-                    icon={Facebook}
-                    label="Página do Facebook"
-                    name={report.connection.page_name}
-                    username={report.connection.page_username}
-                    image={report.connection.page_picture_url}
-                  />
-                  <ProfileConnection
-                    icon={Instagram}
-                    label="Instagram profissional"
-                    name={report.connection.instagram_name}
-                    username={report.connection.instagram_username}
-                    image={report.connection.instagram_picture_url}
-                  />
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
-                  Última atualização: <strong className="text-slate-700">{formatDateTime(report.connection.last_synced_at)}</strong>
-                </div>
-                {report.connection.last_sync_error && (
-                  <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{report.connection.last_sync_error}</p>
-                )}
-                {user?.role === 'admin' && (
-                  <div className="flex flex-wrap gap-2">
-                    <button className="btn-secondary flex items-center gap-2" type="button" onClick={loadAvailableAssets} disabled={loadingAssets}>
-                      {loadingAssets ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                      Trocar perfis
-                    </button>
-                    <button className="rounded-xl px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50" type="button" onClick={disconnect} disabled={saving}>
-                      <span className="flex items-center gap-2"><Unlink size={16} /> Desconectar</span>
-                    </button>
-                  </div>
-                )}
+        <div className="p-6">
+          {hasConnection ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
+              <ProfileConnection icon={Facebook} label="Página do Facebook" name={report.connection.page_name} username={report.connection.page_username} image={report.connection.page_picture_url} />
+              <ProfileConnection icon={Instagram} label="Instagram profissional" name={report.connection.instagram_name} username={report.connection.instagram_username} image={report.connection.instagram_picture_url} />
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Última atualização</p>
+                <p className="mt-1 text-sm font-semibold text-slate-700">{formatDateTime(report.connection.last_synced_at)}</p>
               </div>
-            ) : (
-              <div>
-                <p className="font-semibold text-slate-800">Nenhum perfil vinculado</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  O token orgânico está protegido no backend. Associe uma Página e seu Instagram profissional ao cliente.
-                </p>
-                {user?.role === 'admin' && (
-                  <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={loadAvailableAssets} disabled={loadingAssets || !status.configured}>
-                    {loadingAssets ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                    Listar perfis disponíveis
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="soft-panel p-5">
-            <p className="text-sm font-semibold text-slate-800">Configuração</p>
-            {!status.configured ? (
-              <p className="mt-2 text-sm text-amber-700">META_ORGANIC_ACCESS_TOKEN ainda não foi detectado no backend.</p>
-            ) : user?.role === 'admin' && assets.length > 0 ? (
-              <div className="mt-3 space-y-3">
-                <select className="input-field" value={selectedAsset} onChange={(event) => setSelectedAsset(event.target.value)}>
-                  <option value="">Selecione os perfis</option>
-                  {assetsForClient.map((asset) => (
-                    <option key={asset.asset_key} value={asset.asset_key}>{assetLabel(asset)}</option>
-                  ))}
-                </select>
-                <button className="btn-primary w-full" type="button" onClick={saveConnection} disabled={!selectedAsset || saving}>
-                  {saving ? 'Salvando...' : hasConnection ? 'Salvar novos perfis' : 'Conectar ao cliente'}
-                </button>
-                {assetsForClient.length === 0 && <p className="text-xs text-slate-500">Todos os ativos retornados já estão vinculados a outros clientes.</p>}
-              </div>
-            ) : (
-              <div className="mt-2 space-y-1 text-sm text-slate-500">
-                <p>API: {status.api_version || 'automática'}</p>
-                <p>Período: {from.split('-').reverse().join('/')} a {to.split('-').reverse().join('/')}</p>
-                <p>Fonte: Meta Graph API • dados orgânicos</p>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-center">
+              <p className="font-semibold text-slate-700">Perfis ainda não conectados</p>
+              <p className="mt-1 text-sm text-slate-500">Um administrador pode configurar Facebook e Instagram na janela “Conexões”.</p>
+            </div>
+          )}
+          {report?.connection?.last_sync_error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{report.connection.last_sync_error}</p>}
         </div>
       </div>
 

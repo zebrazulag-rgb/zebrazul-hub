@@ -23,12 +23,14 @@ import {
   Target,
   Unlink,
   WalletCards,
+  Settings2,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 import OrganicReports from '../components/OrganicReports.jsx';
+import ReportConnectionsModal from '../components/ReportConnectionsModal.jsx';
 
 function localIsoDate(date = new Date()) {
   const year = date.getFullYear();
@@ -114,6 +116,8 @@ export default function Reports() {
   const [syncing, setSyncing] = useState(false);
   const [metaError, setMetaError] = useState('');
   const [notice, setNotice] = useState('');
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [connectionsVersion, setConnectionsVersion] = useState(0);
 
   useEffect(() => {
     api.get('/meta/status')
@@ -267,6 +271,7 @@ export default function Reports() {
   }, [metaReport?.daily, metrics]);
 
   const accountsForClient = metaAccounts.filter((account) => !account.assignment || Number(account.assignment.client_id) === Number(clientId));
+  const currentClientName = user?.role === 'client' ? user?.name : clients.find((client) => Number(client.id) === Number(clientId))?.name;
 
   return (
     <div className="space-y-6">
@@ -285,6 +290,11 @@ export default function Reports() {
               >
                 {clients.map((client) => <option className="text-slate-800" key={client.id} value={client.id}>{client.name}</option>)}
               </select>
+            )}
+            {user?.role === 'admin' && (
+              <button type="button" onClick={() => setConnectionsOpen(true)} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.12]">
+                <Settings2 size={16} /> Conexões
+              </button>
             )}
             <input className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-sm text-white outline-none [color-scheme:dark]" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
             <input className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-sm text-white outline-none [color-scheme:dark]" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
@@ -312,99 +322,50 @@ export default function Reports() {
         </div>
       )}
 
+      <OrganicReports clientId={clientId} from={from} to={to} user={user} refreshKey={connectionsVersion} />
+
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-slate-200" />
+        <span className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Mídia paga</span>
+        <div className="h-px flex-1 bg-slate-200" />
+      </div>
+
       <section className="surface-card overflow-hidden">
         <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="icon-tile bg-blue-50 text-[#0969ff]"><Megaphone size={19} /></div>
             <div>
-              <p className="section-kicker">Integração oficial</p>
+              <p className="section-kicker">Relatório opcional</p>
               <h2 className="section-title mt-1">Meta Ads</h2>
               <p className="mt-1 text-sm text-slate-500">
-                {metaReport?.connection
-                  ? `${metaReport.connection.account_name} • ${metaReport.connection.currency || 'Moeda não informada'}`
-                  : 'Vincule uma conta de anúncios para automatizar este relatório.'}
+                {metaReport?.connection ? `${metaReport.connection.account_name} • ${metaReport.connection.currency || 'Moeda não informada'}` : 'Este cliente não possui uma conta de anúncios conectada.'}
               </p>
             </div>
           </div>
-
           <div className="flex flex-wrap items-center gap-2">
             <ConnectionBadge status={metaReport?.connection?.last_sync_status} configured={metaStatus.configured} connected={Boolean(metaReport?.connection)} />
             {metaReport?.connection && user?.role !== 'client' && (
               <button className="btn-primary flex items-center gap-2" onClick={syncMeta} disabled={syncing || loadingReport}>
                 {syncing ? <LoaderCircle size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                {syncing ? 'Sincronizando...' : 'Atualizar dados'}
+                {syncing ? 'Sincronizando...' : 'Atualizar anúncios'}
               </button>
             )}
           </div>
         </div>
-
-        <div className="grid gap-5 p-6 lg:grid-cols-[1.4fr_1fr]">
-          <div className="soft-panel p-5">
-            {metaReport?.connection ? (
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <InfoItem label="Conta" value={metaReport.connection.account_name} />
-                  <InfoItem label="ID" value={metaReport.connection.account_id} />
-                  <InfoItem label="Última atualização" value={formatDateTime(metaReport.connection.last_synced_at)} />
-                </div>
-                {metaReport.connection.last_sync_error && (
-                  <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{metaReport.connection.last_sync_error}</p>
-                )}
-                {user?.role === 'admin' && (
-                  <div className="flex flex-wrap gap-2">
-                    <button className="btn-secondary flex items-center gap-2" type="button" onClick={loadAvailableAccounts} disabled={loadingAccounts}>
-                      {loadingAccounts ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                      Trocar conta
-                    </button>
-                    <button className="rounded-xl px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50" type="button" onClick={disconnectMeta} disabled={savingConnection}>
-                      <span className="flex items-center gap-2"><Unlink size={16} /> Desconectar</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                <p className="font-semibold text-slate-800">Nenhuma conta vinculada</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  O token está protegido no backend. Agora basta associar uma das contas autorizadas ao cliente selecionado.
-                </p>
-                {user?.role === 'admin' && (
-                  <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={loadAvailableAccounts} disabled={loadingAccounts || !metaStatus.configured}>
-                    {loadingAccounts ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                    Listar contas disponíveis
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="soft-panel p-5">
-            <p className="text-sm font-semibold text-slate-800">Configuração</p>
-            {!metaStatus.configured ? (
-              <p className="mt-2 text-sm text-amber-700">META_ACCESS_TOKEN ainda não foi detectado no backend.</p>
-            ) : user?.role === 'admin' && metaAccounts.length > 0 ? (
-              <div className="mt-3 space-y-3">
-                <select className="input-field" value={selectedMetaAccount} onChange={(event) => setSelectedMetaAccount(event.target.value)}>
-                  <option value="">Selecione uma conta</option>
-                  {accountsForClient.map((account) => (
-                    <option key={account.account_id} value={account.account_id}>
-                      {account.name} • {account.account_id}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn-primary w-full" type="button" onClick={saveConnection} disabled={!selectedMetaAccount || savingConnection}>
-                  {savingConnection ? 'Salvando...' : metaReport?.connection ? 'Salvar nova conta' : 'Conectar ao cliente'}
-                </button>
-                {accountsForClient.length === 0 && <p className="text-xs text-slate-500">Todas as contas retornadas já estão vinculadas a outros clientes.</p>}
-              </div>
-            ) : (
-              <div className="mt-2 space-y-1 text-sm text-slate-500">
-                <p>API: {metaStatus.api_version || 'automática'}</p>
-                <p>Período: {from.split('-').reverse().join('/')} a {to.split('-').reverse().join('/')}</p>
-                <p>Fonte: {metaReport?.totals_source === 'meta_snapshot' ? 'Resumo exato da Meta' : metaReport?.totals_source === 'daily_estimate' ? 'Soma dos dados diários' : 'Sem dados sincronizados'}</p>
-              </div>
-            )}
-          </div>
+        <div className="p-6">
+          {metaReport?.connection ? (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <InfoItem label="Conta de anúncios" value={metaReport.connection.account_name} />
+              <InfoItem label="Identificação" value={metaReport.connection.account_id} />
+              <InfoItem label="Última atualização" value={formatDateTime(metaReport.connection.last_synced_at)} />
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-center">
+              <p className="font-semibold text-slate-700">Sem mídia paga neste cliente</p>
+              <p className="mt-1 text-sm text-slate-500">O relatório orgânico continua completo. A conta de anúncios pode ser adicionada depois em “Conexões”.</p>
+            </div>
+          )}
+          {metaReport?.connection?.last_sync_error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{metaReport.connection.last_sync_error}</p>}
         </div>
       </section>
 
@@ -497,8 +458,6 @@ export default function Reports() {
         </>
       )}
 
-      <OrganicReports clientId={clientId} from={from} to={to} user={user} />
-
       {user?.role !== 'client' && (
         <details className="surface-card group">
           <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-5">
@@ -580,6 +539,13 @@ function EmptyState({ title, description }) {
       <div className="icon-tile bg-slate-100 text-slate-400"><BarChart3 size={19} /></div>
       <p className="mt-3 font-semibold text-slate-700">{title}</p>
       <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">{description}</p>
+      <ReportConnectionsModal
+        open={connectionsOpen}
+        onClose={() => setConnectionsOpen(false)}
+        clientId={clientId}
+        clientName={currentClientName}
+        onChanged={() => { setConnectionsVersion((value) => value + 1); loadAllReports(); }}
+      />
     </div>
   );
 }
