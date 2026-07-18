@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import zebraHubLogo from '../assets/logo-hub-white.png';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -28,8 +29,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zebrazul-900 via-zebrazul-700 to-zebrazul-500 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Zebrahub</h1>
-          <p className="text-zebrazul-100 mt-1">Gestão de redes sociais, aprovação e relatórios</p>
+          <img
+            src={zebraHubLogo}
+            alt="Zebra"
+            className="w-[250px] max-w-[78vw] h-auto mx-auto object-contain"
+          />
+          <p className="text-zebrazul-100 mt-3">Gestão de redes sociais, aprovação e relatórios</p>
         </div>
         <div className="card p-8">
           <form onSubmit={handleSubmit} className="space-y-4">

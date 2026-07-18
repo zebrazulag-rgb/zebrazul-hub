@@ -7,7 +7,7 @@ import AvatarUpload from './AvatarUpload.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import api from '../api';
 import { formChanged } from '../utils/formState.js';
-import zebraHubLogo from '../assets/logo-hub.png';
+import zebraHubLogo from '../assets/logo-hub-white.png';
 
 export default function Layout({ children }) {
   const { user, logout, refreshUser } = useAuth();
