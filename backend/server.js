@@ -13,9 +13,11 @@ const publicRoutes = require('./routes/public');
 const financeRoutes = require('./routes/finance');
 const systemRoutes = require('./routes/system');
 const actionPlanRoutes = require('./routes/actionPlans');
+const metaRoutes = require('./routes/meta');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
+const { syncAllConnectedAccounts, currentMonthRange } = require('./services/metaSync');
 
 if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
   const allowDemoInProduction = String(process.env.ALLOW_DEMO_SEED_IN_PRODUCTION || 'false').toLowerCase() === 'true';
@@ -47,6 +49,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/action-plans', actionPlanRoutes);
+app.use('/api/meta', metaRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);
@@ -59,6 +62,21 @@ async function runAutomaticBackup(label) {
     console.log(`[BACKUP] Criado e verificado: ${backup}`);
   } catch (error) {
     console.error(`[BACKUP] Falha no backup ${label}:`, error.message);
+  }
+}
+
+async function runAutomaticMetaSync(label) {
+  if (!String(process.env.META_ACCESS_TOKEN || '').trim()) {
+    console.log(`[META] Sincronizacao ${label} ignorada: token nao configurado.`);
+    return;
+  }
+
+  try {
+    const range = currentMonthRange();
+    const result = await syncAllConnectedAccounts(range);
+    console.log(`[META] Sincronizacao ${label}: ${result.success}/${result.total} conta(s) atualizada(s), ${result.failed} falha(s), periodo ${range.from} a ${range.to}.`);
+  } catch (error) {
+    console.error(`[META] Falha na sincronizacao ${label}:`, error.message);
   }
 }
 
@@ -89,5 +107,21 @@ app.listen(PORT, async () => {
     interval.unref();
   } else {
     console.warn('[BACKUP] Backup agendado desativado por configuracao.');
+  }
+
+  if (String(process.env.META_AUTO_SYNC_ON_START || 'false').toLowerCase() === 'true') {
+    await runAutomaticMetaSync('startup');
+  }
+
+  const metaIntervalHours = Number(process.env.META_AUTO_SYNC_INTERVAL_HOURS || 24);
+  if (Number.isFinite(metaIntervalHours) && metaIntervalHours > 0) {
+    console.log(`[META] Sincronizacao automatica ativa: a cada ${metaIntervalHours} hora(s).`);
+    const metaInterval = setInterval(
+      () => runAutomaticMetaSync('scheduled'),
+      metaIntervalHours * 60 * 60 * 1000
+    );
+    metaInterval.unref();
+  } else {
+    console.warn('[META] Sincronizacao automatica desativada por configuracao.');
   }
 });

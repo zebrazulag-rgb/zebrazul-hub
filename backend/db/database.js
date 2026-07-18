@@ -190,6 +190,108 @@ CREATE TABLE IF NOT EXISTS report_metrics (
 
 
 
+
+CREATE TABLE IF NOT EXISTS meta_ad_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL UNIQUE,
+  account_id TEXT NOT NULL UNIQUE,
+  account_name TEXT NOT NULL,
+  currency TEXT,
+  timezone_name TEXT,
+  account_status INTEGER,
+  last_synced_at TEXT,
+  last_sync_status TEXT DEFAULT 'never' CHECK(last_sync_status IN ('never','syncing','success','error')),
+  last_sync_error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_daily_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  meta_account_id INTEGER NOT NULL,
+  metric_date TEXT NOT NULL,
+  reach REAL DEFAULT 0,
+  impressions REAL DEFAULT 0,
+  frequency REAL DEFAULT 0,
+  clicks REAL DEFAULT 0,
+  inline_link_clicks REAL DEFAULT 0,
+  ctr REAL DEFAULT 0,
+  cpc REAL DEFAULT 0,
+  cpm REAL DEFAULT 0,
+  spend REAL DEFAULT 0,
+  conversations REAL DEFAULT 0,
+  leads REAL DEFAULT 0,
+  conversions REAL DEFAULT 0,
+  results REAL DEFAULT 0,
+  result_type TEXT,
+  cost_per_conversation REAL DEFAULT 0,
+  cost_per_lead REAL DEFAULT 0,
+  cost_per_result REAL DEFAULT 0,
+  actions_json TEXT DEFAULT '[]',
+  synced_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(meta_account_id, metric_date),
+  FOREIGN KEY (meta_account_id) REFERENCES meta_ad_accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_report_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  meta_account_id INTEGER NOT NULL,
+  date_from TEXT NOT NULL,
+  date_to TEXT NOT NULL,
+  reach REAL DEFAULT 0,
+  impressions REAL DEFAULT 0,
+  frequency REAL DEFAULT 0,
+  clicks REAL DEFAULT 0,
+  inline_link_clicks REAL DEFAULT 0,
+  ctr REAL DEFAULT 0,
+  cpc REAL DEFAULT 0,
+  cpm REAL DEFAULT 0,
+  spend REAL DEFAULT 0,
+  conversations REAL DEFAULT 0,
+  leads REAL DEFAULT 0,
+  conversions REAL DEFAULT 0,
+  results REAL DEFAULT 0,
+  result_type TEXT,
+  cost_per_conversation REAL DEFAULT 0,
+  cost_per_lead REAL DEFAULT 0,
+  cost_per_result REAL DEFAULT 0,
+  actions_json TEXT DEFAULT '[]',
+  synced_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(meta_account_id, date_from, date_to),
+  FOREIGN KEY (meta_account_id) REFERENCES meta_ad_accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_campaign_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  meta_account_id INTEGER NOT NULL,
+  date_from TEXT NOT NULL,
+  date_to TEXT NOT NULL,
+  campaign_id TEXT NOT NULL,
+  campaign_name TEXT NOT NULL,
+  reach REAL DEFAULT 0,
+  impressions REAL DEFAULT 0,
+  frequency REAL DEFAULT 0,
+  clicks REAL DEFAULT 0,
+  inline_link_clicks REAL DEFAULT 0,
+  ctr REAL DEFAULT 0,
+  cpc REAL DEFAULT 0,
+  cpm REAL DEFAULT 0,
+  spend REAL DEFAULT 0,
+  conversations REAL DEFAULT 0,
+  leads REAL DEFAULT 0,
+  conversions REAL DEFAULT 0,
+  results REAL DEFAULT 0,
+  result_type TEXT,
+  cost_per_conversation REAL DEFAULT 0,
+  cost_per_lead REAL DEFAULT 0,
+  cost_per_result REAL DEFAULT 0,
+  actions_json TEXT DEFAULT '[]',
+  synced_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(meta_account_id, date_from, date_to, campaign_id),
+  FOREIGN KEY (meta_account_id) REFERENCES meta_ad_accounts(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS action_plans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL,
@@ -221,6 +323,11 @@ CREATE TABLE IF NOT EXISTS action_plan_tasks (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+
+CREATE INDEX IF NOT EXISTS idx_meta_accounts_client ON meta_ad_accounts(client_id);
+CREATE INDEX IF NOT EXISTS idx_meta_daily_account_date ON meta_daily_metrics(meta_account_id, metric_date);
+CREATE INDEX IF NOT EXISTS idx_meta_report_period ON meta_report_snapshots(meta_account_id, date_from, date_to);
+CREATE INDEX IF NOT EXISTS idx_meta_campaign_period ON meta_campaign_snapshots(meta_account_id, date_from, date_to, spend);
 CREATE INDEX IF NOT EXISTS idx_action_plans_client_year ON action_plans(client_id, year);
 CREATE INDEX IF NOT EXISTS idx_action_plan_tasks_plan ON action_plan_tasks(action_plan_id, status);
 
@@ -298,7 +405,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '15', datetime('now'))
+   VALUES ('schema_version', '16', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

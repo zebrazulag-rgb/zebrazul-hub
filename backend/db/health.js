@@ -74,6 +74,13 @@ function getHealthStatus() {
       inside_temp: config.databaseInsideTemp,
       disk: getDiskStats(config.databasePath),
     },
+    integrations: {
+      meta: {
+        configured: Boolean(String(process.env.META_ACCESS_TOKEN || '').trim()),
+        api_version: String(process.env.META_API_VERSION || 'v25.0'),
+        auto_sync_interval_hours: Number(process.env.META_AUTO_SYNC_INTERVAL_HOURS || 24),
+      },
+    },
     backup: {
       directory: config.backupDirectory,
       total: backups.length,

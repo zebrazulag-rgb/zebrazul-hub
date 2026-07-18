@@ -1,0 +1,304 @@
+const express = require('express');
+const db = require('../db/database');
+const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
+const {
+  MetaApiError,
+  getMetaStatus,
+  normalizeAccountId,
+  listAdAccounts,
+  getAdAccount,
+} = require('../services/metaAds');
+const { syncMetaClient } = require('../services/metaSync');
+
+const router = express.Router();
+router.use(authRequired);
+
+function ensureClientAccess(req, res, clientId) {
+  if (!canAccessClient(req.user, clientId)) {
+    res.status(403).json({ error: 'Voce nao tem acesso a este cliente' });
+    return false;
+  }
+  return true;
+}
+
+function getClient(clientId) {
+  return db.prepare('SELECT id, name FROM clients WHERE id = ?').get(clientId);
+}
+
+function getConnection(clientId) {
+  return db.prepare(`
+    SELECT id, client_id, account_id, account_name, currency, timezone_name,
+           account_status, last_synced_at, last_sync_status, last_sync_error,
+           created_at, updated_at
+    FROM meta_ad_accounts
+    WHERE client_id = ?
+  `).get(clientId) || null;
+}
+
+function isIsoDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function resolveDateRange(query) {
+  const now = new Date();
+  const defaultTo = now.toISOString().slice(0, 10);
+  const defaultFrom = `${defaultTo.slice(0, 8)}01`;
+  const from = String(query.from || defaultFrom);
+  const to = String(query.to || defaultTo);
+
+  if (!isIsoDate(from) || !isIsoDate(to)) {
+    throw new MetaApiError('Periodo invalido. Use datas no formato AAAA-MM-DD.', { status: 400 });
+  }
+  const fromTime = Date.parse(`${from}T00:00:00Z`);
+  const toTime = Date.parse(`${to}T00:00:00Z`);
+  if (fromTime > toTime) {
+    throw new MetaApiError('A data inicial nao pode ser posterior a data final.', { status: 400 });
+  }
+  const days = Math.floor((toTime - fromTime) / 86400000) + 1;
+  if (days > 366) {
+    throw new MetaApiError('Selecione um periodo de no maximo 366 dias.', { status: 400 });
+  }
+  return { from, to };
+}
+
+function apiErrorResponse(res, error) {
+  if (error instanceof MetaApiError) {
+    return res.status(error.status || 502).json({
+      error: error.message,
+      meta_code: error.metaCode,
+      meta_subcode: error.metaSubcode,
+      trace_id: error.traceId,
+    });
+  }
+  console.error('[META] Erro nao tratado:', error);
+  return res.status(500).json({ error: 'Erro interno ao processar a integracao com a Meta' });
+}
+
+function reportTotalsFromRows(rows) {
+  const totals = rows.reduce((acc, row) => {
+    acc.reach += Number(row.reach || 0);
+    acc.impressions += Number(row.impressions || 0);
+    acc.clicks += Number(row.clicks || 0);
+    acc.inline_link_clicks += Number(row.inline_link_clicks || 0);
+    acc.spend += Number(row.spend || 0);
+    acc.conversations += Number(row.conversations || 0);
+    acc.leads += Number(row.leads || 0);
+    acc.conversions += Number(row.conversions || 0);
+    acc.results += Number(row.results || 0);
+    return acc;
+  }, {
+    reach: 0,
+    impressions: 0,
+    frequency: 0,
+    clicks: 0,
+    inline_link_clicks: 0,
+    ctr: 0,
+    cpc: 0,
+    cpm: 0,
+    spend: 0,
+    conversations: 0,
+    leads: 0,
+    conversions: 0,
+    results: 0,
+    cost_per_conversation: 0,
+    cost_per_lead: 0,
+    cost_per_result: 0,
+    result_type: null,
+  });
+
+  totals.frequency = totals.reach > 0 ? totals.impressions / totals.reach : 0;
+  totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+  totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+  totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
+  totals.cost_per_conversation = totals.conversations > 0 ? totals.spend / totals.conversations : 0;
+  totals.cost_per_lead = totals.leads > 0 ? totals.spend / totals.leads : 0;
+  totals.cost_per_result = totals.results > 0 ? totals.spend / totals.results : 0;
+  return totals;
+}
+
+function serializeConnection(connection) {
+  if (!connection) return null;
+  return {
+    ...connection,
+    account_id: String(connection.account_id),
+  };
+}
+
+function getReportPayload(clientId, from, to) {
+  const connection = getConnection(clientId);
+  if (!connection) {
+    return {
+      connection: null,
+      period: { from, to },
+      totals: reportTotalsFromRows([]),
+      totals_source: 'none',
+      reach_is_estimated: false,
+      daily: [],
+      campaigns: [],
+    };
+  }
+
+  const daily = db.prepare(`
+    SELECT metric_date, reach, impressions, frequency, clicks, inline_link_clicks,
+           ctr, cpc, cpm, spend, conversations, leads, conversions, results,
+           result_type, cost_per_conversation, cost_per_lead, cost_per_result
+    FROM meta_daily_metrics
+    WHERE meta_account_id = ? AND metric_date BETWEEN ? AND ?
+    ORDER BY metric_date ASC
+  `).all(connection.id, from, to);
+
+  const snapshot = db.prepare(`
+    SELECT reach, impressions, frequency, clicks, inline_link_clicks, ctr, cpc, cpm,
+           spend, conversations, leads, conversions, results, result_type,
+           cost_per_conversation, cost_per_lead, cost_per_result, synced_at
+    FROM meta_report_snapshots
+    WHERE meta_account_id = ? AND date_from = ? AND date_to = ?
+  `).get(connection.id, from, to);
+
+  const campaigns = db.prepare(`
+    SELECT campaign_id, campaign_name, reach, impressions, frequency, clicks,
+           inline_link_clicks, ctr, cpc, cpm, spend, conversations, leads,
+           conversions, results, result_type, cost_per_conversation,
+           cost_per_lead, cost_per_result, synced_at
+    FROM meta_campaign_snapshots
+    WHERE meta_account_id = ? AND date_from = ? AND date_to = ?
+    ORDER BY spend DESC, campaign_name ASC
+  `).all(connection.id, from, to);
+
+  return {
+    connection: serializeConnection(connection),
+    period: { from, to },
+    totals: snapshot || reportTotalsFromRows(daily),
+    totals_source: snapshot ? 'meta_snapshot' : (daily.length ? 'daily_estimate' : 'none'),
+    reach_is_estimated: !snapshot && daily.length > 1,
+    daily,
+    campaigns,
+  };
+}
+
+router.get('/status', (req, res) => {
+  res.json(getMetaStatus());
+});
+
+router.get('/accounts', requireRole('admin'), async (req, res) => {
+  try {
+    const accounts = await listAdAccounts();
+    const assignments = db.prepare(`
+      SELECT m.account_id, m.client_id, c.name AS client_name
+      FROM meta_ad_accounts m
+      JOIN clients c ON c.id = m.client_id
+    `).all();
+    const assignmentByAccount = new Map(assignments.map((row) => [String(row.account_id), row]));
+    res.json({
+      accounts: accounts.map((account) => ({
+        ...account,
+        assignment: assignmentByAccount.get(String(account.account_id)) || null,
+      })),
+    });
+  } catch (error) {
+    apiErrorResponse(res, error);
+  }
+});
+
+router.get('/client/:clientId/connection', (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!ensureClientAccess(req, res, clientId)) return;
+  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  res.json({ connection: serializeConnection(getConnection(clientId)), meta: getMetaStatus() });
+});
+
+router.put('/client/:clientId/connection', requireRole('admin'), async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!ensureClientAccess(req, res, clientId)) return;
+  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+
+  try {
+    const requestedAccountId = normalizeAccountId(req.body.account_id);
+    if (!requestedAccountId) {
+      return res.status(400).json({ error: 'Selecione uma conta de anuncios' });
+    }
+
+    const account = await getAdAccount(requestedAccountId);
+    const assigned = db.prepare('SELECT client_id FROM meta_ad_accounts WHERE account_id = ? AND client_id <> ?')
+      .get(account.account_id, clientId);
+    if (assigned) {
+      return res.status(409).json({ error: 'Esta conta de anuncios ja esta vinculada a outro cliente' });
+    }
+
+    const currentConnection = getConnection(clientId);
+    const saveConnection = db.transaction(() => {
+      if (currentConnection && String(currentConnection.account_id) !== String(account.account_id)) {
+        db.prepare('DELETE FROM meta_ad_accounts WHERE id = ?').run(currentConnection.id);
+      }
+
+      db.prepare(`
+        INSERT INTO meta_ad_accounts (
+          client_id, account_id, account_name, currency, timezone_name, account_status,
+          last_sync_status, last_sync_error, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'never', NULL, datetime('now'))
+        ON CONFLICT(client_id) DO UPDATE SET
+          account_name = excluded.account_name,
+          currency = excluded.currency,
+          timezone_name = excluded.timezone_name,
+          account_status = excluded.account_status,
+          last_sync_error = NULL,
+          updated_at = datetime('now')
+      `).run(
+        clientId,
+        account.account_id,
+        account.name,
+        account.currency,
+        account.timezone_name,
+        account.account_status
+      );
+    });
+    saveConnection();
+
+    res.json({ connection: serializeConnection(getConnection(clientId)) });
+  } catch (error) {
+    apiErrorResponse(res, error);
+  }
+});
+
+router.delete('/client/:clientId/connection', requireRole('admin'), (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!ensureClientAccess(req, res, clientId)) return;
+  db.prepare('DELETE FROM meta_ad_accounts WHERE client_id = ?').run(clientId);
+  res.json({ ok: true });
+});
+
+router.get('/client/:clientId/report', (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!ensureClientAccess(req, res, clientId)) return;
+  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+
+  try {
+    const { from, to } = resolveDateRange(req.query);
+    res.json(getReportPayload(clientId, from, to));
+  } catch (error) {
+    apiErrorResponse(res, error);
+  }
+});
+
+router.post('/client/:clientId/sync', requireRole('admin', 'team'), async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!ensureClientAccess(req, res, clientId)) return;
+  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+
+  let range;
+  try {
+    range = resolveDateRange(req.body || {});
+    await syncMetaClient(clientId, range.from, range.to);
+    res.json(getReportPayload(clientId, range.from, range.to));
+  } catch (error) {
+    apiErrorResponse(res, error);
+  }
+});
+
+module.exports = router;
