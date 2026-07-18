@@ -1,6 +1,6 @@
 {
   "name": "zebrazul-hub-backend",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Backend do Zebrahub - gestao de redes sociais, aprovacao de conteudo e relatorios",
   "main": "server.js",
   "type": "commonjs",
