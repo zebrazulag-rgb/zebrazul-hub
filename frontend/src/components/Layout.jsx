@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, CalendarCheck2, BarChart3, Users, UserCog, ListChecks, LogOut, Grid3x3, WalletCards, X, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -6,6 +6,8 @@ import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import AvatarUpload from './AvatarUpload.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import api from '../api';
+import { formChanged } from '../utils/formState.js';
+import zebraHubLogo from '../assets/logo-hub.png';
 
 export default function Layout({ children }) {
   const { user, logout, refreshUser } = useAuth();
@@ -14,6 +16,8 @@ export default function Layout({ children }) {
   const [clients, setClients] = useState([]);
   const [showProfile, setShowProfile] = useState(false);
   const [profileName, setProfileName] = useState(user?.name || '');
+  const initialProfileNameRef = useRef(user?.name || '');
+  const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
@@ -43,14 +47,34 @@ export default function Layout({ children }) {
   }
 
   async function saveProfileName() {
+    const normalizedName = profileName.trim();
+    if (!normalizedName) {
+      setProfileError('Informe seu nome.');
+      return false;
+    }
+
     setSavingProfile(true);
+    setProfileError('');
     try {
-      const { data } = await api.put('/auth/me', { name: profileName });
+      const { data } = await api.put('/auth/me', { name: normalizedName });
       refreshUser(data.user);
       setShowProfile(false);
+      return true;
+    } catch (err) {
+      setProfileError(err.response?.data?.error || 'Não foi possível salvar o perfil.');
+      return false;
     } finally {
       setSavingProfile(false);
     }
+  }
+
+  async function handleProfileRequestClose() {
+    if (!formChanged(initialProfileNameRef.current, profileName)) {
+      setShowProfile(false);
+      return;
+    }
+
+    await saveProfileName();
   }
 
   const navItems = [
@@ -74,8 +98,12 @@ export default function Layout({ children }) {
       )}
       <aside className="w-64 bg-zebrazul-900 text-white flex flex-col shrink-0">
         <div className="px-6 py-5 border-b border-white/10">
-          <h1 className="text-lg font-bold tracking-tight">Zebrahub</h1>
-          <p className="text-xs text-zebrazul-100/70 mt-0.5">Gestão de conteúdo & tráfego</p>
+          <img
+            src={zebraHubLogo}
+            alt="Zebra"
+            className="w-[176px] max-w-full h-auto object-contain"
+          />
+          <p className="text-xs text-zebrazul-100/70 mt-2">Gestão de conteúdo & tráfego</p>
         </div>
 
         {user?.role !== 'client' && (
@@ -118,7 +146,7 @@ export default function Layout({ children }) {
             ))}
         </nav>
         <div className="px-3 py-4 border-t border-white/10">
-          <button onClick={() => { setProfileName(user?.name || ''); setShowProfile(true); }} className="flex items-center gap-3 px-3 py-2 w-full hover:bg-white/5 rounded-lg transition-colors">
+          <button onClick={() => { const currentName = user?.name || ''; initialProfileNameRef.current = currentName; setProfileName(currentName); setProfileError(''); setShowProfile(true); }} className="flex items-center gap-3 px-3 py-2 w-full hover:bg-white/5 rounded-lg transition-colors">
             {user?.avatar_data ? (
               <img src={user.avatar_data} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
             ) : (
@@ -147,11 +175,11 @@ export default function Layout({ children }) {
       </main>
 
       {showProfile && (
-        <ModalBackdrop onClose={() => !savingProfile && setShowProfile(false)} disabled={savingProfile}>
+        <ModalBackdrop onClose={handleProfileRequestClose} disabled={savingProfile}>
           <div className="bg-white rounded-2xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-semibold text-slate-800">Meu perfil</h2>
-              <button onClick={() => setShowProfile(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={handleProfileRequestClose} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
@@ -167,6 +195,7 @@ export default function Layout({ children }) {
             </div>
             <label className="text-sm font-medium text-slate-700 block mb-1">Nome</label>
             <input className="input-field mb-4" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+            {profileError && <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{profileError}</p>}
             <button onClick={saveProfileName} disabled={savingProfile} className="btn-primary w-full">
               {savingProfile ? 'Salvando...' : 'Salvar'}
             </button>
