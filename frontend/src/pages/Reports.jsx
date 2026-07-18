@@ -28,6 +28,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import OrganicReports from '../components/OrganicReports.jsx';
 
 function localIsoDate(date = new Date()) {
   const year = date.getFullYear();
@@ -495,6 +496,8 @@ export default function Reports() {
           </div>
         </>
       )}
+
+      <OrganicReports clientId={clientId} from={from} to={to} user={user} />
 
       {user?.role !== 'client' && (
         <details className="surface-card group">
