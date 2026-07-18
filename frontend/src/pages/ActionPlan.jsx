@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Circle, Clock3, Pencil, Plus, Target, Trash2 } from 'lucide-react';
+import { BookOpenText, BrainCircuit, CalendarDays, CheckCircle2, Circle, Clock3, Pencil, Plus, Target, Trash2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import PageHero from '../components/PageHero.jsx';
 
 const EMPTY_TASK = { title: '', description: '', due_date: '', status: 'pending' };
 
@@ -128,11 +129,21 @@ export default function ActionPlan() {
 
   if (!clientId) {
     return (
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Plano de Ação</h1>
-        <p className="text-slate-500 mt-1">Selecione um cliente para construir o plano estratégico.</p>
-        <div className="card p-6 mt-6 max-w-lg">
-          <label className="text-sm font-medium text-slate-700 block mb-2">Cliente</label>
+      <div className="space-y-6">
+        <PageHero
+          icon={Target}
+          eyebrow="Estratégia anual"
+          title="Plano de Ação"
+          description="Transforme diagnóstico, propósito e prioridades em uma direção prática para o ano."
+        />
+        <div className="surface-card mx-auto max-w-xl p-7">
+          <div className="mb-5 flex items-center gap-3">
+            <span className="icon-tile bg-[#eef5ff] text-[#0969ff]"><Target size={19} /></span>
+            <div>
+              <h2 className="section-title">Escolha um cliente</h2>
+              <p className="mt-0.5 text-sm text-slate-500">Cada conta possui um plano estratégico independente.</p>
+            </div>
+          </div>
           <select className="input-field" value={localClientId} onChange={(e) => setLocalClientId(e.target.value)}>
             <option value="">Selecione...</option>
             {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
@@ -144,62 +155,69 @@ export default function ActionPlan() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Plano de Ação</h1>
-          <p className="text-slate-500 mt-1">Direção estratégica, diagnóstico e execução em um só lugar.</p>
-        </div>
-        <div className="flex gap-2">
-          {user?.role !== 'client' && clients.length > 1 && (
-            <select className="input-field w-56" value={String(clientId)} onChange={(e) => setLocalClientId(e.target.value)}>
-              {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-            </select>
-          )}
-          <input type="number" min="2020" max="2100" className="input-field w-28" value={year} onChange={(e) => setYear(Number(e.target.value))} />
-          <div className="min-w-[150px] text-right text-sm">
-            {saving || saveState === 'saving' ? (
-              <span className="text-amber-600">Salvando automaticamente...</span>
-            ) : saveState === 'saved' ? (
-              <span className="text-emerald-600">Alterações salvas</span>
-            ) : saveState === 'error' ? (
-              <span className="text-red-600">Erro ao salvar</span>
-            ) : (
-              <span className="text-slate-400">Salvamento automático</span>
+      <PageHero
+        icon={Target}
+        eyebrow={clients.find((client) => client.id === clientId)?.name || 'Estratégia anual'}
+        title="Plano de Ação"
+        description="Conecte objetivo, manifesto, diagnóstico e execução em uma visão única para o ano."
+        actions={
+          <>
+            {user?.role !== 'client' && clients.length > 1 && (
+              <select className="min-w-[210px] rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm font-medium text-white outline-none" value={String(clientId)} onChange={(e) => setLocalClientId(e.target.value)}>
+                {clients.map((client) => <option className="text-slate-800" key={client.id} value={client.id}>{client.name}</option>)}
+              </select>
             )}
-          </div>
+            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm text-white/80">
+              <CalendarDays size={16} />
+              <input type="number" min="2020" max="2100" className="w-20 bg-transparent font-semibold text-white outline-none" value={year} onChange={(e) => setYear(Number(e.target.value))} />
+            </label>
+          </>
+        }
+      >
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`h-2 w-2 rounded-full ${saveState === 'error' ? 'bg-red-400' : saving || saveState === 'saving' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+          <span className="text-white/55">
+            {saving || saveState === 'saving' ? 'Salvando automaticamente...' : saveState === 'saved' ? 'Alterações salvas' : saveState === 'error' ? 'Erro ao salvar' : 'Salvamento automático ativo'}
+          </span>
         </div>
-      </div>
+      </PageHero>
 
       {message && <div className="rounded-lg bg-slate-100 text-slate-700 px-4 py-3 text-sm">{message}</div>}
       {loading || !plan ? <p className="text-slate-400">Carregando...</p> : (
         <>
-          <section className="card p-6">
-            <div className="flex items-center gap-2 mb-5"><Target size={20} className="text-zebrazul-600" /><h2 className="font-semibold text-slate-800">Objetivo do ano</h2></div>
-            <div className="grid lg:grid-cols-3 gap-4">
-              <TextBlock label="O que queremos?" value={plan.what_we_want} onChange={(v) => updatePlan('what_we_want', v)} placeholder="Descreva o resultado principal que a marca ou empresa quer alcançar neste ano." />
-              <TextBlock label="Para que queremos?" value={plan.why_we_want} onChange={(v) => updatePlan('why_we_want', v)} placeholder="Explique o motivo, o impacto e a transformação esperada." />
-              <TextBlock label="Como faremos?" value={plan.how_we_will_do} onChange={(v) => updatePlan('how_we_will_do', v)} placeholder="Registre as grandes frentes, métodos e caminhos para chegar ao objetivo." />
+          <section className="surface-card overflow-hidden">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-5"><span className="icon-tile bg-[#eef5ff] text-[#0969ff]"><Target size={19} /></span><div><p className="section-kicker">Direção central</p><h2 className="section-title">Objetivo do ano</h2></div></div>
+            <div className="p-6">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <TextBlock number="01" label="O que queremos?" value={plan.what_we_want} onChange={(v) => updatePlan('what_we_want', v)} placeholder="Descreva o resultado principal que a marca ou empresa quer alcançar neste ano." />
+              <TextBlock number="02" label="Para que queremos?" value={plan.why_we_want} onChange={(v) => updatePlan('why_we_want', v)} placeholder="Explique o motivo, o impacto e a transformação esperada." />
+              <TextBlock number="03" label="Como faremos?" value={plan.how_we_will_do} onChange={(v) => updatePlan('how_we_will_do', v)} placeholder="Registre as grandes frentes, métodos e caminhos para chegar ao objetivo." />
+            </div>
             </div>
           </section>
 
           <section className="grid lg:grid-cols-2 gap-6">
-            <div className="card p-6">
-              <h2 className="font-semibold text-slate-800 mb-2">Manifesto</h2>
+            <div className="surface-card overflow-hidden">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-5"><span className="icon-tile bg-violet-50 text-violet-600"><BookOpenText size={18} /></span><div><p className="section-kicker">Identidade</p><h2 className="section-title">Manifesto</h2></div></div>
+              <div className="p-6">
               <p className="text-sm text-slate-500 mb-4">Espaço para registrar a visão, a crença central e o compromisso que orientam o plano.</p>
-              <textarea className="input-field min-h-[240px]" value={plan.manifesto || ''} onChange={(e) => updatePlan('manifesto', e.target.value)} placeholder="Escreva o manifesto aqui..." />
+              <textarea className="input-field min-h-[250px] resize-y bg-slate-50/60" value={plan.manifesto || ''} onChange={(e) => updatePlan('manifesto', e.target.value)} placeholder="Escreva o manifesto aqui..." />
+              </div>
             </div>
-            <div className="card p-6">
-              <h2 className="font-semibold text-slate-800 mb-2">Diagnóstico Personalizado</h2>
+            <div className="surface-card overflow-hidden">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-5"><span className="icon-tile bg-amber-50 text-amber-600"><BrainCircuit size={18} /></span><div><p className="section-kicker">Leitura estratégica</p><h2 className="section-title">Diagnóstico Personalizado</h2></div></div>
+              <div className="p-6">
               <p className="text-sm text-slate-500 mb-4">Área aberta para análises, oportunidades, desafios, forças, riscos e recomendações.</p>
-              <textarea className="input-field min-h-[240px]" value={plan.diagnosis || ''} onChange={(e) => updatePlan('diagnosis', e.target.value)} placeholder="Preencha o diagnóstico personalizado..." />
+              <textarea className="input-field min-h-[250px] resize-y bg-slate-50/60" value={plan.diagnosis || ''} onChange={(e) => updatePlan('diagnosis', e.target.value)} placeholder="Preencha o diagnóstico personalizado..." />
+              </div>
             </div>
           </section>
 
-          <section className="card p-6">
+          <section className="surface-card p-6">
             <div className="flex items-center justify-between gap-3 mb-5">
               <div><h2 className="font-semibold text-slate-800">Tarefas do Plano de Ação</h2><p className="text-sm text-slate-500">Lista independente das tarefas do cronograma.</p></div>
             </div>
-            <form onSubmit={saveTask} className="grid lg:grid-cols-[1.2fr_1.8fr_160px_150px_auto] gap-3 items-end bg-slate-50 rounded-xl p-4 mb-5">
+            <form onSubmit={saveTask} className="grid items-end gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/70 p-4 mb-5 lg:grid-cols-[1.2fr_1.8fr_160px_150px_auto]">
               <Field label="Tarefa"><input className="input-field" value={taskForm.title} onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })} placeholder="Ex: Revisar posicionamento" /></Field>
               <Field label="Descrição"><input className="input-field" value={taskForm.description} onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })} placeholder="Detalhes da ação" /></Field>
               <Field label="Prazo"><input type="date" className="input-field" value={taskForm.due_date} onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })} /></Field>
@@ -209,7 +227,7 @@ export default function ActionPlan() {
             <div className="space-y-2">
               {tasks.length === 0 && <p className="text-sm text-slate-400 py-8 text-center">Nenhuma tarefa adicionada ao plano.</p>}
               {tasks.map((task) => (
-                <div key={task.id} className="border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div key={task.id} className="data-row flex items-center gap-3 px-4 py-3">
                   <button onClick={() => changeTaskStatus(task, task.status === 'done' ? 'pending' : task.status === 'pending' ? 'in_progress' : 'done')}>
                     {task.status === 'done' ? <CheckCircle2 className="text-emerald-500" size={20} /> : task.status === 'in_progress' ? <Clock3 className="text-amber-500" size={20} /> : <Circle className="text-slate-300" size={20} />}
                   </button>
@@ -229,7 +247,15 @@ export default function ActionPlan() {
   );
 }
 
-function TextBlock({ label, value, onChange, placeholder }) {
-  return <div><label className="text-sm font-medium text-slate-700 block mb-2">{label}</label><textarea className="input-field min-h-[150px]" value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} /></div>;
+function TextBlock({ number, label, value, onChange, placeholder }) {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-slate-50/65 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[11px] font-bold text-[#0969ff] shadow-sm">{number}</span>
+        <label className="text-sm font-semibold text-slate-800">{label}</label>
+      </div>
+      <textarea className="input-field min-h-[170px] resize-y border-0 bg-white shadow-sm" value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+    </div>
+  );
 }
 function Field({ label, children }) { return <div><label className="text-xs font-medium text-slate-600 block mb-1">{label}</label>{children}</div>; }

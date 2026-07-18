@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   Instagram,
@@ -13,12 +13,19 @@ import {
   Youtube,
   Music2,
   AtSign,
+  BriefcaseBusiness,
+  CheckCircle2,
+  PauseCircle,
+  Archive,
+  ArrowUpRight,
 } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import { formChanged } from '../utils/formState.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import PageHero from '../components/PageHero.jsx';
 
 const SOCIAL_FIELDS = [
   { platform: 'instagram', label: 'Instagram', placeholder: '@usuario ou link' },
@@ -78,15 +85,15 @@ function buildClientForm(client, accounts) {
 }
 
 function ClientFormModal({ mode, initialData, onClose, onSubmit }) {
+  const initialFormRef = useRef(initialData);
   const [form, setForm] = useState(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function persistClient() {
     if (!form.name.trim()) {
       setError('Informe o nome do cliente.');
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -100,17 +107,34 @@ function ClientFormModal({ mode, initialData, onClose, onSubmit }) {
           handle: form.socials[platform]?.trim() || '',
         })),
       });
+      return true;
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível salvar o cliente.');
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleSubmit(event) {
+    event.preventDefault();
+    await persistClient();
+  }
+
+  async function handleRequestClose() {
+    if (mode !== 'edit' || !formChanged(initialFormRef.current, form)) {
+      onClose();
+      return;
+    }
+
+    await persistClient();
+  }
+
+
   return (
-    <ModalBackdrop onClose={onClose} disabled={saving} className="z-[60]">
-      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10 flex items-center justify-between gap-4">
+    <ModalBackdrop onClose={handleRequestClose} disabled={saving} className="z-[60]">
+      <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-3xl border border-slate-200/80 bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-100 bg-white/95 px-6 py-5 backdrop-blur rounded-t-3xl">
           <div>
             <h2 className="font-semibold text-slate-800">
               {mode === 'edit' ? 'Editar cliente' : 'Novo cliente'}
@@ -119,7 +143,7 @@ function ClientFormModal({ mode, initialData, onClose, onSubmit }) {
               Cadastre os dados de contato e os canais digitais da conta.
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl" aria-label="Fechar">×</button>
+          <button onClick={handleRequestClose} className="text-slate-400 hover:text-slate-600 text-xl" aria-label="Fechar">×</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
@@ -324,44 +348,66 @@ export default function Clients() {
     loadClients();
   }
 
+  const clientStats = {
+    total: clients.length,
+    active: clients.filter((client) => client.status === 'active').length,
+    paused: clients.filter((client) => client.status === 'paused').length,
+    archived: clients.filter((client) => client.status === 'archived').length,
+  };
+
   return (
     <div className="space-y-6 min-w-0 max-w-full">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Clientes</h1>
-          <p className="text-slate-500 mt-1">Dados comerciais, contatos e redes sociais das contas gerenciadas.</p>
-        </div>
-        {user?.role !== 'client' && (
-          <button onClick={() => setFormMode('create')} className="btn-primary flex items-center gap-2">
-            <Plus size={18} /> Novo cliente
+      <PageHero
+        icon={BriefcaseBusiness}
+        eyebrow="Carteira de contas"
+        title="Clientes"
+        description="Centralize informações comerciais, contatos, redes sociais e o status de cada conta gerenciada."
+        actions={user?.role !== 'client' && (
+          <button onClick={() => setFormMode('create')} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+            <Plus size={17} /> Novo cliente
           </button>
         )}
-      </div>
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Total', value: clientStats.total, icon: Building2, color: 'text-blue-300' },
+            { label: 'Ativos', value: clientStats.active, icon: CheckCircle2, color: 'text-emerald-300' },
+            { label: 'Pausados', value: clientStats.paused, icon: PauseCircle, color: 'text-amber-300' },
+            { label: 'Arquivados', value: clientStats.archived, icon: Archive, color: 'text-slate-300' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
+              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </PageHero>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {clients.map((client) => (
           <button
             key={client.id}
             onClick={() => openClient(client)}
-            className="card p-5 text-left hover:border-zebrazul-300 transition-colors min-w-0"
+            className="group relative min-w-0 overflow-hidden rounded-[24px] border border-slate-200/70 bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.045)] transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)]"
           >
-            <div className="flex items-center gap-3 mb-3 min-w-0">
+            <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: client.logo_color || '#0969ff' }} />
+            <div className="mb-4 flex min-w-0 items-center gap-3">
               {client.avatar_data ? (
-                <img src={client.avatar_data} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                <img src={client.avatar_data} alt="" className="h-12 w-12 shrink-0 rounded-2xl object-cover ring-1 ring-slate-200" />
               ) : (
                 <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-bold text-white shadow-sm"
                   style={{ backgroundColor: client.logo_color }}
                 >
                   {client.name[0]}
                 </div>
               )}
               <div className="min-w-0">
-                <p className="font-medium text-slate-800 truncate">{client.name}</p>
+                <p className="truncate text-base font-semibold text-slate-900">{client.name}</p>
                 <p className="text-xs text-slate-400 truncate">{client.segment || 'Sem segmento definido'}</p>
               </div>
             </div>
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-4">
               <span className={`badge ${
                 client.status === 'active'
                   ? 'bg-emerald-100 text-emerald-700'
@@ -371,7 +417,7 @@ export default function Clients() {
               }`}>
                 {client.status === 'active' ? 'Ativo' : client.status === 'paused' ? 'Pausado' : 'Arquivado'}
               </span>
-              {client.phone && <span className="text-xs text-slate-400 truncate">{client.phone}</span>}
+              <span className="flex items-center gap-1 text-xs font-medium text-slate-400 transition group-hover:text-[#0969ff]">Abrir <ArrowUpRight size={13} /></span>
             </div>
           </button>
         ))}
@@ -389,8 +435,8 @@ export default function Clients() {
 
       {selected && (
         <ModalBackdrop onClose={() => !deleting && setSelected(null)} disabled={deleting}>
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10 flex items-center justify-between gap-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl border border-slate-200/80 bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-100 bg-white/95 px-6 py-5 backdrop-blur rounded-t-3xl">
               <div className="min-w-0">
                 <h2 className="font-semibold text-slate-800 truncate">{selected.name}</h2>
                 <p className="text-xs text-slate-400 mt-0.5">Cadastro completo do cliente</p>

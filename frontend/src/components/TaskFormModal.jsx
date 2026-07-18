@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { X, ImagePlus, FileText, Grid3x3, Video, Trash2 } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from './ModalBackdrop.jsx';
+import { formChanged } from '../utils/formState.js';
 
 const CONTENT_TYPES = ['feed', 'reels', 'story', 'carrossel', 'artigo'];
 
@@ -26,7 +27,7 @@ function todayISO() {
 
 export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
   const isEditing = Boolean(taskToEdit?.id);
-  const [form, setForm] = useState(() => ({
+  const initialForm = {
     task_type: taskToEdit?.task_type || 'basic',
     title: taskToEdit?.title || '',
     description: taskToEdit?.description || '',
@@ -41,7 +42,9 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     attachment_mime: taskToEdit?.attachment_mime || '',
     attachment_filename: taskToEdit?.attachment_filename || '',
     media_gallery: taskToEdit?.media_gallery || []
-  }));
+  };
+  const initialFormRef = useRef(initialForm);
+  const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [mediaDirty, setMediaDirty] = useState(!isEditing);
@@ -103,15 +106,18 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     }));
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function persistTask() {
     setError('');
-    if (!form.title) { setError('Informe um título para a tarefa.'); return; }
+    if (!form.title.trim()) {
+      setError('Informe um título para a tarefa.');
+      return false;
+    }
+
     setSaving(true);
     try {
       const payload = {
         task_type: form.task_type,
-        title: form.title,
+        title: form.title.trim(),
         description: form.description,
         content_type: form.content_type,
         caption: form.caption,
@@ -132,13 +138,31 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
       const response = isEditing
         ? await api.put(`/tasks/${taskToEdit.id}`, payload)
         : await api.post('/tasks', { ...payload, parent_task_id: parentTaskId || null });
-      onSaved(response.data.task || null);
+      return response.data.task || null;
     } catch (err) {
       setError(err.response?.data?.error || (isEditing ? 'Erro ao editar tarefa.' : 'Erro ao criar tarefa.'));
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const savedTask = await persistTask();
+    if (savedTask !== false) onSaved(savedTask);
+  }
+
+  async function handleRequestClose() {
+    if (!isEditing || !formChanged(initialFormRef.current, form)) {
+      onClose();
+      return;
+    }
+
+    const savedTask = await persistTask();
+    if (savedTask !== false) onSaved(savedTask);
+  }
+
 
   const isPost = form.task_type === 'post';
   const isVideo = form.task_type === 'video';
@@ -150,11 +174,11 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
   });
 
   return (
-    <ModalBackdrop onClose={onClose} disabled={saving} className="z-[60]">
+    <ModalBackdrop onClose={handleRequestClose} disabled={saving} className="z-[60]">
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
           <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button onClick={handleRequestClose} className="text-slate-400 hover:text-slate-600">
             <X size={20} />
           </button>
         </div>

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, ImagePlus, Trash2 } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
+import { formChanged } from '../utils/formState.js';
 
 const PLATFORM_OPTIONS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube'];
 const CONTENT_TYPES = ['feed', 'reels', 'story', 'carrossel', 'artigo'];
@@ -84,11 +85,14 @@ function postToForm(post, defaultClientId) {
 export default function PostModal({ clients, defaultClientId, post, onClose, onSaved }) {
   const isEditing = Boolean(post?.id);
   const [form, setForm] = useState(() => postToForm(post, defaultClientId));
+  const initialFormRef = useRef(postToForm(post, defaultClientId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setForm(postToForm(post, defaultClientId));
+    const nextForm = postToForm(post, defaultClientId);
+    initialFormRef.current = nextForm;
+    setForm(nextForm);
   }, [post, defaultClientId]);
 
 
@@ -133,13 +137,12 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
     }));
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function persistPost() {
     setError('');
 
     if (!form.client_id || !form.title.trim()) {
       setError('Selecione o cliente e informe um título.');
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -159,18 +162,36 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
       } else {
         await api.post('/posts', payload);
       }
-      onSaved?.();
+      return true;
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar o conteúdo.');
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const saved = await persistPost();
+    if (saved) onSaved?.();
+  }
+
+  async function handleRequestClose() {
+    if (!isEditing || !formChanged(initialFormRef.current, form)) {
+      onClose();
+      return;
+    }
+
+    const saved = await persistPost();
+    if (saved) onSaved?.();
+  }
+
+
   const selectedClient = clients.find((client) => String(client.id) === String(form.client_id));
 
   return (
-    <ModalBackdrop onClose={onClose} disabled={saving} className="z-[60]">
+    <ModalBackdrop onClose={handleRequestClose} disabled={saving} className="z-[60]">
       <div
         className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0"
         role="dialog"
@@ -184,7 +205,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
             </h2>
             {isEditing && <p className="text-xs text-slate-400 mt-0.5">As alterações aparecem imediatamente na aprovação e no feed.</p>}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Fechar">
+          <button onClick={handleRequestClose} className="text-slate-400 hover:text-slate-600" aria-label="Fechar">
             <X size={20} />
           </button>
         </div>

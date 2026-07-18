@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X, Download, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import { formChanged } from '../utils/formState.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import PageHero from '../components/PageHero.jsx';
 
 const ROLE_OPTIONS = [
   { value: 'team', label: 'Equipe Zebrazul', icon: UsersIcon },
@@ -139,13 +141,12 @@ export default function UserManagement() {
     });
   }
 
-  async function handleEdit(event) {
-    event.preventDefault();
+  async function saveEditedUser() {
     clearMessages();
     const validationError = validateUserForm(editForm, false);
     if (validationError) {
       setError(validationError);
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -164,12 +165,20 @@ export default function UserManagement() {
       setSuccess(`Usuário "${editForm.name}" atualizado com sucesso.`);
       setEditUser(null);
       await loadUsers();
+      return true;
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao atualizar usuário.');
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  async function handleEdit(event) {
+    event.preventDefault();
+    await saveEditedUser();
+  }
+
 
   async function handleDelete() {
     if (!deleteUser) return;
@@ -195,20 +204,43 @@ export default function UserManagement() {
     else setForm((previous) => ({ ...previous, password }));
   }
 
+  const userStats = {
+    total: users.length,
+    admins: users.filter((item) => item.role === 'admin').length,
+    team: users.filter((item) => item.role === 'team').length,
+    clients: users.filter((item) => item.role === 'client').length,
+  };
+
   return (
     <div className="space-y-6 min-w-0">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Usuários</h1>
-          <p className="text-slate-500 mt-1">Crie, edite senhas e gerencie os acessos da equipe e dos clientes.</p>
+      <PageHero
+        icon={UsersIcon}
+        eyebrow="Controle de acesso"
+        title="Usuários"
+        description="Gerencie equipe, clientes, senhas e permissões com clareza e segurança."
+        actions={
+          <button
+            onClick={() => { setShowForm(true); setForm(EMPTY_FORM); clearMessages(); }}
+            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl"
+          >
+            <Plus size={17} /> Novo usuário
+          </button>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Total', value: userStats.total, icon: UsersIcon, color: 'text-blue-300' },
+            { label: 'Administradores', value: userStats.admins, icon: Shield, color: 'text-violet-300' },
+            { label: 'Equipe', value: userStats.team, icon: UsersIcon, color: 'text-cyan-300' },
+            { label: 'Clientes', value: userStats.clients, icon: Building2, color: 'text-emerald-300' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
+              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+            </div>
+          ))}
         </div>
-        <button
-          onClick={() => { setShowForm(true); setForm(EMPTY_FORM); clearMessages(); }}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={18} /> Novo usuário
-        </button>
-      </div>
+      </PageHero>
 
       {success && (
         <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
@@ -222,8 +254,8 @@ export default function UserManagement() {
       )}
 
 
-      <div className={`card p-5 border-2 ${loadingStorage ? 'border-slate-200' : storageStatus?.storage_safe ? 'border-emerald-200' : 'border-red-200'}`}>
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className={`surface-card overflow-hidden border ${loadingStorage ? 'border-slate-200' : storageStatus?.storage_safe ? 'border-emerald-200' : 'border-red-200'}`}>
+        <div className="flex flex-wrap items-start justify-between gap-4 p-6">
           <div className="flex items-start gap-3 min-w-0">
             <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${storageStatus?.storage_safe ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
               {loadingStorage ? <RefreshCw size={21} className="animate-spin" /> : storageStatus?.storage_safe ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
@@ -265,8 +297,8 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="card p-5">
-        <h2 className="font-semibold text-slate-800 mb-3">Papéis disponíveis</h2>
+      <div className="surface-card p-6">
+        <div className="mb-5"><p className="section-kicker">Níveis de permissão</p><h2 className="section-title mt-1">Papéis disponíveis</h2></div>
         <div className="grid md:grid-cols-3 gap-4 text-sm">
           <RoleDescription icon={Shield} title="Administrador" description="Acesso total, incluindo criar, editar e apagar usuários." />
           <RoleDescription icon={UsersIcon} title="Equipe Zebrazul" description="Acessa somente os clientes definidos pelo administrador." />
@@ -274,13 +306,14 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <div className="card p-5 min-w-0">
-        <h2 className="font-semibold text-slate-800 mb-4">Todos os usuários ({users.length})</h2>
-        <div className="space-y-3">
+      <div className="surface-card min-w-0 overflow-hidden">
+        <div className="border-b border-slate-100 px-6 py-5"><p className="section-kicker">Equipe e clientes</p><h2 className="section-title mt-1">Todos os usuários <span className="text-slate-400">({users.length})</span></h2></div>
+        <div className="p-4">
+        <div className="space-y-2">
           {users.map((user) => {
             const isCurrentUser = user.id === currentUser?.id;
             return (
-              <div key={user.id} className="flex items-center gap-3 border border-slate-100 rounded-lg p-3 min-w-0 flex-wrap sm:flex-nowrap">
+              <div key={user.id} className="data-row flex min-w-0 flex-wrap items-center gap-3 p-3 sm:flex-nowrap">
                 <AvatarUpload
                   imageSrc={user.avatar_data}
                   fallbackText={user.name}
@@ -327,6 +360,7 @@ export default function UserManagement() {
             );
           })}
         </div>
+        </div>
       </div>
 
       {showForm && (
@@ -348,6 +382,7 @@ export default function UserManagement() {
 
       {editUser && (
         <UserFormModal
+          key={`edit-user-${editUser.id}`}
           title={`Editar ${editUser.name}`}
           form={editForm}
           setForm={setEditForm}
@@ -361,12 +396,14 @@ export default function UserManagement() {
           passwordLabel="Nova senha"
           passwordHint="Deixe em branco para manter a senha atual"
           lockRole={editUser.id === currentUser?.id}
+          autoSaveOnClose
+          onAutoSave={saveEditedUser}
         />
       )}
 
       {deleteUser && (
         <ModalBackdrop onClose={() => !deleting && setDeleteUser(null)} disabled={deleting}>
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+          <div className="w-full max-w-sm rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
             <div className="w-11 h-11 rounded-full bg-red-50 text-red-600 flex items-center justify-center mb-4">
               <Trash2 size={21} />
             </div>
@@ -390,12 +427,10 @@ export default function UserManagement() {
 
 function RoleDescription({ icon: Icon, title, description }) {
   return (
-    <div className="flex items-start gap-3">
-      <Icon size={18} className="text-zebrazul-600 mt-0.5 shrink-0" />
-      <div>
-        <p className="font-medium text-slate-700">{title}</p>
-        <p className="text-slate-500">{description}</p>
-      </div>
+    <div className="rounded-2xl border border-slate-200/70 bg-slate-50/65 p-4">
+      <span className="icon-tile bg-white text-[#0969ff] shadow-sm"><Icon size={18} /></span>
+      <p className="mt-3 font-semibold text-slate-800">{title}</p>
+      <p className="mt-1 text-sm leading-5 text-slate-500">{description}</p>
     </div>
   );
 }
@@ -413,14 +448,27 @@ function UserFormModal({
   onClose,
   passwordLabel,
   passwordHint,
-  lockRole = false
+  lockRole = false,
+  autoSaveOnClose = false,
+  onAutoSave
 }) {
+  const initialFormRef = useRef(form);
+
+  async function handleRequestClose() {
+    if (!autoSaveOnClose || !formChanged(initialFormRef.current, form)) {
+      onClose();
+      return;
+    }
+
+    await onAutoSave?.();
+  }
+
   return (
-    <ModalBackdrop onClose={onClose} disabled={saving}>
-      <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-6">
+    <ModalBackdrop onClose={handleRequestClose} disabled={saving}>
+      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
         <div className="flex items-center justify-between gap-4 mb-4">
           <h2 className="font-semibold text-slate-800 min-w-0 break-words">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 shrink-0" aria-label="Fechar">
+          <button onClick={handleRequestClose} className="text-slate-400 hover:text-slate-600 shrink-0" aria-label="Fechar">
             <X size={20} />
           </button>
         </div>

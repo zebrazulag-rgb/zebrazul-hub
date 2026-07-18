@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import PageHero from '../components/PageHero.jsx';
 
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
@@ -54,11 +55,11 @@ function TaskCard({ task: t, onClick, onDragStart }) {
       draggable={!!onDragStart}
       onDragStart={onDragStart ? (e) => onDragStart(e, t.id) : undefined}
       onClick={onClick}
-      className={'card p-4 w-full text-left hover:border-zebrazul-300 transition-colors ' + (onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')}
+      className={'group relative w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.075)] ' + (onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')}
     >
       <div className="flex items-start gap-2">
-        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-          <TypeIcon size={16} className="text-slate-400" />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eef5ff] text-[#0969ff]">
+          <TypeIcon size={17} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-800 text-sm">{t.title}</p>
@@ -324,6 +325,13 @@ export default function Tasks() {
     (user?.role === 'client' && Number(selectedTask.created_by) === Number(user.id) && selectedTask.status === 'pending')
   );
 
+  const taskOverview = {
+    total: tasks.length,
+    pending: tasks.filter((task) => task.status === 'pending').length,
+    inProgress: tasks.filter((task) => task.status === 'in_progress').length,
+    done: tasks.filter((task) => task.status === 'done').length,
+  };
+
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const cells = buildMonthGrid(year, month);
@@ -339,32 +347,47 @@ export default function Tasks() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Tarefas</h1>
-          <p className="text-slate-500 mt-1">
-            {user?.role === 'client'
-              ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe o andamento.'
-              : 'Organize o trabalho da equipe com prazos e responsáveis.'}
-          </p>
+      <PageHero
+        icon={ListChecks}
+        eyebrow={user?.role === 'client' ? 'Solicitações para a equipe' : 'Operação e entregas'}
+        title="Tarefas"
+        description={user?.role === 'client'
+          ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe cada etapa.'
+          : 'Organize prioridades, responsáveis e prazos em uma visão clara da operação.'}
+        actions={
+          <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+            <Plus size={17} /> Nova tarefa
+          </button>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Total', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
+            { label: 'Pendentes', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
+            { label: 'Em andamento', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
+            { label: 'Concluídas', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
+              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+            </div>
+          ))}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {user?.role !== 'client' && (
-            <select className="input-field w-48" value={localClientId} onChange={(e) => setLocalClientId(e.target.value)}>
-              <option value="all">Todos os clientes</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
-          <div className="flex bg-slate-100 rounded-lg p-1">
-            <button onClick={() => setView('kanban')} className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'kanban' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}>
-              <LayoutGrid size={14} /> Kanban
-            </button>
-            <button onClick={() => setView('calendar')} className={'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ' + (view === 'calendar' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500')}>
-              <Calendar size={14} /> Calendário
-            </button>
-          </div>
-          <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
-            <Plus size={18} /> Nova tarefa
+      </PageHero>
+
+      <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {user?.role !== 'client' ? (
+          <select className="input-field sm:max-w-[260px]" value={localClientId} onChange={(e) => setLocalClientId(e.target.value)}>
+            <option value="all">Todos os clientes</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        ) : <span className="text-sm font-medium text-slate-500">Acompanhe suas solicitações</span>}
+        <div className="segmented-control">
+          <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
+            <LayoutGrid size={14} /> Kanban
+          </button>
+          <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
+            <Calendar size={14} /> Calendário
           </button>
         </div>
       </div>
@@ -372,18 +395,18 @@ export default function Tasks() {
       {taskError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{taskError}</p>}
 
       {view === 'kanban' && (
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid gap-5 md:grid-cols-3">
           {STATUS_COLUMNS.map((col) => (
             <div
               key={col.key}
               onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, col.key)}
-              className={'space-y-3 rounded-xl p-2 transition-colors ' + (dragOverCol === col.key ? 'bg-zebrazul-50 ring-2 ring-zebrazul-200' : '')}
+              className={'min-h-[420px] rounded-[24px] border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
             >
-              <div className="flex items-center gap-2 px-1">
-                <span className={'badge ' + col.badge}>{col.label}</span>
-                <span className="text-xs text-slate-400">{tasks.filter((t) => t.status === col.key).length}</span>
+              <div className="mb-3 flex items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{tasks.filter((t) => t.status === col.key).length}</span>
               </div>
               <div className="space-y-3 min-h-[60px]">
                 {tasks.filter((t) => t.status === col.key).map((t) => (
@@ -399,7 +422,7 @@ export default function Tasks() {
       )}
 
       {view === 'calendar' && (
-        <div className="card p-5">
+        <div className="surface-card p-5">
           <div className="flex items-center justify-between mb-4">
             <button onClick={() => setCursor(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
               <ChevronLeft size={20} />
@@ -440,7 +463,7 @@ export default function Tasks() {
 
       {dayTasks && (
         <ModalBackdrop onClose={() => setDayTasks(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6">
+          <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-800">Tarefas — {dayTasks.day} de {MONTHS[month]}</h2>
               <button onClick={() => setDayTasks(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
@@ -509,7 +532,7 @@ export default function Tasks() {
 
       {showConvertModal && selectedTask && (
         <ModalBackdrop onClose={() => !convertingTask && setShowConvertModal(false)} disabled={convertingTask} className="z-[70]">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
                 <h2 className="font-semibold text-slate-800">Transformar em subtarefa</h2>
@@ -561,7 +584,7 @@ export default function Tasks() {
 
       {selectedTask && (
         <ModalBackdrop onClose={() => setSelectedTask(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[88vh] overflow-y-auto p-6">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-800">{selectedTask.title}</h2>
               <button onClick={() => setSelectedTask(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>

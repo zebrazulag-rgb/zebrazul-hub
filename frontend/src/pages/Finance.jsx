@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -19,6 +19,8 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import { formChanged } from '../utils/formState.js';
+import PageHero from '../components/PageHero.jsx';
 
 const emptySummary = {
   income_total: 0,
@@ -52,6 +54,7 @@ export default function Finance() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [form, setForm] = useState(createInitialForm(currentMonth(), selectedClient?.id));
+  const initialFormRef = useRef(createInitialForm(currentMonth(), selectedClient?.id));
 
   useEffect(() => {
     api.get('/clients').then((res) => setClients(res.data.clients || [])).catch(() => {});
@@ -84,14 +87,15 @@ export default function Finance() {
   }
 
   function openNewEntry() {
+    const nextForm = createInitialForm(month, clientId !== 'all' ? clientId : selectedClient?.id);
+    initialFormRef.current = nextForm;
     setEditingEntry(null);
-    setForm(createInitialForm(month, clientId !== 'all' ? clientId : selectedClient?.id));
+    setForm(nextForm);
     setShowForm(true);
   }
 
   function openEditEntry(entry) {
-    setEditingEntry(entry);
-    setForm({
+    const nextForm = {
       client_id: entry.client_id ? String(entry.client_id) : '',
       type: entry.type,
       category: entry.category || 'Outros',
@@ -103,19 +107,33 @@ export default function Finance() {
       payment_method: entry.payment_method || '',
       recurring: Boolean(entry.recurring),
       notes: entry.notes || ''
-    });
+    };
+    initialFormRef.current = nextForm;
+    setEditingEntry(entry);
+    setForm(nextForm);
     setShowForm(true);
   }
 
-  async function saveEntry(e) {
-    e.preventDefault();
-    setSaving(true);
+  async function persistEntry() {
     setError('');
+    if (!form.description.trim() || !form.amount || !form.due_date) {
+      setError('Preencha descrição, valor e vencimento.');
+      return false;
+    }
+
+    const numericAmount = Number(form.amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setError('Informe um valor válido para o lançamento.');
+      return false;
+    }
+
+    setSaving(true);
     try {
       const payload = {
         ...form,
+        description: form.description.trim(),
         client_id: form.client_id || null,
-        amount: Number(form.amount),
+        amount: numericAmount,
         paid_date: form.status === 'paid' ? form.paid_date || today() : null
       };
 
@@ -125,11 +143,28 @@ export default function Finance() {
       setShowForm(false);
       setEditingEntry(null);
       await loadFinance();
+      return true;
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível salvar o lançamento.');
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveEntry(e) {
+    e.preventDefault();
+    await persistEntry();
+  }
+
+  async function handleEntryRequestClose() {
+    if (!editingEntry || !formChanged(initialFormRef.current, form)) {
+      setShowForm(false);
+      setEditingEntry(null);
+      return;
+    }
+
+    await persistEntry();
   }
 
   async function markAsPaid(entry) {
@@ -207,27 +242,29 @@ export default function Finance() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-zebrazul-50 text-zebrazul-600 flex items-center justify-center">
-              <WalletCards size={22} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">Financeiro</h1>
-              <p className="text-slate-500 mt-0.5">Controle de receitas, despesas e recebimentos da operação.</p>
-            </div>
-          </div>
+      <PageHero
+        icon={WalletCards}
+        eyebrow="Visão administrativa"
+        title="Financeiro"
+        description="Acompanhe receitas, despesas, recebimentos e o saldo projetado da operação em um único painel."
+        actions={
+          <>
+            <button type="button" onClick={exportCsv} className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.055] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
+              <Download size={16} /> Exportar
+            </button>
+            <button type="button" onClick={openNewEntry} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+              <Plus size={17} /> Novo lançamento
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <HeroMoney label="Receitas recebidas" value={summary.income_paid} icon={TrendingUp} tone="text-emerald-300" />
+          <HeroMoney label="A receber" value={summary.income_pending} icon={CircleDollarSign} tone="text-amber-300" />
+          <HeroMoney label="Despesas pagas" value={summary.expense_paid} icon={TrendingDown} tone="text-rose-300" />
+          <HeroMoney label="Saldo realizado" value={summary.balance_realized} icon={WalletCards} tone={summary.balance_realized >= 0 ? 'text-blue-300' : 'text-rose-300'} />
         </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={exportCsv} className="btn-secondary flex items-center gap-2">
-            <Download size={17} /> Exportar
-          </button>
-          <button type="button" onClick={openNewEntry} className="btn-primary flex items-center gap-2">
-            <Plus size={17} /> Novo lançamento
-          </button>
-        </div>
-      </div>
+      </PageHero>
 
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -235,7 +272,7 @@ export default function Finance() {
         </div>
       )}
 
-      <div className="card p-4">
+      <div className="toolbar-panel">
         <div className="grid gap-3 md:grid-cols-4">
           <div>
             <label className="text-xs font-semibold text-slate-500 block mb-1.5">Mês de referência</label>
@@ -269,7 +306,7 @@ export default function Finance() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Receitas recebidas"
           value={summary.income_paid}
@@ -302,7 +339,7 @@ export default function Finance() {
       </div>
 
       <div className="grid xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.55fr)] gap-6">
-        <div className="card p-5 min-w-0">
+        <div className="surface-card min-w-0 p-5">
           <div className="flex items-center justify-between gap-3 mb-5">
             <div>
               <h2 className="font-semibold text-slate-800">Fluxo previsto no mês</h2>
@@ -325,8 +362,8 @@ export default function Finance() {
           )}
         </div>
 
-        <div className="card p-5">
-          <h2 className="font-semibold text-slate-800">Resumo do período</h2>
+        <div className="surface-card p-5">
+          <div className="mb-5 flex items-center gap-3"><span className="icon-tile bg-[#eef5ff] text-[#0969ff]"><CircleDollarSign size={18} /></span><div><p className="section-kicker">Visão consolidada</p><h2 className="section-title">Resumo do período</h2></div></div>
           <div className="mt-5 space-y-4">
             <BalanceRow label="Receita prevista" value={summary.income_total} />
             <BalanceRow label="Despesa prevista" value={summary.expense_total} negative />
@@ -345,7 +382,7 @@ export default function Finance() {
         </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="surface-card overflow-hidden">
         <div className="p-5 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="font-semibold text-slate-800">Lançamentos</h2>
@@ -369,7 +406,7 @@ export default function Finance() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <thead className="bg-slate-50/80 text-left text-[11px] uppercase tracking-[0.12em] text-slate-400">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Lançamento</th>
                   <th className="px-4 py-3 font-semibold">Cliente</th>
@@ -381,7 +418,7 @@ export default function Finance() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleEntries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={entry.id} className="transition-colors hover:bg-[#f7faff]">
                     <td className="px-5 py-4">
                       <div className="flex items-start gap-3">
                         <div className={`mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${entry.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
@@ -433,14 +470,14 @@ export default function Finance() {
       </div>
 
       {showForm && (
-        <ModalBackdrop onClose={() => !saving && setShowForm(false)} disabled={saving} className="overflow-y-auto">
+        <ModalBackdrop onClose={handleEntryRequestClose} disabled={saving} className="overflow-y-auto">
           <div className="bg-white rounded-2xl w-full max-w-2xl my-6 shadow-xl">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200">
               <div>
                 <h2 className="font-semibold text-slate-800">{editingEntry ? 'Editar lançamento' : 'Novo lançamento'}</h2>
                 <p className="text-xs text-slate-400 mt-0.5">Registre uma receita ou despesa da operação.</p>
               </div>
-              <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={handleEntryRequestClose} className="text-slate-400 hover:text-slate-600">
                 <X size={21} />
               </button>
             </div>
@@ -537,8 +574,14 @@ export default function Finance() {
                 </div>
               </label>
 
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <AlertTriangle size={17} /> {error}
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
+                <button type="button" className="btn-secondary" onClick={() => { setShowForm(false); setEditingEntry(null); setError(''); }}>Cancelar</button>
                 <button type="submit" disabled={saving} className="btn-primary min-w-32">
                   {saving ? 'Salvando...' : editingEntry ? 'Salvar alterações' : 'Adicionar lançamento'}
                 </button>
@@ -551,13 +594,22 @@ export default function Finance() {
   );
 }
 
+function HeroMoney({ label, value, icon: Icon, tone }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+      <div className="flex items-center gap-2 text-xs text-white/45"><Icon size={14} className={tone} /> {label}</div>
+      <p className="mt-1 truncate text-xl font-bold text-white sm:text-2xl">{formatMoney(value)}</p>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, detail, icon: Icon, iconClass, valueClass = 'text-slate-800' }) {
   return (
-    <div className="card p-5">
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_8px_28px_rgba(15,23,42,0.045)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-slate-500">{label}</p>
-          <p className={`text-2xl font-bold mt-2 truncate ${valueClass}`}>{formatMoney(value)}</p>
+          <p className={`mt-2 truncate text-2xl font-bold tracking-tight ${valueClass}`}>{formatMoney(value)}</p>
           <p className="text-xs text-slate-400 mt-1">{detail}</p>
         </div>
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconClass}`}>

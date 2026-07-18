@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart3, Eye, MousePointerClick, Sparkles, Target } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import PageHero from '../components/PageHero.jsx';
 
 export default function Reports() {
   const { user } = useAuth();
@@ -62,29 +64,29 @@ export default function Reports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Relatórios</h1>
-          <p className="text-slate-500 mt-1">Acompanhamento de performance de redes sociais e tráfego pago.</p>
-        </div>
-        {user?.role !== 'client' && clients.length > 0 && (
-          <select className="input-field w-56" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      <PageHero
+        icon={BarChart3}
+        eyebrow="Inteligência de performance"
+        title="Relatórios"
+        description="Transforme métricas de conteúdo e mídia em uma leitura clara do que está funcionando."
+        actions={user?.role !== 'client' && clients.length > 0 && (
+          <select className="min-w-[220px] rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm font-medium text-white outline-none" value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            {clients.map((c) => <option className="text-slate-800" key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}
-      </div>
+      >
+        {totals && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <HeroMetric label="Alcance" value={totals.reach} icon={Eye} tone="text-blue-300" />
+            <HeroMetric label="Engajamento" value={totals.engagement} icon={Sparkles} tone="text-violet-300" />
+            <HeroMetric label="Cliques" value={totals.clicks} icon={MousePointerClick} tone="text-amber-300" />
+            <HeroMetric label="Leads/Conversões" value={totals.leads + totals.conversions} icon={Target} tone="text-emerald-300" />
+          </div>
+        )}
+      </PageHero>
 
-      {totals && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard label="Alcance total" value={totals.reach.toLocaleString('pt-BR')} />
-          <MetricCard label="Engajamento" value={totals.engagement.toLocaleString('pt-BR')} />
-          <MetricCard label="Cliques" value={totals.clicks.toLocaleString('pt-BR')} />
-          <MetricCard label="Leads/Conversões" value={(totals.leads + totals.conversions).toLocaleString('pt-BR')} />
-        </div>
-      )}
-
-      <div className="card p-5">
-        <h2 className="font-semibold text-slate-800 mb-4">Evolução no período</h2>
+      <div className="surface-card p-6">
+        <div className="mb-5"><p className="section-kicker">Tendência</p><h2 className="section-title mt-1">Evolução no período</h2></div>
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -99,8 +101,8 @@ export default function Reports() {
       </div>
 
       {user?.role !== 'client' && (
-        <div className="card p-5">
-          <h2 className="font-semibold text-slate-800 mb-4">Lançar métricas manualmente</h2>
+        <div className="surface-card p-6">
+          <div className="mb-4"><p className="section-kicker">Entrada manual</p><h2 className="section-title mt-1">Lançar métricas</h2></div>
           <p className="text-xs text-slate-400 mb-4">
             Espaço reservado para quando as integrações com Meta Ads / Google Ads forem conectadas via API — por ora, lançamento manual.
           </p>
@@ -127,11 +129,11 @@ export default function Reports() {
   );
 }
 
-function MetricCard({ label, value }) {
+function HeroMetric({ label, value, icon: Icon, tone }) {
   return (
-    <div className="card p-5">
-      <p className="text-2xl font-bold text-slate-800">{value}</p>
-      <p className="text-sm text-slate-500 mt-1">{label}</p>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+      <div className="flex items-center gap-2 text-xs text-white/45"><Icon size={14} className={tone} /> {label}</div>
+      <p className="mt-1 text-2xl font-bold text-white">{Number(value || 0).toLocaleString('pt-BR')}</p>
     </div>
   );
 }

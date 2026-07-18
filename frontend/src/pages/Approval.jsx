@@ -9,6 +9,11 @@ import {
   Check,
   Pencil,
   Trash2,
+  CalendarCheck2,
+  Clock3,
+  CheckCircle2,
+  XCircle,
+  Files,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -17,6 +22,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import PostModal from '../components/PostModal.jsx';
 import InstagramPreview from '../components/InstagramPreview.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import PageHero from '../components/PageHero.jsx';
 
 const FILTERS = [
   { key: 'all', label: 'Todos' },
@@ -186,34 +192,52 @@ export default function Approval() {
 
   const clientOfSelected = clients.find((client) => client.id === selectedPost?.client_id);
   const filtered = filter === 'all' ? posts : posts.filter((post) => post.status === filter);
+  const approvalStats = {
+    total: posts.length,
+    pending: posts.filter((post) => post.status === 'pending_approval').length,
+    approved: posts.filter((post) => post.status === 'approved').length,
+    rejected: posts.filter((post) => post.status === 'rejected').length,
+  };
 
   return (
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden">
-      <div className="flex items-center justify-between gap-4 flex-wrap min-w-0">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-slate-800">Aprovação de conteúdo</h1>
-          <p className="text-slate-500 mt-1">
-            {user?.role === 'client'
-              ? 'Revise e aprove os conteúdos preparados pela equipe Zebrazul.'
-              : 'Gerencie, edite e acompanhe o fluxo de aprovação dos conteúdos.'}
-          </p>
-        </div>
-        {user?.role !== 'client' && (
-          <button onClick={openCreate} className="btn-primary flex items-center gap-2">
-            <Plus size={18} /> Novo conteúdo
+      <PageHero
+        icon={CalendarCheck2}
+        eyebrow={selectedClient?.name || 'Fluxo editorial'}
+        title="Aprovação de conteúdo"
+        description={user?.role === 'client'
+          ? 'Revise cada peça em uma experiência visual clara e aprove o que está pronto para publicação.'
+          : 'Centralize rascunhos, feedbacks e decisões para manter o calendário editorial em movimento.'}
+        actions={user?.role !== 'client' && (
+          <button onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+            <Plus size={17} /> Novo conteúdo
           </button>
         )}
-      </div>
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Total', value: approvalStats.total, icon: Files, color: 'text-blue-300' },
+            { label: 'Aguardando', value: approvalStats.pending, icon: Clock3, color: 'text-amber-300' },
+            { label: 'Aprovados', value: approvalStats.approved, icon: CheckCircle2, color: 'text-emerald-300' },
+            { label: 'Reprovados', value: approvalStats.rejected, icon: XCircle, color: 'text-rose-300' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
+              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </PageHero>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="toolbar-panel flex flex-wrap gap-2">
         {FILTERS.map((item) => (
           <button
             key={item.key}
             onClick={() => setFilter(item.key)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`rounded-xl px-3.5 py-2 text-sm font-medium transition ${
               filter === item.key
-                ? 'bg-zebrazul-600 text-white'
-                : 'bg-white text-slate-600 border border-slate-200'
+                ? 'bg-[#121620] text-white shadow-sm'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
             {item.label}
@@ -229,7 +253,7 @@ export default function Approval() {
         {filtered.map((post) => (
           <div
             key={post.id}
-            className="card p-4 w-full min-w-0 max-w-full overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-zebrazul-300 transition-colors"
+            className="data-row flex w-full min-w-0 max-w-full flex-col gap-4 overflow-hidden p-4 sm:flex-row sm:items-center sm:justify-between"
           >
             <button
               onClick={() => openPost(post)}
@@ -237,7 +261,7 @@ export default function Approval() {
             >
               {post.media_data && (
                 <div className="relative shrink-0">
-                  <img src={post.media_data} alt="" className="w-12 h-14 rounded-lg object-cover" />
+                  <img src={post.media_data} alt="" className="h-[84px] w-[68px] rounded-xl object-cover shadow-sm" />
                   {post.media_gallery?.length > 1 && (
                     <span className="absolute -right-1.5 -top-1.5 min-w-5 h-5 px-1 rounded-full bg-zebrazul-600 text-white text-[10px] font-bold flex items-center justify-center">
                       {post.media_gallery.length}
@@ -247,12 +271,12 @@ export default function Approval() {
               )}
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="flex items-center gap-2 mb-1 min-w-0 flex-wrap">
-                  <span className="font-medium text-slate-800 min-w-0 max-w-full break-words [overflow-wrap:anywhere]">
+                  <span className="min-w-0 max-w-full break-words text-base font-semibold text-slate-900 [overflow-wrap:anywhere]">
                     {post.title}
                   </span>
                   <StatusBadge status={post.status} />
                 </div>
-                <p className="text-sm text-slate-500 max-w-full overflow-hidden line-clamp-2 break-words [overflow-wrap:anywhere]">
+                <p className="max-w-full overflow-hidden line-clamp-2 break-words text-sm leading-6 text-slate-500 [overflow-wrap:anywhere]">
                   {post.caption || 'Sem legenda ainda'}
                 </p>
                 {post.scheduled_at && (
@@ -313,8 +337,8 @@ export default function Approval() {
 
       {selectedPost && (
         <ModalBackdrop onClose={() => setSelectedPost(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0" role="dialog" aria-modal="true">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 sticky top-0 bg-white rounded-t-2xl z-10 min-w-0">
+          <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto overflow-x-hidden min-w-0 rounded-3xl border border-slate-200/80 bg-white shadow-2xl" role="dialog" aria-modal="true">
+            <div className="sticky top-0 z-10 flex min-w-0 items-start justify-between gap-4 border-b border-slate-100 bg-white/95 px-6 py-5 backdrop-blur rounded-t-3xl">
               <div className="min-w-0 flex-1">
                 <h2 className="font-semibold text-slate-800 break-words [overflow-wrap:anywhere]">
                   {selectedPost.title}
@@ -429,7 +453,7 @@ export default function Approval() {
                 </div>
               </div>
 
-              <div className="bg-slate-50 rounded-xl p-4 flex flex-col items-center min-w-0 max-w-full overflow-hidden">
+              <div className="flex min-w-0 max-w-full flex-col items-center overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-50/70 p-4">
                 <p className="text-xs font-semibold text-slate-400 uppercase mb-3 self-start">Prévia do Instagram</p>
                 <InstagramPreview
                   key={selectedPost.id}

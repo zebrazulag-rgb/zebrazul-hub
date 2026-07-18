@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Grid3x3, Check, Link2, CalendarDays } from 'lucide-react';
 import api from '../api';
@@ -10,6 +10,7 @@ import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import CalendarView from './CalendarView.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import { formChanged } from '../utils/formState.js';
 
 export default function Feed() {
   const { user } = useAuth();
@@ -23,6 +24,8 @@ export default function Feed() {
   const [openPost, setOpenPost] = useState(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
+  const initialProfileDraftRef = useRef({});
+  const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -69,7 +72,7 @@ export default function Feed() {
   }
 
   function startEditProfile() {
-    setProfileDraft({
+    const nextDraft = {
       instagram_username: currentClient?.instagram_username || currentClient?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || '',
       instagram_display_name: currentClient?.instagram_display_name || currentClient?.name || '',
       bio: currentClient?.bio || '',
@@ -82,21 +85,38 @@ export default function Feed() {
       instagram_tertiary_action: currentClient?.instagram_tertiary_action || 'Contato',
       avatar_data: currentClient?.avatar_data || null,
       avatar_mime: currentClient?.avatar_mime || null,
-    });
+    };
+    initialProfileDraftRef.current = nextDraft;
+    setProfileDraft(nextDraft);
+    setProfileError('');
     setEditingProfile(true);
   }
 
   async function saveProfile() {
     setSavingProfile(true);
+    setProfileError('');
     try {
       await api.put(`/clients/${clientId}`, profileDraft);
       setClients((previous) => previous.map((client) => (
         String(client.id) === String(clientId) ? { ...client, ...profileDraft } : client
       )));
       setEditingProfile(false);
+      return true;
+    } catch (err) {
+      setProfileError(err.response?.data?.error || 'Não foi possível salvar o perfil do Feed.');
+      return false;
     } finally {
       setSavingProfile(false);
     }
+  }
+
+  async function handleProfileRequestClose() {
+    if (!formChanged(initialProfileDraftRef.current, profileDraft)) {
+      setEditingProfile(false);
+      return;
+    }
+
+    await saveProfile();
   }
 
   function normalizeGalleryValue(value) {
@@ -265,11 +285,11 @@ export default function Feed() {
       )}
 
       {editingProfile && (
-        <ModalBackdrop onClose={() => setEditingProfile(false)} disabled={savingProfile} className="bg-black/45">
+        <ModalBackdrop onClose={handleProfileRequestClose} disabled={savingProfile} className="bg-black/45">
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">
             <div className="mb-5 flex items-center justify-between">
               <div><h2 className="text-lg font-bold text-slate-800">Editar perfil do Feed</h2><p className="text-sm text-slate-500">As informações abaixo aparecem na prévia do Instagram.</p></div>
-              <button onClick={() => setEditingProfile(false)} className="text-2xl text-slate-400">×</button>
+              <button onClick={handleProfileRequestClose} className="text-2xl text-slate-400">×</button>
             </div>
             <div className="mb-5 flex items-center gap-4">
               <AvatarUpload imageSrc={profileDraft.avatar_data} fallbackText={currentClient?.name} fallbackColor={currentClient?.logo_color} size={86} onChange={(data, mime) => setProfileDraft((v) => ({ ...v, avatar_data: data, avatar_mime: mime }))} />
@@ -287,6 +307,7 @@ export default function Feed() {
               <Field label="Botão 3" value={profileDraft.instagram_tertiary_action} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_tertiary_action: v }))} />
               <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Bio</label><textarea className="input-field min-h-[110px]" value={profileDraft.bio || ''} onChange={(e) => setProfileDraft((p) => ({ ...p, bio: e.target.value }))} /></div>
             </div>
+            {profileError && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{profileError}</p>}
             <div className="mt-6 flex gap-3 border-t border-slate-100 pt-4"><button onClick={() => setEditingProfile(false)} className="btn-secondary flex-1">Cancelar</button><button onClick={saveProfile} disabled={savingProfile} className="btn-primary flex-1">{savingProfile ? 'Salvando...' : 'Salvar perfil'}</button></div>
           </div>
         </ModalBackdrop>
