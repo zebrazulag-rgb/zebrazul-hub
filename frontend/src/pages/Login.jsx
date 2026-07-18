@@ -26,7 +26,10 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zebrazul-900 via-zebrazul-700 to-zebrazul-500 p-4">
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: '#121620' }}
+    >
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <img
@@ -34,7 +37,6 @@ export default function Login() {
             alt="Zebra"
             className="w-[250px] max-w-[78vw] h-auto mx-auto object-contain"
           />
-          <p className="text-zebrazul-100 mt-3">Gestão de redes sociais, aprovação e relatórios</p>
         </div>
         <div className="card p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
