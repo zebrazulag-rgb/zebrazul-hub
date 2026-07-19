@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  BarChart,
+  Bar,
   LineChart,
   Line,
   XAxis,
@@ -11,18 +13,22 @@ import {
 import {
   AlertCircle,
   BarChart3,
+  CalendarDays,
   CheckCircle2,
   ExternalLink,
   Eye,
   Facebook,
   Heart,
   Instagram,
-  Link2,
+  Layers3,
   LoaderCircle,
   MessageCircle,
   MousePointerClick,
   RefreshCw,
-  Unlink,
+  Settings2,
+  Sparkles,
+  Trophy,
+  TrendingUp,
   Users,
 } from 'lucide-react';
 import api from '../api';
@@ -58,24 +64,33 @@ function shortDate(value) {
   return year && month && day ? `${day}/${month}` : value;
 }
 
-function assetLabel(asset) {
-  const page = asset.page_name ? `Facebook: ${asset.page_name}` : null;
-  const instagram = asset.instagram?.username ? `Instagram: @${asset.instagram.username}` : null;
-  return [page, instagram].filter(Boolean).join(' • ') || asset.asset_key;
+function normalizeContentType(value) {
+  const type = String(value || 'POST').toUpperCase();
+  if (type.includes('REEL')) return 'Reels';
+  if (type.includes('CAROUSEL') || type.includes('ALBUM')) return 'Carrossel';
+  if (type.includes('VIDEO')) return 'Vídeo';
+  if (type.includes('STORY')) return 'Story';
+  if (type.includes('IMAGE') || type.includes('PHOTO')) return 'Imagem';
+  return 'Post';
 }
 
-export default function OrganicReports({ clientId, from, to, user }) {
+function sumPlatforms(report, field) {
+  return Number(report?.facebook?.[field] || 0) + Number(report?.instagram?.[field] || 0);
+}
+
+const weekDays = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
+export default function OrganicReports({ clientId, from, to, user, refreshKey = 0, onReportLoaded, onOpenConnections }) {
   const [status, setStatus] = useState({ configured: false, api_version: null });
   const [report, setReport] = useState(null);
-  const [assets, setAssets] = useState([]);
-  const [selectedAsset, setSelectedAsset] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingAssets, setLoadingAssets] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
+  const [contentTypeFilter, setContentTypeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('interactions');
+  const [trendMetric, setTrendMetric] = useState('reach');
 
   useEffect(() => {
     api.get('/meta-organic/status')
@@ -85,7 +100,11 @@ export default function OrganicReports({ clientId, from, to, user }) {
 
   useEffect(() => {
     if (clientId) loadReport();
-  }, [clientId, from, to]);
+  }, [clientId, from, to, refreshKey]);
+
+  useEffect(() => {
+    onReportLoaded?.(report);
+  }, [report, onReportLoaded]);
 
   async function loadReport() {
     setLoading(true);
@@ -93,62 +112,11 @@ export default function OrganicReports({ clientId, from, to, user }) {
     try {
       const { data } = await api.get(`/meta-organic/client/${clientId}/report`, { params: { from, to } });
       setReport(data);
-      setSelectedAsset(data.connection?.asset_key || '');
     } catch (requestError) {
+      setReport(null);
       setError(requestError.response?.data?.error || 'Não foi possível carregar o relatório orgânico.');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadAvailableAssets() {
-    if (user?.role !== 'admin') return;
-    setLoadingAssets(true);
-    setError('');
-    try {
-      const { data } = await api.get('/meta-organic/assets');
-      setAssets(data.assets || []);
-      if (!selectedAsset && data.assets?.length) {
-        const freeAsset = data.assets.find((asset) => !asset.assignment || Number(asset.assignment.client_id) === Number(clientId));
-        setSelectedAsset(freeAsset?.asset_key || data.assets[0].asset_key);
-      }
-    } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível listar as Páginas e contas do Instagram.');
-    } finally {
-      setLoadingAssets(false);
-    }
-  }
-
-  async function saveConnection() {
-    if (!selectedAsset) return;
-    setSaving(true);
-    setError('');
-    setNotice('');
-    try {
-      await api.put(`/meta-organic/client/${clientId}/connection`, { asset_key: selectedAsset });
-      setNotice('Facebook e Instagram vinculados ao cliente.');
-      await loadReport();
-    } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível vincular os ativos orgânicos.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function disconnect() {
-    if (!window.confirm('Desconectar os ativos orgânicos deste cliente? Os dados sincronizados também serão removidos.')) return;
-    setSaving(true);
-    setError('');
-    try {
-      await api.delete(`/meta-organic/client/${clientId}/connection`);
-      setAssets([]);
-      setSelectedAsset('');
-      setNotice('Integração orgânica desconectada.');
-      await loadReport();
-    } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível desconectar a integração orgânica.');
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -169,10 +137,6 @@ export default function OrganicReports({ clientId, from, to, user }) {
     }
   }
 
-  const assetsForClient = useMemo(() => assets.filter((asset) => (
-    !asset.assignment || Number(asset.assignment.client_id) === Number(clientId)
-  )), [assets, clientId]);
-
   const trendData = useMemo(() => {
     const byDate = new Map();
     for (const row of report?.daily || []) {
@@ -181,26 +145,80 @@ export default function OrganicReports({ clientId, from, to, user }) {
           date: shortDate(row.metric_date),
           facebookReach: 0,
           instagramReach: 0,
-          interactions: 0,
+          facebookInteractions: 0,
+          instagramInteractions: 0,
+          facebookViews: 0,
+          instagramViews: 0,
         });
       }
       const item = byDate.get(row.metric_date);
-      if (row.platform === 'facebook') item.facebookReach += Number(row.reach || 0);
-      if (row.platform === 'instagram') item.instagramReach += Number(row.reach || 0);
-      item.interactions += Number(row.interactions || 0);
+      const prefix = row.platform === 'instagram' ? 'instagram' : 'facebook';
+      item[`${prefix}Reach`] += Number(row.reach || 0);
+      item[`${prefix}Interactions`] += Number(row.interactions || 0);
+      item[`${prefix}Views`] += Number(row.views || row.impressions || 0);
     }
     return [...byDate.values()];
   }, [report?.daily]);
 
-  const content = useMemo(() => {
-    const rows = report?.content || [];
-    return platformFilter === 'all' ? rows : rows.filter((row) => row.platform === platformFilter);
-  }, [report?.content, platformFilter]);
+  const rawContent = report?.content || [];
+  const contentTypes = useMemo(() => [...new Set(rawContent.map((row) => normalizeContentType(row.content_type)))].sort(), [rawContent]);
 
+  const content = useMemo(() => {
+    let rows = [...rawContent];
+    if (platformFilter !== 'all') rows = rows.filter((row) => row.platform === platformFilter);
+    if (contentTypeFilter !== 'all') rows = rows.filter((row) => normalizeContentType(row.content_type) === contentTypeFilter);
+    return rows.sort((a, b) => Number(b[sortBy] || 0) - Number(a[sortBy] || 0));
+  }, [rawContent, platformFilter, contentTypeFilter, sortBy]);
+
+  const contentBreakdown = useMemo(() => {
+    const map = new Map();
+    for (const item of rawContent) {
+      const type = normalizeContentType(item.content_type);
+      if (!map.has(type)) map.set(type, { formato: type, publicacoes: 0, interacoes: 0, alcance: 0 });
+      const row = map.get(type);
+      row.publicacoes += 1;
+      row.interacoes += Number(item.interactions || 0);
+      row.alcance += Number(item.reach || 0);
+    }
+    return [...map.values()].sort((a, b) => b.interacoes - a.interacoes);
+  }, [rawContent]);
+
+  const bestDay = useMemo(() => {
+    const map = new Map();
+    for (const item of rawContent) {
+      const date = new Date(item.published_at || '');
+      if (Number.isNaN(date.getTime())) continue;
+      const day = date.getDay();
+      const current = map.get(day) || { interactions: 0, count: 0 };
+      current.interactions += Number(item.interactions || 0);
+      current.count += 1;
+      map.set(day, current);
+    }
+    const ranked = [...map.entries()].map(([day, data]) => ({ day, average: data.count ? data.interactions / data.count : 0 }));
+    ranked.sort((a, b) => b.average - a.average);
+    return ranked.length ? weekDays[ranked[0].day] : 'Sem dados';
+  }, [rawContent]);
+
+  const topContent = content.slice(0, 3);
   const facebook = report?.facebook || {};
   const instagram = report?.instagram || {};
   const hasConnection = Boolean(report?.connection);
-  const hasData = Boolean((report?.content || []).length || Number(facebook.reach) || Number(instagram.reach));
+  const hasData = Boolean(rawContent.length || Number(facebook.reach) || Number(instagram.reach));
+  const followers = sumPlatforms(report, 'followers');
+  const followersDelta = sumPlatforms(report, 'followers_delta');
+  const reach = sumPlatforms(report, 'reach');
+  const views = sumPlatforms(report, 'views') || sumPlatforms(report, 'impressions');
+  const interactions = sumPlatforms(report, 'interactions');
+  const profileActions = sumPlatforms(report, 'profile_views') + sumPlatforms(report, 'website_clicks');
+  const engagementRate = reach > 0 ? (interactions / reach) * 100 : 0;
+  const averageInteractions = rawContent.length ? interactions / rawContent.length : 0;
+  const bestFormat = contentBreakdown[0]?.formato || 'Sem dados';
+
+  const trendConfig = {
+    reach: { label: 'Alcance', facebookKey: 'facebookReach', instagramKey: 'instagramReach' },
+    interactions: { label: 'Interações', facebookKey: 'facebookInteractions', instagramKey: 'instagramInteractions' },
+    views: { label: 'Visualizações', facebookKey: 'facebookViews', instagramKey: 'instagramViews' },
+  }[trendMetric];
 
   return (
     <section className="space-y-5">
@@ -229,16 +247,16 @@ export default function OrganicReports({ clientId, from, to, user }) {
         <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex -space-x-2">
-              <span className="icon-tile z-10 bg-blue-50 text-blue-600"><Facebook size={19} /></span>
-              <span className="icon-tile bg-pink-50 text-pink-600"><Instagram size={19} /></span>
+              <span className="icon-tile z-10 bg-pink-50 text-pink-600"><Instagram size={19} /></span>
+              <span className="icon-tile bg-blue-50 text-blue-600"><Facebook size={19} /></span>
             </div>
             <div>
-              <p className="section-kicker">Integração oficial</p>
-              <h2 className="section-title mt-1">Facebook e Instagram</h2>
+              <p className="section-kicker">Visão principal</p>
+              <h2 className="section-title mt-1">Instagram e Facebook</h2>
               <p className="mt-1 text-sm text-slate-500">
                 {hasConnection
-                  ? [report.connection.page_name, report.connection.instagram_username ? `@${report.connection.instagram_username}` : null].filter(Boolean).join(' • ')
-                  : 'Conecte os perfis profissionais para acompanhar o crescimento orgânico.'}
+                  ? [report.connection.instagram_username ? `@${report.connection.instagram_username}` : null, report.connection.page_name].filter(Boolean).join(' • ')
+                  : 'Os perfis ainda não foram definidos para este cliente.'}
               </p>
             </div>
           </div>
@@ -253,143 +271,164 @@ export default function OrganicReports({ clientId, from, to, user }) {
           </div>
         </div>
 
-        <div className="grid gap-5 p-6 lg:grid-cols-[1.35fr_1fr]">
-          <div className="soft-panel p-5">
-            {hasConnection ? (
-              <div className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <ProfileConnection
-                    icon={Facebook}
-                    label="Página do Facebook"
-                    name={report.connection.page_name}
-                    username={report.connection.page_username}
-                    image={report.connection.page_picture_url}
-                  />
-                  <ProfileConnection
-                    icon={Instagram}
-                    label="Instagram profissional"
-                    name={report.connection.instagram_name}
-                    username={report.connection.instagram_username}
-                    image={report.connection.instagram_picture_url}
-                  />
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
-                  Última atualização: <strong className="text-slate-700">{formatDateTime(report.connection.last_synced_at)}</strong>
-                </div>
-                {report.connection.last_sync_error && (
-                  <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{report.connection.last_sync_error}</p>
-                )}
-                {user?.role === 'admin' && (
-                  <div className="flex flex-wrap gap-2">
-                    <button className="btn-secondary flex items-center gap-2" type="button" onClick={loadAvailableAssets} disabled={loadingAssets}>
-                      {loadingAssets ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                      Trocar perfis
-                    </button>
-                    <button className="rounded-xl px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50" type="button" onClick={disconnect} disabled={saving}>
-                      <span className="flex items-center gap-2"><Unlink size={16} /> Desconectar</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                <p className="font-semibold text-slate-800">Nenhum perfil vinculado</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  O token orgânico está protegido no backend. Associe uma Página e seu Instagram profissional ao cliente.
-                </p>
-                {user?.role === 'admin' && (
-                  <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={loadAvailableAssets} disabled={loadingAssets || !status.configured}>
-                    {loadingAssets ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                    Listar perfis disponíveis
-                  </button>
-                )}
-              </div>
+        {hasConnection ? (
+          <div className="grid gap-4 p-6 lg:grid-cols-[1fr_1fr_auto]">
+            <ProfileConnection
+              icon={Instagram}
+              label="Instagram profissional"
+              name={report.connection.instagram_name}
+              username={report.connection.instagram_username}
+              image={report.connection.instagram_picture_url}
+            />
+            <ProfileConnection
+              icon={Facebook}
+              label="Página do Facebook"
+              name={report.connection.page_name}
+              username={report.connection.page_username}
+              image={report.connection.page_picture_url}
+            />
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 lg:min-w-52">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Última atualização</p>
+              <p className="mt-2 text-sm font-semibold text-slate-800">{formatDateTime(report.connection.last_synced_at)}</p>
+              <p className="mt-1 text-xs text-slate-400">Fonte: Meta Graph API</p>
+            </div>
+            {report.connection.last_sync_error && (
+              <p className="lg:col-span-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{report.connection.last_sync_error}</p>
             )}
           </div>
-
-          <div className="soft-panel p-5">
-            <p className="text-sm font-semibold text-slate-800">Configuração</p>
-            {!status.configured ? (
-              <p className="mt-2 text-sm text-amber-700">META_ORGANIC_ACCESS_TOKEN ainda não foi detectado no backend.</p>
-            ) : user?.role === 'admin' && assets.length > 0 ? (
-              <div className="mt-3 space-y-3">
-                <select className="input-field" value={selectedAsset} onChange={(event) => setSelectedAsset(event.target.value)}>
-                  <option value="">Selecione os perfis</option>
-                  {assetsForClient.map((asset) => (
-                    <option key={asset.asset_key} value={asset.asset_key}>{assetLabel(asset)}</option>
-                  ))}
-                </select>
-                <button className="btn-primary w-full" type="button" onClick={saveConnection} disabled={!selectedAsset || saving}>
-                  {saving ? 'Salvando...' : hasConnection ? 'Salvar novos perfis' : 'Conectar ao cliente'}
-                </button>
-                {assetsForClient.length === 0 && <p className="text-xs text-slate-500">Todos os ativos retornados já estão vinculados a outros clientes.</p>}
-              </div>
-            ) : (
-              <div className="mt-2 space-y-1 text-sm text-slate-500">
-                <p>API: {status.api_version || 'automática'}</p>
-                <p>Período: {from.split('-').reverse().join('/')} a {to.split('-').reverse().join('/')}</p>
-                <p>Fonte: Meta Graph API • dados orgânicos</p>
-              </div>
+        ) : (
+          <div className="flex min-h-44 flex-col items-center justify-center px-6 py-10 text-center">
+            <div className="flex gap-1">
+              <span className="icon-tile bg-pink-50 text-pink-500"><Instagram size={18} /></span>
+              <span className="icon-tile bg-blue-50 text-blue-500"><Facebook size={18} /></span>
+            </div>
+            <p className="mt-3 font-semibold text-slate-700">Conexão orgânica pendente</p>
+            <p className="mt-1 max-w-lg text-sm leading-6 text-slate-500">Configure uma única vez. Depois, toda vez que este cliente for selecionado, o relatório abrirá automaticamente com os perfis corretos.</p>
+            {user?.role === 'admin' && (
+              <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={onOpenConnections}>
+                <Settings2 size={16} /> Abrir conexões
+              </button>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {loading ? (
         <div className="surface-card flex min-h-48 items-center justify-center gap-3 p-8 text-sm text-slate-500">
           <LoaderCircle size={20} className="animate-spin" /> Carregando dados orgânicos...
         </div>
-      ) : (
+      ) : hasConnection ? (
         <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard icon={Users} label="Seguidores totais" value={formatInteger(followers)} helper={`${followersDelta >= 0 ? '+' : ''}${formatInteger(followersDelta)} no período`} />
+            <SummaryCard icon={Eye} label="Alcance somado" value={formatInteger(reach)} helper="Instagram + Facebook" />
+            <SummaryCard icon={BarChart3} label="Visualizações" value={formatInteger(views)} helper="Conteúdo e perfis" />
+            <SummaryCard icon={Heart} label="Interações" value={formatInteger(interactions)} helper={`${formatDecimal(engagementRate)}% sobre o alcance`} />
+            <SummaryCard icon={MousePointerClick} label="Ações de perfil" value={formatInteger(profileActions)} helper="Visitas e cliques no site" />
+            <SummaryCard icon={Layers3} label="Publicações" value={formatInteger(rawContent.length)} helper={`${formatDecimal(averageInteractions, 0)} interações por conteúdo`} />
+            <SummaryCard icon={CalendarDays} label="Melhor dia" value={bestDay} helper="Média de interações por publicação" />
+            <SummaryCard icon={Trophy} label="Melhor formato" value={bestFormat} helper="Formato com mais interações" />
+          </div>
+
           <div className="grid gap-5 xl:grid-cols-2">
-            <PlatformPanel platform="facebook" totals={facebook} connected={Boolean(report?.connection?.page_id)} />
             <PlatformPanel platform="instagram" totals={instagram} connected={Boolean(report?.connection?.instagram_account_id)} />
+            <PlatformPanel platform="facebook" totals={facebook} connected={Boolean(report?.connection?.page_id)} />
           </div>
 
           <div className="surface-card p-6">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-              <div><p className="section-kicker">Tendência</p><h3 className="section-title mt-1">Alcance diário</h3></div>
-              <span className="text-xs text-slate-400">Facebook x Instagram</span>
+              <div><p className="section-kicker">Tendência</p><h3 className="section-title mt-1">Evolução diária</h3></div>
+              <select className="input-field max-w-48" value={trendMetric} onChange={(event) => setTrendMetric(event.target.value)}>
+                <option value="reach">Alcance</option>
+                <option value="interactions">Interações</option>
+                <option value="views">Visualizações</option>
+              </select>
             </div>
             {trendData.length ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={310}>
                 <LineChart data={trendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="date" fontSize={12} stroke="#94a3b8" />
                   <YAxis fontSize={12} stroke="#94a3b8" />
-                  <Tooltip formatter={(value) => formatInteger(value)} />
-                  <Line type="monotone" dataKey="facebookReach" name="Facebook" stroke="#2563eb" strokeWidth={2.5} dot={false} />
-                  <Line type="monotone" dataKey="instagramReach" name="Instagram" stroke="#db2777" strokeWidth={2.5} dot={false} />
+                  <Tooltip formatter={(value, name) => [formatInteger(value), name]} />
+                  <Line type="monotone" dataKey={trendConfig.instagramKey} name={`Instagram • ${trendConfig.label}`} stroke="#db2777" strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey={trendConfig.facebookKey} name={`Facebook • ${trendConfig.label}`} stroke="#2563eb" strokeWidth={2.5} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <OrganicEmptyState
                 title="Nenhuma evolução diária disponível"
-                description={hasConnection ? 'Clique em “Atualizar orgânico” para sincronizar este período.' : 'Conecte os perfis do cliente para iniciar.'}
+                description="Clique em “Atualizar orgânico” para sincronizar este período."
               />
             )}
           </div>
 
+          <div className="grid gap-5 xl:grid-cols-[1.25fr_1fr]">
+            <div className="surface-card p-6">
+              <div className="mb-5"><p className="section-kicker">Formatos</p><h3 className="section-title mt-1">Interações por tipo de conteúdo</h3></div>
+              {contentBreakdown.length ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={contentBreakdown}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="formato" fontSize={12} stroke="#94a3b8" />
+                    <YAxis fontSize={12} stroke="#94a3b8" />
+                    <Tooltip formatter={(value, name) => [formatInteger(value), name]} />
+                    <Bar dataKey="interacoes" name="Interações" fill="#0969ff" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <OrganicEmptyState title="Sem formatos para comparar" description="Sincronize as publicações do período." />
+              )}
+            </div>
+
+            <div className="surface-card overflow-hidden">
+              <div className="border-b border-slate-100 px-6 py-5"><p className="section-kicker">Destaques</p><h3 className="section-title mt-1">Top conteúdos</h3></div>
+              {topContent.length ? (
+                <div className="divide-y divide-slate-100">
+                  {topContent.map((item, index) => (
+                    <TopContentRow key={`${item.platform}-${item.content_id}`} item={item} position={index + 1} />
+                  ))}
+                </div>
+              ) : (
+                <OrganicEmptyState title="Sem conteúdos no período" description="Atualize os dados para visualizar os destaques." />
+              )}
+            </div>
+          </div>
+
           <div className="surface-card overflow-hidden">
-            <div className="flex flex-col gap-3 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <p className="section-kicker">Conteúdo</p>
                 <h3 className="section-title mt-1">Publicações com melhor desempenho</h3>
-                <p className="mt-1 text-sm text-slate-500">Ranking por interações no período selecionado.</p>
+                <p className="mt-1 text-sm text-slate-500">Filtre por plataforma, formato e indicador principal.</p>
               </div>
-              <select className="input-field max-w-52" value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)}>
-                <option value="all">Todas as plataformas</option>
-                <option value="instagram">Instagram</option>
-                <option value="facebook">Facebook</option>
-              </select>
+              <div className="flex flex-wrap gap-2">
+                <select className="input-field max-w-44" value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)}>
+                  <option value="all">Todas as redes</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="facebook">Facebook</option>
+                </select>
+                <select className="input-field max-w-44" value={contentTypeFilter} onChange={(event) => setContentTypeFilter(event.target.value)}>
+                  <option value="all">Todos os formatos</option>
+                  {contentTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+                <select className="input-field max-w-44" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                  <option value="interactions">Mais interações</option>
+                  <option value="reach">Maior alcance</option>
+                  <option value="views">Mais visualizações</option>
+                  <option value="likes">Mais curtidas</option>
+                  <option value="saves">Mais salvamentos</option>
+                </select>
+              </div>
             </div>
             {content.length ? (
               <div className="overflow-x-auto">
-                <table className="min-w-[1120px] w-full text-left text-sm">
+                <table className="min-w-[1180px] w-full text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
                     <tr>
                       <th className="px-6 py-3 font-semibold">Publicação</th>
-                      <th className="px-4 py-3 font-semibold">Plataforma</th>
+                      <th className="px-4 py-3 font-semibold">Rede</th>
+                      <th className="px-4 py-3 font-semibold">Formato</th>
                       <th className="px-4 py-3 font-semibold">Data</th>
                       <th className="px-4 py-3 font-semibold">Alcance</th>
                       <th className="px-4 py-3 font-semibold">Visualizações</th>
@@ -412,18 +451,16 @@ export default function OrganicReports({ clientId, from, to, user }) {
                             )}
                             <div className="min-w-0">
                               <p className="truncate font-semibold text-slate-800" title={item.caption || item.content_type}>{item.caption || item.content_type || 'Publicação sem legenda'}</p>
-                              <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
-                                <span>{item.content_type || 'POST'}</span>
-                                {item.permalink && (
-                                  <a href={item.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-[#0969ff] hover:underline">
-                                    Abrir <ExternalLink size={11} />
-                                  </a>
-                                )}
-                              </div>
+                              {item.permalink && (
+                                <a href={item.permalink} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[#0969ff] hover:underline">
+                                  Abrir publicação <ExternalLink size={11} />
+                                </a>
+                              )}
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-4"><PlatformBadge platform={item.platform} /></td>
+                        <td className="px-4 py-4 text-slate-600">{normalizeContentType(item.content_type)}</td>
                         <td className="px-4 py-4 text-slate-600">{formatDate(item.published_at)}</td>
                         <td className="px-4 py-4 text-slate-600">{formatInteger(item.reach)}</td>
                         <td className="px-4 py-4 text-slate-600">{formatInteger(item.views)}</td>
@@ -440,12 +477,12 @@ export default function OrganicReports({ clientId, from, to, user }) {
             ) : (
               <OrganicEmptyState
                 title="Publicações ainda não sincronizadas"
-                description={hasData ? 'A Meta não retornou publicações para este filtro.' : 'Sincronize os perfis para preencher o ranking.'}
+                description={hasData ? 'Nenhuma publicação corresponde aos filtros escolhidos.' : 'Sincronize os perfis para preencher o ranking.'}
               />
             )}
           </div>
         </>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -460,6 +497,21 @@ function ProfileConnection({ icon: Icon, label, name, username, image }) {
           <p className="truncate font-semibold text-slate-800">{name || 'Não vinculado'}</p>
           {username && <p className="truncate text-xs text-slate-500">@{username}</p>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ icon: Icon, label, value, helper }) {
+  return (
+    <div className="surface-card p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="mt-2 truncate text-2xl font-bold tracking-tight text-slate-900" title={String(value)}>{value}</p>
+          <p className="mt-1 truncate text-xs text-slate-400" title={helper}>{helper}</p>
+        </div>
+        <span className="icon-tile bg-blue-50 text-[#0969ff]"><Icon size={18} /></span>
       </div>
     </div>
   );
@@ -504,6 +556,20 @@ function OrganicMetric({ icon: Icon, label, value, helper }) {
   );
 }
 
+function TopContentRow({ item, position }) {
+  return (
+    <div className="flex items-center gap-3 px-5 py-4">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">{position}</span>
+      {item.thumbnail_url ? <img src={item.thumbnail_url} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" /> : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Sparkles size={17} /></span>}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-slate-800" title={item.caption}>{item.caption || normalizeContentType(item.content_type)}</p>
+        <div className="mt-1 flex items-center gap-2 text-xs text-slate-400"><PlatformBadge platform={item.platform} /><span>{formatInteger(item.interactions)} interações</span></div>
+      </div>
+      {item.permalink && <a href={item.permalink} target="_blank" rel="noreferrer" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-[#0969ff]"><ExternalLink size={16} /></a>}
+    </div>
+  );
+}
+
 function PlatformBadge({ platform }) {
   return platform === 'instagram'
     ? <span className="badge inline-flex items-center gap-1.5 bg-pink-50 text-pink-700"><Instagram size={13} /> Instagram</span>
@@ -523,8 +589,8 @@ function OrganicEmptyState({ title, description }) {
   return (
     <div className="flex min-h-52 flex-col items-center justify-center px-6 py-10 text-center">
       <div className="flex gap-1">
-        <span className="icon-tile bg-blue-50 text-blue-500"><Facebook size={18} /></span>
         <span className="icon-tile bg-pink-50 text-pink-500"><Instagram size={18} /></span>
+        <span className="icon-tile bg-blue-50 text-blue-500"><Facebook size={18} /></span>
       </div>
       <p className="mt-3 font-semibold text-slate-700">{title}</p>
       <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">{description}</p>
