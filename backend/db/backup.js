@@ -31,7 +31,7 @@ async function createBackup(label = 'manual') {
 
   await db.backup(destination);
   verifyBackup(destination);
-  pruneBackups(Number(process.env.BACKUP_RETENTION || 30));
+  pruneBackups(Number(process.env.BACKUP_RETENTION || 5));
   return destination;
 }
 
