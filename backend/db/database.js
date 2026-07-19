@@ -473,6 +473,112 @@ tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
 
+// Migração do módulo financeiro para bancos criados nas primeiras versões.
+// A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual
+// usa `type = income`, `recurring`, `payment_method` e `notes`. Como o SQLite
+// não permite alterar uma CHECK constraint diretamente, a tabela antiga é
+// reconstruída preservando todos os registros.
+function tableColumns(table) {
+  return db.prepare(`PRAGMA table_info(${table})`).all().map((item) => item.name);
+}
+
+function tableHasColumn(table, column) {
+  return tableColumns(table).includes(column);
+}
+
+function migrateFinancialEntries() {
+  const tableInfo = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'financial_entries'"
+  ).get();
+  if (!tableInfo) return;
+
+  const originalSql = String(tableInfo.sql || '');
+  const columns = tableColumns('financial_entries');
+  const usesLegacyRevenueType = originalSql.includes("'revenue'");
+
+  if (usesLegacyRevenueType) {
+    const paymentMethodExpression = columns.includes('payment_method') ? 'payment_method' : 'NULL';
+    const recurringExpression = columns.includes('recurring')
+      ? 'COALESCE(recurring, 0)'
+      : columns.includes('is_recurring')
+        ? 'COALESCE(is_recurring, 0)'
+        : '0';
+    const notesExpression = columns.includes('notes') ? 'notes' : 'NULL';
+
+    const migrate = db.transaction(() => {
+      db.exec('DROP TABLE IF EXISTS financial_entries_migrated');
+      db.exec(`
+        CREATE TABLE financial_entries_migrated (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id INTEGER,
+          created_by INTEGER,
+          type TEXT NOT NULL CHECK(type IN ('income','expense')),
+          category TEXT DEFAULT 'Outros',
+          description TEXT NOT NULL,
+          amount REAL NOT NULL,
+          due_date TEXT NOT NULL,
+          paid_date TEXT,
+          status TEXT DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
+          payment_method TEXT,
+          recurring INTEGER DEFAULT 0,
+          notes TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        );
+      `);
+
+      db.exec(`
+        INSERT INTO financial_entries_migrated (
+          id, client_id, created_by, type, category, description, amount,
+          due_date, paid_date, status, payment_method, recurring, notes,
+          created_at, updated_at
+        )
+        SELECT
+          id,
+          client_id,
+          created_by,
+          CASE WHEN type = 'revenue' THEN 'income' ELSE type END,
+          COALESCE(category, 'Outros'),
+          description,
+          amount,
+          due_date,
+          paid_date,
+          status,
+          ${paymentMethodExpression},
+          ${recurringExpression},
+          ${notesExpression},
+          created_at,
+          updated_at
+        FROM financial_entries;
+      `);
+
+      db.exec('DROP TABLE financial_entries');
+      db.exec('ALTER TABLE financial_entries_migrated RENAME TO financial_entries');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_financial_due_date ON financial_entries(due_date)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_financial_client ON financial_entries(client_id)');
+    });
+
+    migrate();
+    console.log('[DB] Tabela financeira antiga migrada de revenue/is_recurring para income/recurring.');
+    return;
+  }
+
+  tryAddColumn('financial_entries', 'payment_method', 'TEXT');
+  tryAddColumn('financial_entries', 'recurring', 'INTEGER DEFAULT 0');
+  tryAddColumn('financial_entries', 'notes', 'TEXT');
+
+  if (tableHasColumn('financial_entries', 'is_recurring') && tableHasColumn('financial_entries', 'recurring')) {
+    db.exec(`
+      UPDATE financial_entries
+      SET recurring = COALESCE(is_recurring, 0)
+      WHERE COALESCE(recurring, 0) = 0
+    `);
+  }
+}
+
+migrateFinancialEntries();
 
 const installationId = db.prepare("SELECT value FROM system_meta WHERE key = 'installation_id'").get();
 if (!installationId) {
@@ -498,7 +604,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '16', datetime('now'))
+   VALUES ('schema_version', '17', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
