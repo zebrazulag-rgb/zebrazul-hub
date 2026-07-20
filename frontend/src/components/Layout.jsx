@@ -16,6 +16,7 @@ import {
   Sparkles,
   Palette,
   Building2,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -99,6 +100,7 @@ export default function Layout({ children }) {
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'] },
     { to: '/plano-de-acao', label: 'Plano de Ação', icon: Target, roles: ['admin', 'team', 'client'] },
+    { to: '/diagnosticos', label: 'Diagnósticos', icon: ClipboardCheck, roles: ['admin', 'team'] },
     { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
