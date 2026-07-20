@@ -18,8 +18,8 @@ router.get('/:clientId', (req, res) => {
   if (!ensureClientAccess(req, res, clientId)) return;
 
   const { from, to } = req.query;
-  let query = 'SELECT * FROM report_metrics WHERE client_id = ?';
-  const params = [clientId];
+  let query = 'SELECT * FROM report_metrics WHERE client_id = ? AND agency_id = ?';
+  const params = [clientId, req.user.agency_id];
   if (from) { query += ' AND metric_date >= ?'; params.push(from); }
   if (to) { query += ' AND metric_date <= ?'; params.push(to); }
   query += ' ORDER BY metric_date ASC';
@@ -43,10 +43,10 @@ router.post('/:clientId', requireRole('admin', 'team'), (req, res) => {
   if (!platform || !metric_date) return res.status(400).json({ error: 'platform e metric_date sao obrigatorios' });
 
   const info = db.prepare(
-    `INSERT INTO report_metrics (client_id, platform, metric_date, reach, impressions, engagement, followers_delta, clicks, leads, spend, conversions)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO report_metrics (agency_id, client_id, platform, metric_date, reach, impressions, engagement, followers_delta, clicks, leads, spend, conversions)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
-    clientId, platform, metric_date,
+    req.user.agency_id, clientId, platform, metric_date,
     reach || 0, impressions || 0, engagement || 0, followers_delta || 0,
     clicks || 0, leads || 0, spend || 0, conversions || 0
   );
@@ -54,10 +54,10 @@ router.post('/:clientId', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.delete('/entry/:id', requireRole('admin', 'team'), (req, res) => {
-  const metric = db.prepare('SELECT client_id FROM report_metrics WHERE id = ?').get(req.params.id);
+  const metric = db.prepare('SELECT client_id FROM report_metrics WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!metric) return res.status(404).json({ error: 'Metrica nao encontrada' });
   if (!ensureClientAccess(req, res, metric.client_id)) return;
-  db.prepare('DELETE FROM report_metrics WHERE id = ?').run(req.params.id);
+  db.prepare('DELETE FROM report_metrics WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
   res.json({ ok: true });
 });
 

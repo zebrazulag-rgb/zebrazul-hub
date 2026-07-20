@@ -20,18 +20,18 @@ function ensureClientAccess(req, res, clientId) {
   return true;
 }
 
-function getClient(clientId) {
-  return db.prepare('SELECT id, name FROM clients WHERE id = ?').get(clientId);
+function getClient(clientId, agencyId) {
+  return db.prepare('SELECT id, name FROM clients WHERE id = ? AND agency_id = ?').get(clientId, agencyId);
 }
 
-function getConnection(clientId) {
+function getConnection(clientId, agencyId) {
   return db.prepare(`
     SELECT id, client_id, asset_key, page_id, page_name, page_username, page_picture_url,
            instagram_account_id, instagram_username, instagram_name, instagram_picture_url,
            last_synced_at, last_sync_status, last_sync_error, created_at, updated_at
     FROM meta_organic_accounts
-    WHERE client_id = ?
-  `).get(clientId) || null;
+    WHERE client_id = ? AND agency_id = ?
+  `).get(clientId, agencyId) || null;
 }
 
 function isIsoDate(value) {
@@ -72,8 +72,8 @@ function apiErrorResponse(res, error) {
   return res.status(500).json({ error: 'Erro interno ao processar a integracao organica com a Meta' });
 }
 
-function getReportPayload(clientId, from, to) {
-  const connection = getConnection(clientId);
+function getReportPayload(clientId, from, to, agencyId) {
+  const connection = getConnection(clientId, agencyId);
   if (!connection) {
     return {
       connection: null,
@@ -131,7 +131,8 @@ router.get('/assets', requireRole('admin'), async (req, res) => {
       SELECT m.asset_key, m.client_id, c.name AS client_name
       FROM meta_organic_accounts m
       JOIN clients c ON c.id = m.client_id
-    `).all();
+      WHERE m.agency_id = ? AND c.agency_id = ?
+    `).all(req.user.agency_id, req.user.agency_id);
     const assignmentMap = new Map(assignments.map((row) => [row.asset_key, row]));
     res.json({
       assets: assets.map((asset) => ({ ...asset, assignment: assignmentMap.get(asset.asset_key) || null })),
@@ -144,14 +145,14 @@ router.get('/assets', requireRole('admin'), async (req, res) => {
 router.get('/client/:clientId/connection', (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
-  res.json({ connection: getConnection(clientId), meta: getOrganicStatus() });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  res.json({ connection: getConnection(clientId, req.user.agency_id), meta: getOrganicStatus() });
 });
 
 router.put('/client/:clientId/connection', requireRole('admin'), async (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
 
   try {
     const assetKey = String(req.body.asset_key || '').trim();
@@ -159,12 +160,13 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
     const asset = await getOrganicAsset(assetKey);
     const assigned = db.prepare(`
       SELECT client_id FROM meta_organic_accounts
-      WHERE client_id <> ? AND (
+      WHERE agency_id = ? AND client_id <> ? AND (
         asset_key = ? OR
         (? IS NOT NULL AND page_id = ?) OR
         (? IS NOT NULL AND instagram_account_id = ?)
       )
     `).get(
+      req.user.agency_id,
       clientId,
       assetKey,
       asset.page_id,
@@ -174,18 +176,18 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
     );
     if (assigned) return res.status(409).json({ error: 'Esta Pagina ou conta do Instagram ja esta vinculada a outro cliente' });
 
-    const currentConnection = getConnection(clientId);
+    const currentConnection = getConnection(clientId, req.user.agency_id);
     const saveConnection = db.transaction(() => {
       if (currentConnection && currentConnection.asset_key !== assetKey) {
-        db.prepare('DELETE FROM meta_organic_accounts WHERE id = ?').run(currentConnection.id);
+        db.prepare('DELETE FROM meta_organic_accounts WHERE id = ? AND agency_id = ?').run(currentConnection.id, req.user.agency_id);
       }
 
       db.prepare(`
         INSERT INTO meta_organic_accounts (
-          client_id, asset_key, page_id, page_name, page_username, page_picture_url,
+          agency_id, client_id, asset_key, page_id, page_name, page_username, page_picture_url,
           instagram_account_id, instagram_username, instagram_name, instagram_picture_url,
           last_sync_status, last_sync_error, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'never', NULL, datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'never', NULL, datetime('now'))
         ON CONFLICT(client_id) DO UPDATE SET
           page_name = excluded.page_name,
           page_username = excluded.page_username,
@@ -196,6 +198,7 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
           last_sync_error = NULL,
           updated_at = datetime('now')
       `).run(
+        req.user.agency_id,
         clientId,
         asset.asset_key,
         asset.page_id,
@@ -209,7 +212,7 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
       );
     });
     saveConnection();
-    res.json({ connection: getConnection(clientId) });
+    res.json({ connection: getConnection(clientId, req.user.agency_id) });
   } catch (error) {
     apiErrorResponse(res, error);
   }
@@ -218,17 +221,17 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
 router.delete('/client/:clientId/connection', requireRole('admin'), (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  db.prepare('DELETE FROM meta_organic_accounts WHERE client_id = ?').run(clientId);
+  db.prepare('DELETE FROM meta_organic_accounts WHERE client_id = ? AND agency_id = ?').run(clientId, req.user.agency_id);
   res.json({ ok: true });
 });
 
 router.get('/client/:clientId/report', (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
   try {
     const { from, to } = resolveDateRange(req.query);
-    res.json(getReportPayload(clientId, from, to));
+    res.json(getReportPayload(clientId, from, to, req.user.agency_id));
   } catch (error) {
     apiErrorResponse(res, error);
   }
@@ -237,11 +240,11 @@ router.get('/client/:clientId/report', (req, res) => {
 router.post('/client/:clientId/sync', requireRole('admin', 'team'), async (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
   try {
     const { from, to } = resolveDateRange(req.body || {});
     await syncMetaOrganicClient(clientId, from, to);
-    res.json(getReportPayload(clientId, from, to));
+    res.json(getReportPayload(clientId, from, to, req.user.agency_id));
   } catch (error) {
     apiErrorResponse(res, error);
   }

@@ -31,6 +31,29 @@ CREATE TABLE IF NOT EXISTS system_meta (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS agencies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
+  plan TEXT DEFAULT 'essential',
+  product_name TEXT DEFAULT 'Zebrahub',
+  logo_data TEXT,
+  logo_mime TEXT,
+  primary_color TEXT DEFAULT '#0969ff',
+  secondary_color TEXT DEFAULT '#4f8cff',
+  sidebar_color TEXT DEFAULT '#121620',
+  login_background_color TEXT DEFAULT '#121620',
+  support_email TEXT,
+  support_whatsapp TEXT,
+  footer_text TEXT DEFAULT 'Tecnologia ZebraHub',
+  show_powered_by INTEGER DEFAULT 1,
+  max_clients INTEGER DEFAULT 10,
+  max_users INTEGER DEFAULT 5,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -38,15 +61,20 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin','team','client')),
   client_id INTEGER,
+  agency_id INTEGER,
+  is_platform_owner INTEGER DEFAULT 0,
+  is_agency_owner INTEGER DEFAULT 0,
   avatar_color TEXT DEFAULT '#2563eb',
   avatar_data TEXT,
   avatar_mime TEXT,
   created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS clients (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   name TEXT NOT NULL,
   segment TEXT,
   cnpj TEXT,
@@ -61,7 +89,8 @@ CREATE TABLE IF NOT EXISTS clients (
   status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
   responsible_user_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (responsible_user_id) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (responsible_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS user_client_access (
@@ -75,16 +104,19 @@ CREATE TABLE IF NOT EXISTS user_client_access (
 
 CREATE TABLE IF NOT EXISTS social_accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER NOT NULL,
   platform TEXT NOT NULL CHECK(platform IN ('instagram','facebook','tiktok','linkedin','google_business','youtube')),
   handle TEXT,
   connected INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS posts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER NOT NULL,
   created_by INTEGER NOT NULL,
   title TEXT NOT NULL,
@@ -102,11 +134,13 @@ CREATE TABLE IF NOT EXISTS posts (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER,
   created_by INTEGER NOT NULL,
   assignee_id INTEGER,
@@ -130,7 +164,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-  FOREIGN KEY (feed_post_id) REFERENCES posts(id) ON DELETE SET NULL
+  FOREIGN KEY (feed_post_id) REFERENCES posts(id) ON DELETE SET NULL,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS task_assignees (
@@ -153,6 +188,7 @@ CREATE TABLE IF NOT EXISTS post_comments (
 
 CREATE TABLE IF NOT EXISTS financial_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER,
   created_by INTEGER NOT NULL,
   type TEXT NOT NULL CHECK(type IN ('income','expense')),
@@ -168,11 +204,13 @@ CREATE TABLE IF NOT EXISTS financial_entries (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS report_metrics (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER NOT NULL,
   platform TEXT NOT NULL CHECK(platform IN ('instagram','facebook','tiktok','linkedin','google_ads','meta_ads','google_business','youtube')),
   metric_date TEXT NOT NULL,
@@ -185,7 +223,8 @@ CREATE TABLE IF NOT EXISTS report_metrics (
   spend REAL DEFAULT 0,
   conversions INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 
@@ -193,6 +232,7 @@ CREATE TABLE IF NOT EXISTS report_metrics (
 
 CREATE TABLE IF NOT EXISTS meta_ad_accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER NOT NULL UNIQUE,
   account_id TEXT NOT NULL UNIQUE,
   account_name TEXT NOT NULL,
@@ -204,7 +244,8 @@ CREATE TABLE IF NOT EXISTS meta_ad_accounts (
   last_sync_error TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS meta_daily_metrics (
@@ -295,6 +336,7 @@ CREATE TABLE IF NOT EXISTS meta_campaign_snapshots (
 
 CREATE TABLE IF NOT EXISTS meta_organic_accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER NOT NULL UNIQUE,
   asset_key TEXT NOT NULL UNIQUE,
   page_id TEXT UNIQUE,
@@ -310,7 +352,8 @@ CREATE TABLE IF NOT EXISTS meta_organic_accounts (
   last_sync_error TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS meta_organic_daily_metrics (
@@ -383,6 +426,7 @@ CREATE TABLE IF NOT EXISTS meta_organic_content_snapshots (
 
 CREATE TABLE IF NOT EXISTS action_plans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
   client_id INTEGER NOT NULL,
   year INTEGER NOT NULL,
   what_we_want TEXT,
@@ -395,7 +439,8 @@ CREATE TABLE IF NOT EXISTS action_plans (
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(client_id, year),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS action_plan_tasks (
@@ -473,6 +518,22 @@ tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
 
+// Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
+// registros existentes e, logo abaixo, todos os dados atuais são vinculados
+// automaticamente à agência principal.
+tryAddColumn('users', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('users', 'is_platform_owner', 'INTEGER DEFAULT 0');
+tryAddColumn('users', 'is_agency_owner', 'INTEGER DEFAULT 0');
+tryAddColumn('clients', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('social_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('posts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('tasks', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('financial_entries', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('report_metrics', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('meta_ad_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('meta_organic_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('action_plans', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+
 // Migração do módulo financeiro para bancos criados nas primeiras versões.
 // A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual
 // usa `type = income`, `recurring`, `payment_method` e `notes`. Como o SQLite
@@ -510,6 +571,7 @@ function migrateFinancialEntries() {
       db.exec(`
         CREATE TABLE financial_entries_migrated (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
+          agency_id INTEGER,
           client_id INTEGER,
           created_by INTEGER,
           type TEXT NOT NULL CHECK(type IN ('income','expense')),
@@ -525,18 +587,20 @@ function migrateFinancialEntries() {
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now')),
           FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
-          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
         );
       `);
 
       db.exec(`
         INSERT INTO financial_entries_migrated (
-          id, client_id, created_by, type, category, description, amount,
+          id, agency_id, client_id, created_by, type, category, description, amount,
           due_date, paid_date, status, payment_method, recurring, notes,
           created_at, updated_at
         )
         SELECT
           id,
+          agency_id,
           client_id,
           created_by,
           CASE WHEN type = 'revenue' THEN 'income' ELSE type END,
@@ -580,6 +644,52 @@ function migrateFinancialEntries() {
 
 migrateFinancialEntries();
 
+// Cria a agência principal e migra toda a instalação atual para ela.
+// O slug pode ser alterado com DEFAULT_AGENCY_SLUG, mas permanece estável
+// depois da primeira inicialização para não quebrar links já publicados.
+const defaultAgencySlug = String(process.env.DEFAULT_AGENCY_SLUG || 'zebrazul')
+  .trim().toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'zebrazul';
+const defaultAgencyName = String(process.env.DEFAULT_AGENCY_NAME || 'Zebrazul').trim() || 'Zebrazul';
+let defaultAgency = db.prepare('SELECT * FROM agencies WHERE slug = ?').get(defaultAgencySlug);
+if (!defaultAgency) {
+  const info = db.prepare(`
+    INSERT INTO agencies (name, slug, status, plan, product_name)
+    VALUES (?, ?, 'active', 'essential', 'Zebrahub')
+  `).run(defaultAgencyName, defaultAgencySlug);
+  defaultAgency = db.prepare('SELECT * FROM agencies WHERE id = ?').get(info.lastInsertRowid);
+}
+const defaultAgencyId = Number(defaultAgency.id);
+
+const initializeAgencyScope = db.transaction(() => {
+  db.prepare('UPDATE users SET agency_id = ? WHERE agency_id IS NULL').run(defaultAgencyId);
+  db.prepare('UPDATE clients SET agency_id = ? WHERE agency_id IS NULL').run(defaultAgencyId);
+  db.prepare(`UPDATE social_accounts SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = social_accounts.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+  db.prepare(`UPDATE posts SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = posts.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+  db.prepare(`UPDATE tasks SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = tasks.client_id), (SELECT agency_id FROM users WHERE users.id = tasks.created_by), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+  db.prepare(`UPDATE financial_entries SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = financial_entries.client_id), (SELECT agency_id FROM users WHERE users.id = financial_entries.created_by), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+  db.prepare(`UPDATE report_metrics SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = report_metrics.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+  db.prepare(`UPDATE meta_ad_accounts SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = meta_ad_accounts.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+  db.prepare(`UPDATE meta_organic_accounts SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = meta_organic_accounts.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+  db.prepare(`UPDATE action_plans SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = action_plans.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
+
+  const platformOwner = db.prepare('SELECT id FROM users WHERE is_platform_owner = 1 LIMIT 1').get();
+  if (!platformOwner) {
+    const firstAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' AND agency_id = ? ORDER BY id LIMIT 1").get(defaultAgencyId);
+    if (firstAdmin) {
+      db.prepare('UPDATE users SET is_platform_owner = 1, is_agency_owner = 1 WHERE id = ?').run(firstAdmin.id);
+    }
+  }
+});
+initializeAgencyScope();
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
+  CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
+  CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
+  CREATE INDEX IF NOT EXISTS idx_posts_agency ON posts(agency_id, status, scheduled_at);
+  CREATE INDEX IF NOT EXISTS idx_financial_agency ON financial_entries(agency_id, due_date);
+`);
+
 const installationId = db.prepare("SELECT value FROM system_meta WHERE key = 'installation_id'").get();
 if (!installationId) {
   db.prepare("INSERT INTO system_meta (key, value) VALUES ('installation_id', ?)").run(randomUUID());
@@ -594,7 +704,8 @@ if (!accessMigration) {
     db.prepare(`
       INSERT OR IGNORE INTO user_client_access (user_id, client_id)
       SELECT u.id, c.id
-      FROM users u CROSS JOIN clients c
+      FROM users u
+      JOIN clients c ON c.agency_id = u.agency_id
       WHERE u.role = 'team'
     `).run();
     db.prepare("INSERT INTO system_meta (key, value) VALUES ('team_client_access_initialized', '1')").run();
@@ -604,7 +715,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '17', datetime('now'))
+   VALUES ('schema_version', '18', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

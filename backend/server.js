@@ -15,6 +15,8 @@ const systemRoutes = require('./routes/system');
 const actionPlanRoutes = require('./routes/actionPlans');
 const metaRoutes = require('./routes/meta');
 const metaOrganicRoutes = require('./routes/metaOrganic');
+const tenantRoutes = require('./routes/tenant');
+const agencyRoutes = require('./routes/agencies');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
@@ -42,6 +44,8 @@ app.get('/api/health', (req, res) => {
   res.status(health.ok ? 200 : 503).json(health);
 });
 
+app.use('/api/tenant', tenantRoutes);
+app.use('/api/agencies', agencyRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/posts', postRoutes);

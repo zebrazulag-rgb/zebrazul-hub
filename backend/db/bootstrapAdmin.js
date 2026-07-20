@@ -22,11 +22,13 @@ function bootstrapAdminIfNeeded() {
     return false;
   }
 
+  const agency = db.prepare('SELECT id FROM agencies ORDER BY id LIMIT 1').get();
+  if (!agency) throw new Error('Agência principal não foi criada.');
   const passwordHash = bcrypt.hashSync(password, 12);
   db.prepare(
-    `INSERT INTO users (name, email, password_hash, role, client_id, avatar_color)
-     VALUES (?, ?, ?, 'admin', NULL, '#1d4ed8')`
-  ).run(name, email, passwordHash);
+    `INSERT INTO users (name, email, password_hash, role, client_id, agency_id, is_platform_owner, is_agency_owner, avatar_color)
+     VALUES (?, ?, ?, 'admin', NULL, ?, 1, 1, '#1d4ed8')`
+  ).run(name, email, passwordHash, agency.id);
 
   console.log(`Administrador inicial criado: ${email}`);
   return true;

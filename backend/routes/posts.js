@@ -66,6 +66,8 @@ function ensureClientAccess(req, res, clientId) {
 }
 
 function appendPostScope(req, query, params) {
+  query += ' AND agency_id = ?';
+  params.push(req.user.agency_id);
   if (req.user.role === 'admin') return query;
   if (req.user.role === 'client') {
     query += ' AND client_id = ?';
@@ -103,7 +105,7 @@ router.get('/', (req, res) => {
 });
 
 router.get('/:id', (req, res) => {
-  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
   const comments = db.prepare(
@@ -118,8 +120,8 @@ router.get('/:id', (req, res) => {
 // prévia do Feed dependa apenas da imagem de capa quando o conteúdo é carrossel.
 router.get('/:id/gallery', (req, res) => {
   const post = db.prepare(
-    'SELECT id, client_id, media_data, media_mime, media_gallery FROM posts WHERE id = ?'
-  ).get(req.params.id);
+    'SELECT id, client_id, media_data, media_mime, media_gallery FROM posts WHERE id = ? AND agency_id = ?'
+  ).get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
 
@@ -133,10 +135,10 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
   if (!ensureClientAccess(req, res, client_id)) return;
 
   const info = db.prepare(
-    `INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO posts (agency_id, client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
-    client_id, req.user.id, title, caption || '', content_type || 'feed',
+    req.user.agency_id, client_id, req.user.id, title, caption || '', content_type || 'feed',
     JSON.stringify(platforms || []), media_url || null,
     media_data || media_gallery?.[0]?.data || null,
     media_mime || media_gallery?.[0]?.mime || null,
@@ -147,20 +149,20 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.post('/:id/share', (req, res) => {
-  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post não encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
 
   let token = post.share_token;
   if (!token) {
     token = crypto.randomBytes(16).toString('hex');
-    db.prepare('UPDATE posts SET share_token = ? WHERE id = ?').run(token, req.params.id);
+    db.prepare('UPDATE posts SET share_token = ? WHERE id = ? AND agency_id = ?').run(token, req.params.id, req.user.agency_id);
   }
   res.json({ token });
 });
 
 router.put('/:id', (req, res) => {
-  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
 
@@ -175,13 +177,13 @@ router.put('/:id', (req, res) => {
         status = COALESCE(?, status),
         client_feedback = COALESCE(?, client_feedback),
         updated_at = datetime('now')
-       WHERE id = ?`
-    ).run(status, client_feedback, req.params.id);
+       WHERE id = ? AND agency_id = ?`
+    ).run(status, client_feedback, req.params.id, req.user.agency_id);
     return res.json({ ok: true });
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'client_id')) {
-    const targetClient = db.prepare('SELECT id FROM clients WHERE id = ?').get(req.body.client_id);
+    const targetClient = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(req.body.client_id, req.user.agency_id);
     if (!targetClient) return res.status(400).json({ error: 'Cliente invalido' });
     if (!ensureClientAccess(req, res, req.body.client_id)) return;
   }
@@ -236,23 +238,23 @@ router.put('/:id', (req, res) => {
 
   if (updates.length > 0) {
     db.prepare(
-      `UPDATE posts SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ?`
-    ).run(...values, req.params.id);
+      `UPDATE posts SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`
+    ).run(...values, req.params.id, req.user.agency_id);
   }
 
   res.json({ ok: true });
 });
 
 router.delete('/:id', requireRole('admin', 'team'), (req, res) => {
-  const post = db.prepare('SELECT client_id FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT client_id FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
-  db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
+  db.prepare('DELETE FROM posts WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
   res.json({ ok: true });
 });
 
 router.post('/:id/comments', (req, res) => {
-  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
 

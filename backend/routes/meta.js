@@ -21,18 +21,18 @@ function ensureClientAccess(req, res, clientId) {
   return true;
 }
 
-function getClient(clientId) {
-  return db.prepare('SELECT id, name FROM clients WHERE id = ?').get(clientId);
+function getClient(clientId, agencyId) {
+  return db.prepare('SELECT id, name FROM clients WHERE id = ? AND agency_id = ?').get(clientId, agencyId);
 }
 
-function getConnection(clientId) {
+function getConnection(clientId, agencyId) {
   return db.prepare(`
     SELECT id, client_id, account_id, account_name, currency, timezone_name,
            account_status, last_synced_at, last_sync_status, last_sync_error,
            created_at, updated_at
     FROM meta_ad_accounts
-    WHERE client_id = ?
-  `).get(clientId) || null;
+    WHERE client_id = ? AND agency_id = ?
+  `).get(clientId, agencyId) || null;
 }
 
 function isIsoDate(value) {
@@ -130,8 +130,8 @@ function serializeConnection(connection) {
   };
 }
 
-function getReportPayload(clientId, from, to) {
-  const connection = getConnection(clientId);
+function getReportPayload(clientId, from, to, agencyId) {
+  const connection = getConnection(clientId, agencyId);
   if (!connection) {
     return {
       connection: null,
@@ -193,7 +193,8 @@ router.get('/accounts', requireRole('admin'), async (req, res) => {
       SELECT m.account_id, m.client_id, c.name AS client_name
       FROM meta_ad_accounts m
       JOIN clients c ON c.id = m.client_id
-    `).all();
+      WHERE m.agency_id = ? AND c.agency_id = ?
+    `).all(req.user.agency_id, req.user.agency_id);
     const assignmentByAccount = new Map(assignments.map((row) => [String(row.account_id), row]));
     res.json({
       accounts: accounts.map((account) => ({
@@ -209,14 +210,14 @@ router.get('/accounts', requireRole('admin'), async (req, res) => {
 router.get('/client/:clientId/connection', (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
-  res.json({ connection: serializeConnection(getConnection(clientId)), meta: getMetaStatus() });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  res.json({ connection: serializeConnection(getConnection(clientId, req.user.agency_id)), meta: getMetaStatus() });
 });
 
 router.put('/client/:clientId/connection', requireRole('admin'), async (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
 
   try {
     const requestedAccountId = normalizeAccountId(req.body.account_id);
@@ -225,23 +226,23 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
     }
 
     const account = await getAdAccount(requestedAccountId);
-    const assigned = db.prepare('SELECT client_id FROM meta_ad_accounts WHERE account_id = ? AND client_id <> ?')
-      .get(account.account_id, clientId);
+    const assigned = db.prepare('SELECT client_id FROM meta_ad_accounts WHERE account_id = ? AND client_id <> ? AND agency_id = ?')
+      .get(account.account_id, clientId, req.user.agency_id);
     if (assigned) {
       return res.status(409).json({ error: 'Esta conta de anuncios ja esta vinculada a outro cliente' });
     }
 
-    const currentConnection = getConnection(clientId);
+    const currentConnection = getConnection(clientId, req.user.agency_id);
     const saveConnection = db.transaction(() => {
       if (currentConnection && String(currentConnection.account_id) !== String(account.account_id)) {
-        db.prepare('DELETE FROM meta_ad_accounts WHERE id = ?').run(currentConnection.id);
+        db.prepare('DELETE FROM meta_ad_accounts WHERE id = ? AND agency_id = ?').run(currentConnection.id, req.user.agency_id);
       }
 
       db.prepare(`
         INSERT INTO meta_ad_accounts (
-          client_id, account_id, account_name, currency, timezone_name, account_status,
+          agency_id, client_id, account_id, account_name, currency, timezone_name, account_status,
           last_sync_status, last_sync_error, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'never', NULL, datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'never', NULL, datetime('now'))
         ON CONFLICT(client_id) DO UPDATE SET
           account_name = excluded.account_name,
           currency = excluded.currency,
@@ -250,6 +251,7 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
           last_sync_error = NULL,
           updated_at = datetime('now')
       `).run(
+        req.user.agency_id,
         clientId,
         account.account_id,
         account.name,
@@ -260,7 +262,7 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
     });
     saveConnection();
 
-    res.json({ connection: serializeConnection(getConnection(clientId)) });
+    res.json({ connection: serializeConnection(getConnection(clientId, req.user.agency_id)) });
   } catch (error) {
     apiErrorResponse(res, error);
   }
@@ -269,18 +271,18 @@ router.put('/client/:clientId/connection', requireRole('admin'), async (req, res
 router.delete('/client/:clientId/connection', requireRole('admin'), (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  db.prepare('DELETE FROM meta_ad_accounts WHERE client_id = ?').run(clientId);
+  db.prepare('DELETE FROM meta_ad_accounts WHERE client_id = ? AND agency_id = ?').run(clientId, req.user.agency_id);
   res.json({ ok: true });
 });
 
 router.get('/client/:clientId/report', (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
 
   try {
     const { from, to } = resolveDateRange(req.query);
-    res.json(getReportPayload(clientId, from, to));
+    res.json(getReportPayload(clientId, from, to, req.user.agency_id));
   } catch (error) {
     apiErrorResponse(res, error);
   }
@@ -289,13 +291,13 @@ router.get('/client/:clientId/report', (req, res) => {
 router.post('/client/:clientId/sync', requireRole('admin', 'team'), async (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
-  if (!getClient(clientId)) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
 
   let range;
   try {
     range = resolveDateRange(req.body || {});
     await syncMetaClient(clientId, range.from, range.to);
-    res.json(getReportPayload(clientId, range.from, range.to));
+    res.json(getReportPayload(clientId, range.from, range.to, req.user.agency_id));
   } catch (error) {
     apiErrorResponse(res, error);
   }

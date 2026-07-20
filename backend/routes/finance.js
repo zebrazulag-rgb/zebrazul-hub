@@ -13,9 +13,9 @@ function normalizeEntry(entry) {
   return { ...entry, status: computedStatus, recurring: Boolean(entry.recurring) };
 }
 
-function buildFilters(query) {
-  const clauses = [];
-  const params = [];
+function buildFilters(query, agencyId) {
+  const clauses = ['financial_entries.agency_id = ?'];
+  const params = [agencyId];
 
   if (query.month && /^\d{4}-\d{2}$/.test(query.month)) {
     clauses.push("substr(financial_entries.due_date, 1, 7) = ?");
@@ -50,11 +50,11 @@ function buildFilters(query) {
 }
 
 router.get('/', (req, res) => {
-  const { where, params } = buildFilters(req.query);
+  const { where, params } = buildFilters(req.query, req.user.agency_id);
   const rows = db.prepare(
     `SELECT financial_entries.*, clients.name AS client_name
      FROM financial_entries
-     LEFT JOIN clients ON clients.id = financial_entries.client_id
+     LEFT JOIN clients ON clients.id = financial_entries.client_id AND clients.agency_id = financial_entries.agency_id
      ${where}
      ORDER BY financial_entries.due_date ASC, financial_entries.id DESC`
   ).all(...params).map(normalizeEntry);
@@ -116,14 +116,20 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Data de vencimento e obrigatoria' });
   }
 
+  if (client_id) {
+    const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(Number(client_id), req.user.agency_id);
+    if (!client) return res.status(400).json({ error: 'Cliente inválido para esta agência' });
+  }
+
   const normalizedStatus = ['pending', 'paid', 'cancelled'].includes(status) ? status : 'pending';
   const normalizedPaidDate = normalizedStatus === 'paid' ? (paid_date || new Date().toISOString().slice(0, 10)) : null;
 
   const info = db.prepare(
     `INSERT INTO financial_entries
-      (client_id, created_by, type, category, description, amount, due_date, paid_date, status, payment_method, recurring, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (agency_id, client_id, created_by, type, category, description, amount, due_date, paid_date, status, payment_method, recurring, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
+    req.user.agency_id,
     client_id ? Number(client_id) : null,
     req.user.id,
     type,
@@ -141,15 +147,15 @@ router.post('/', (req, res) => {
   const entry = db.prepare(
     `SELECT financial_entries.*, clients.name AS client_name
      FROM financial_entries
-     LEFT JOIN clients ON clients.id = financial_entries.client_id
-     WHERE financial_entries.id = ?`
-  ).get(info.lastInsertRowid);
+     LEFT JOIN clients ON clients.id = financial_entries.client_id AND clients.agency_id = financial_entries.agency_id
+     WHERE financial_entries.id = ? AND financial_entries.agency_id = ?`
+  ).get(info.lastInsertRowid, req.user.agency_id);
 
   res.status(201).json({ entry: normalizeEntry(entry) });
 });
 
 router.put('/:id', (req, res) => {
-  const current = db.prepare('SELECT * FROM financial_entries WHERE id = ?').get(req.params.id);
+  const current = db.prepare('SELECT * FROM financial_entries WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!current) return res.status(404).json({ error: 'Lancamento nao encontrado' });
 
   const next = {
@@ -165,6 +171,11 @@ router.put('/:id', (req, res) => {
     recurring: req.body.recurring ?? Boolean(current.recurring),
     notes: req.body.notes ?? current.notes
   };
+
+  if (next.client_id) {
+    const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(Number(next.client_id), req.user.agency_id);
+    if (!client) return res.status(400).json({ error: 'Cliente inválido para esta agência' });
+  }
 
   if (!['income', 'expense'].includes(next.type)) {
     return res.status(400).json({ error: 'Tipo financeiro invalido' });
@@ -187,7 +198,7 @@ router.put('/:id', (req, res) => {
       client_id = ?, type = ?, category = ?, description = ?, amount = ?, due_date = ?,
       paid_date = ?, status = ?, payment_method = ?, recurring = ?, notes = ?,
       updated_at = datetime('now')
-     WHERE id = ?`
+     WHERE id = ? AND agency_id = ?`
   ).run(
     next.client_id ? Number(next.client_id) : null,
     next.type,
@@ -200,21 +211,22 @@ router.put('/:id', (req, res) => {
     next.payment_method || null,
     next.recurring ? 1 : 0,
     next.notes || null,
-    req.params.id
+    req.params.id,
+    req.user.agency_id
   );
 
   const entry = db.prepare(
     `SELECT financial_entries.*, clients.name AS client_name
      FROM financial_entries
-     LEFT JOIN clients ON clients.id = financial_entries.client_id
-     WHERE financial_entries.id = ?`
-  ).get(req.params.id);
+     LEFT JOIN clients ON clients.id = financial_entries.client_id AND clients.agency_id = financial_entries.agency_id
+     WHERE financial_entries.id = ? AND financial_entries.agency_id = ?`
+  ).get(req.params.id, req.user.agency_id);
 
   res.json({ entry: normalizeEntry(entry) });
 });
 
 router.delete('/:id', requireRole('admin'), (req, res) => {
-  const info = db.prepare('DELETE FROM financial_entries WHERE id = ?').run(req.params.id);
+  const info = db.prepare('DELETE FROM financial_entries WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
   if (!info.changes) return res.status(404).json({ error: 'Lancamento nao encontrado' });
   res.json({ ok: true });
 });

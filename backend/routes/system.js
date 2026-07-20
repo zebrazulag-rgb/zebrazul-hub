@@ -2,14 +2,14 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
-const { authRequired, requireRole } = require('../middleware/auth');
+const { authRequired, requirePlatformOwner } = require('../middleware/auth');
 const { createBackup, listBackups, findBackup, verifyBackup } = require('../db/backup');
 const { getHealthStatus } = require('../db/health');
 const { databasePath, backupDirectory, persistenceConfigured, storageSafe } = require('../db/config');
 
 const router = express.Router();
 
-router.use(authRequired, requireRole('admin'));
+router.use(authRequired, requirePlatformOwner);
 
 router.get('/status', (req, res) => {
   const health = getHealthStatus();

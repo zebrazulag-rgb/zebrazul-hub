@@ -22,8 +22,8 @@ function ensureClient(req, res, clientId) {
   return true;
 }
 
-function getPlan(clientId, year) {
-  return db.prepare('SELECT * FROM action_plans WHERE client_id = ? AND year = ?').get(clientId, year);
+function getPlan(clientId, year, agencyId) {
+  return db.prepare('SELECT * FROM action_plans WHERE client_id = ? AND year = ? AND agency_id = ?').get(clientId, year, agencyId);
 }
 
 function getTasks(planId) {
@@ -41,7 +41,7 @@ router.get('/', (req, res) => {
   const clientId = resolveClientId(req, req.query.client_id);
   const year = Number(req.query.year) || new Date().getFullYear();
   if (!ensureClient(req, res, clientId)) return;
-  const plan = getPlan(clientId, year);
+  const plan = getPlan(clientId, year, req.user.agency_id);
   res.json({
     plan: plan || {
       id: null, client_id: clientId, year,
@@ -64,8 +64,8 @@ router.put('/', (req, res) => {
   ];
   db.prepare(`
     INSERT INTO action_plans
-      (client_id, year, what_we_want, why_we_want, how_we_will_do, manifesto, diagnosis, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (agency_id, client_id, year, what_we_want, why_we_want, how_we_will_do, manifesto, diagnosis, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(client_id, year) DO UPDATE SET
       what_we_want = excluded.what_we_want,
       why_we_want = excluded.why_we_want,
@@ -73,8 +73,8 @@ router.put('/', (req, res) => {
       manifesto = excluded.manifesto,
       diagnosis = excluded.diagnosis,
       updated_at = datetime('now')
-  `).run(clientId, year, ...values, req.user.id);
-  const plan = getPlan(clientId, year);
+  `).run(req.user.agency_id, clientId, year, ...values, req.user.id);
+  const plan = getPlan(clientId, year, req.user.agency_id);
   res.json({ ok: true, plan, tasks: getTasks(plan.id) });
 });
 
@@ -84,10 +84,10 @@ router.post('/tasks', (req, res) => {
   if (!ensureClient(req, res, clientId)) return;
   const title = String(req.body.title || '').trim();
   if (!title) return res.status(400).json({ error: 'Informe o título da tarefa' });
-  let plan = getPlan(clientId, year);
+  let plan = getPlan(clientId, year, req.user.agency_id);
   if (!plan) {
-    db.prepare('INSERT INTO action_plans (client_id, year, created_by) VALUES (?, ?, ?)').run(clientId, year, req.user.id);
-    plan = getPlan(clientId, year);
+    db.prepare('INSERT INTO action_plans (agency_id, client_id, year, created_by) VALUES (?, ?, ?, ?)' ).run(req.user.agency_id, clientId, year, req.user.id);
+    plan = getPlan(clientId, year, req.user.agency_id);
   }
   const info = db.prepare(`
     INSERT INTO action_plan_tasks (action_plan_id, title, description, due_date, status, created_by)
@@ -99,10 +99,10 @@ router.post('/tasks', (req, res) => {
 
 router.put('/tasks/:id', (req, res) => {
   const task = db.prepare(`
-    SELECT apt.*, ap.client_id FROM action_plan_tasks apt
+    SELECT apt.*, ap.client_id, ap.agency_id FROM action_plan_tasks apt
     JOIN action_plans ap ON ap.id = apt.action_plan_id
-    WHERE apt.id = ?
-  `).get(req.params.id);
+    WHERE apt.id = ? AND ap.agency_id = ?
+  `).get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa não encontrada' });
   if (!ensureClient(req, res, task.client_id)) return;
   const title = Object.prototype.hasOwnProperty.call(req.body, 'title') ? String(req.body.title || '').trim() : task.title;
@@ -122,10 +122,10 @@ router.put('/tasks/:id', (req, res) => {
 
 router.delete('/tasks/:id', (req, res) => {
   const task = db.prepare(`
-    SELECT apt.id, ap.client_id FROM action_plan_tasks apt
+    SELECT apt.id, ap.client_id, ap.agency_id FROM action_plan_tasks apt
     JOIN action_plans ap ON ap.id = apt.action_plan_id
-    WHERE apt.id = ?
-  `).get(req.params.id);
+    WHERE apt.id = ? AND ap.agency_id = ?
+  `).get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa não encontrada' });
   if (!ensureClient(req, res, task.client_id)) return;
   db.prepare('DELETE FROM action_plan_tasks WHERE id = ?').run(task.id);

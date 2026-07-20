@@ -7,7 +7,7 @@ router.use(authRequired);
 router.use(requireRole('admin', 'team', 'client'));
 
 function canAccessTask(user, task) {
-  if (!task) return false;
+  if (!task || Number(task.agency_id) !== Number(user.agency_id)) return false;
   if (user.role === 'admin') return true;
   if (user.role === 'client') {
     return Number(task.client_id) === Number(user.client_id);
@@ -52,7 +52,7 @@ function ensureClientAccess(req, res, clientId) {
   return true;
 }
 
-function attachAssignees(rows) {
+function attachAssignees(rows, agencyId) {
   if (!rows.length) return rows;
   const ids = rows.map((row) => Number(row.id));
   const placeholders = ids.map(() => '?').join(',');
@@ -60,9 +60,9 @@ function attachAssignees(rows) {
     SELECT ta.task_id, u.id, u.name, u.avatar_color, u.avatar_data
     FROM task_assignees ta
     JOIN users u ON u.id = ta.user_id
-    WHERE ta.task_id IN (${placeholders})
+    WHERE ta.task_id IN (${placeholders}) AND u.agency_id = ?
     ORDER BY u.name
-  `).all(...ids);
+  `).all(...ids, agencyId);
 
   const byTask = new Map();
   assignments.forEach((assignment) => {
@@ -85,13 +85,13 @@ function setAssignees(taskId, assigneeIds) {
   [...new Set(assigneeIds.map(Number).filter(Boolean))].forEach((uid) => insert.run(taskId, uid));
 }
 
-function validateAssigneesForClient(clientId, assigneeIds) {
+function validateAssigneesForClient(clientId, assigneeIds, agencyId) {
   if (!Array.isArray(assigneeIds)) return { ok: true };
   const ids = [...new Set(assigneeIds.map(Number).filter(Boolean))];
   if (!ids.length) return { ok: true };
 
   const placeholders = ids.map(() => '?').join(',');
-  const users = db.prepare(`SELECT id, role FROM users WHERE id IN (${placeholders})`).all(...ids);
+  const users = db.prepare(`SELECT id, role FROM users WHERE agency_id = ? AND id IN (${placeholders})`).all(agencyId, ...ids);
   if (users.length !== ids.length || users.some((user) => !['admin', 'team'].includes(user.role))) {
     return { ok: false, error: 'Selecione somente membros da equipe como responsáveis' };
   }
@@ -117,11 +117,12 @@ function getAccessibleParentOptions(user, task) {
       t.id, t.client_id, t.title, t.status, t.due_date,
       c.name AS client_name
     FROM tasks t
-    LEFT JOIN clients c ON c.id = t.client_id
+    LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     WHERE t.parent_task_id IS NULL
+      AND t.agency_id = ?
       AND t.id != ?
   `;
-  const params = [Number(task.id)];
+  const params = [Number(user.agency_id), Number(task.id)];
 
   if (task.client_id) {
     query += ' AND t.client_id = ?';
@@ -154,27 +155,27 @@ function parseGallery(value) {
 function taskSummaryQuery(whereClause) {
   return `
     SELECT
-      t.id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
+      t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.due_date, t.status, t.attachment_filename, t.feed_post_id,
       t.created_at, t.updated_at,
       c.name AS client_name,
-      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id) AS subtask_total,
-      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.status = 'done') AS subtask_done
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'done') AS subtask_done
     FROM tasks t
-    LEFT JOIN clients c ON c.id = t.client_id
+    LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     ${whereClause}
   `;
 }
 
-function getTaskSummary(taskId) {
-  const row = db.prepare(taskSummaryQuery('WHERE t.id = ?')).get(taskId);
-  return row ? attachAssignees([row])[0] : null;
+function getTaskSummary(taskId, agencyId) {
+  const row = db.prepare(taskSummaryQuery('WHERE t.id = ? AND t.agency_id = ?')).get(taskId, agencyId);
+  return row ? attachAssignees([row], agencyId)[0] : null;
 }
 
 router.get('/', (req, res) => {
   const { status, assignee_id, client_id } = req.query;
-  let query = taskSummaryQuery('WHERE t.parent_task_id IS NULL');
-  const params = [];
+  let query = taskSummaryQuery('WHERE t.parent_task_id IS NULL AND t.agency_id = ?');
+  const params = [req.user.agency_id];
 
   if (req.user.role === 'team') {
     query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
@@ -196,23 +197,23 @@ router.get('/', (req, res) => {
   }
   query += ' ORDER BY COALESCE(t.due_date, t.created_at) ASC';
 
-  const tasks = attachAssignees(db.prepare(query).all(...params));
+  const tasks = attachAssignees(db.prepare(query).all(...params), req.user.agency_id);
   res.json({ tasks });
 });
 
 
 router.get('/:id/parent-options', requireRole('admin', 'team'), (req, res) => {
-  const task = db.prepare('SELECT id, client_id, parent_task_id FROM tasks WHERE id = ?').get(req.params.id);
+  const task = db.prepare('SELECT id, agency_id, client_id, parent_task_id FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
 
-  const childCount = db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ?').get(task.id).total;
+  const childCount = db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ? AND agency_id = ?').get(task.id, req.user.agency_id).total;
   const options = getAccessibleParentOptions(req.user, task);
   res.json({ options, child_count: Number(childCount || 0) });
 });
 
 router.put('/:id/convert-to-subtask', requireRole('admin', 'team'), (req, res) => {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
   if (!ensureModifyTask(req, res, task)) return;
@@ -221,12 +222,12 @@ router.put('/:id/convert-to-subtask', requireRole('admin', 'team'), (req, res) =
   if (!parentId) return res.status(400).json({ error: 'Selecione a tarefa principal' });
   if (parentId === Number(task.id)) return res.status(400).json({ error: 'Uma tarefa nao pode ser subtarefa dela mesma' });
 
-  const childCount = db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ?').get(task.id).total;
+  const childCount = db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ? AND agency_id = ?').get(task.id, req.user.agency_id).total;
   if (Number(childCount || 0) > 0) {
     return res.status(400).json({ error: 'Esta tarefa possui subtarefas. Mova ou remova essas subtarefas antes da conversao.' });
   }
 
-  const parent = db.prepare('SELECT id, client_id, parent_task_id FROM tasks WHERE id = ?').get(parentId);
+  const parent = db.prepare('SELECT id, agency_id, client_id, parent_task_id FROM tasks WHERE id = ? AND agency_id = ?').get(parentId, req.user.agency_id);
   if (!parent) return res.status(404).json({ error: 'Tarefa principal nao encontrada' });
   if (parent.parent_task_id) return res.status(400).json({ error: 'Selecione uma tarefa principal, nao uma subtarefa' });
   if (!ensureTaskAccess(req, res, parent)) return;
@@ -240,8 +241,8 @@ router.put('/:id/convert-to-subtask', requireRole('admin', 'team'), (req, res) =
   db.prepare(`
     UPDATE tasks
     SET parent_task_id = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(parentId, task.id);
+    WHERE id = ? AND agency_id = ?
+  `).run(parentId, task.id, req.user.agency_id);
 
   res.json({ ok: true, task_id: Number(task.id), parent_task_id: parentId });
 });
@@ -249,9 +250,9 @@ router.put('/:id/convert-to-subtask', requireRole('admin', 'team'), (req, res) =
 // Mídias são carregadas separadamente para o modal abrir imediatamente.
 router.get('/:id/media', (req, res) => {
   const task = db.prepare(`
-    SELECT id, client_id, attachment_data, attachment_mime, attachment_filename, media_gallery
-    FROM tasks WHERE id = ?
-  `).get(req.params.id);
+    SELECT id, agency_id, client_id, attachment_data, attachment_mime, attachment_filename, media_gallery
+    FROM tasks WHERE id = ? AND agency_id = ?
+  `).get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
 
@@ -268,7 +269,7 @@ router.get('/:id/media', (req, res) => {
 router.get('/:id', (req, res) => {
   const task = db.prepare(`
     SELECT
-      t.id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
+      t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.description, t.content_type, t.caption, t.video_link,
       t.due_date, t.status, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, t.created_at, t.updated_at,
@@ -276,28 +277,28 @@ router.get('/:id', (req, res) => {
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
       c.name AS client_name, c.logo_color AS client_color
     FROM tasks t
-    LEFT JOIN clients c ON c.id = t.client_id
-    WHERE t.id = ?
-  `).get(req.params.id);
+    LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
+    WHERE t.id = ? AND t.agency_id = ?
+  `).get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
 
-  task.assignees = attachAssignees([{ id: task.id }])[0].assignees;
+  task.assignees = attachAssignees([{ id: task.id }], req.user.agency_id)[0].assignees;
 
   let subtaskQuery = `
     SELECT st.id, st.client_id, st.created_by, st.title, st.status, st.due_date, st.attachment_filename,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment
     FROM tasks st
-    WHERE st.parent_task_id = ?
+    WHERE st.parent_task_id = ? AND st.agency_id = ?
   `;
-  const subtaskParams = [req.params.id];
+  const subtaskParams = [req.params.id, req.user.agency_id];
   if (req.user.role === 'team') {
     subtaskQuery += ' AND st.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
     subtaskParams.push(Number(req.user.id));
   }
   subtaskQuery += ' ORDER BY COALESCE(st.due_date, st.created_at) ASC';
   const subtaskRows = db.prepare(subtaskQuery).all(...subtaskParams);
-  const subtasks = attachAssignees(subtaskRows);
+  const subtasks = attachAssignees(subtaskRows, req.user.agency_id);
 
   res.json({ task, subtasks });
 });
@@ -312,22 +313,22 @@ router.post('/', (req, res) => {
 
   let finalClientId = req.user.role === 'client' ? Number(req.user.client_id) : (client_id ? Number(client_id) : null);
   if (parent_task_id) {
-    const parent = db.prepare('SELECT id, client_id FROM tasks WHERE id = ?').get(parent_task_id);
+    const parent = db.prepare('SELECT id, agency_id, client_id FROM tasks WHERE id = ? AND agency_id = ?').get(parent_task_id, req.user.agency_id);
     if (!parent) return res.status(404).json({ error: 'Tarefa principal nao encontrada' });
     if (!ensureTaskAccess(req, res, parent)) return;
     if (!finalClientId) finalClientId = parent.client_id || null;
   }
   if (!ensureClientAccess(req, res, finalClientId)) return;
   const finalAssigneeIds = Array.isArray(assignee_ids) ? assignee_ids : [];
-  const assigneeValidation = validateAssigneesForClient(finalClientId, finalAssigneeIds);
+  const assigneeValidation = validateAssigneesForClient(finalClientId, finalAssigneeIds, req.user.agency_id);
   if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
 
   const createTask = db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO tasks (client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, attachment_data, attachment_mime, attachment_filename)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, attachment_data, attachment_mime, attachment_filename)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
+      req.user.agency_id, finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
       content_type || null, caption || null, video_link || null,
       Array.isArray(media_gallery) ? JSON.stringify(media_gallery) : null,
       due_date || null, req.user.role === 'client' ? 'pending' : (status || 'pending'),
@@ -338,11 +339,11 @@ router.post('/', (req, res) => {
   });
 
   const id = createTask();
-  res.status(201).json({ id, task: getTaskSummary(id) });
+  res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 
 router.put('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const existing = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!existing) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, existing)) return;
   if (!ensureModifyTask(req, res, existing)) return;
@@ -360,7 +361,7 @@ router.put('/:id', (req, res) => {
     if (!ensureClientAccess(req, res, targetClientId)) return;
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')) {
-    const assigneeValidation = validateAssigneesForClient(targetClientId, req.body.assignee_ids);
+    const assigneeValidation = validateAssigneesForClient(targetClientId, req.body.assignee_ids, req.user.agency_id);
     if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
   }
 
@@ -391,8 +392,8 @@ router.put('/:id', (req, res) => {
 
   const updateTask = db.transaction(() => {
     if (updates.length) {
-      db.prepare(`UPDATE tasks SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ?`)
-        .run(...values, req.params.id);
+      db.prepare(`UPDATE tasks SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+        .run(...values, req.params.id, req.user.agency_id);
     }
     if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')) {
       setAssignees(req.params.id, req.body.assignee_ids);
@@ -400,30 +401,30 @@ router.put('/:id', (req, res) => {
   });
   updateTask();
 
-  res.json({ ok: true, task: getTaskSummary(req.params.id) });
+  res.json({ ok: true, task: getTaskSummary(req.params.id, req.user.agency_id) });
 });
 
 router.delete('/:id', (req, res) => {
-  const task = db.prepare('SELECT id, client_id FROM tasks WHERE id = ?').get(req.params.id);
+  const task = db.prepare('SELECT id, agency_id, client_id FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
-  const completeTask = db.prepare('SELECT id, client_id, created_by, status FROM tasks WHERE id = ?').get(req.params.id);
+  const completeTask = db.prepare('SELECT id, agency_id, client_id, created_by, status FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!ensureModifyTask(req, res, completeTask)) return;
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+  db.prepare('DELETE FROM tasks WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
   res.json({ ok: true });
 });
 
 router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
 
   const duplicate = db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO tasks (client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, attachment_data, attachment_mime, attachment_filename)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, attachment_data, attachment_mime, attachment_filename)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
     `).run(
-      task.client_id, req.user.id, task.parent_task_id, task.task_type, `${task.title} (cópia)`, task.description,
+      req.user.agency_id, task.client_id, req.user.id, task.parent_task_id, task.task_type, `${task.title} (cópia)`, task.description,
       task.content_type, task.caption, task.video_link, task.media_gallery, task.due_date,
       task.attachment_data, task.attachment_mime, task.attachment_filename
     );
@@ -433,11 +434,11 @@ router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
   });
 
   const id = duplicate();
-  res.status(201).json({ id, task: getTaskSummary(id) });
+  res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 
 router.post('/:id/add-to-feed', requireRole('admin', 'team'), (req, res) => {
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
   if (!task.client_id) return res.status(400).json({ error: 'A tarefa precisa estar vinculada a um cliente' });
@@ -445,17 +446,17 @@ router.post('/:id/add-to-feed', requireRole('admin', 'team'), (req, res) => {
   if (!task.attachment_data && taskGallery.length === 0) return res.status(400).json({ error: 'Anexe ao menos uma imagem antes de enviar para o feed' });
 
   const info = db.prepare(`
-    INSERT INTO posts (client_id, created_by, title, caption, content_type, platforms, media_data, media_mime, media_gallery, scheduled_at, status)
-    VALUES (?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft')
+    INSERT INTO posts (agency_id, client_id, created_by, title, caption, content_type, platforms, media_data, media_mime, media_gallery, scheduled_at, status)
+    VALUES (?, ?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft')
   `).run(
-    task.client_id, req.user.id, task.title, task.caption || '', task.content_type || 'feed',
+    req.user.agency_id, task.client_id, req.user.id, task.title, task.caption || '', task.content_type || 'feed',
     task.attachment_data || taskGallery[0]?.data || null,
     task.attachment_mime || taskGallery[0]?.mime || null,
     taskGallery.length ? JSON.stringify(taskGallery) : null,
     task.due_date || null
   );
 
-  db.prepare('UPDATE tasks SET feed_post_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(info.lastInsertRowid, task.id);
+  db.prepare('UPDATE tasks SET feed_post_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND agency_id = ?').run(info.lastInsertRowid, task.id, req.user.agency_id);
   res.status(201).json({ post_id: info.lastInsertRowid });
 });
 
