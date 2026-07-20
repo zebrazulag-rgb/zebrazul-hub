@@ -5,10 +5,11 @@ import AvatarUpload from '../components/AvatarUpload.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { formChanged } from '../utils/formState.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useTenant } from '../context/TenantContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 
 const ROLE_OPTIONS = [
-  { value: 'team', label: 'Equipe Zebrazul', icon: UsersIcon },
+  { value: 'team', label: 'Equipe da agência', icon: UsersIcon },
   { value: 'client', label: 'Cliente', icon: Building2 },
   { value: 'admin', label: 'Administrador', icon: Shield }
 ];
@@ -17,6 +18,7 @@ const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id:
 
 export default function UserManagement() {
   const { user: currentUser, refreshUser } = useAuth();
+  const { agency } = useTenant();
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -35,8 +37,9 @@ export default function UserManagement() {
   useEffect(() => {
     api.get('/clients').then((res) => setClients(res.data.clients));
     loadUsers();
-    loadStorageStatus();
-  }, []);
+    if (currentUser?.is_platform_owner) loadStorageStatus();
+    else setLoadingStorage(false);
+  }, [currentUser?.is_platform_owner]);
 
   async function loadUsers() {
     const { data } = await api.get('/auth/users');
@@ -254,54 +257,56 @@ export default function UserManagement() {
       )}
 
 
+      {currentUser?.is_platform_owner && (
       <div className={`surface-card overflow-hidden border ${loadingStorage ? 'border-slate-200' : storageStatus?.storage_safe ? 'border-emerald-200' : 'border-red-200'}`}>
-        <div className="flex flex-wrap items-start justify-between gap-4 p-6">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${storageStatus?.storage_safe ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-              {loadingStorage ? <RefreshCw size={21} className="animate-spin" /> : storageStatus?.storage_safe ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-semibold text-slate-800">Proteção dos dados</h2>
-                {!loadingStorage && (
-                  <span className={`badge ${storageStatus?.storage_safe ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                    {storageStatus?.storage_safe ? 'Armazenamento protegido' : 'Armazenamento não protegido'}
-                  </span>
-                )}
+          <div className="flex flex-wrap items-start justify-between gap-4 p-6">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${storageStatus?.storage_safe ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                {loadingStorage ? <RefreshCw size={21} className="animate-spin" /> : storageStatus?.storage_safe ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
               </div>
-              <p className="text-sm text-slate-500 mt-1 break-words">
-                {loadingStorage
-                  ? 'Verificando onde o banco de dados esta sendo salvo...'
-                  : storageStatus?.storage_safe
-                    ? 'O banco esta fora da pasta do codigo e pode continuar intacto nas proximas atualizacoes.'
-                    : 'Nao publique uma nova versao enquanto o volume persistente nao estiver configurado.'}
-              </p>
-              {storageStatus?.storage_safe && (
-                <div className="mt-3 text-xs text-slate-500 space-y-1 break-all">
-                  <p><strong className="text-slate-600">Banco:</strong> {storageStatus.database_directory}/{storageStatus.database_file}</p>
-                  <p><strong className="text-slate-600">Ultimo backup:</strong> {storageStatus.last_backup ? formatBackupDate(storageStatus.last_backup.created_at) : 'Nenhum backup localizado'}</p>
-                  <p><strong className="text-slate-600">Identificador:</strong> {storageStatus.installation_id || 'Nao informado'}</p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-semibold text-slate-800">Proteção dos dados</h2>
+                  {!loadingStorage && (
+                    <span className={`badge ${storageStatus?.storage_safe ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      {storageStatus?.storage_safe ? 'Armazenamento protegido' : 'Armazenamento não protegido'}
+                    </span>
+                  )}
                 </div>
-              )}
-              {storageStatus?.error && <p className="text-xs text-red-600 mt-2">{storageStatus.error}</p>}
+                <p className="text-sm text-slate-500 mt-1 break-words">
+                  {loadingStorage
+                    ? 'Verificando onde o banco de dados esta sendo salvo...'
+                    : storageStatus?.storage_safe
+                      ? 'O banco esta fora da pasta do codigo e pode continuar intacto nas proximas atualizacoes.'
+                      : 'Nao publique uma nova versao enquanto o volume persistente nao estiver configurado.'}
+                </p>
+                {storageStatus?.storage_safe && (
+                  <div className="mt-3 text-xs text-slate-500 space-y-1 break-all">
+                    <p><strong className="text-slate-600">Banco:</strong> {storageStatus.database_directory}/{storageStatus.database_file}</p>
+                    <p><strong className="text-slate-600">Ultimo backup:</strong> {storageStatus.last_backup ? formatBackupDate(storageStatus.last_backup.created_at) : 'Nenhum backup localizado'}</p>
+                    <p><strong className="text-slate-600">Identificador:</strong> {storageStatus.installation_id || 'Nao informado'}</p>
+                  </div>
+                )}
+                {storageStatus?.error && <p className="text-xs text-red-600 mt-2">{storageStatus.error}</p>}
+              </div>
             </div>
-          </div>
-          <div className="flex gap-2 flex-wrap shrink-0">
-            <button onClick={loadStorageStatus} disabled={loadingStorage} className="btn-secondary flex items-center gap-2 text-sm">
-              <RefreshCw size={16} className={loadingStorage ? 'animate-spin' : ''} /> Verificar
-            </button>
-            <button onClick={downloadBackup} disabled={downloadingBackup || !storageStatus?.storage_safe} className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-              <Download size={16} /> {downloadingBackup ? 'Preparando...' : 'Baixar backup'}
-            </button>
+            <div className="flex gap-2 flex-wrap shrink-0">
+              <button onClick={loadStorageStatus} disabled={loadingStorage} className="btn-secondary flex items-center gap-2 text-sm">
+                <RefreshCw size={16} className={loadingStorage ? 'animate-spin' : ''} /> Verificar
+              </button>
+              <button onClick={downloadBackup} disabled={downloadingBackup || !storageStatus?.storage_safe} className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                <Download size={16} /> {downloadingBackup ? 'Preparando...' : 'Baixar backup'}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="surface-card p-6">
         <div className="mb-5"><p className="section-kicker">Níveis de permissão</p><h2 className="section-title mt-1">Papéis disponíveis</h2></div>
         <div className="grid md:grid-cols-3 gap-4 text-sm">
           <RoleDescription icon={Shield} title="Administrador" description="Acesso total, incluindo criar, editar e apagar usuários." />
-          <RoleDescription icon={UsersIcon} title="Equipe Zebrazul" description="Acessa somente os clientes definidos pelo administrador." />
+          <RoleDescription icon={UsersIcon} title={`Equipe ${agency?.name || ""}`.trim()} description="Acessa somente os clientes definidos pelo administrador." />
           <RoleDescription icon={Building2} title="Cliente" description="Só vê e aprova o conteúdo do próprio cliente vinculado." />
         </div>
       </div>

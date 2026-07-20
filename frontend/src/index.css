@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --agency-primary: #0969ff;
+  --agency-secondary: #4f8cff;
+  --agency-sidebar: #121620;
+  --agency-login-bg: #121620;
+}
+
 html, body, #root {
   min-width: 0;
   min-height: 100%;
@@ -23,7 +30,7 @@ body {
 
 ::selection {
   color: white;
-  background: #0969ff;
+  background: var(--agency-primary);
 }
 
 ::-webkit-scrollbar {
@@ -47,7 +54,14 @@ body {
 }
 
 .btn-primary {
-  @apply rounded-xl bg-[#0969ff] px-4 py-2.5 font-semibold text-white shadow-[0_8px_20px_rgba(9,105,255,0.2)] transition hover:-translate-y-0.5 hover:bg-[#005ce6] hover:shadow-[0_12px_26px_rgba(9,105,255,0.28)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
+  @apply rounded-xl px-4 py-2.5 font-semibold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0;
+  background: var(--agency-primary);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--agency-primary) 22%, transparent);
+}
+
+.btn-primary:hover {
+  filter: brightness(0.93);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--agency-primary) 30%, transparent);
 }
 
 .btn-secondary {
@@ -55,7 +69,12 @@ body {
 }
 
 .input-field {
-  @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#0969ff] focus:ring-4 focus:ring-[#0969ff]/10;
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:ring-4;
+}
+
+.input-field:focus {
+  border-color: var(--agency-primary);
+  --tw-ring-color: color-mix(in srgb, var(--agency-primary) 12%, transparent);
 }
 
 .badge {
@@ -91,7 +110,8 @@ body {
 }
 
 .segmented-control-button-active {
-  @apply bg-white text-[#0969ff] shadow-sm;
+  @apply bg-white shadow-sm;
+  color: var(--agency-primary);
 }
 
 .section-kicker {

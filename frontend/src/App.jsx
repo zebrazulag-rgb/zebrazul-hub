@@ -13,12 +13,15 @@ import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import Finance from './pages/Finance.jsx';
 import ActionPlan from './pages/ActionPlan.jsx';
+import BrandSettings from './pages/BrandSettings.jsx';
+import Agencies from './pages/Agencies.jsx';
 
-function ProtectedRoute({ children, roles }) {
+function ProtectedRoute({ children, roles, platformOnly = false }) {
   const { user, checkingSession } = useAuth();
   if (checkingSession) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando Zebrahub...</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  if (platformOnly && !user.is_platform_owner) return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -65,6 +68,14 @@ export default function App() {
             <UserManagement />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/marca"
+        element={<ProtectedRoute roles={['admin']}><BrandSettings /></ProtectedRoute>}
+      />
+      <Route
+        path="/agencias"
+        element={<ProtectedRoute roles={['admin']} platformOnly><Agencies /></ProtectedRoute>}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

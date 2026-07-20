@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getTenantSlug } from './tenant';
 
 // Em desenvolvimento usa o proxy do Vite (/api). Em produção, defina
 // VITE_API_URL com a URL pública do backend (ex: https://api.seudominio.com.br/api)
@@ -9,6 +10,7 @@ const api = axios.create({ baseURL });
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('zebrazul_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  config.headers['X-Tenant-Slug'] = getTenantSlug();
   return config;
 });
 

@@ -14,8 +14,11 @@ import {
   Target,
   ChevronDown,
   Sparkles,
+  Palette,
+  Building2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useTenant } from '../context/TenantContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import AvatarUpload from './AvatarUpload.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
@@ -25,6 +28,7 @@ import zebraHubLogo from '../assets/logo-hub-white.png';
 
 export default function Layout({ children }) {
   const { user, logout, refreshUser } = useAuth();
+  const { agency } = useTenant();
   const { selectedClient, setSelectedClient } = useClientFilter();
   const navigate = useNavigate();
   const [clients, setClients] = useState([]);
@@ -101,19 +105,24 @@ export default function Layout({ children }) {
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
     { to: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'team'] },
     { to: '/usuarios', label: 'Usuários', icon: UserCog, roles: ['admin'] },
+    { to: '/marca', label: 'Marca da agência', icon: Palette, roles: ['admin'] },
+    ...(user?.is_platform_owner ? [{ to: '/agencias', label: 'Agências', icon: Building2, roles: ['admin'] }] : []),
   ];
 
-  const accentColor = selectedClient?.logo_color || '#0969ff';
+  const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
+  const agencyPrimary = agency?.primary_color || '#0969ff';
+  const agencySidebar = agency?.sidebar_color || '#121620';
+  const agencyLogo = agency?.logo_data || zebraHubLogo;
   const selectedClientName = selectedClient?.name || 'Todos os clientes';
 
   return (
     <div className="min-h-screen flex bg-[#f5f7fb] text-slate-900">
-      <aside className="sticky top-0 h-screen w-[276px] bg-[#121620] text-white flex flex-col shrink-0 border-r border-white/5 shadow-[16px_0_48px_rgba(15,23,42,0.08)]">
+      <aside className="sticky top-0 h-screen w-[276px] text-white flex flex-col shrink-0 border-r border-white/5 shadow-[16px_0_48px_rgba(15,23,42,0.08)]" style={{ backgroundColor: agencySidebar }}>
         <div className="px-5 pt-5 pb-4">
           <img
-            src={zebraHubLogo}
-            alt="Zebra"
-            className="w-[178px] max-w-full h-auto object-contain"
+            src={agencyLogo}
+            alt={agency?.name || 'Agência'}
+            className="max-h-16 w-auto max-w-[190px] object-contain"
           />
         </div>
 
@@ -174,8 +183,9 @@ export default function Layout({ children }) {
                   <>
                     <span
                       className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                        isActive ? 'bg-[#0969ff] text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'
+                        isActive ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'
                       }`}
+                      style={isActive ? { backgroundColor: agencyPrimary } : undefined}
                     >
                       <item.icon size={17} strokeWidth={2} />
                     </span>
@@ -185,6 +195,12 @@ export default function Layout({ children }) {
               </NavLink>
             ))}
         </nav>
+
+        {agency?.show_powered_by !== false && (
+          <div className="px-5 pb-3 text-[10px] font-medium uppercase tracking-[0.14em] text-white/25">
+            {agency?.footer_text || 'Tecnologia ZebraHub'}
+          </div>
+        )}
 
         <div className="border-t border-white/[0.07] px-3 py-3">
           <button
@@ -202,14 +218,14 @@ export default function Layout({ children }) {
             ) : (
               <div
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white ring-1 ring-white/10"
-                style={{ backgroundColor: user?.avatar_color || '#0969ff' }}
+                style={{ backgroundColor: user?.avatar_color || agencyPrimary }}
               >
                 {user?.name?.[0]?.toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1 text-left">
               <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
-              <p className="truncate text-xs text-white/40">{roleLabel(user?.role)}</p>
+              <p className="truncate text-xs text-white/40">{roleLabel(user?.role, agency?.name)}</p>
             </div>
           </button>
           <button
@@ -264,9 +280,9 @@ export default function Layout({ children }) {
   );
 }
 
-function roleLabel(role) {
+function roleLabel(role, agencyName) {
   if (role === 'admin') return 'Administrador';
-  if (role === 'team') return 'Equipe Zebrazul';
+  if (role === 'team') return `Equipe ${agencyName || ''}`.trim();
   if (role === 'client') return 'Cliente';
   return '';
 }

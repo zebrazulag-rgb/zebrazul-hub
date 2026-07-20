@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import api from '../api';
+import { useTenant } from './TenantContext.jsx';
+import { persistTenantSlug } from '../tenant';
 
 const AuthContext = createContext(null);
 
@@ -13,6 +15,7 @@ function readStoredUser() {
 }
 
 export function AuthProvider({ children }) {
+  const { refreshTenant, updateAgency } = useTenant();
   const [user, setUser] = useState(readStoredUser);
   const [checkingSession, setCheckingSession] = useState(Boolean(localStorage.getItem('zebrazul_token')));
 
@@ -32,7 +35,15 @@ export function AuthProvider({ children }) {
     let active = true;
     api.get('/auth/me')
       .then(({ data }) => {
-        if (active) persistUser(data.user);
+        if (active) {
+          persistUser(data.user);
+          if (data.user?.agency) {
+            persistTenantSlug(data.user.agency.slug);
+            updateAgency(data.user.agency);
+          } else {
+            refreshTenant(true);
+          }
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -44,14 +55,20 @@ export function AuthProvider({ children }) {
       });
 
     return () => { active = false; };
-  }, [persistUser]);
+  }, [persistUser, refreshTenant, updateAgency]);
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
     localStorage.setItem('zebrazul_token', data.token);
     persistUser(data.user);
+    if (data.user?.agency) {
+      persistTenantSlug(data.user.agency.slug);
+      updateAgency(data.user.agency);
+    } else {
+      await refreshTenant(true);
+    }
     return data.user;
-  }, [persistUser]);
+  }, [persistUser, refreshTenant, updateAgency]);
 
   const logout = useCallback(() => {
     localStorage.removeItem('zebrazul_token');
