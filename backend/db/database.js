@@ -434,6 +434,8 @@ CREATE TABLE IF NOT EXISTS action_plans (
   how_we_will_do TEXT,
   manifesto TEXT,
   diagnosis TEXT,
+  strategic_diagnosis_json TEXT DEFAULT '{}',
+  strategic_diagnosis_progress INTEGER DEFAULT 0,
   created_by INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
@@ -557,6 +559,8 @@ tryAddColumn('report_metrics', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('meta_ad_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('meta_organic_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('action_plans', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
+tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');
 
 // Migração do módulo financeiro para bancos criados nas primeiras versões.
 // A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual

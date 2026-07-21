@@ -12,7 +12,7 @@ function resolveClientId(req, requested) {
 
 function ensureClient(req, res, clientId) {
   if (!clientId) {
-    res.status(400).json({ error: 'Selecione um cliente para abrir o Plano de Ação' });
+    res.status(400).json({ error: 'Selecione um cliente para abrir o Diagnóstico Estratégico' });
     return false;
   }
   if (!canAccessClient(req.user, clientId)) {
@@ -37,17 +37,47 @@ function getTasks(planId) {
   `).all(planId);
 }
 
+function parseDiagnosisData(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function serializePlan(plan) {
+  if (!plan) return null;
+  return {
+    ...plan,
+    diagnosis_data: parseDiagnosisData(plan.strategic_diagnosis_json),
+    strategic_diagnosis: parseDiagnosisData(plan.strategic_diagnosis_json),
+    progress: Number(plan.strategic_diagnosis_progress || 0),
+  };
+}
+
 router.get('/', (req, res) => {
   const clientId = resolveClientId(req, req.query.client_id);
   const year = Number(req.query.year) || new Date().getFullYear();
   if (!ensureClient(req, res, clientId)) return;
   const plan = getPlan(clientId, year, req.user.agency_id);
   res.json({
-    plan: plan || {
-      id: null, client_id: clientId, year,
-      what_we_want: '', why_we_want: '', how_we_will_do: '', manifesto: '', diagnosis: ''
+    plan: serializePlan(plan) || {
+      id: null,
+      client_id: clientId,
+      year,
+      what_we_want: '',
+      why_we_want: '',
+      how_we_will_do: '',
+      manifesto: '',
+      diagnosis: '',
+      diagnosis_data: null,
+      strategic_diagnosis: null,
+      progress: 0,
     },
-    tasks: getTasks(plan?.id)
+    tasks: getTasks(plan?.id),
   });
 });
 
@@ -55,27 +85,47 @@ router.put('/', (req, res) => {
   const clientId = resolveClientId(req, req.body.client_id);
   const year = Number(req.body.year) || new Date().getFullYear();
   if (!ensureClient(req, res, clientId)) return;
+
+  const existing = getPlan(clientId, year, req.user.agency_id) || {};
+  const hasDiagnosisData = Object.prototype.hasOwnProperty.call(req.body, 'diagnosis_data')
+    || Object.prototype.hasOwnProperty.call(req.body, 'strategic_diagnosis');
+  const diagnosisData = hasDiagnosisData
+    ? (req.body.diagnosis_data ?? req.body.strategic_diagnosis ?? {})
+    : parseDiagnosisData(existing.strategic_diagnosis_json);
+  const diagnosisJson = diagnosisData && typeof diagnosisData === 'object'
+    ? JSON.stringify(diagnosisData)
+    : String(existing.strategic_diagnosis_json || '{}');
+  const progress = Object.prototype.hasOwnProperty.call(req.body, 'progress')
+    ? Math.max(0, Math.min(100, Number(req.body.progress) || 0))
+    : Number(existing.strategic_diagnosis_progress || 0);
+
   const values = [
-    String(req.body.what_we_want || ''),
-    String(req.body.why_we_want || ''),
-    String(req.body.how_we_will_do || ''),
-    String(req.body.manifesto || ''),
-    String(req.body.diagnosis || '')
+    Object.prototype.hasOwnProperty.call(req.body, 'what_we_want') ? String(req.body.what_we_want || '') : String(existing.what_we_want || ''),
+    Object.prototype.hasOwnProperty.call(req.body, 'why_we_want') ? String(req.body.why_we_want || '') : String(existing.why_we_want || ''),
+    Object.prototype.hasOwnProperty.call(req.body, 'how_we_will_do') ? String(req.body.how_we_will_do || '') : String(existing.how_we_will_do || ''),
+    Object.prototype.hasOwnProperty.call(req.body, 'manifesto') ? String(req.body.manifesto || '') : String(existing.manifesto || ''),
+    Object.prototype.hasOwnProperty.call(req.body, 'diagnosis') ? String(req.body.diagnosis || '') : String(existing.diagnosis || ''),
+    diagnosisJson,
+    progress,
   ];
+
   db.prepare(`
     INSERT INTO action_plans
-      (agency_id, client_id, year, what_we_want, why_we_want, how_we_will_do, manifesto, diagnosis, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (agency_id, client_id, year, what_we_want, why_we_want, how_we_will_do, manifesto, diagnosis, strategic_diagnosis_json, strategic_diagnosis_progress, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(client_id, year) DO UPDATE SET
       what_we_want = excluded.what_we_want,
       why_we_want = excluded.why_we_want,
       how_we_will_do = excluded.how_we_will_do,
       manifesto = excluded.manifesto,
       diagnosis = excluded.diagnosis,
+      strategic_diagnosis_json = excluded.strategic_diagnosis_json,
+      strategic_diagnosis_progress = excluded.strategic_diagnosis_progress,
       updated_at = datetime('now')
   `).run(req.user.agency_id, clientId, year, ...values, req.user.id);
+
   const plan = getPlan(clientId, year, req.user.agency_id);
-  res.json({ ok: true, plan, tasks: getTasks(plan.id) });
+  res.json({ ok: true, plan: serializePlan(plan), tasks: getTasks(plan.id) });
 });
 
 router.post('/tasks', (req, res) => {
