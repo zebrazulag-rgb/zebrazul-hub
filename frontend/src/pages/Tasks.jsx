@@ -104,6 +104,12 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
             ) : null}
           </div>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
+          {t.parent_task_id && (
+            <p className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600" title={t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}>
+              <ListTree size={10} className="shrink-0" />
+              <span className="truncate">{t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}</span>
+            </p>
+          )}
         </div>
       </div>
       {t.subtask_total > 0 && (
@@ -132,6 +138,7 @@ export default function Tasks() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('kanban');
   const [tasks, setTasks] = useState([]);
+  const [calendarTasks, setCalendarTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [localClientId, setLocalClientId] = useState('all');
@@ -164,8 +171,12 @@ export default function Tasks() {
 
   const loadTasks = useCallback(async () => {
     const params = effectiveClientId ? ('?client_id=' + effectiveClientId) : '';
-    const { data } = await api.get('/tasks' + params);
-    setTasks(sortTasks(data.tasks || []));
+    const [taskResponse, calendarResponse] = await Promise.all([
+      api.get('/tasks' + params),
+      api.get('/tasks/calendar' + params),
+    ]);
+    setTasks(sortTasks(taskResponse.data.tasks || []));
+    setCalendarTasks(calendarResponse.data.tasks || []);
   }, [effectiveClientId]);
 
   useEffect(() => {
@@ -257,6 +268,7 @@ export default function Tasks() {
 
   async function updateStatus(taskId, status) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
+    setCalendarTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
     await api.put('/tasks/' + taskId, { status });
   }
 
@@ -264,6 +276,7 @@ export default function Tasks() {
     const isFeatured = nextValue ? 1 : 0;
     setTasks((previous) => sortTasks(previous.map((task) => task.id === taskId ? { ...task, is_featured: isFeatured } : task)));
     setSelectedTask((previous) => previous?.id === taskId ? { ...previous, is_featured: isFeatured } : previous);
+    setCalendarTasks((previous) => previous.map((task) => task.id === taskId ? { ...task, is_featured: isFeatured } : task));
     setDayTasks((previous) => previous ? { ...previous, items: previous.items.map((task) => task.id === taskId ? { ...task, is_featured: isFeatured } : task) } : previous);
 
     try {
@@ -273,6 +286,7 @@ export default function Tasks() {
       const revertedValue = nextValue ? 0 : 1;
       setTasks((previous) => sortTasks(previous.map((task) => task.id === taskId ? { ...task, is_featured: revertedValue } : task)));
       setSelectedTask((previous) => previous?.id === taskId ? { ...previous, is_featured: revertedValue } : previous);
+      setCalendarTasks((previous) => previous.map((task) => task.id === taskId ? { ...task, is_featured: revertedValue } : task));
       setDayTasks((previous) => previous ? { ...previous, items: previous.items.map((task) => task.id === taskId ? { ...task, is_featured: revertedValue } : task) } : previous);
       setTaskError(error.response?.data?.error || 'Não foi possível atualizar o destaque da tarefa.');
     }
@@ -292,6 +306,7 @@ export default function Tasks() {
 
   async function updateSubtaskStatus(subtaskId, status) {
     setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
+    setCalendarTasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
     await api.put('/tasks/' + subtaskId, { status });
     loadTasks();
   }
@@ -299,6 +314,7 @@ export default function Tasks() {
   async function deleteSubtask(subtaskId) {
     await api.delete('/tasks/' + subtaskId);
     setSubtasks((prev) => prev.filter((s) => s.id !== subtaskId));
+    setCalendarTasks((prev) => prev.filter((s) => s.id !== subtaskId));
     loadTasks();
   }
 
@@ -349,6 +365,7 @@ export default function Tasks() {
   async function deleteTask(id) {
     await api.delete('/tasks/' + id);
     setTasks((previous) => previous.filter((task) => task.id !== id));
+    setCalendarTasks((previous) => previous.filter((task) => task.id !== id && Number(task.parent_task_id) !== Number(id)));
     setSelectedTask(null);
   }
 
@@ -356,6 +373,7 @@ export default function Tasks() {
     const { data } = await api.post('/tasks/' + id + '/duplicate');
     upsertTaskSummary(data.task);
     setSelectedTask(null);
+    loadTasks();
   }
 
   async function sendToFeed(id, source = 'task') {
@@ -414,7 +432,7 @@ export default function Tasks() {
 
   function tasksForDay(day) {
     if (!day) return [];
-    return tasks.filter((t) => {
+    return calendarTasks.filter((t) => {
       if (!t.due_date) return false;
       const parts = dateParts(t.due_date);
       return parts.year === year && parts.month === month + 1 && parts.day === day;
@@ -543,10 +561,10 @@ export default function Tasks() {
                             type="button"
                             key={item.id}
                             onClick={(event) => { event.stopPropagation(); openTask(item.id); }}
-                            className="block w-full truncate rounded-md bg-white px-1.5 py-1 text-left text-[10px] font-medium text-slate-600 shadow-sm hover:text-zebrazul-700"
-                            title={item.title}
+                            className={`block w-full truncate rounded-md px-1.5 py-1 text-left text-[10px] font-medium shadow-sm ${item.parent_task_id ? 'border border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100' : 'bg-white text-slate-600 hover:text-zebrazul-700'}`}
+                            title={item.parent_task_id && item.parent_title ? `${item.title} — subtarefa de ${item.parent_title}` : item.title}
                           >
-                            {item.title}
+                            {item.parent_task_id ? '↳ ' : ''}{item.title}
                           </button>
                         ))}
                       </div>
@@ -556,7 +574,7 @@ export default function Tasks() {
                           onClick={(event) => { event.stopPropagation(); setDayTasks({ day, items: dayItems }); }}
                           className="mt-auto pt-1 text-left text-[10px] font-semibold text-zebrazul-600 hover:underline"
                         >
-                          {dayItems.length} tarefa{dayItems.length > 1 ? 's' : ''}{dayItems.length > 2 ? ' · ver todas' : ''}
+                          {dayItems.length} item{dayItems.length > 1 ? 's' : ''}{dayItems.length > 2 ? ' · ver todos' : ''}
                         </button>
                       )}
                     </>
@@ -573,7 +591,7 @@ export default function Tasks() {
           <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <h2 className="font-semibold text-slate-800">Tarefas — {dayTasks.day} de {MONTHS[month]}</h2>
+                <h2 className="font-semibold text-slate-800">Tarefas e subtarefas — {dayTasks.day} de {MONTHS[month]}</h2>
                 <button onClick={() => openNewTaskForDate(dayTasks.day)} className="mt-1 text-xs font-medium text-zebrazul-600 hover:underline inline-flex items-center gap-1">
                   <Plus size={13} /> Adicionar tarefa neste dia
                 </button>
@@ -582,7 +600,12 @@ export default function Tasks() {
             </div>
             <div className="space-y-3">
               {dayTasks.items.map((t) => (
-                <TaskCard key={t.id} task={t} onClick={() => { setDayTasks(null); openTask(t.id); }} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  onClick={() => { setDayTasks(null); openTask(t.id); }}
+                  onToggleFeatured={user?.role === 'client' || t.parent_task_id ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)}
+                />
               ))}
             </div>
           </div>
@@ -597,7 +620,7 @@ export default function Tasks() {
           defaultDueDate={defaultTaskDate}
           userRole={user?.role}
           onClose={() => { setShowForm(false); setDefaultTaskDate(''); }}
-          onSaved={(task) => { setShowForm(false); setDefaultTaskDate(''); upsertTaskSummary(task); }}
+          onSaved={(task) => { setShowForm(false); setDefaultTaskDate(''); upsertTaskSummary(task); loadTasks(); }}
         />
       )}
 
@@ -624,6 +647,7 @@ export default function Tasks() {
             setEditingTask(null);
             setSelectedTask(null);
             upsertTaskSummary(task);
+            loadTasks();
           }}
         />
       )}
