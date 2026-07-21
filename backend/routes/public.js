@@ -83,7 +83,7 @@ router.get('/feed/:token', (req, res) => {
     SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status
     FROM posts
     WHERE client_id = ? AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','scheduled','draft')
-    ORDER BY scheduled_at ASC
+    ORDER BY scheduled_at DESC
   `).all(client.id);
 
   res.json({ client, posts: posts.map(normalizePost) });
