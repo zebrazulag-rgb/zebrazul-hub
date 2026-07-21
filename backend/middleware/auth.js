@@ -22,9 +22,14 @@ function hydrateUserAccess(user) {
     agency_id: Number(user.agency_id),
     is_platform_owner: Number(user.is_platform_owner) === 1,
     is_agency_owner: Number(user.is_agency_owner) === 1,
+    is_operations_head: Number(user.is_operations_head) === 1,
     agency: publicAgency(agency),
   };
   if (user.role === 'admin') return { ...base, client_ids: [] };
+  if (base.is_operations_head) {
+    const clientIds = db.prepare('SELECT id FROM clients WHERE agency_id = ? ORDER BY id').all(user.agency_id).map((row) => Number(row.id));
+    return { ...base, client_ids: clientIds };
+  }
   if (user.role === 'client') return { ...base, client_ids: user.client_id ? [Number(user.client_id)] : [] };
   return { ...base, client_ids: getUserClientIds(user.id, user.agency_id) };
 }
@@ -37,7 +42,7 @@ function canAccessClient(user, clientId) {
   const client = db.prepare('SELECT id, agency_id FROM clients WHERE id = ?').get(normalizedClientId);
   if (!client || Number(client.agency_id) !== Number(user.agency_id)) return false;
 
-  if (user.role === 'admin') return true;
+  if (user.role === 'admin' || user.is_operations_head) return true;
   if (user.role === 'client') return Number(user.client_id) === normalizedClientId;
   return Array.isArray(user.client_ids) && user.client_ids.includes(normalizedClientId);
 }
@@ -53,7 +58,7 @@ function authRequired(req, res, next) {
     const payload = jwt.verify(token, JWT_SECRET);
     const currentUser = db.prepare(`
       SELECT id, name, email, role, client_id, agency_id,
-             is_platform_owner, is_agency_owner
+             is_platform_owner, is_agency_owner, is_operations_head
       FROM users WHERE id = ?
     `).get(payload.id);
 

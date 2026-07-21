@@ -36,7 +36,7 @@ function ensureClientAccess(req, res, clientId) {
 
 router.get('/', (req, res) => {
   let rows;
-  if (req.user.role === 'admin') {
+  if (req.user.role === 'admin' || req.user.is_operations_head) {
     rows = db.prepare('SELECT * FROM clients WHERE agency_id = ? ORDER BY name').all(req.user.agency_id);
   } else if (req.user.role === 'client') {
     rows = req.user.client_id

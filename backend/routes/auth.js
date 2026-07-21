@@ -11,7 +11,20 @@ const {
 const { resolveAgency } = require('../services/tenant');
 
 const router = express.Router();
-const VALID_ROLES = ['admin', 'team', 'client'];
+const VALID_ROLES = ['admin', 'team', 'operations_head', 'client'];
+
+function normalizeAccessRole(value) {
+  const requested = String(value || '');
+  return {
+    requested,
+    role: requested === 'operations_head' ? 'team' : requested,
+    isOperationsHead: requested === 'operations_head',
+  };
+}
+
+function accessRoleOf(user) {
+  return Number(user?.is_operations_head) === 1 ? 'operations_head' : user?.role;
+}
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -57,6 +70,7 @@ function publicUser(user) {
     agency: hydrated.agency,
     is_platform_owner: hydrated.is_platform_owner,
     is_agency_owner: hydrated.is_agency_owner,
+    is_operations_head: hydrated.is_operations_head,
   };
 }
 
@@ -75,11 +89,15 @@ function attachUserAccess(users, agencyId) {
     byUser.get(row.user_id).push({ id: Number(row.client_id), name: row.client_name });
   });
   return users.map((user) => {
-    const accesses = user.role === 'team' ? (byUser.get(user.id) || []) : [];
+    const operationsHead = Number(user.is_operations_head) === 1;
+    const accesses = operationsHead
+      ? db.prepare('SELECT id, name FROM clients WHERE agency_id = ? ORDER BY name').all(agencyId)
+      : user.role === 'team' ? (byUser.get(user.id) || []) : [];
     return {
       ...user,
       is_platform_owner: Number(user.is_platform_owner) === 1,
       is_agency_owner: Number(user.is_agency_owner) === 1,
+      is_operations_head: operationsHead,
       client_ids: accesses.map((client) => client.id),
       client_names: accesses.map((client) => client.name),
     };
@@ -115,7 +133,7 @@ router.post('/login', (req, res) => {
 router.get('/me', authRequired, (req, res) => {
   const user = db.prepare(`
     SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-           agency_id, is_platform_owner, is_agency_owner
+           agency_id, is_platform_owner, is_agency_owner, is_operations_head
     FROM users WHERE id = ?
   `).get(req.user.id);
   res.json({ user: publicUser(user) });
@@ -126,16 +144,18 @@ router.post('/users', authRequired, (req, res) => {
 
   const name = String(req.body.name || '').trim();
   const email = normalizeEmail(req.body.email);
-  const { password, role } = req.body;
+  const { password } = req.body;
+  const accessRole = normalizeAccessRole(req.body.role);
+  const role = accessRole.role;
   const clientId = role === 'client' ? Number(req.body.client_id) || null : null;
-  const clientIds = role === 'team' ? normalizeClientIds(req.body.client_ids) : [];
+  const clientIds = role === 'team' && !accessRole.isOperationsHead ? normalizeClientIds(req.body.client_ids) : [];
 
-  if (!name || !email || !password || !role) return res.status(400).json({ error: 'Campos obrigatorios faltando' });
-  if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: 'Papel de usuario invalido' });
+  if (!name || !email || !password || !accessRole.requested) return res.status(400).json({ error: 'Campos obrigatorios faltando' });
+  if (!VALID_ROLES.includes(accessRole.requested)) return res.status(400).json({ error: 'Papel de usuario invalido' });
   if (String(password).length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres' });
   if (role === 'client' && !clientId) return res.status(400).json({ error: 'Selecione um cliente para este usuario' });
   if (role === 'client' && !validateClientIds([clientId], req.user.agency_id)) return res.status(400).json({ error: 'Cliente inválido para esta agência' });
-  if (role === 'team' && !validateClientIds(clientIds, req.user.agency_id)) return res.status(400).json({ error: 'Um ou mais clientes selecionados sao invalidos' });
+  if (role === 'team' && !accessRole.isOperationsHead && !validateClientIds(clientIds, req.user.agency_id)) return res.status(400).json({ error: 'Um ou mais clientes selecionados sao invalidos' });
 
   const plan = db.prepare('SELECT max_users FROM agencies WHERE id = ?').get(req.user.agency_id);
   const currentCount = db.prepare('SELECT COUNT(*) AS total FROM users WHERE agency_id = ?').get(req.user.agency_id).total;
@@ -147,9 +167,9 @@ router.post('/users', authRequired, (req, res) => {
     const createUser = db.transaction(() => {
       const passwordHash = bcrypt.hashSync(password, 10);
       const info = db.prepare(`
-        INSERT INTO users (name, email, password_hash, role, client_id, agency_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(name, email, passwordHash, role, clientId, req.user.agency_id);
+        INSERT INTO users (name, email, password_hash, role, client_id, agency_id, is_operations_head)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(name, email, passwordHash, role, clientId, req.user.agency_id, accessRole.isOperationsHead ? 1 : 0);
       replaceUserClientAccess(info.lastInsertRowid, clientIds, req.user.agency_id);
       return info.lastInsertRowid;
     });
@@ -162,17 +182,20 @@ router.post('/users', authRequired, (req, res) => {
 
 router.get('/team-users', authRequired, (req, res) => {
   let users = db.prepare(`
-    SELECT id, name, role, avatar_color, avatar_data
+    SELECT id, name, role, avatar_color, avatar_data, is_operations_head
     FROM users
     WHERE agency_id = ? AND role IN ('admin','team')
     ORDER BY name
   `).all(req.user.agency_id).map((user) => ({
     ...user,
-    client_ids: user.role === 'admin' ? [] : getUserClientIds(user.id, req.user.agency_id),
+    is_operations_head: Number(user.is_operations_head) === 1,
+    client_ids: user.role === 'admin' || Number(user.is_operations_head) === 1
+      ? []
+      : getUserClientIds(user.id, req.user.agency_id),
   }));
   if (req.user.role === 'client') {
     const clientId = Number(req.user.client_id);
-    users = users.filter((user) => user.role === 'admin' || user.client_ids.includes(clientId));
+    users = users.filter((user) => user.role === 'admin' || user.is_operations_head || user.client_ids.includes(clientId));
   }
   res.json({ users });
 });
@@ -181,11 +204,11 @@ router.get('/users', authRequired, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
   const users = db.prepare(`
     SELECT u.id, u.name, u.email, u.role, u.client_id, u.avatar_color, u.avatar_data, u.avatar_mime,
-           u.is_platform_owner, u.is_agency_owner, c.name as client_name
+           u.is_platform_owner, u.is_agency_owner, u.is_operations_head, c.name as client_name
     FROM users u
     LEFT JOIN clients c ON c.id = u.client_id AND c.agency_id = u.agency_id
     WHERE u.agency_id = ?
-    ORDER BY CASE u.role WHEN 'admin' THEN 1 WHEN 'team' THEN 2 ELSE 3 END, u.name
+    ORDER BY CASE WHEN u.role = 'admin' THEN 1 WHEN u.is_operations_head = 1 THEN 2 WHEN u.role = 'team' THEN 3 ELSE 4 END, u.name
   `).all(req.user.agency_id);
   res.json({ users: attachUserAccess(users, req.user.agency_id) });
 });
@@ -200,7 +223,7 @@ router.put('/me', authRequired, (req, res) => {
 
   const user = db.prepare(`
     SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-           agency_id, is_platform_owner, is_agency_owner
+           agency_id, is_platform_owner, is_agency_owner, is_operations_head
     FROM users WHERE id = ? AND agency_id = ?
   `).get(req.user.id, req.user.agency_id);
   res.json({ user: publicUser(user) });
@@ -213,10 +236,13 @@ router.put('/users/:id', authRequired, (req, res) => {
   const existing = db.prepare('SELECT * FROM users WHERE id = ? AND agency_id = ?').get(targetId, req.user.agency_id);
   if (!existing) return res.status(404).json({ error: 'Usuario nao encontrado' });
 
-  const nextRole = req.body.role === undefined ? existing.role : req.body.role;
-  if (!VALID_ROLES.includes(nextRole)) return res.status(400).json({ error: 'Papel de usuario invalido' });
-  if (targetId === req.user.id && nextRole !== existing.role) return res.status(400).json({ error: 'Voce nao pode alterar o proprio papel de acesso' });
-  if (existing.is_agency_owner && nextRole !== 'admin') return res.status(400).json({ error: 'O responsável principal da agência deve permanecer administrador' });
+  const existingAccessRole = accessRoleOf(existing);
+  const requestedAccessRole = req.body.role === undefined ? existingAccessRole : req.body.role;
+  if (!VALID_ROLES.includes(requestedAccessRole)) return res.status(400).json({ error: 'Papel de usuario invalido' });
+  const nextAccess = normalizeAccessRole(requestedAccessRole);
+  const nextRole = nextAccess.role;
+  if (targetId === req.user.id && requestedAccessRole !== existingAccessRole) return res.status(400).json({ error: 'Voce nao pode alterar o proprio papel de acesso' });
+  if (existing.is_agency_owner && requestedAccessRole !== 'admin') return res.status(400).json({ error: 'O responsável principal da agência deve permanecer administrador' });
 
   if (existing.role === 'admin' && nextRole !== 'admin') {
     const adminCount = db.prepare("SELECT COUNT(*) as total FROM users WHERE role = 'admin' AND agency_id = ?").get(req.user.agency_id).total;
@@ -233,10 +259,10 @@ router.put('/users/:id', authRequired, (req, res) => {
   if (nextRole === 'client' && !nextClientId) return res.status(400).json({ error: 'Selecione um cliente para este usuario' });
   if (nextClientId && !validateClientIds([nextClientId], req.user.agency_id)) return res.status(400).json({ error: 'Cliente inválido para esta agência' });
 
-  const nextClientIds = nextRole === 'team'
+  const nextClientIds = nextRole === 'team' && !nextAccess.isOperationsHead
     ? (req.body.client_ids === undefined ? getUserClientIds(targetId, req.user.agency_id) : normalizeClientIds(req.body.client_ids))
     : [];
-  if (nextRole === 'team' && !validateClientIds(nextClientIds, req.user.agency_id)) return res.status(400).json({ error: 'Um ou mais clientes selecionados sao invalidos' });
+  if (nextRole === 'team' && !nextAccess.isOperationsHead && !validateClientIds(nextClientIds, req.user.agency_id)) return res.status(400).json({ error: 'Um ou mais clientes selecionados sao invalidos' });
 
   let nextPasswordHash = existing.password_hash;
   if (req.body.password !== undefined && req.body.password !== '') {
@@ -251,16 +277,16 @@ router.put('/users/:id', authRequired, (req, res) => {
     const updateUser = db.transaction(() => {
       db.prepare(`
         UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, client_id = ?,
-          avatar_data = ?, avatar_mime = ?
+          avatar_data = ?, avatar_mime = ?, is_operations_head = ?
         WHERE id = ? AND agency_id = ?
-      `).run(nextName, nextEmail, nextPasswordHash, nextRole, nextClientId, nextAvatarData, nextAvatarMime, targetId, req.user.agency_id);
+      `).run(nextName, nextEmail, nextPasswordHash, nextRole, nextClientId, nextAvatarData, nextAvatarMime, nextAccess.isOperationsHead ? 1 : 0, targetId, req.user.agency_id);
       replaceUserClientAccess(targetId, nextClientIds, req.user.agency_id);
     });
     updateUser();
 
     const updatedUser = db.prepare(`
       SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-             agency_id, is_platform_owner, is_agency_owner
+             agency_id, is_platform_owner, is_agency_owner, is_operations_head
       FROM users WHERE id = ? AND agency_id = ?
     `).get(targetId, req.user.agency_id);
     res.json({ ok: true, user: publicUser(updatedUser) });

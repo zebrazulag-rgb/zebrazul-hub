@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS users (
   agency_id INTEGER,
   is_platform_owner INTEGER DEFAULT 0,
   is_agency_owner INTEGER DEFAULT 0,
+  is_operations_head INTEGER DEFAULT 0,
   avatar_color TEXT DEFAULT '#2563eb',
   avatar_data TEXT,
   avatar_mime TEXT,
@@ -572,6 +573,7 @@ tryAddColumn('clients', 'feed_share_token', 'TEXT');
 tryAddColumn('users', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('users', 'is_platform_owner', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_agency_owner', 'INTEGER DEFAULT 0');
+tryAddColumn('users', 'is_operations_head', 'INTEGER DEFAULT 0');
 tryAddColumn('clients', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('social_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('posts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
@@ -767,7 +769,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '19', datetime('now'))
+   VALUES ('schema_version', '20', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

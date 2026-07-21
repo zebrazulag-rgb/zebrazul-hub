@@ -8,11 +8,11 @@ router.use(requireRole('admin', 'team', 'client'));
 
 function canAccessTask(user, task) {
   if (!task || Number(task.agency_id) !== Number(user.agency_id)) return false;
-  if (user.role === 'admin') return true;
+  if (user.role === 'admin' || user.is_operations_head) return true;
   if (user.role === 'client') {
     return Number(task.client_id) === Number(user.client_id);
   }
-  if (user.role === 'team') {
+  if (user.role === 'team' && !user.is_operations_head) {
     const assigned = db.prepare(
       'SELECT 1 FROM task_assignees WHERE task_id = ? AND user_id = ?'
     ).get(task.id, user.id);
@@ -91,13 +91,13 @@ function validateAssigneesForClient(clientId, assigneeIds, agencyId) {
   if (!ids.length) return { ok: true };
 
   const placeholders = ids.map(() => '?').join(',');
-  const users = db.prepare(`SELECT id, role FROM users WHERE agency_id = ? AND id IN (${placeholders})`).all(agencyId, ...ids);
+  const users = db.prepare(`SELECT id, role, is_operations_head FROM users WHERE agency_id = ? AND id IN (${placeholders})`).all(agencyId, ...ids);
   if (users.length !== ids.length || users.some((user) => !['admin', 'team'].includes(user.role))) {
     return { ok: false, error: 'Selecione somente membros da equipe como responsáveis' };
   }
   if (!clientId) return { ok: true };
 
-  const teamIds = users.filter((user) => user.role === 'team').map((user) => user.id);
+  const teamIds = users.filter((user) => user.role === 'team' && Number(user.is_operations_head) !== 1).map((user) => user.id);
   if (!teamIds.length) return { ok: true };
   const teamPlaceholders = teamIds.map(() => '?').join(',');
   const allowed = db.prepare(`
@@ -131,7 +131,7 @@ function getAccessibleParentOptions(user, task) {
     query += ' AND t.client_id IS NULL';
   }
 
-  if (user.role === 'team') {
+  if (user.role === 'team' && !user.is_operations_head) {
     query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
     params.push(Number(user.id));
   } else if (user.role === 'client') {
@@ -177,7 +177,7 @@ router.get('/', (req, res) => {
   let query = taskSummaryQuery('WHERE t.parent_task_id IS NULL AND t.agency_id = ?');
   const params = [req.user.agency_id];
 
-  if (req.user.role === 'team') {
+  if (req.user.role === 'team' && !req.user.is_operations_head) {
     query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
     params.push(Number(req.user.id));
   } else if (req.user.role === 'client') {
@@ -286,13 +286,14 @@ router.get('/:id', (req, res) => {
   task.assignees = attachAssignees([{ id: task.id }], req.user.agency_id)[0].assignees;
 
   let subtaskQuery = `
-    SELECT st.id, st.client_id, st.created_by, st.title, st.status, st.due_date, st.attachment_filename,
+    SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type,
+           st.title, st.status, st.due_date, st.attachment_filename, st.feed_post_id,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment
     FROM tasks st
     WHERE st.parent_task_id = ? AND st.agency_id = ?
   `;
   const subtaskParams = [req.params.id, req.user.agency_id];
-  if (req.user.role === 'team') {
+  if (req.user.role === 'team' && !req.user.is_operations_head) {
     subtaskQuery += ' AND st.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
     subtaskParams.push(Number(req.user.id));
   }
