@@ -12,7 +12,7 @@ import PublicApproval from './pages/PublicApproval.jsx';
 import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import Finance from './pages/Finance.jsx';
-import ActionPlan from './pages/ActionPlan.jsx';
+import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import BrandSettings from './pages/BrandSettings.jsx';
 import Agencies from './pages/Agencies.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
@@ -46,7 +46,8 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="/plano-de-acao" element={<ProtectedRoute><ActionPlan /></ProtectedRoute>} />
+      <Route path="/plano-de-acao" element={<ProtectedRoute><StrategicDiagnosis /></ProtectedRoute>} />
+      <Route path="/diagnostico-estrategico" element={<Navigate to="/plano-de-acao" replace />} />
       <Route path="/diagnosticos" element={<ProtectedRoute roles={['admin', 'team']}><Diagnostics /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route

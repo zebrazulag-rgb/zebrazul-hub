@@ -11,7 +11,7 @@ import {
   Grid3x3,
   WalletCards,
   X,
-  Target,
+  BrainCircuit,
   ChevronDown,
   Sparkles,
   Palette,
@@ -109,7 +109,7 @@ export default function Layout({ children }) {
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'] },
-    { to: '/plano-de-acao', label: 'Plano de Ação', icon: Target, roles: ['admin', 'team', 'client'] },
+    { to: '/plano-de-acao', label: 'Diagnóstico Estratégico', icon: BrainCircuit, roles: ['admin', 'team', 'client'] },
     { to: '/diagnosticos', label: 'DME', icon: ClipboardCheck, roles: ['admin', 'team'] },
     { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
