@@ -13,6 +13,7 @@ const publicRoutes = require('./routes/public');
 const financeRoutes = require('./routes/finance');
 const systemRoutes = require('./routes/system');
 const actionPlanRoutes = require('./routes/actionPlans');
+const planningDocumentRoutes = require('./routes/planningDocuments');
 const metaRoutes = require('./routes/meta');
 const metaOrganicRoutes = require('./routes/metaOrganic');
 const tenantRoutes = require('./routes/tenant');
@@ -59,6 +60,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/action-plans', actionPlanRoutes);
+app.use('/api/planning-documents', planningDocumentRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
 

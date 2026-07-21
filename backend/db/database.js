@@ -461,6 +461,25 @@ CREATE TABLE IF NOT EXISTS action_plan_tasks (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS planning_documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('cycle_90','monthly')),
+  period_key TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  title TEXT,
+  data_json TEXT DEFAULT '{}',
+  progress INTEGER DEFAULT 0,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(agency_id, client_id, type, period_key),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS diagnostic_assessments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
@@ -494,6 +513,7 @@ CREATE INDEX IF NOT EXISTS idx_meta_report_period ON meta_report_snapshots(meta_
 CREATE INDEX IF NOT EXISTS idx_meta_campaign_period ON meta_campaign_snapshots(meta_account_id, date_from, date_to, spend);
 CREATE INDEX IF NOT EXISTS idx_action_plans_client_year ON action_plans(client_id, year);
 CREATE INDEX IF NOT EXISTS idx_action_plan_tasks_plan ON action_plan_tasks(action_plan_id, status);
+CREATE INDEX IF NOT EXISTS idx_planning_documents_client_period ON planning_documents(agency_id, client_id, type, year, period_key);
 CREATE INDEX IF NOT EXISTS idx_diagnostics_client_created ON diagnostic_assessments(client_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_diagnostics_agency_status ON diagnostic_assessments(agency_id, status, updated_at DESC);
 
