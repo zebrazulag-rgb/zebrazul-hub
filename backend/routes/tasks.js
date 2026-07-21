@@ -202,6 +202,53 @@ router.get('/', (req, res) => {
 });
 
 
+router.get('/calendar', (req, res) => {
+  const { client_id } = req.query;
+  let query = `
+    SELECT
+      t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
+      t.title, t.due_date, t.status, t.is_featured, t.attachment_filename, t.feed_post_id,
+      t.created_at, t.updated_at,
+      c.name AS client_name,
+      parent.title AS parent_title,
+      CASE WHEN t.parent_task_id IS NULL THEN 0 ELSE 1 END AS is_subtask,
+      CASE WHEN t.parent_task_id IS NULL THEN
+        (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id)
+      ELSE 0 END AS subtask_total,
+      CASE WHEN t.parent_task_id IS NULL THEN
+        (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'done')
+      ELSE 0 END AS subtask_done
+    FROM tasks t
+    LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    WHERE t.agency_id = ? AND t.due_date IS NOT NULL
+  `;
+  const params = [req.user.agency_id];
+
+  if (req.user.role === 'team' && !req.user.is_operations_head) {
+    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
+    params.push(Number(req.user.id));
+  } else if (req.user.role === 'client') {
+    query += ' AND t.client_id = ?';
+    params.push(Number(req.user.client_id));
+  }
+
+  if (client_id) {
+    if (!ensureClientAccess(req, res, client_id)) return;
+    query += ' AND t.client_id = ?';
+    params.push(Number(client_id));
+  }
+
+  query += ` ORDER BY
+    t.due_date ASC,
+    CASE WHEN t.parent_task_id IS NULL THEN 0 ELSE 1 END,
+    COALESCE(parent.title, t.title) COLLATE NOCASE ASC,
+    t.title COLLATE NOCASE ASC`;
+
+  const tasks = attachAssignees(db.prepare(query).all(...params), req.user.agency_id);
+  res.json({ tasks });
+});
+
 router.get('/featured/all', (req, res) => {
   let query = taskSummaryQuery(`
     WHERE t.parent_task_id IS NULL
