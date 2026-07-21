@@ -11,12 +11,11 @@ import {
   Grid3x3,
   WalletCards,
   X,
-  BrainCircuit,
+  Compass,
   ChevronDown,
   Sparkles,
   Palette,
   Building2,
-  ClipboardCheck,
   Settings,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -109,8 +108,7 @@ export default function Layout({ children }) {
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'] },
-    { to: '/plano-de-acao', label: 'Diagnóstico Estratégico', icon: BrainCircuit, roles: ['admin', 'team', 'client'] },
-    { to: '/diagnosticos', label: 'DME', icon: ClipboardCheck, roles: ['admin', 'team'] },
+    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team', 'client'] },
     { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
