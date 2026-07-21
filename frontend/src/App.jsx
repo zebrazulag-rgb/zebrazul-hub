@@ -15,6 +15,8 @@ import Finance from './pages/Finance.jsx';
 import ActionPlan from './pages/ActionPlan.jsx';
 import BrandSettings from './pages/BrandSettings.jsx';
 import Agencies from './pages/Agencies.jsx';
+import Diagnostics from './pages/Diagnostics.jsx';
+import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false }) {
   const { user, checkingSession } = useAuth();
@@ -31,6 +33,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
+      <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
       <Route path="/calendario" element={<Navigate to="/feed?view=calendar" replace />} />
@@ -44,6 +47,7 @@ export default function App() {
         }
       />
       <Route path="/plano-de-acao" element={<ProtectedRoute><ActionPlan /></ProtectedRoute>} />
+      <Route path="/diagnosticos" element={<ProtectedRoute roles={['admin', 'team']}><Diagnostics /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route
         path="/financeiro"

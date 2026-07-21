@@ -3,6 +3,7 @@ import { Building2, Plus, Users, BriefcaseBusiness, Globe2, X, CheckCircle2, Pau
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import { tenantBaseDomain, tenantHostForSlug } from '../tenant.js';
 
 const EMPTY_FORM = {
   name: '', slug: '', product_name: '', owner_name: '', owner_email: '', owner_password: '',
@@ -80,7 +81,7 @@ export default function Agencies() {
         icon={Building2}
         eyebrow="Administração da plataforma"
         title="Agências"
-        description="Crie ambientes isolados com marca, subdomínio, equipe e clientes próprios."
+        description="Crie ambientes isolados com marca, acesso próprio, equipe e clientes separados."
         actions={<button onClick={() => { setShowForm(true); setError(''); }} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900"><Plus size={17}/> Nova agência</button>}
       >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -114,7 +115,7 @@ export default function Agencies() {
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${agency.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{agency.status === 'active' ? 'Ativa' : 'Pausada'}</span>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                    <span className="inline-flex items-center gap-1"><Globe2 size={13}/>{agency.slug}.zebrahub.com.br</span>
+                    <span className="inline-flex items-center gap-1"><Globe2 size={13}/>{tenantHostForSlug(agency.slug)}</span>
                     <span>{agency.clients_count}/{agency.max_clients} clientes</span>
                     <span>{agency.users_count}/{agency.max_users} usuários</span>
                   </div>
@@ -138,7 +139,7 @@ export default function Agencies() {
             {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
             <div className="grid gap-4 sm:grid-cols-2">
               <label><span className="mb-1 block text-sm font-medium text-slate-700">Nome da agência</span><input required className="input-field" value={form.name} onChange={(e) => { update('name', e.target.value); if (!form.slug) update('slug', slugify(e.target.value)); }} /></label>
-              <label><span className="mb-1 block text-sm font-medium text-slate-700">Subdomínio</span><div className="flex items-center rounded-xl border border-slate-200 bg-white"><input required className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2.5 outline-none" value={form.slug} onChange={(e) => update('slug', slugify(e.target.value))}/><span className="pr-3 text-xs text-slate-400">.zebrahub.com.br</span></div></label>
+              <label><span className="mb-1 block text-sm font-medium text-slate-700">Subdomínio</span><div className="flex items-center rounded-xl border border-slate-200 bg-white"><input required className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2.5 outline-none" value={form.slug} onChange={(e) => update('slug', slugify(e.target.value))}/><span className="pr-3 text-xs text-slate-400">.{tenantBaseDomain()}</span></div></label>
               <label className="sm:col-span-2"><span className="mb-1 block text-sm font-medium text-slate-700">Nome exibido no sistema</span><input className="input-field" value={form.product_name} onChange={(e) => update('product_name', e.target.value)} placeholder="Pode ser o mesmo nome da agência" /></label>
               <label><span className="mb-1 block text-sm font-medium text-slate-700">Responsável</span><input required className="input-field" value={form.owner_name} onChange={(e) => update('owner_name', e.target.value)} /></label>
               <label><span className="mb-1 block text-sm font-medium text-slate-700">E-mail do responsável</span><input required type="email" className="input-field" value={form.owner_email} onChange={(e) => update('owner_email', e.target.value)} /></label>

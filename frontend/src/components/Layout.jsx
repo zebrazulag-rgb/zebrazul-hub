@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   CalendarCheck2,
@@ -16,6 +16,8 @@ import {
   Sparkles,
   Palette,
   Building2,
+  ClipboardCheck,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -31,12 +33,21 @@ export default function Layout({ children }) {
   const { agency } = useTenant();
   const { selectedClient, setSelectedClient } = useClientFilter();
   const navigate = useNavigate();
+  const location = useLocation();
   const [clients, setClients] = useState([]);
   const [showProfile, setShowProfile] = useState(false);
   const [profileName, setProfileName] = useState(user?.name || '');
   const initialProfileNameRef = useRef(user?.name || '');
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  const settingsPaths = ['/clientes', '/usuarios', '/marca', '/agencias'];
+  const settingsActive = settingsPaths.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`));
+  const [settingsOpen, setSettingsOpen] = useState(settingsActive);
+
+  useEffect(() => {
+    if (settingsActive) setSettingsOpen(true);
+  }, [settingsActive]);
 
   useEffect(() => {
     if (user?.role === 'client') return;
@@ -95,19 +106,23 @@ export default function Layout({ children }) {
     await saveProfileName();
   }
 
-  const navItems = [
+  const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'] },
     { to: '/plano-de-acao', label: 'Plano de Ação', icon: Target, roles: ['admin', 'team', 'client'] },
+    { to: '/diagnosticos', label: 'DME', icon: ClipboardCheck, roles: ['admin', 'team'] },
     { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
+  ];
+
+  const settingsItems = [
     { to: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'team'] },
     { to: '/usuarios', label: 'Usuários', icon: UserCog, roles: ['admin'] },
     { to: '/marca', label: 'Marca da agência', icon: Palette, roles: ['admin'] },
     ...(user?.is_platform_owner ? [{ to: '/agencias', label: 'Agências', icon: Building2, roles: ['admin'] }] : []),
-  ];
+  ].filter((item) => item.roles.includes(user?.role));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -163,37 +178,58 @@ export default function Layout({ children }) {
           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">Workspace</span>
         </div>
 
-        <nav className="flex-1 px-3 pb-4 space-y-1 overflow-y-auto">
-          {navItems
-            .filter((item) => item.roles.includes(user?.role))
-            .map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? 'bg-white text-[#121620] shadow-[0_10px_28px_rgba(0,0,0,0.18)]'
-                      : 'text-white/62 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
+        <nav className="flex-1 overflow-y-auto px-3 pb-4">
+          <div className="space-y-1">
+            {workspaceItems
+              .filter((item) => item.roles.includes(user?.role))
+              .map((item) => (
+                <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} />
+              ))}
+          </div>
+
+          {settingsItems.length > 0 && (
+            <div className="mt-5 border-t border-white/[0.07] pt-4">
+              <button
+                type="button"
+                onClick={() => setSettingsOpen((open) => !open)}
+                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                  settingsActive
+                    ? 'bg-white/[0.075] text-white'
+                    : 'text-white/62 hover:bg-white/[0.06] hover:text-white'
+                }`}
+                aria-expanded={settingsOpen}
               >
-                {({ isActive }) => (
-                  <>
-                    <span
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                        isActive ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'
+                <span className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${settingsActive ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'}`} style={settingsActive ? { backgroundColor: agencyPrimary } : undefined}>
+                  <Settings size={17} strokeWidth={2} />
+                </span>
+                <span className="flex-1 text-left">Configurações</span>
+                <ChevronDown size={15} className={`text-white/40 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {settingsOpen && (
+                <div className="ml-7 mt-1.5 space-y-1 border-l border-white/10 pl-3">
+                  {settingsItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) => `group flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition ${
+                        isActive
+                          ? 'bg-white text-[#121620] shadow-[0_8px_22px_rgba(0,0,0,0.15)]'
+                          : 'text-white/52 hover:bg-white/[0.055] hover:text-white'
                       }`}
-                      style={isActive ? { backgroundColor: agencyPrimary } : undefined}
                     >
-                      <item.icon size={17} strokeWidth={2} />
-                    </span>
-                    <span className="truncate">{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
+                      {({ isActive }) => (
+                        <>
+                          <item.icon size={15} style={isActive ? { color: agencyPrimary } : undefined} />
+                          <span className="truncate">{item.label}</span>
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         {agency?.show_powered_by !== false && (
@@ -277,6 +313,36 @@ export default function Layout({ children }) {
         </ModalBackdrop>
       )}
     </div>
+  );
+}
+
+function SidebarLink({ item, agencyPrimary }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === '/'}
+      className={({ isActive }) =>
+        `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+          isActive
+            ? 'bg-white text-[#121620] shadow-[0_10px_28px_rgba(0,0,0,0.18)]'
+            : 'text-white/62 hover:bg-white/[0.06] hover:text-white'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+              isActive ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'
+            }`}
+            style={isActive ? { backgroundColor: agencyPrimary } : undefined}
+          >
+            <item.icon size={17} strokeWidth={2} />
+          </span>
+          <span className="truncate">{item.label}</span>
+        </>
+      )}
+    </NavLink>
   );
 }
 
