@@ -457,6 +457,28 @@ CREATE TABLE IF NOT EXISTS action_plan_tasks (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS diagnostic_assessments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  share_token TEXT NOT NULL UNIQUE,
+  status TEXT DEFAULT 'shared' CHECK(status IN ('shared','in_progress','submitted','archived')),
+  answers_json TEXT DEFAULT '{}',
+  scores_json TEXT,
+  overall_score REAL DEFAULT 0,
+  progress INTEGER DEFAULT 0,
+  respondent_name TEXT,
+  created_by INTEGER,
+  submitted_at TEXT,
+  last_saved_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 
 CREATE INDEX IF NOT EXISTS idx_meta_organic_accounts_client ON meta_organic_accounts(client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_organic_daily_account_date ON meta_organic_daily_metrics(organic_account_id, platform, metric_date);
@@ -468,6 +490,8 @@ CREATE INDEX IF NOT EXISTS idx_meta_report_period ON meta_report_snapshots(meta_
 CREATE INDEX IF NOT EXISTS idx_meta_campaign_period ON meta_campaign_snapshots(meta_account_id, date_from, date_to, spend);
 CREATE INDEX IF NOT EXISTS idx_action_plans_client_year ON action_plans(client_id, year);
 CREATE INDEX IF NOT EXISTS idx_action_plan_tasks_plan ON action_plan_tasks(action_plan_id, status);
+CREATE INDEX IF NOT EXISTS idx_diagnostics_client_created ON diagnostic_assessments(client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_diagnostics_agency_status ON diagnostic_assessments(agency_id, status, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_financial_due_date ON financial_entries(due_date);
 CREATE INDEX IF NOT EXISTS idx_financial_client ON financial_entries(client_id);
@@ -715,7 +739,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '18', datetime('now'))
+   VALUES ('schema_version', '19', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

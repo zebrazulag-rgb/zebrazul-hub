@@ -3,6 +3,14 @@ const db = require('../db/database');
 const DEFAULT_TENANT_SLUG = String(process.env.DEFAULT_AGENCY_SLUG || 'zebrazul')
   .trim().toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'zebrazul';
 
+const TENANT_BASE_DOMAIN = String(process.env.TENANT_BASE_DOMAIN || 'app.zebrazul.com.br')
+  .trim()
+  .toLowerCase()
+  .replace(/^https?:\/\//, '')
+  .replace(/^\.+|\.+$/g, '') || 'app.zebrazul.com.br';
+
+const LEGACY_TENANT_DOMAINS = ['zebrahub.com.br'];
+
 function normalizeSlug(value) {
   return String(value || '')
     .trim()
@@ -21,10 +29,17 @@ function extractTenantSlug(req) {
   const host = (forwarded || String(req.headers.host || '')).split(':')[0].toLowerCase();
   if (!host || host === 'localhost' || /^127\./.test(host)) return DEFAULT_TENANT_SLUG;
 
-  const zebrahubSuffix = '.zebrahub.com.br';
-  if (host.endsWith(zebrahubSuffix)) {
-    const prefix = host.slice(0, -zebrahubSuffix.length).split('.').pop();
-    if (prefix && !['www', 'app', 'api'].includes(prefix)) return normalizeSlug(prefix);
+  const domains = [TENANT_BASE_DOMAIN, ...LEGACY_TENANT_DOMAINS]
+    .filter(Boolean)
+    .filter((value, index, list) => list.indexOf(value) === index);
+
+  for (const domain of domains) {
+    if (host === domain) return DEFAULT_TENANT_SLUG;
+    const suffix = `.${domain}`;
+    if (host.endsWith(suffix)) {
+      const prefix = host.slice(0, -suffix.length).split('.').pop();
+      if (prefix && !['www', 'app', 'api'].includes(prefix)) return normalizeSlug(prefix);
+    }
   }
 
   return DEFAULT_TENANT_SLUG;
@@ -75,6 +90,7 @@ function resolveAgency(req, options = {}) {
 
 module.exports = {
   DEFAULT_TENANT_SLUG,
+  TENANT_BASE_DOMAIN,
   normalizeSlug,
   extractTenantSlug,
   publicAgency,
