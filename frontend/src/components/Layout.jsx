@@ -17,6 +17,7 @@ import {
   Palette,
   Building2,
   Settings,
+  Handshake,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -111,6 +112,7 @@ export default function Layout({ children }) {
     { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team', 'client'] },
     { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
+    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'team'] },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
   ];

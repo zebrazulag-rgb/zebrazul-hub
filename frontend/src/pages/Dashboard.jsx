@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [posts, setPosts] = useState([]);
   const [clients, setClients] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [featuredTasks, setFeaturedTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
   const [referenceDate, setReferenceDate] = useState(isoDate(new Date()));
@@ -82,9 +83,18 @@ export default function Dashboard() {
         const suffix = selectedClient?.id ? `?client_id=${selectedClient.id}` : '';
         const requests = [api.get('/posts'), api.get('/clients'), api.get(`/tasks${suffix}`)];
         const results = await Promise.all(requests);
+        const loadedTasks = results[2].data.tasks || [];
         setPosts(results[0].data.posts || []);
         setClients(results[1].data.clients || []);
-        setTasks(results[2].data.tasks || []);
+        setTasks(loadedTasks);
+        try {
+          const featuredResponse = await api.get('/tasks/featured/all');
+          setFeaturedTasks(featuredResponse.data.tasks || []);
+        } catch {
+          // Compatibilidade durante a publicação: se o backend ainda estiver
+          // reiniciando, preserva os destaques disponíveis na listagem atual.
+          setFeaturedTasks(loadedTasks.filter((task) => Number(task.is_featured) === 1));
+        }
       } finally {
         setLoading(false);
       }
@@ -110,14 +120,6 @@ export default function Dashboard() {
 
   const completionRate = taskStats.total ? Math.round((taskStats.done / taskStats.total) * 100) : 0;
   const activeClients = clients.filter((c) => c.status === 'active').length;
-  const featuredTasks = useMemo(() => tasks
-    .filter((task) => Number(task.is_featured) === 1)
-    .sort((a, b) => {
-      const doneDifference = Number(a.status === 'done') - Number(b.status === 'done');
-      if (doneDifference) return doneDifference;
-      return String(a.due_date || '9999-12-31').localeCompare(String(b.due_date || '9999-12-31'));
-    }), [tasks]);
-
   const contentStats = [
     {
       label: 'Clientes ativos',
@@ -218,7 +220,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <h2 className="font-semibold text-slate-900">Tarefas em destaque</h2>
-                <p className="text-xs text-slate-500">Prioridades escolhidas para permanecer visíveis no painel principal.</p>
+                <p className="text-xs text-slate-500">Prioridades da operação inteira, mesmo quando um cliente está selecionado no filtro.</p>
               </div>
             </div>
             <Link to="/tarefas" className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 transition hover:text-amber-900">

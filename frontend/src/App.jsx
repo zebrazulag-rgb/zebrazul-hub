@@ -21,6 +21,7 @@ import AnnualActionPlan from './pages/AnnualActionPlan.jsx';
 import Cycle90Plan from './pages/Cycle90Plan.jsx';
 import MonthlyPlanning from './pages/MonthlyPlanning.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
+import Sales from './pages/Sales.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false }) {
   const { user, checkingSession } = useAuth();
@@ -62,6 +63,7 @@ export default function App() {
       <Route path="/plano-anual" element={<Navigate to="/bussola/plano-anual" replace />} />
       <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/ciclo-90-dias" replace />} />
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola/planejamento-mensal" replace />} />
+      <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team']}><Sales /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route
         path="/financeiro"

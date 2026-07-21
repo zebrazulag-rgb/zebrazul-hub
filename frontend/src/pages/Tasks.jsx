@@ -67,7 +67,7 @@ function AssigneeStack({ assignees }) {
   );
 }
 
-function TaskCard({ task: t, onClick, onDragStart }) {
+function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
   const TypeIcon = TYPE_ICON[t.task_type] || FileText;
   return (
     <div
@@ -83,11 +83,25 @@ function TaskCard({ task: t, onClick, onDragStart }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
             <p className="min-w-0 flex-1 font-medium text-slate-800 text-sm">{t.title}</p>
-            {Number(t.is_featured) === 1 && (
+            {onToggleFeatured ? (
+              <button
+                type="button"
+                draggable={false}
+                onClick={(event) => { event.stopPropagation(); onToggleFeatured(t); }}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
+                  Number(t.is_featured) === 1
+                    ? 'border-amber-200 bg-amber-50 text-amber-600'
+                    : 'border-transparent bg-slate-50 text-slate-300 opacity-60 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-500 group-hover:opacity-100'
+                }`}
+                title={Number(t.is_featured) === 1 ? 'Remover do painel principal' : 'Destacar no painel principal'}
+              >
+                <Star size={14} fill={Number(t.is_featured) === 1 ? 'currentColor' : 'none'} />
+              </button>
+            ) : Number(t.is_featured) === 1 ? (
               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700" title="Tarefa em destaque no painel">
                 <Star size={10} fill="currentColor" /> Destaque
               </span>
-            )}
+            ) : null}
           </div>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
         </div>
@@ -250,6 +264,7 @@ export default function Tasks() {
     const isFeatured = nextValue ? 1 : 0;
     setTasks((previous) => sortTasks(previous.map((task) => task.id === taskId ? { ...task, is_featured: isFeatured } : task)));
     setSelectedTask((previous) => previous?.id === taskId ? { ...previous, is_featured: isFeatured } : previous);
+    setDayTasks((previous) => previous ? { ...previous, items: previous.items.map((task) => task.id === taskId ? { ...task, is_featured: isFeatured } : task) } : previous);
 
     try {
       const { data } = await api.put('/tasks/' + taskId, { is_featured: isFeatured });
@@ -258,6 +273,7 @@ export default function Tasks() {
       const revertedValue = nextValue ? 0 : 1;
       setTasks((previous) => sortTasks(previous.map((task) => task.id === taskId ? { ...task, is_featured: revertedValue } : task)));
       setSelectedTask((previous) => previous?.id === taskId ? { ...previous, is_featured: revertedValue } : previous);
+      setDayTasks((previous) => previous ? { ...previous, items: previous.items.map((task) => task.id === taskId ? { ...task, is_featured: revertedValue } : task) } : previous);
       setTaskError(error.response?.data?.error || 'Não foi possível atualizar o destaque da tarefa.');
     }
   }
@@ -478,7 +494,7 @@ export default function Tasks() {
               </div>
               <div className="space-y-3 min-h-[60px]">
                 {tasks.filter((t) => t.status === col.key).map((t) => (
-                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} />
+                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
                 ))}
                 {tasks.filter((t) => t.status === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
@@ -566,7 +582,7 @@ export default function Tasks() {
             </div>
             <div className="space-y-3">
               {dayTasks.items.map((t) => (
-                <TaskCard key={t.id} task={t} onClick={() => { setDayTasks(null); openTask(t.id); }} />
+                <TaskCard key={t.id} task={t} onClick={() => { setDayTasks(null); openTask(t.id); }} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
               ))}
             </div>
           </div>
