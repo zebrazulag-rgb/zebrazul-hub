@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   media_gallery TEXT,
   due_date TEXT,
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done')),
+  is_featured INTEGER DEFAULT 0,
   attachment_data TEXT,
   attachment_mime TEXT,
   attachment_filename TEXT,
@@ -565,6 +566,7 @@ tryAddColumn('tasks', 'task_type', "TEXT DEFAULT 'basic'");
 tryAddColumn('tasks', 'video_link', 'TEXT');
 tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
+tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
 
 // Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
@@ -740,6 +742,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
+  CREATE INDEX IF NOT EXISTS idx_tasks_featured ON tasks(agency_id, is_featured, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_posts_agency ON posts(agency_id, status, scheduled_at);
   CREATE INDEX IF NOT EXISTS idx_financial_agency ON financial_entries(agency_id, due_date);
 `);
@@ -769,7 +772,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '20', datetime('now'))
+   VALUES ('schema_version', '21', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

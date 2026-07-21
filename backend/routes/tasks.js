@@ -156,7 +156,7 @@ function taskSummaryQuery(whereClause) {
   return `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.due_date, t.status, t.attachment_filename, t.feed_post_id,
+      t.title, t.due_date, t.status, t.is_featured, t.attachment_filename, t.feed_post_id,
       t.created_at, t.updated_at,
       c.name AS client_name,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
@@ -240,7 +240,7 @@ router.put('/:id/convert-to-subtask', requireRole('admin', 'team'), (req, res) =
 
   db.prepare(`
     UPDATE tasks
-    SET parent_task_id = ?, updated_at = datetime('now')
+    SET parent_task_id = ?, is_featured = 0, updated_at = datetime('now')
     WHERE id = ? AND agency_id = ?
   `).run(parentId, task.id, req.user.agency_id);
 
@@ -271,7 +271,7 @@ router.get('/:id', (req, res) => {
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.description, t.content_type, t.caption, t.video_link,
-      t.due_date, t.status, t.attachment_mime, t.attachment_filename,
+      t.due_date, t.status, t.is_featured, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, t.created_at, t.updated_at,
       CASE WHEN t.attachment_data IS NOT NULL AND length(t.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
@@ -307,7 +307,7 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const {
     title, description, task_type, content_type, caption, video_link, media_gallery,
-    due_date, assignee_ids, status, client_id,
+    due_date, assignee_ids, status, client_id, is_featured,
     attachment_data, attachment_mime, attachment_filename, parent_task_id
   } = req.body;
   if (!String(title || '').trim()) return res.status(400).json({ error: 'Titulo e obrigatorio' });
@@ -326,13 +326,14 @@ router.post('/', (req, res) => {
 
   const createTask = db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, attachment_data, attachment_mime, attachment_filename)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, is_featured, attachment_data, attachment_mime, attachment_filename)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.user.agency_id, finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
       content_type || null, caption || null, video_link || null,
       Array.isArray(media_gallery) ? JSON.stringify(media_gallery) : null,
       due_date || null, req.user.role === 'client' ? 'pending' : (status || 'pending'),
+      req.user.role === 'client' || parent_task_id ? 0 : (Number(is_featured) === 1 ? 1 : 0),
       attachment_data || null, attachment_mime || null, attachment_filename || null
     );
     setAssignees(info.lastInsertRowid, finalAssigneeIds);
@@ -351,6 +352,9 @@ router.put('/:id', (req, res) => {
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'title') && !String(req.body.title || '').trim()) {
     return res.status(400).json({ error: 'Titulo e obrigatorio' });
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'is_featured') && existing.parent_task_id) {
+    return res.status(400).json({ error: 'Somente tarefas principais podem aparecer em destaque no painel' });
   }
 
   const targetClientId = req.user.role === 'client'
@@ -372,7 +376,7 @@ router.put('/:id', (req, res) => {
   ] : [
     'title', 'description', 'task_type', 'content_type', 'caption', 'video_link',
     'media_gallery', 'due_date', 'status', 'client_id',
-    'attachment_data', 'attachment_mime', 'attachment_filename'
+    'is_featured', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ];
   const updates = [];
   const values = [];
@@ -386,6 +390,8 @@ router.put('/:id', (req, res) => {
       values.push(String(req.body.title).trim());
     } else if (field === 'client_id') {
       values.push(req.body.client_id ? Number(req.body.client_id) : null);
+    } else if (field === 'is_featured') {
+      values.push(Number(req.body.is_featured) === 1 ? 1 : 0);
     } else {
       values.push(req.body[field] === '' ? null : req.body[field]);
     }
