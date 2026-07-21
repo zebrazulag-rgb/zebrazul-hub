@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Plus,
   Target,
+  Star,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -52,6 +53,18 @@ function formatDate(date) {
   }).format(date);
 }
 
+function formatTaskDate(value) {
+  if (!value) return 'Sem prazo';
+  const [year, month, day] = value.slice(0, 10).split('-');
+  return `${day}/${month}/${year}`;
+}
+
+const TASK_STATUS = {
+  pending: { label: 'Pendente', className: 'bg-slate-100 text-slate-600' },
+  in_progress: { label: 'Em andamento', className: 'bg-amber-100 text-amber-700' },
+  done: { label: 'Concluída', className: 'bg-emerald-100 text-emerald-700' },
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
@@ -66,15 +79,12 @@ export default function Dashboard() {
     async function load() {
       setLoading(true);
       try {
-        const requests = [api.get('/posts'), api.get('/clients')];
-        if (user?.role === 'admin' || user?.role === 'team') {
-          const suffix = selectedClient?.id ? `?client_id=${selectedClient.id}` : '';
-          requests.push(api.get(`/tasks${suffix}`));
-        }
+        const suffix = selectedClient?.id ? `?client_id=${selectedClient.id}` : '';
+        const requests = [api.get('/posts'), api.get('/clients'), api.get(`/tasks${suffix}`)];
         const results = await Promise.all(requests);
         setPosts(results[0].data.posts || []);
         setClients(results[1].data.clients || []);
-        setTasks(results[2]?.data?.tasks || []);
+        setTasks(results[2].data.tasks || []);
       } finally {
         setLoading(false);
       }
@@ -100,6 +110,13 @@ export default function Dashboard() {
 
   const completionRate = taskStats.total ? Math.round((taskStats.done / taskStats.total) * 100) : 0;
   const activeClients = clients.filter((c) => c.status === 'active').length;
+  const featuredTasks = useMemo(() => tasks
+    .filter((task) => Number(task.is_featured) === 1)
+    .sort((a, b) => {
+      const doneDifference = Number(a.status === 'done') - Number(b.status === 'done');
+      if (doneDifference) return doneDifference;
+      return String(a.due_date || '9999-12-31').localeCompare(String(b.due_date || '9999-12-31'));
+    }), [tasks]);
 
   const contentStats = [
     {
@@ -191,6 +208,63 @@ export default function Dashboard() {
           </Link>
         ))}
       </section>
+
+      {(featuredTasks.length > 0 || user?.role === 'admin' || user?.role === 'team') && (
+        <section className="rounded-[26px] border border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-white p-6 shadow-[0_12px_38px_rgba(146,64,14,0.06)]">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400 text-white shadow-[0_8px_22px_rgba(245,158,11,0.28)]">
+                <Star size={20} fill="currentColor" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-slate-900">Tarefas em destaque</h2>
+                <p className="text-xs text-slate-500">Prioridades escolhidas para permanecer visíveis no painel principal.</p>
+              </div>
+            </div>
+            <Link to="/tarefas" className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 transition hover:text-amber-900">
+              Gerenciar tarefas <ChevronRight size={15} />
+            </Link>
+          </div>
+
+          {featuredTasks.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-amber-200 bg-white/70 px-5 py-7 text-center">
+              <p className="text-sm font-medium text-slate-700">Nenhuma prioridade destacada ainda.</p>
+              <p className="mt-1 text-xs text-slate-400">Abra uma tarefa ou edite o cadastro e ative “Destacar no painel principal”.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {featuredTasks.slice(0, 6).map((task) => {
+                const status = TASK_STATUS[task.status] || TASK_STATUS.pending;
+                return (
+                  <Link
+                    key={task.id}
+                    to={`/tarefas?task_id=${task.id}`}
+                    className="group rounded-2xl border border-amber-100 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-[0_14px_30px_rgba(146,64,14,0.08)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-sm font-semibold text-slate-800">{task.title}</p>
+                        <p className="mt-1 truncate text-xs font-medium text-amber-700">{task.client_name || 'Tarefa interna'}</p>
+                      </div>
+                      <Star size={15} className="shrink-0 text-amber-500" fill="currentColor" />
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.className}`}>{status.label}</span>
+                      <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                        <CalendarDays size={12} /> {formatTaskDate(task.due_date)}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
+          {featuredTasks.length > 6 && (
+            <p className="mt-4 text-center text-xs text-slate-400">Mais {featuredTasks.length - 6} tarefa{featuredTasks.length - 6 > 1 ? 's' : ''} em destaque na área de tarefas.</p>
+          )}
+        </section>
+      )}
 
       {(user?.role === 'admin' || user?.role === 'team') && (
         <section className="overflow-hidden rounded-[26px] border border-slate-200/70 bg-white shadow-[0_10px_38px_rgba(15,23,42,0.045)]">

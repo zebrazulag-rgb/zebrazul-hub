@@ -1,5 +1,27 @@
 import { useEffect } from 'react';
 
+let activeScrollLocks = 0;
+let previousBodyOverflow = '';
+let previousHtmlOverflow = '';
+
+function lockPageScroll() {
+  if (activeScrollLocks === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+  }
+  activeScrollLocks += 1;
+}
+
+function unlockPageScroll() {
+  activeScrollLocks = Math.max(0, activeScrollLocks - 1);
+  if (activeScrollLocks !== 0) return;
+
+  document.body.style.overflow = previousBodyOverflow;
+  document.documentElement.style.overflow = previousHtmlOverflow;
+}
+
 export default function ModalBackdrop({
   children,
   onClose,
@@ -8,9 +30,11 @@ export default function ModalBackdrop({
   role = 'presentation'
 }) {
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    lockPageScroll();
+    return unlockPageScroll;
+  }, []);
 
+  useEffect(() => {
     function handleKeyDown(event) {
       if (event.key === 'Escape' && !disabled) onClose?.();
     }
@@ -18,7 +42,6 @@ export default function ModalBackdrop({
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
     };
   }, [disabled, onClose]);
 
@@ -29,7 +52,7 @@ export default function ModalBackdrop({
 
   return (
     <div
-      className={`fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 ${className}`.trim()}
+      className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/40 p-4 ${className}`.trim()}
       onMouseDown={handleMouseDown}
       role={role}
     >

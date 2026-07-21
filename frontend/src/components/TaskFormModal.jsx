@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { X, ImagePlus, FileText, Grid3x3, Video, Trash2 } from 'lucide-react';
+import { X, ImagePlus, FileText, Grid3x3, Video, Trash2, Star } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import { formChanged } from '../utils/formState.js';
@@ -38,6 +38,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
     assignee_ids: taskToEdit?.assignees?.map((a) => a.id) || [],
     client_id: taskToEdit?.client_id || defaultClientId || '',
     status: taskToEdit?.status || 'pending',
+    is_featured: Number(taskToEdit?.is_featured) === 1,
     attachment_data: taskToEdit?.attachment_data || '',
     attachment_mime: taskToEdit?.attachment_mime || '',
     attachment_filename: taskToEdit?.attachment_filename || '',
@@ -128,6 +129,8 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
         status: form.status
       };
 
+      if (canFeatureTask) payload.is_featured = form.is_featured ? 1 : 0;
+
       if (!isEditing || mediaDirty) {
         payload.media_gallery = form.media_gallery;
         payload.attachment_data = form.attachment_data || null;
@@ -166,6 +169,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
 
   const isPost = form.task_type === 'post';
   const isVideo = form.task_type === 'video';
+  const canFeatureTask = userRole !== 'client' && !parentTaskId && !taskToEdit?.parent_task_id;
   const selectedClientId = Number(form.client_id) || null;
   const visibleTeamUsers = teamUsers.filter((member) => {
     if (member.role === 'admin' || member.is_operations_head || !selectedClientId) return true;
@@ -330,6 +334,31 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
               </select>
             </div>
           </div>
+
+          {canFeatureTask && (
+            <button
+              type="button"
+              onClick={() => setForm((current) => ({ ...current, is_featured: !current.is_featured }))}
+              className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                form.is_featured
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-slate-200 bg-slate-50/70 text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${form.is_featured ? 'bg-amber-400 text-white' : 'bg-white text-slate-400 shadow-sm'}`}>
+                <Star size={18} fill={form.is_featured ? 'currentColor' : 'none'} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">Destacar no painel principal</span>
+                <span className={`mt-0.5 block text-xs ${form.is_featured ? 'text-amber-700' : 'text-slate-400'}`}>
+                  Use para prioridades que precisam ficar visíveis logo na entrada.
+                </span>
+              </span>
+              <span className={`h-6 w-11 rounded-full p-1 transition ${form.is_featured ? 'bg-amber-400' : 'bg-slate-200'}`}>
+                <span className={`block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${form.is_featured ? 'translate-x-5' : ''}`} />
+              </span>
+            </button>
+          )}
 
           {!isPost && (
             <div>

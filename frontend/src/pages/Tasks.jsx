@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -28,6 +28,14 @@ function formatTaskDate(value) {
   const parts = dateParts(value);
   if (!parts.year || !parts.month || !parts.day) return '';
   return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`;
+}
+
+function sortTasks(items) {
+  return [...items].sort((a, b) => {
+    const featuredDifference = Number(b.is_featured || 0) - Number(a.is_featured || 0);
+    if (featuredDifference) return featuredDifference;
+    return String(a.due_date || a.created_at || '').localeCompare(String(b.due_date || b.created_at || ''));
+  });
 }
 
 function buildMonthGrid(year, month) {
@@ -73,7 +81,14 @@ function TaskCard({ task: t, onClick, onDragStart }) {
           <TypeIcon size={17} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-slate-800 text-sm">{t.title}</p>
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 flex-1 font-medium text-slate-800 text-sm">{t.title}</p>
+            {Number(t.is_featured) === 1 && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700" title="Tarefa em destaque no painel">
+                <Star size={10} fill="currentColor" /> Destaque
+              </span>
+            )}
+          </div>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
         </div>
       </div>
@@ -100,6 +115,7 @@ function TaskCard({ task: t, onClick, onDragStart }) {
 export default function Tasks() {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('kanban');
   const [tasks, setTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
@@ -135,12 +151,22 @@ export default function Tasks() {
   const loadTasks = useCallback(async () => {
     const params = effectiveClientId ? ('?client_id=' + effectiveClientId) : '';
     const { data } = await api.get('/tasks' + params);
-    setTasks(data.tasks);
+    setTasks(sortTasks(data.tasks || []));
   }, [effectiveClientId]);
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  useEffect(() => {
+    const requestedTaskId = Number(searchParams.get('task_id'));
+    if (!requestedTaskId) return;
+
+    openTask(requestedTaskId);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('task_id');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     Promise.all([api.get('/auth/team-users'), api.get('/clients')])
@@ -161,7 +187,7 @@ export default function Tasks() {
       const next = exists
         ? previous.map((item) => item.id === task.id ? { ...item, ...task } : item)
         : [...previous, task];
-      return next.sort((a, b) => String(a.due_date || a.created_at || '').localeCompare(String(b.due_date || b.created_at || '')));
+      return sortTasks(next);
     });
   }
 
@@ -218,6 +244,22 @@ export default function Tasks() {
   async function updateStatus(taskId, status) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
     await api.put('/tasks/' + taskId, { status });
+  }
+
+  async function toggleFeatured(taskId, nextValue) {
+    const isFeatured = nextValue ? 1 : 0;
+    setTasks((previous) => sortTasks(previous.map((task) => task.id === taskId ? { ...task, is_featured: isFeatured } : task)));
+    setSelectedTask((previous) => previous?.id === taskId ? { ...previous, is_featured: isFeatured } : previous);
+
+    try {
+      const { data } = await api.put('/tasks/' + taskId, { is_featured: isFeatured });
+      if (data.task) upsertTaskSummary(data.task);
+    } catch (error) {
+      const revertedValue = nextValue ? 0 : 1;
+      setTasks((previous) => sortTasks(previous.map((task) => task.id === taskId ? { ...task, is_featured: revertedValue } : task)));
+      setSelectedTask((previous) => previous?.id === taskId ? { ...previous, is_featured: revertedValue } : previous);
+      setTaskError(error.response?.data?.error || 'Não foi possível atualizar o destaque da tarefa.');
+    }
   }
 
   async function editSubtask(subtaskId) {
@@ -697,6 +739,19 @@ export default function Tasks() {
             </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
+              {user?.role !== 'client' && !selectedTask.parent_task_id && (
+                <button
+                  onClick={() => toggleFeatured(selectedTask.id, Number(selectedTask.is_featured) !== 1)}
+                  className={`col-span-2 flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                    Number(selectedTask.is_featured) === 1
+                      ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700'
+                  }`}
+                >
+                  <Star size={15} fill={Number(selectedTask.is_featured) === 1 ? 'currentColor' : 'none'} />
+                  {Number(selectedTask.is_featured) === 1 ? 'Remover do destaque do painel' : 'Destacar no painel principal'}
+                </button>
+              )}
               {canModifySelectedTask && (
                 <button onClick={editSelectedTask} disabled={selectedTask.details_loading} className="btn-primary text-sm flex items-center justify-center gap-1.5 disabled:opacity-50">
                   <Pencil size={14} /> {selectedTask.media_loading ? 'Preparando...' : 'Editar tarefa'}
