@@ -17,7 +17,10 @@ export default function PublicFeed() {
 
   useEffect(() => {
     publicApi.get(`/public/feed/${token}`)
-      .then((res) => { setClient(res.data.client); setPosts(res.data.posts); })
+      .then((res) => {
+        setClient(res.data.client);
+        setPosts([...(res.data.posts || [])].sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at)));
+      })
       .catch(() => setError('Este link não é válido ou expirou.'))
       .finally(() => setLoading(false));
   }, [token]);

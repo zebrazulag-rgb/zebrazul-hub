@@ -59,7 +59,7 @@ export default function Feed() {
     api.get(`/posts?client_id=${clientId}`).then((res) => {
       const upcoming = res.data.posts
         .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(post.status))
-        .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+        .sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
       setPosts(upcoming);
     });
   }, [clientId]);
@@ -215,7 +215,7 @@ export default function Feed() {
           <p className="text-slate-500 mt-1">
             {activeView === 'calendar'
               ? 'Visualize as datas de publicação dentro do planejamento do feed.'
-              : 'Prévia de como o perfil vai ficar, com os próximos posts em ordem de data.'}
+              : 'Prévia do feed com as datas mais futuras no topo e as mais próximas na base.'}
           </p>
         </div>
         {user?.role !== 'client' && clients.length > 0 && (
