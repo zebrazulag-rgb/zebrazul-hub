@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_platform_owner INTEGER DEFAULT 0,
   is_agency_owner INTEGER DEFAULT 0,
   is_operations_head INTEGER DEFAULT 0,
+  is_commercial_team INTEGER DEFAULT 0,
   avatar_color TEXT DEFAULT '#2563eb',
   avatar_data TEXT,
   avatar_mime TEXT,
@@ -191,6 +192,7 @@ CREATE TABLE IF NOT EXISTS post_comments (
 CREATE TABLE IF NOT EXISTS commercial_leads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
+  client_id INTEGER,
   created_by INTEGER NOT NULL,
   owner_user_id INTEGER,
   company_name TEXT NOT NULL,
@@ -209,6 +211,7 @@ CREATE TABLE IF NOT EXISTS commercial_leads (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
   FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
@@ -614,6 +617,8 @@ tryAddColumn('users', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('users', 'is_platform_owner', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_agency_owner', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_operations_head', 'INTEGER DEFAULT 0');
+tryAddColumn('users', 'is_commercial_team', 'INTEGER DEFAULT 0');
+tryAddColumn('commercial_leads', 'client_id', 'INTEGER REFERENCES clients(id)');
 tryAddColumn('clients', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('social_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('posts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
@@ -776,12 +781,38 @@ const initializeAgencyScope = db.transaction(() => {
 });
 initializeAgencyScope();
 
+// O módulo Comercial agora pertence a cada cliente. Registros criados na versão
+// anterior não tinham client_id. Quando uma agência possui apenas um cliente,
+// a associação é inequívoca e pode ser feita automaticamente sem perder dados.
+const commercialClientScopeMigration = db.prepare("SELECT value FROM system_meta WHERE key = 'commercial_client_scope_initialized'").get();
+if (!commercialClientScopeMigration) {
+  const initializeCommercialClientScope = db.transaction(() => {
+    db.exec(`
+      UPDATE commercial_leads
+      SET client_id = (
+        SELECT MIN(c.id)
+        FROM clients c
+        WHERE c.agency_id = commercial_leads.agency_id
+      )
+      WHERE client_id IS NULL
+        AND 1 = (
+          SELECT COUNT(*)
+          FROM clients c
+          WHERE c.agency_id = commercial_leads.agency_id
+        )
+    `);
+    db.prepare("INSERT INTO system_meta (key, value) VALUES ('commercial_client_scope_initialized', '1')").run();
+  });
+  initializeCommercialClientScope();
+}
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_tasks_featured ON tasks(agency_id, is_featured, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage ON commercial_leads(agency_id, stage, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_commercial_leads_client_stage ON commercial_leads(agency_id, client_id, stage, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_next_action ON commercial_leads(agency_id, next_action_date);
   CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_posts_agency ON posts(agency_id, status, scheduled_at);
@@ -813,7 +844,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '22', datetime('now'))
+   VALUES ('schema_version', '23', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

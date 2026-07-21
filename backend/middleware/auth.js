@@ -23,6 +23,7 @@ function hydrateUserAccess(user) {
     is_platform_owner: Number(user.is_platform_owner) === 1,
     is_agency_owner: Number(user.is_agency_owner) === 1,
     is_operations_head: Number(user.is_operations_head) === 1,
+    is_commercial_team: Number(user.is_commercial_team) === 1,
     agency: publicAgency(agency),
   };
   if (user.role === 'admin') return { ...base, client_ids: [] };
@@ -58,7 +59,7 @@ function authRequired(req, res, next) {
     const payload = jwt.verify(token, JWT_SECRET);
     const currentUser = db.prepare(`
       SELECT id, name, email, role, client_id, agency_id,
-             is_platform_owner, is_agency_owner, is_operations_head
+             is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
       FROM users WHERE id = ?
     `).get(payload.id);
 

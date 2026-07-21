@@ -26,6 +26,7 @@ const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
 const { syncAllConnectedAccounts, currentMonthRange } = require('./services/metaSync');
 const { syncAllOrganicAccounts, currentMonthRange: currentOrganicMonthRange } = require('./services/metaOrganicSync');
+const { authRequired } = require('./middleware/auth');
 
 if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
   const allowDemoInProduction = String(process.env.ALLOW_DEMO_SEED_IN_PRODUCTION || 'false').toLowerCase() === 'true';
@@ -46,6 +47,25 @@ app.use(express.json({ limit: '15mb' }));
 app.get('/api/health', (req, res) => {
   const health = getHealthStatus();
   res.status(health.ok ? 200 : 503).json(health);
+});
+
+// A Equipe Comercial usa o mesmo papel interno da equipe para manter
+// compatibilidade com o banco, mas fica isolada das demais áreas da API.
+// Auth, tenant e links públicos continuam sendo validados pelas próprias rotas.
+app.use('/api', (req, res, next) => {
+  const publicPrefixes = ['/auth', '/tenant', '/public'];
+  if (publicPrefixes.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) return next();
+
+  return authRequired(req, res, () => {
+    if (!req.user?.is_commercial_team) return next();
+
+    const taskAccess = req.path === '/tasks' || req.path.startsWith('/tasks/');
+    const commercialAccess = req.path === '/commercial' || req.path.startsWith('/commercial/');
+    const clientsReadAccess = req.path === '/clients' && req.method === 'GET';
+    if (taskAccess || commercialAccess || clientsReadAccess) return next();
+
+    return res.status(403).json({ error: 'A Equipe Comercial acessa somente Painel, Tarefas e Comercial' });
+  });
 });
 
 app.use('/api/tenant', tenantRoutes);

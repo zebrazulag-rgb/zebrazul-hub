@@ -471,6 +471,9 @@ router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
 });
 
 router.post('/:id/add-to-feed', requireRole('admin', 'team'), (req, res) => {
+  if (req.user?.is_commercial_team) {
+    return res.status(403).json({ error: 'A Equipe Comercial não possui acesso ao Feed' });
+  }
   const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;

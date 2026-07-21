@@ -11,19 +11,22 @@ const {
 const { resolveAgency } = require('../services/tenant');
 
 const router = express.Router();
-const VALID_ROLES = ['admin', 'team', 'operations_head', 'client'];
+const VALID_ROLES = ['admin', 'team', 'operations_head', 'commercial_team', 'client'];
 
 function normalizeAccessRole(value) {
   const requested = String(value || '');
   return {
     requested,
-    role: requested === 'operations_head' ? 'team' : requested,
+    role: ['operations_head', 'commercial_team'].includes(requested) ? 'team' : requested,
     isOperationsHead: requested === 'operations_head',
+    isCommercialTeam: requested === 'commercial_team',
   };
 }
 
 function accessRoleOf(user) {
-  return Number(user?.is_operations_head) === 1 ? 'operations_head' : user?.role;
+  if (Number(user?.is_operations_head) === 1) return 'operations_head';
+  if (Number(user?.is_commercial_team) === 1) return 'commercial_team';
+  return user?.role;
 }
 
 function normalizeEmail(email) {
@@ -71,6 +74,7 @@ function publicUser(user) {
     is_platform_owner: hydrated.is_platform_owner,
     is_agency_owner: hydrated.is_agency_owner,
     is_operations_head: hydrated.is_operations_head,
+    is_commercial_team: hydrated.is_commercial_team,
   };
 }
 
@@ -90,6 +94,7 @@ function attachUserAccess(users, agencyId) {
   });
   return users.map((user) => {
     const operationsHead = Number(user.is_operations_head) === 1;
+    const commercialTeam = Number(user.is_commercial_team) === 1;
     const accesses = operationsHead
       ? db.prepare('SELECT id, name FROM clients WHERE agency_id = ? ORDER BY name').all(agencyId)
       : user.role === 'team' ? (byUser.get(user.id) || []) : [];
@@ -98,6 +103,7 @@ function attachUserAccess(users, agencyId) {
       is_platform_owner: Number(user.is_platform_owner) === 1,
       is_agency_owner: Number(user.is_agency_owner) === 1,
       is_operations_head: operationsHead,
+      is_commercial_team: commercialTeam,
       client_ids: accesses.map((client) => client.id),
       client_names: accesses.map((client) => client.name),
     };
@@ -133,7 +139,7 @@ router.post('/login', (req, res) => {
 router.get('/me', authRequired, (req, res) => {
   const user = db.prepare(`
     SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-           agency_id, is_platform_owner, is_agency_owner, is_operations_head
+           agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
     FROM users WHERE id = ?
   `).get(req.user.id);
   res.json({ user: publicUser(user) });
@@ -167,9 +173,9 @@ router.post('/users', authRequired, (req, res) => {
     const createUser = db.transaction(() => {
       const passwordHash = bcrypt.hashSync(password, 10);
       const info = db.prepare(`
-        INSERT INTO users (name, email, password_hash, role, client_id, agency_id, is_operations_head)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(name, email, passwordHash, role, clientId, req.user.agency_id, accessRole.isOperationsHead ? 1 : 0);
+        INSERT INTO users (name, email, password_hash, role, client_id, agency_id, is_operations_head, is_commercial_team)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(name, email, passwordHash, role, clientId, req.user.agency_id, accessRole.isOperationsHead ? 1 : 0, accessRole.isCommercialTeam ? 1 : 0);
       replaceUserClientAccess(info.lastInsertRowid, clientIds, req.user.agency_id);
       return info.lastInsertRowid;
     });
@@ -182,7 +188,7 @@ router.post('/users', authRequired, (req, res) => {
 
 router.get('/team-users', authRequired, (req, res) => {
   let users = db.prepare(`
-    SELECT id, name, role, avatar_color, avatar_data, is_operations_head
+    SELECT id, name, role, avatar_color, avatar_data, is_operations_head, is_commercial_team
     FROM users
     WHERE agency_id = ? AND role IN ('admin','team')
     ORDER BY name
@@ -204,11 +210,11 @@ router.get('/users', authRequired, (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
   const users = db.prepare(`
     SELECT u.id, u.name, u.email, u.role, u.client_id, u.avatar_color, u.avatar_data, u.avatar_mime,
-           u.is_platform_owner, u.is_agency_owner, u.is_operations_head, c.name as client_name
+           u.is_platform_owner, u.is_agency_owner, u.is_operations_head, u.is_commercial_team, c.name as client_name
     FROM users u
     LEFT JOIN clients c ON c.id = u.client_id AND c.agency_id = u.agency_id
     WHERE u.agency_id = ?
-    ORDER BY CASE WHEN u.role = 'admin' THEN 1 WHEN u.is_operations_head = 1 THEN 2 WHEN u.role = 'team' THEN 3 ELSE 4 END, u.name
+    ORDER BY CASE WHEN u.role = 'admin' THEN 1 WHEN u.is_operations_head = 1 THEN 2 WHEN u.is_commercial_team = 1 THEN 3 WHEN u.role = 'team' THEN 4 ELSE 5 END, u.name
   `).all(req.user.agency_id);
   res.json({ users: attachUserAccess(users, req.user.agency_id) });
 });
@@ -223,7 +229,7 @@ router.put('/me', authRequired, (req, res) => {
 
   const user = db.prepare(`
     SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-           agency_id, is_platform_owner, is_agency_owner, is_operations_head
+           agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
     FROM users WHERE id = ? AND agency_id = ?
   `).get(req.user.id, req.user.agency_id);
   res.json({ user: publicUser(user) });
@@ -277,16 +283,16 @@ router.put('/users/:id', authRequired, (req, res) => {
     const updateUser = db.transaction(() => {
       db.prepare(`
         UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, client_id = ?,
-          avatar_data = ?, avatar_mime = ?, is_operations_head = ?
+          avatar_data = ?, avatar_mime = ?, is_operations_head = ?, is_commercial_team = ?
         WHERE id = ? AND agency_id = ?
-      `).run(nextName, nextEmail, nextPasswordHash, nextRole, nextClientId, nextAvatarData, nextAvatarMime, nextAccess.isOperationsHead ? 1 : 0, targetId, req.user.agency_id);
+      `).run(nextName, nextEmail, nextPasswordHash, nextRole, nextClientId, nextAvatarData, nextAvatarMime, nextAccess.isOperationsHead ? 1 : 0, nextAccess.isCommercialTeam ? 1 : 0, targetId, req.user.agency_id);
       replaceUserClientAccess(targetId, nextClientIds, req.user.agency_id);
     });
     updateUser();
 
     const updatedUser = db.prepare(`
       SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-             agency_id, is_platform_owner, is_agency_owner, is_operations_head
+             agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
       FROM users WHERE id = ? AND agency_id = ?
     `).get(targetId, req.user.agency_id);
     res.json({ ok: true, user: publicUser(updatedUser) });
@@ -301,6 +307,9 @@ const deleteUserTransaction = db.transaction((targetId, replacementUserId, agenc
   db.prepare('UPDATE tasks SET created_by = ? WHERE created_by = ? AND agency_id = ?').run(replacementUserId, targetId, agencyId);
   db.prepare('UPDATE tasks SET assignee_id = NULL WHERE assignee_id = ? AND agency_id = ?').run(targetId, agencyId);
   db.prepare('UPDATE financial_entries SET created_by = ? WHERE created_by = ? AND agency_id = ?').run(replacementUserId, targetId, agencyId);
+  db.prepare('UPDATE commercial_leads SET created_by = ? WHERE created_by = ? AND agency_id = ?').run(replacementUserId, targetId, agencyId);
+  db.prepare('UPDATE commercial_leads SET owner_user_id = NULL WHERE owner_user_id = ? AND agency_id = ?').run(targetId, agencyId);
+  db.prepare('UPDATE commercial_activities SET created_by = ? WHERE created_by = ? AND agency_id = ?').run(replacementUserId, targetId, agencyId);
   db.prepare('DELETE FROM users WHERE id = ? AND agency_id = ?').run(targetId, agencyId);
 });
 
