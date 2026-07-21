@@ -22,7 +22,9 @@ function normalizePost(post) {
 router.get('/posts/:token', (req, res) => {
   const post = db.prepare(`
     SELECT p.id, p.title, p.caption, p.content_type, p.platforms, p.media_url, p.media_data, p.media_mime, p.media_gallery,
-           p.scheduled_at, p.status, p.client_feedback, c.name as client_name, c.logo_color as client_color
+           p.scheduled_at, p.status, p.client_feedback,
+           c.name as client_name, c.logo_color as client_color,
+           c.instagram_username as client_username, c.avatar_data as client_avatar
     FROM posts p
     JOIN clients c ON c.id = p.client_id
     WHERE p.share_token = ?
