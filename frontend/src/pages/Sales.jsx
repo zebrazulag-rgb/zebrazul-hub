@@ -12,7 +12,6 @@ import {
   Search,
   Target,
   Trash2,
-  TrendingUp,
   X,
 } from 'lucide-react';
 import api from '../api';
@@ -195,7 +194,9 @@ export default function Sales() {
 
   const openLeads = leads.filter((lead) => !['won', 'lost'].includes(lead.stage));
   const pipelineValue = openLeads.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
-  const weightedForecast = openLeads.reduce((sum, lead) => sum + Number(lead.estimated_value || 0) * Number(lead.probability || 0) / 100, 0);
+  const finalizedLeads = leads.filter((lead) => ['won', 'lost'].includes(lead.stage));
+  const wonLeads = finalizedLeads.filter((lead) => lead.stage === 'won');
+  const closeRate = finalizedLeads.length ? (wonLeads.length / finalizedLeads.length) * 100 : 0;
   const wonThisMonth = leads.filter((lead) => lead.stage === 'won' && String(lead.closed_at || lead.updated_at || '').slice(0, 10) >= monthStartISO());
   const wonValue = wonThisMonth.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
   const followUps = leads
@@ -320,7 +321,7 @@ export default function Sales() {
   const stats = [
     { label: 'Oportunidades abertas', value: openLeads.length, helper: 'em movimento no pipeline', icon: BriefcaseBusiness, className: 'bg-blue-50 text-blue-600' },
     { label: 'Valor em negociação', value: formatCurrency(pipelineValue), helper: 'soma das oportunidades abertas', icon: CircleDollarSign, className: 'bg-violet-50 text-violet-600' },
-    { label: 'Previsão ponderada', value: formatCurrency(weightedForecast), helper: 'valor ajustado pela probabilidade', icon: TrendingUp, className: 'bg-amber-50 text-amber-600' },
+    { label: 'Taxa de fechamento', value: `${Math.round(closeRate)}%`, helper: finalizedLeads.length ? `${wonLeads.length} de ${finalizedLeads.length} oportunidades finalizadas` : 'nenhuma oportunidade finalizada', icon: Target, className: 'bg-amber-50 text-amber-600' },
     { label: 'Fechado no mês', value: formatCurrency(wonValue), helper: `${wonThisMonth.length} negócio${wonThisMonth.length === 1 ? '' : 's'} ganho${wonThisMonth.length === 1 ? '' : 's'}`, icon: CheckCircle2, className: 'bg-emerald-50 text-emerald-600' },
   ];
 
