@@ -18,6 +18,8 @@ import {
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
 const STAGES = [
   { key: 'new_lead', label: 'Novo lead', dot: 'bg-sky-500', soft: 'bg-sky-50 text-sky-700 border-sky-100', probability: 10 },
@@ -123,6 +125,9 @@ function LeadCard({ lead, onOpen, onDragStart }) {
 }
 
 export default function Sales() {
+  const { user } = useAuth();
+  const { selectedClient, setSelectedClient } = useClientFilter();
+  const [commercialClients, setCommercialClients] = useState([]);
   const [leads, setLeads] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -135,12 +140,34 @@ export default function Sales() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
+  const clientId = user?.role === 'client' ? Number(user.client_id) : Number(selectedClient?.id || 0);
+  const currentClient = user?.role === 'client'
+    ? commercialClients.find((client) => Number(client.id) === Number(user.client_id))
+    : selectedClient;
+
+  useEffect(() => {
+    let active = true;
+    api.get('/commercial/clients').then(({ data }) => {
+      if (!active) return;
+      const nextClients = data.clients || [];
+      setCommercialClients(nextClients);
+      if (user?.role !== 'client' && !selectedClient && nextClients.length === 1) setSelectedClient(nextClients[0]);
+    }).catch(() => { if (active) setCommercialClients([]); });
+    return () => { active = false; };
+  }, [user?.id, user?.role, user?.client_id, selectedClient?.id, setSelectedClient]);
+
   async function loadData() {
+    if (!clientId) {
+      setLeads([]);
+      setTeamUsers([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [leadResponse, usersResponse] = await Promise.all([
-        api.get('/commercial/leads'),
-        api.get('/auth/team-users'),
+        api.get('/commercial/leads', { params: { client_id: clientId } }),
+        api.get('/commercial/users', { params: { client_id: clientId } }),
       ]);
       setLeads(leadResponse.data.leads || []);
       setTeamUsers(usersResponse.data.users || []);
@@ -149,7 +176,12 @@ export default function Sales() {
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    setForm(null);
+    setEditingLead(null);
+    setOwnerFilter('all');
+    loadData();
+  }, [clientId]);
 
   const filteredLeads = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -172,8 +204,12 @@ export default function Sales() {
     .slice(0, 8);
 
   function beginCreate() {
+    if (!clientId) return;
     setEditingLead(null);
-    setForm(emptyForm(teamUsers[0]?.id));
+    const defaultOwnerId = teamUsers.some((member) => Number(member.id) === Number(user?.id))
+      ? user.id
+      : teamUsers[0]?.id;
+    setForm(emptyForm(defaultOwnerId));
     setError('');
   }
 
@@ -217,6 +253,7 @@ export default function Sales() {
     try {
       const payload = {
         ...form,
+        client_id: clientId,
         estimated_value: Number(form.estimated_value || 0),
         probability: Number(form.probability || 0),
         owner_user_id: form.owner_user_id || null,
@@ -243,7 +280,7 @@ export default function Sales() {
     setDeleting(true);
     setError('');
     try {
-      await api.delete(`/commercial/leads/${editingLead.id}`);
+      await api.delete(`/commercial/leads/${editingLead.id}`, { params: { client_id: clientId } });
       setLeads((current) => current.filter((item) => item.id !== editingLead.id));
       setForm(null);
       setEditingLead(null);
@@ -261,7 +298,7 @@ export default function Sales() {
     const optimistic = { ...currentLead, stage, probability: STAGE_MAP[stage]?.probability ?? currentLead.probability };
     setLeads((items) => items.map((item) => item.id === leadId ? optimistic : item));
     try {
-      const { data } = await api.put(`/commercial/leads/${leadId}`, { stage });
+      const { data } = await api.put(`/commercial/leads/${leadId}`, { stage, client_id: clientId });
       setLeads((items) => items.map((item) => item.id === leadId ? data.lead : item));
     } catch {
       setLeads(previous);
@@ -291,15 +328,25 @@ export default function Sales() {
     <div className="space-y-6">
       <PageHero
         icon={Handshake}
-        eyebrow="Núcleo independente"
-        title="Comercial"
-        description="Pipeline de prospecção, propostas e negociações sem depender do cadastro de clientes da operação. O filtro lateral de clientes não altera esta área."
-        actions={(
+        eyebrow="Gestão comercial por cliente"
+        title={currentClient?.name ? `Comercial · ${currentClient.name}` : 'Comercial'}
+        description={currentClient?.name
+          ? `Pipeline exclusivo de ${currentClient.name}, com oportunidades, responsáveis, propostas e próximos passos separados dos demais clientes.`
+          : 'Selecione um cliente no filtro lateral para abrir o pipeline comercial correspondente.'}
+        actions={clientId ? (
           <button type="button" onClick={beginCreate} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5">
             <Plus size={17} /> Nova oportunidade
           </button>
-        )}
+        ) : null}
       />
+
+      {!clientId ? (
+        <section className="surface-card border-dashed p-10 text-center">
+          <Handshake size={32} className="mx-auto text-[#0969ff]" />
+          <h2 className="mt-4 text-lg font-semibold text-slate-900">Escolha o cliente que deseja acompanhar</h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">Cada cliente possui seu próprio funil comercial. Use o seletor “Visualizando” na lateral para acessar os leads, propostas e negociações daquela empresa.</p>
+        </section>
+      ) : (<>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
@@ -519,6 +566,7 @@ export default function Sales() {
           </form>
         </ModalBackdrop>
       )}
+      </>)}
     </div>
   );
 }

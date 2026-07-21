@@ -16,6 +16,7 @@ import {
   Plus,
   Target,
   Star,
+  Handshake,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const [clients, setClients] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [featuredTasks, setFeaturedTasks] = useState([]);
+  const [commercialLeads, setCommercialLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
   const [referenceDate, setReferenceDate] = useState(isoDate(new Date()));
@@ -81,11 +83,30 @@ export default function Dashboard() {
       setLoading(true);
       try {
         const suffix = selectedClient?.id ? `?client_id=${selectedClient.id}` : '';
-        const requests = [api.get('/posts'), api.get('/clients'), api.get(`/tasks${suffix}`)];
-        const results = await Promise.all(requests);
-        const loadedTasks = results[2].data.tasks || [];
-        setPosts(results[0].data.posts || []);
-        setClients(results[1].data.clients || []);
+        let loadedTasks = [];
+        if (user?.is_commercial_team) {
+          const [clientsResponse, tasksResponse] = await Promise.all([
+            api.get('/commercial/clients'),
+            api.get(`/tasks${suffix}`),
+          ]);
+          const accessibleClients = clientsResponse.data.clients || [];
+          const clientIds = selectedClient?.id
+            ? [Number(selectedClient.id)]
+            : accessibleClients.map((client) => Number(client.id)).filter(Boolean);
+          const leadResponses = await Promise.all(
+            clientIds.map((clientId) => api.get('/commercial/leads', { params: { client_id: clientId } }))
+          );
+          setPosts([]);
+          setClients(accessibleClients);
+          loadedTasks = tasksResponse.data.tasks || [];
+          setCommercialLeads(leadResponses.flatMap((response) => response.data.leads || []));
+        } else {
+          const results = await Promise.all([api.get('/posts'), api.get('/clients'), api.get(`/tasks${suffix}`)]);
+          setPosts(results[0].data.posts || []);
+          setClients(results[1].data.clients || []);
+          loadedTasks = results[2].data.tasks || [];
+          setCommercialLeads([]);
+        }
         setTasks(loadedTasks);
         try {
           const featuredResponse = await api.get('/tasks/featured/all');
@@ -100,8 +121,9 @@ export default function Dashboard() {
       }
     }
     load();
-  }, [user?.role, selectedClient?.id]);
+  }, [user?.role, user?.is_commercial_team, selectedClient?.id]);
 
+  const isCommercialTeam = Boolean(user?.is_commercial_team);
   const pendingApproval = posts.filter((p) => p.status === 'pending_approval');
   const upcoming = posts
     .filter((p) => p.scheduled_at && new Date(p.scheduled_at) >= new Date())
@@ -120,7 +142,40 @@ export default function Dashboard() {
 
   const completionRate = taskStats.total ? Math.round((taskStats.done / taskStats.total) * 100) : 0;
   const activeClients = clients.filter((c) => c.status === 'active').length;
-  const contentStats = [
+  const contentStats = isCommercialTeam ? [
+    {
+      label: 'Leads abertos',
+      value: commercialLeads.filter((lead) => !['won', 'lost'].includes(lead.stage)).length,
+      icon: Handshake,
+      iconClass: 'bg-blue-50 text-[#0969ff]',
+      accent: 'from-[#0969ff] to-[#4f8cff]',
+      href: '/comercial',
+    },
+    {
+      label: 'Diagnósticos',
+      value: commercialLeads.filter((lead) => lead.stage === 'meeting').length,
+      icon: Target,
+      iconClass: 'bg-violet-50 text-violet-600',
+      accent: 'from-violet-400 to-purple-500',
+      href: '/comercial',
+    },
+    {
+      label: 'Propostas enviadas',
+      value: commercialLeads.filter((lead) => lead.stage === 'proposal').length,
+      icon: FileCheck2,
+      iconClass: 'bg-amber-50 text-amber-600',
+      accent: 'from-amber-400 to-orange-400',
+      href: '/comercial',
+    },
+    {
+      label: 'Em negociação',
+      value: commercialLeads.filter((lead) => lead.stage === 'negotiation').length,
+      icon: CheckCircle2,
+      iconClass: 'bg-emerald-50 text-emerald-600',
+      accent: 'from-emerald-400 to-teal-400',
+      href: '/comercial',
+    },
+  ] : [
     {
       label: 'Clientes ativos',
       value: activeClients,
@@ -179,7 +234,9 @@ export default function Dashboard() {
             </div>
             <h1 className="text-3xl font-bold tracking-tight lg:text-4xl">Olá, {user?.name?.split(' ')[0]}.</h1>
             <p className="mt-2 max-w-xl text-sm leading-6 text-white/55 lg:text-base">
-              Tudo que precisa da sua atenção está organizado aqui. Acompanhe tarefas, aprovações e publicações em um único lugar.
+              {isCommercialTeam
+                ? 'Acompanhe o pipeline de vendas e as tarefas comerciais dos clientes liberados para você.'
+                : 'Tudo que precisa da sua atenção está organizado aqui. Acompanhe tarefas, aprovações e publicações em um único lugar.'}
             </p>
             <p className="mt-5 text-xs font-medium capitalize tracking-wide text-white/35">{formatDate(new Date())}</p>
           </div>
@@ -188,8 +245,8 @@ export default function Dashboard() {
             <Link to="/tarefas" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
               <Plus size={17} /> Nova tarefa
             </Link>
-            <Link to="/aprovacao" className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.055] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
-              Ver aprovações <ArrowUpRight size={16} />
+            <Link to={isCommercialTeam ? '/comercial' : '/aprovacao'} className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.055] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
+              {isCommercialTeam ? 'Abrir comercial' : 'Ver aprovações'} <ArrowUpRight size={16} />
             </Link>
           </div>
         </div>
@@ -333,6 +390,7 @@ export default function Dashboard() {
         </section>
       )}
 
+      {!isCommercialTeam && (
       <section className="grid gap-5 lg:grid-cols-2">
         <div className="rounded-[24px] border border-slate-200/70 bg-white p-6 shadow-[0_10px_34px_rgba(15,23,42,0.04)]">
           <div className="mb-5 flex items-center justify-between">
@@ -406,6 +464,7 @@ export default function Dashboard() {
           )}
         </div>
       </section>
+      )}
     </div>
   );
 }

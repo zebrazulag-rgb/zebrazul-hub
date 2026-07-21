@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X, Download, RefreshCw, CheckCircle2, AlertTriangle, BriefcaseBusiness } from 'lucide-react';
+import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X, Download, RefreshCw, CheckCircle2, AlertTriangle, BriefcaseBusiness, Handshake } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
@@ -11,6 +11,7 @@ import PageHero from '../components/PageHero.jsx';
 const ROLE_OPTIONS = [
   { value: 'operations_head', label: 'Head de Operação', icon: BriefcaseBusiness },
   { value: 'team', label: 'Equipe da agência', icon: UsersIcon },
+  { value: 'commercial_team', label: 'Equipe comercial', icon: Handshake },
   { value: 'client', label: 'Cliente', icon: Building2 },
   { value: 'admin', label: 'Administrador', icon: Shield }
 ];
@@ -119,7 +120,7 @@ export default function UserManagement() {
         name: form.name.trim(),
         email: form.email.trim(),
         client_id: form.role === 'client' ? form.client_id : null,
-        client_ids: form.role === 'team' ? form.client_ids : []
+        client_ids: ['team', 'commercial_team'].includes(form.role) ? form.client_ids : []
       });
       setSuccess(`Usuário "${form.name}" criado com sucesso.`);
       setForm(EMPTY_FORM);
@@ -139,7 +140,7 @@ export default function UserManagement() {
       name: user.name || '',
       email: user.email || '',
       password: '',
-      role: user.is_operations_head ? 'operations_head' : (user.role || 'team'),
+      role: user.is_operations_head ? 'operations_head' : user.is_commercial_team ? 'commercial_team' : (user.role || 'team'),
       client_id: user.client_id || '',
       client_ids: user.client_ids || []
     });
@@ -160,7 +161,7 @@ export default function UserManagement() {
         email: editForm.email.trim(),
         role: editForm.role,
         client_id: editForm.role === 'client' ? editForm.client_id : null,
-        client_ids: editForm.role === 'team' ? editForm.client_ids : []
+        client_ids: ['team', 'commercial_team'].includes(editForm.role) ? editForm.client_ids : []
       };
       if (editForm.password) payload.password = editForm.password;
 
@@ -212,7 +213,8 @@ export default function UserManagement() {
     total: users.length,
     admins: users.filter((item) => item.role === 'admin').length,
     heads: users.filter((item) => item.is_operations_head).length,
-    team: users.filter((item) => item.role === 'team' && !item.is_operations_head).length,
+    team: users.filter((item) => item.role === 'team' && !item.is_operations_head && !item.is_commercial_team).length,
+    commercial: users.filter((item) => item.is_commercial_team).length,
     clients: users.filter((item) => item.role === 'client').length,
   };
 
@@ -232,12 +234,13 @@ export default function UserManagement() {
           </button>
         }
       >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           {[
             { label: 'Total', value: userStats.total, icon: UsersIcon, color: 'text-blue-300' },
             { label: 'Administradores', value: userStats.admins, icon: Shield, color: 'text-violet-300' },
             { label: 'Heads de Operação', value: userStats.heads, icon: BriefcaseBusiness, color: 'text-sky-300' },
             { label: 'Equipe', value: userStats.team, icon: UsersIcon, color: 'text-cyan-300' },
+            { label: 'Equipe comercial', value: userStats.commercial, icon: Handshake, color: 'text-amber-300' },
             { label: 'Clientes', value: userStats.clients, icon: Building2, color: 'text-emerald-300' },
           ].map((item) => (
             <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
@@ -307,10 +310,11 @@ export default function UserManagement() {
 
       <div className="surface-card p-6">
         <div className="mb-5"><p className="section-kicker">Níveis de permissão</p><h2 className="section-title mt-1">Papéis disponíveis</h2></div>
-        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4 text-sm">
+        <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4 text-sm">
           <RoleDescription icon={Shield} title="Administrador" description="Acesso total, incluindo criar, editar e apagar usuários." />
           <RoleDescription icon={BriefcaseBusiness} title="Head de Operação" description="Visualiza e gerencia todas as tarefas, subtarefas, clientes e responsáveis da operação, sem acesso ao Financeiro." />
-          <RoleDescription icon={UsersIcon} title={`Equipe ${agency?.name || ""}`.trim()} description="Acessa somente os clientes definidos pelo administrador." />
+          <RoleDescription icon={UsersIcon} title={`Equipe ${agency?.name || ""}`.trim()} description="Acessa somente os clientes e áreas operacionais definidos pelo administrador." />
+          <RoleDescription icon={Handshake} title="Equipe Comercial" description="Acessa apenas Painel, Tarefas e Comercial dos clientes liberados pelo administrador." />
           <RoleDescription icon={Building2} title="Cliente" description="Só vê e aprova o conteúdo do próprio cliente vinculado." />
         </div>
       </div>
@@ -338,7 +342,7 @@ export default function UserManagement() {
                   <p className="text-xs text-slate-400 truncate">{user.email}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="badge bg-slate-100 text-slate-600 capitalize">{roleBadgeLabel(user.role, user.is_operations_head)}</span>
+                  <span className="badge bg-slate-100 text-slate-600 capitalize">{roleBadgeLabel(user.role, user.is_operations_head, user.is_commercial_team)}</span>
                   {user.client_name && <p className="text-xs text-slate-400 mt-1 max-w-48 truncate">{user.client_name}</p>}
                   {user.role === 'team' && !user.is_operations_head && (
                     <p className="text-xs text-slate-400 mt-1 max-w-56 line-clamp-2">
@@ -532,7 +536,7 @@ function UserFormModal({
                     ...form,
                     role: role.value,
                     client_id: role.value === 'client' ? form.client_id : '',
-                    client_ids: role.value === 'team' ? (form.client_ids || []) : []
+                    client_ids: ['team', 'commercial_team'].includes(role.value) ? (form.client_ids || []) : []
                   })}
                   disabled={lockRole}
                   className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-lg border text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
@@ -553,6 +557,11 @@ function UserFormModal({
               Este perfil poderá visualizar e gerenciar todas as tarefas e subtarefas da equipe, além de acessar todos os clientes da agência. O Financeiro e as configurações administrativas continuam restritos.
             </div>
           )}
+          {form.role === 'commercial_team' && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Perfil focado em vendas: o menu exibirá somente Painel, Tarefas e Comercial. O acesso ao pipeline será limitado aos clientes marcados abaixo.
+            </div>
+          )}
           {form.role === 'client' && (
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Vincular ao cliente</label>
@@ -568,7 +577,7 @@ function UserFormModal({
               </select>
             </div>
           )}
-          {form.role === 'team' && (
+          {['team', 'commercial_team'].includes(form.role) && (
             <div>
               <div className="flex items-center justify-between gap-3 mb-2">
                 <label className="text-sm font-medium text-slate-700">Clientes com acesso</label>
@@ -600,7 +609,7 @@ function UserFormModal({
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-400 mt-2">A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.</p>
+              <p className="text-[11px] text-slate-400 mt-2">{form.role === 'commercial_team' ? 'A pessoa verá somente Painel, Tarefas e Comercial destes clientes.' : 'A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.'}</p>
             </div>
           )}
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
@@ -629,8 +638,9 @@ function formatBackupDate(value) {
   }
 }
 
-function roleBadgeLabel(role, isOperationsHead = false) {
+function roleBadgeLabel(role, isOperationsHead = false, isCommercialTeam = false) {
   if (isOperationsHead) return 'Head de Operação';
+  if (isCommercialTeam) return 'Equipe Comercial';
   if (role === 'admin') return 'Admin';
   if (role === 'team') return 'Equipe';
   if (role === 'client') return 'Cliente';

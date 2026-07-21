@@ -23,11 +23,13 @@ import MonthlyPlanning from './pages/MonthlyPlanning.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
 
-function ProtectedRoute({ children, roles, platformOnly = false }) {
+function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
   if (checkingSession) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando Zebrahub...</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  if (user.is_commercial_team && !commercialTeamAllowed) return <Navigate to="/" replace />;
+  if (commercialAccess && !(user.role === 'admin' || user.role === 'client' || user.is_commercial_team)) return <Navigate to="/" replace />;
   if (platformOnly && !user.is_platform_owner) return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
 }
@@ -39,14 +41,14 @@ export default function App() {
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
-      <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute commercialTeamAllowed><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
       <Route path="/calendario" element={<Navigate to="/feed?view=calendar" replace />} />
       <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
       <Route
         path="/tarefas"
         element={
-          <ProtectedRoute roles={['admin', 'team', 'client']}>
+          <ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed>
             <Tasks />
           </ProtectedRoute>
         }
@@ -63,7 +65,7 @@ export default function App() {
       <Route path="/plano-anual" element={<Navigate to="/bussola/plano-anual" replace />} />
       <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/ciclo-90-dias" replace />} />
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola/planejamento-mensal" replace />} />
-      <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team']}><Sales /></ProtectedRoute>} />
+      <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><Sales /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route
         path="/financeiro"

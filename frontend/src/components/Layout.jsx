@@ -52,18 +52,21 @@ export default function Layout({ children }) {
   useEffect(() => {
     if (user?.role === 'client') return;
     let active = true;
-    api.get('/clients').then((res) => {
+    const clientsEndpoint = user?.is_commercial_team ? '/commercial/clients' : '/clients';
+    api.get(clientsEndpoint).then((res) => {
       if (!active) return;
       const nextClients = res.data.clients || [];
       setClients(nextClients);
       if (selectedClient && !nextClients.some((client) => client.id === selectedClient.id)) {
         setSelectedClient(null);
+      } else if (!selectedClient && user?.is_commercial_team && nextClients.length === 1) {
+        setSelectedClient(nextClients[0]);
       }
     }).catch(() => {
       if (active) setClients([]);
     });
     return () => { active = false; };
-  }, [user?.id, user?.role, user?.client_ids?.join(','), selectedClient?.id, setSelectedClient]);
+  }, [user?.id, user?.role, user?.is_commercial_team, user?.client_ids?.join(','), selectedClient?.id, setSelectedClient]);
 
   function handleLogout() {
     logout();
@@ -107,22 +110,27 @@ export default function Layout({ children }) {
   }
 
   const workspaceItems = [
-    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'] },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'] },
+    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'], commercialTeam: true },
+    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true },
     { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team', 'client'] },
     { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
-    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'team'] },
+    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
   ];
+
+  const visibleWorkspaceItems = workspaceItems.filter((item) => {
+    if (user?.is_commercial_team) return item.commercialTeam === true;
+    return item.roles.includes(user?.role);
+  });
 
   const settingsItems = [
     { to: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'team'] },
     { to: '/usuarios', label: 'Usuários', icon: UserCog, roles: ['admin'] },
     { to: '/marca', label: 'Marca da agência', icon: Palette, roles: ['admin'] },
     ...(user?.is_platform_owner ? [{ to: '/agencias', label: 'Agências', icon: Building2, roles: ['admin'] }] : []),
-  ].filter((item) => item.roles.includes(user?.role));
+  ].filter((item) => !user?.is_commercial_team && item.roles.includes(user?.role));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -180,9 +188,7 @@ export default function Layout({ children }) {
 
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
           <div className="space-y-1">
-            {workspaceItems
-              .filter((item) => item.roles.includes(user?.role))
-              .map((item) => (
+            {visibleWorkspaceItems.map((item) => (
                 <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} />
               ))}
           </div>
@@ -261,7 +267,7 @@ export default function Layout({ children }) {
             )}
             <div className="min-w-0 flex-1 text-left">
               <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
-              <p className="truncate text-xs text-white/40">{roleLabel(user?.role, agency?.name, user?.is_operations_head)}</p>
+              <p className="truncate text-xs text-white/40">{roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team)}</p>
             </div>
           </button>
           <button
@@ -346,8 +352,9 @@ function SidebarLink({ item, agencyPrimary }) {
   );
 }
 
-function roleLabel(role, agencyName, isOperationsHead = false) {
+function roleLabel(role, agencyName, isOperationsHead = false, isCommercialTeam = false) {
   if (isOperationsHead) return 'Head de Operação';
+  if (isCommercialTeam) return 'Equipe Comercial';
   if (role === 'admin') return 'Administrador';
   if (role === 'team') return `Equipe ${agencyName || ''}`.trim();
   if (role === 'client') return 'Cliente';

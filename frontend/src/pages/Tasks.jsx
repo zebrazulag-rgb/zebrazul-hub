@@ -787,7 +787,7 @@ export default function Tasks() {
                   <ListTree size={14} /> Tornar subtarefa
                 </button>
               )}
-              {user?.role !== 'client' && selectedTask.task_type === 'post' && selectedTask.client_id && (
+              {user?.role !== 'client' && !user?.is_commercial_team && selectedTask.task_type === 'post' && selectedTask.client_id && (
                 selectedTask.feed_post_id ? (
                   <Link to={`/feed?client_id=${selectedTask.client_id}`} className="flex-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
                     <ExternalLink size={14} /> Ver no Feed
@@ -833,7 +833,7 @@ export default function Tasks() {
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {s.due_date && <span className="text-[11px] text-slate-400">· {formatTaskDate(s.due_date)}</span>}
                       </div>
-                      {user?.role !== 'client' && s.task_type === 'post' && s.client_id && (
+                      {user?.role !== 'client' && !user?.is_commercial_team && s.task_type === 'post' && s.client_id && (
                         s.feed_post_id ? (
                           <Link to={`/feed?client_id=${s.client_id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline">
                             <ExternalLink size={11} /> Ver na grade
