@@ -55,6 +55,9 @@ function serializePlan(plan) {
     diagnosis_data: parseDiagnosisData(plan.strategic_diagnosis_json),
     strategic_diagnosis: parseDiagnosisData(plan.strategic_diagnosis_json),
     progress: Number(plan.strategic_diagnosis_progress || 0),
+    annual_plan_data: parseDiagnosisData(plan.annual_plan_json),
+    annual_plan: parseDiagnosisData(plan.annual_plan_json),
+    annual_progress: Number(plan.annual_plan_progress || 0),
   };
 }
 
@@ -76,6 +79,9 @@ router.get('/', (req, res) => {
       diagnosis_data: null,
       strategic_diagnosis: null,
       progress: 0,
+      annual_plan_data: null,
+      annual_plan: null,
+      annual_progress: 0,
     },
     tasks: getTasks(plan?.id),
   });
@@ -99,6 +105,18 @@ router.put('/', (req, res) => {
     ? Math.max(0, Math.min(100, Number(req.body.progress) || 0))
     : Number(existing.strategic_diagnosis_progress || 0);
 
+  const hasAnnualPlanData = Object.prototype.hasOwnProperty.call(req.body, 'annual_plan_data')
+    || Object.prototype.hasOwnProperty.call(req.body, 'annual_plan');
+  const annualPlanData = hasAnnualPlanData
+    ? (req.body.annual_plan_data ?? req.body.annual_plan ?? {})
+    : parseDiagnosisData(existing.annual_plan_json);
+  const annualPlanJson = annualPlanData && typeof annualPlanData === 'object'
+    ? JSON.stringify(annualPlanData)
+    : String(existing.annual_plan_json || '{}');
+  const annualProgress = Object.prototype.hasOwnProperty.call(req.body, 'annual_progress')
+    ? Math.max(0, Math.min(100, Number(req.body.annual_progress) || 0))
+    : Number(existing.annual_plan_progress || 0);
+
   const values = [
     Object.prototype.hasOwnProperty.call(req.body, 'what_we_want') ? String(req.body.what_we_want || '') : String(existing.what_we_want || ''),
     Object.prototype.hasOwnProperty.call(req.body, 'why_we_want') ? String(req.body.why_we_want || '') : String(existing.why_we_want || ''),
@@ -107,12 +125,14 @@ router.put('/', (req, res) => {
     Object.prototype.hasOwnProperty.call(req.body, 'diagnosis') ? String(req.body.diagnosis || '') : String(existing.diagnosis || ''),
     diagnosisJson,
     progress,
+    annualPlanJson,
+    annualProgress,
   ];
 
   db.prepare(`
     INSERT INTO action_plans
-      (agency_id, client_id, year, what_we_want, why_we_want, how_we_will_do, manifesto, diagnosis, strategic_diagnosis_json, strategic_diagnosis_progress, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (agency_id, client_id, year, what_we_want, why_we_want, how_we_will_do, manifesto, diagnosis, strategic_diagnosis_json, strategic_diagnosis_progress, annual_plan_json, annual_plan_progress, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(client_id, year) DO UPDATE SET
       what_we_want = excluded.what_we_want,
       why_we_want = excluded.why_we_want,
@@ -121,6 +141,8 @@ router.put('/', (req, res) => {
       diagnosis = excluded.diagnosis,
       strategic_diagnosis_json = excluded.strategic_diagnosis_json,
       strategic_diagnosis_progress = excluded.strategic_diagnosis_progress,
+      annual_plan_json = excluded.annual_plan_json,
+      annual_plan_progress = excluded.annual_plan_progress,
       updated_at = datetime('now')
   `).run(req.user.agency_id, clientId, year, ...values, req.user.id);
 
