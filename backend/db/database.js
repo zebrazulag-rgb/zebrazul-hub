@@ -188,6 +188,44 @@ CREATE TABLE IF NOT EXISTS post_comments (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS commercial_leads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  owner_user_id INTEGER,
+  company_name TEXT NOT NULL,
+  contact_name TEXT,
+  email TEXT,
+  phone TEXT,
+  source TEXT,
+  stage TEXT DEFAULT 'new_lead' CHECK(stage IN ('new_lead','contacted','meeting','proposal','negotiation','won','lost')),
+  estimated_value REAL DEFAULT 0,
+  probability INTEGER DEFAULT 10,
+  next_action TEXT,
+  next_action_date TEXT,
+  notes TEXT,
+  lost_reason TEXT,
+  closed_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS commercial_activities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  lead_id INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  activity_type TEXT DEFAULT 'note' CHECK(activity_type IN ('note','call','meeting','email','stage_change','follow_up')),
+  description TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_id) REFERENCES commercial_leads(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS financial_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL DEFAULT 1,
@@ -743,6 +781,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_tasks_featured ON tasks(agency_id, is_featured, status, due_date);
+  CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage ON commercial_leads(agency_id, stage, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_commercial_leads_next_action ON commercial_leads(agency_id, next_action_date);
+  CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_posts_agency ON posts(agency_id, status, scheduled_at);
   CREATE INDEX IF NOT EXISTS idx_financial_agency ON financial_entries(agency_id, due_date);
 `);
@@ -772,7 +813,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '21', datetime('now'))
+   VALUES ('schema_version', '22', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

@@ -202,6 +202,32 @@ router.get('/', (req, res) => {
 });
 
 
+router.get('/featured/all', (req, res) => {
+  let query = taskSummaryQuery(`
+    WHERE t.parent_task_id IS NULL
+      AND t.agency_id = ?
+      AND t.is_featured = 1
+  `);
+  const params = [req.user.agency_id];
+
+  if (req.user.role === 'team' && !req.user.is_operations_head) {
+    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
+    params.push(Number(req.user.id));
+  } else if (req.user.role === 'client') {
+    query += ' AND t.client_id = ?';
+    params.push(Number(req.user.client_id));
+  }
+
+  query += ` ORDER BY
+    CASE WHEN t.status = 'done' THEN 1 ELSE 0 END,
+    CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
+    t.due_date ASC,
+    t.updated_at DESC`;
+
+  const tasks = attachAssignees(db.prepare(query).all(...params), req.user.agency_id);
+  res.json({ tasks });
+});
+
 router.get('/:id/parent-options', requireRole('admin', 'team'), (req, res) => {
   const task = db.prepare('SELECT id, agency_id, client_id, parent_task_id FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });

@@ -20,6 +20,7 @@ const tenantRoutes = require('./routes/tenant');
 const agencyRoutes = require('./routes/agencies');
 const diagnosticRoutes = require('./routes/diagnostics');
 const publicDiagnosticRoutes = require('./routes/publicDiagnostics');
+const commercialRoutes = require('./routes/commercial');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
@@ -63,6 +64,7 @@ app.use('/api/action-plans', actionPlanRoutes);
 app.use('/api/planning-documents', planningDocumentRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
+app.use('/api/commercial', commercialRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);
