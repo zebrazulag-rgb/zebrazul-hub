@@ -69,7 +69,9 @@ export default function PublicApproval() {
 
         <InstagramPreview
           clientName={post.client_name}
+          clientUsername={post.client_username}
           clientColor={post.client_color}
+          avatarSrc={post.client_avatar}
           imageSrc={post.media_data || post.media_url}
           images={post.media_gallery}
           caption={post.caption}

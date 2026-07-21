@@ -458,7 +458,9 @@ export default function Approval() {
                 <InstagramPreview
                   key={selectedPost.id}
                   clientName={clientOfSelected?.name}
+                  clientUsername={clientOfSelected?.instagram_username}
                   clientColor={clientOfSelected?.logo_color}
+                  avatarSrc={clientOfSelected?.avatar_data}
                   imageSrc={selectedPost.media_data}
                   images={selectedPost.media_gallery}
                   caption={selectedPost.caption}

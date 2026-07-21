@@ -43,13 +43,27 @@ function normalizeGallery(images, imageSrc) {
 
 export default function InstagramPreview({
   clientName = 'sua_marca',
+  clientUsername,
   clientColor = '#2563eb',
+  avatarSrc,
   imageSrc,
   images = [],
   caption,
   contentType = 'feed',
 }) {
-  const initial = clientName?.[0]?.toUpperCase() || 'Z';
+  const normalizedUsername = String(
+    clientUsername || clientName || 'sua_marca',
+  )
+    .replace(/^@+/, '')
+    .trim();
+  const fallbackUsername = normalizedUsername
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9._]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'sua_marca';
+  const username = clientUsername ? normalizedUsername : fallbackUsername;
+  const initial = (clientName || username)?.[0]?.toUpperCase() || 'Z';
   const gallery = useMemo(() => normalizeGallery(images, imageSrc), [images, imageSrc]);
   const [activeIndex, setActiveIndex] = useState(0);
   const pointerStartX = useRef(null);
@@ -104,14 +118,23 @@ export default function InstagramPreview({
     <div className="w-full max-w-[420px] min-w-0 mx-auto bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
       <div className="flex items-center justify-between px-3 py-2.5">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ring-2 ring-offset-1"
-            style={{ backgroundColor: clientColor, ringColor: clientColor }}
-          >
-            {initial}
-          </div>
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt={`Foto de perfil de ${username}`}
+              className="w-8 h-8 rounded-full object-cover shrink-0 ring-2 ring-offset-1"
+              style={{ ringColor: clientColor }}
+            />
+          ) : (
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ring-2 ring-offset-1"
+              style={{ backgroundColor: clientColor, ringColor: clientColor }}
+            >
+              {initial}
+            </div>
+          )}
           <span className="text-sm font-semibold text-slate-800 truncate min-w-0">
-            {clientName?.toLowerCase().replace(/\s+/g, '_') || 'sua_marca'}
+            {username}
           </span>
           {contentType === 'reels' && (
             <span className="text-[10px] uppercase tracking-wide text-slate-400 font-medium shrink-0">Reels</span>
@@ -194,7 +217,7 @@ export default function InstagramPreview({
         <p className="font-semibold text-xs text-slate-800 mb-0.5">124 curtidas</p>
         <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-snug">
           <span className="font-semibold mr-1.5">
-            {clientName?.toLowerCase().replace(/\s+/g, '_') || 'sua_marca'}
+            {username}
           </span>
           {caption || <span className="text-slate-300">A legenda aparece aqui conforme você escreve...</span>}
         </p>

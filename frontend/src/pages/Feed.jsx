@@ -325,7 +325,9 @@ export default function Feed() {
             </div>
             <InstagramPreview
               clientName={currentClient?.name}
+              clientUsername={currentClient?.instagram_username}
               clientColor={currentClient?.logo_color}
+              avatarSrc={currentClient?.avatar_data}
               imageSrc={openPost.media_data}
               images={openPost.media_gallery}
               caption={openPost.caption}

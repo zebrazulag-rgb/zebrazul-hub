@@ -35,7 +35,16 @@ export default function PublicFeed() {
         <ModalBackdrop onClose={() => setOpenPost(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4"><h2 className="font-semibold text-slate-800">{openPost.title}</h2><button onClick={() => setOpenPost(null)} className="text-slate-400 text-xl">×</button></div>
-            <InstagramPreview clientName={client.name} clientColor={client.logo_color} imageSrc={openPost.media_data} images={openPost.media_gallery} caption={openPost.caption} contentType={openPost.content_type} />
+            <InstagramPreview
+              clientName={client.name}
+              clientUsername={client.instagram_username}
+              clientColor={client.logo_color}
+              avatarSrc={client.avatar_data}
+              imageSrc={openPost.media_data}
+              images={openPost.media_gallery}
+              caption={openPost.caption}
+              contentType={openPost.content_type}
+            />
           </div>
         </ModalBackdrop>
       )}

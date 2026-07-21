@@ -349,7 +349,9 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
             <p className="text-xs font-semibold text-slate-400 uppercase mb-3 self-start">Prévia do Instagram</p>
             <InstagramPreview
               clientName={selectedClient?.name}
+              clientUsername={selectedClient?.instagram_username}
               clientColor={selectedClient?.logo_color}
+              avatarSrc={selectedClient?.avatar_data}
               images={form.media_gallery}
               caption={form.caption}
               contentType={form.content_type}
