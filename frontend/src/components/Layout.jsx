@@ -259,7 +259,7 @@ export default function Layout({ children }) {
             )}
             <div className="min-w-0 flex-1 text-left">
               <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
-              <p className="truncate text-xs text-white/40">{roleLabel(user?.role, agency?.name)}</p>
+              <p className="truncate text-xs text-white/40">{roleLabel(user?.role, agency?.name, user?.is_operations_head)}</p>
             </div>
           </button>
           <button
@@ -344,7 +344,8 @@ function SidebarLink({ item, agencyPrimary }) {
   );
 }
 
-function roleLabel(role, agencyName) {
+function roleLabel(role, agencyName, isOperationsHead = false) {
+  if (isOperationsHead) return 'Head de Operação';
   if (role === 'admin') return 'Administrador';
   if (role === 'team') return `Equipe ${agencyName || ''}`.trim();
   if (role === 'client') return 'Cliente';

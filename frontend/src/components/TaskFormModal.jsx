@@ -25,7 +25,7 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function TaskFormModal({ teamUsers, clients, defaultClientId, parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
+export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
   const isEditing = Boolean(taskToEdit?.id);
   const initialForm = {
     task_type: taskToEdit?.task_type || 'basic',
@@ -34,7 +34,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
     content_type: taskToEdit?.content_type || '',
     caption: taskToEdit?.caption || '',
     video_link: taskToEdit?.video_link || '',
-    due_date: taskToEdit?.due_date ? taskToEdit.due_date.slice(0, 10) : todayISO(),
+    due_date: taskToEdit?.due_date ? taskToEdit.due_date.slice(0, 10) : (defaultDueDate || todayISO()),
     assignee_ids: taskToEdit?.assignees?.map((a) => a.id) || [],
     client_id: taskToEdit?.client_id || defaultClientId || '',
     status: taskToEdit?.status || 'pending',
@@ -100,7 +100,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
       client_id: clientId,
       assignee_ids: current.assignee_ids.filter((userId) => {
         const member = teamUsers.find((item) => item.id === userId);
-        if (!member || member.role === 'admin' || !normalizedClientId) return true;
+        if (!member || member.role === 'admin' || member.is_operations_head || !normalizedClientId) return true;
         return (member.client_ids || []).includes(normalizedClientId);
       })
     }));
@@ -168,7 +168,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, par
   const isVideo = form.task_type === 'video';
   const selectedClientId = Number(form.client_id) || null;
   const visibleTeamUsers = teamUsers.filter((member) => {
-    if (member.role === 'admin' || !selectedClientId) return true;
+    if (member.role === 'admin' || member.is_operations_head || !selectedClientId) return true;
     if ((member.client_ids || []).includes(selectedClientId)) return true;
     return form.assignee_ids.includes(member.id);
   });

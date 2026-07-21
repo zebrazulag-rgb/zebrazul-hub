@@ -19,6 +19,17 @@ const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
+function dateParts(value) {
+  const [year, month, day] = String(value || '').slice(0, 10).split('-').map(Number);
+  return { year, month, day };
+}
+
+function formatTaskDate(value) {
+  const parts = dateParts(value);
+  if (!parts.year || !parts.month || !parts.day) return '';
+  return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`;
+}
+
 function buildMonthGrid(year, month) {
   const startWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -78,7 +89,7 @@ function TaskCard({ task: t, onClick, onDragStart }) {
         <AssigneeStack assignees={t.assignees} />
         {t.due_date && (
           <span className="text-xs text-slate-400 flex items-center gap-1">
-            <Calendar size={11} /> {new Date(t.due_date).toLocaleDateString('pt-BR')}
+            <Calendar size={11} /> {formatTaskDate(t.due_date)}
           </span>
         )}
       </div>
@@ -95,6 +106,7 @@ export default function Tasks() {
   const [clients, setClients] = useState([]);
   const [localClientId, setLocalClientId] = useState('all');
   const [showForm, setShowForm] = useState(false);
+  const [defaultTaskDate, setDefaultTaskDate] = useState('');
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
@@ -104,6 +116,7 @@ export default function Tasks() {
   const [cursor, setCursor] = useState(new Date());
   const [dayTasks, setDayTasks] = useState(null);
   const [sendingToFeed, setSendingToFeed] = useState(false);
+  const [sendingSubtaskToFeedId, setSendingSubtaskToFeedId] = useState(null);
   const [feedError, setFeedError] = useState('');
   const [taskError, setTaskError] = useState('');
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -287,16 +300,21 @@ export default function Tasks() {
     setSelectedTask(null);
   }
 
-  async function sendToFeed(id) {
+  async function sendToFeed(id, source = 'task') {
     setSendingToFeed(true);
     setFeedError('');
     try {
       const { data } = await api.post('/tasks/' + id + '/add-to-feed');
-      setSelectedTask((prev) => ({ ...prev, feed_post_id: data.post_id }));
+      if (source === 'subtask') {
+        setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, feed_post_id: data.post_id } : item));
+      } else {
+        setSelectedTask((prev) => ({ ...prev, feed_post_id: data.post_id }));
+      }
     } catch (err) {
       setFeedError(err.response?.data?.error || 'Erro ao enviar para o feed.');
     } finally {
       setSendingToFeed(false);
+      setSendingSubtaskToFeedId(null);
     }
   }
 
@@ -340,9 +358,17 @@ export default function Tasks() {
     if (!day) return [];
     return tasks.filter((t) => {
       if (!t.due_date) return false;
-      const d = new Date(t.due_date);
-      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+      const parts = dateParts(t.due_date);
+      return parts.year === year && parts.month === month + 1 && parts.day === day;
     });
+  }
+
+  function openNewTaskForDate(day) {
+    if (!day) return;
+    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    setDefaultTaskDate(iso);
+    setDayTasks(null);
+    setShowForm(true);
   }
 
   return (
@@ -355,7 +381,7 @@ export default function Tasks() {
           ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe cada etapa.'
           : 'Organize prioridades, responsáveis e prazos em uma visão clara da operação.'}
         actions={
-          <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+          <button onClick={() => { setDefaultTaskDate(''); setShowForm(true); }} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
             <Plus size={17} /> Nova tarefa
           </button>
         }
@@ -440,21 +466,44 @@ export default function Tasks() {
               const dayItems = tasksForDay(day);
               const isToday = day && new Date().toDateString() === new Date(year, month, day).toDateString();
               return (
-                <button
+                <div
                   key={idx}
-                  disabled={!day}
-                  onClick={() => day && dayItems.length > 0 && setDayTasks({ day: day, items: dayItems })}
-                  className={'aspect-square rounded-lg border p-1.5 text-left flex flex-col ' + (!day ? 'border-transparent' : 'border-slate-100 hover:border-zebrazul-300') + ' ' + (isToday ? 'ring-2 ring-zebrazul-400' : '')}
+                  onClick={() => day && openNewTaskForDate(day)}
+                  className={'group min-h-[112px] rounded-xl border p-2 text-left flex flex-col transition ' + (!day ? 'border-transparent' : 'cursor-pointer border-slate-100 hover:border-zebrazul-300 hover:bg-zebrazul-50/30') + ' ' + (isToday ? 'ring-2 ring-zebrazul-400' : '')}
                 >
                   {day && (
                     <>
-                      <span className="text-xs text-slate-500">{day}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-500">{day}</span>
+                        <span className="flex h-5 w-5 items-center justify-center rounded-md text-slate-300 opacity-0 transition group-hover:bg-zebrazul-100 group-hover:text-zebrazul-600 group-hover:opacity-100" title="Adicionar tarefa neste dia">
+                          <Plus size={12} />
+                        </span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {dayItems.slice(0, 2).map((item) => (
+                          <button
+                            type="button"
+                            key={item.id}
+                            onClick={(event) => { event.stopPropagation(); openTask(item.id); }}
+                            className="block w-full truncate rounded-md bg-white px-1.5 py-1 text-left text-[10px] font-medium text-slate-600 shadow-sm hover:text-zebrazul-700"
+                            title={item.title}
+                          >
+                            {item.title}
+                          </button>
+                        ))}
+                      </div>
                       {dayItems.length > 0 && (
-                        <span className="mt-auto text-[10px] text-zebrazul-600 font-medium">{dayItems.length} tarefa{dayItems.length > 1 ? 's' : ''}</span>
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); setDayTasks({ day, items: dayItems }); }}
+                          className="mt-auto pt-1 text-left text-[10px] font-semibold text-zebrazul-600 hover:underline"
+                        >
+                          {dayItems.length} tarefa{dayItems.length > 1 ? 's' : ''}{dayItems.length > 2 ? ' · ver todas' : ''}
+                        </button>
                       )}
                     </>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -464,8 +513,13 @@ export default function Tasks() {
       {dayTasks && (
         <ModalBackdrop onClose={() => setDayTasks(null)}>
           <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-slate-800">Tarefas — {dayTasks.day} de {MONTHS[month]}</h2>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="font-semibold text-slate-800">Tarefas — {dayTasks.day} de {MONTHS[month]}</h2>
+                <button onClick={() => openNewTaskForDate(dayTasks.day)} className="mt-1 text-xs font-medium text-zebrazul-600 hover:underline inline-flex items-center gap-1">
+                  <Plus size={13} /> Adicionar tarefa neste dia
+                </button>
+              </div>
               <button onClick={() => setDayTasks(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
             <div className="space-y-3">
@@ -482,9 +536,10 @@ export default function Tasks() {
           teamUsers={teamUsers}
           clients={clients}
           defaultClientId={effectiveClientId}
+          defaultDueDate={defaultTaskDate}
           userRole={user?.role}
-          onClose={() => setShowForm(false)}
-          onSaved={(task) => { setShowForm(false); upsertTaskSummary(task); }}
+          onClose={() => { setShowForm(false); setDefaultTaskDate(''); }}
+          onSaved={(task) => { setShowForm(false); setDefaultTaskDate(''); upsertTaskSummary(task); }}
         />
       )}
 
@@ -622,7 +677,7 @@ export default function Tasks() {
             )}
             <div className="text-xs text-slate-500 space-y-1 mb-4">
               {selectedTask.content_type && <p>Tipo de conteúdo: {selectedTask.content_type}</p>}
-              {selectedTask.due_date && <p>Data: {new Date(selectedTask.due_date).toLocaleDateString('pt-BR')}</p>}
+              {selectedTask.due_date && <p>Data: {formatTaskDate(selectedTask.due_date)}</p>}
               {selectedTask.client_name && <p>Cliente: {selectedTask.client_name}</p>}
               {selectedTask.assignees && selectedTask.assignees.length > 0 && <p>Responsáveis: {selectedTask.assignees.map((a) => a.name).join(', ')}</p>}
             </div>
@@ -705,8 +760,24 @@ export default function Tasks() {
                       <p className={'text-sm truncate ' + (s.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
-                        {s.due_date && <span className="text-[11px] text-slate-400">· {new Date(s.due_date).toLocaleDateString('pt-BR')}</span>}
+                        {s.due_date && <span className="text-[11px] text-slate-400">· {formatTaskDate(s.due_date)}</span>}
                       </div>
+                      {user?.role !== 'client' && s.task_type === 'post' && s.client_id && (
+                        s.feed_post_id ? (
+                          <Link to={`/feed?client_id=${s.client_id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline">
+                            <ExternalLink size={11} /> Ver na grade
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setSendingSubtaskToFeedId(s.id); sendToFeed(s.id, 'subtask'); }}
+                            disabled={sendingSubtaskToFeedId === s.id}
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-zebrazul-600 hover:underline disabled:opacity-50"
+                          >
+                            <Grid3x3 size={11} /> {sendingSubtaskToFeedId === s.id ? 'Adicionando...' : 'Adicionar à grade'}
+                          </button>
+                        )
+                      )}
                     </div>
                     {(['admin', 'team'].includes(user?.role) || (user?.role === 'client' && Number(s.created_by) === Number(user.id) && s.status === 'pending')) && (
                       <>
