@@ -510,11 +510,18 @@ export default function Tasks() {
     (user?.role === 'client' && Number(selectedTask.created_by) === Number(user.id) && selectedTask.status === 'pending')
   );
 
+  const subtaskOverview = tasks.reduce((summary, task) => ({
+    total: summary.total + Number(task.subtask_total || 0),
+    pending: summary.pending + Number(task.subtask_pending || 0),
+    inProgress: summary.inProgress + Number(task.subtask_in_progress || 0),
+    done: summary.done + Number(task.subtask_done || 0),
+  }), { total: 0, pending: 0, inProgress: 0, done: 0 });
+
   const taskOverview = {
-    total: tasks.length,
-    pending: tasks.filter((task) => task.status === 'pending').length,
-    inProgress: tasks.filter((task) => task.status === 'in_progress').length,
-    done: tasks.filter((task) => task.status === 'done').length,
+    total: tasks.length + subtaskOverview.total,
+    pending: tasks.filter((task) => task.status === 'pending').length + subtaskOverview.pending,
+    inProgress: tasks.filter((task) => task.status === 'in_progress').length + subtaskOverview.inProgress,
+    done: tasks.filter((task) => task.status === 'done').length + subtaskOverview.done,
   };
 
   const year = cursor.getFullYear();
@@ -555,7 +562,7 @@ export default function Tasks() {
       >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: 'Total', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
+            { label: 'Total geral', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
             { label: 'Pendentes', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
             { label: 'Em andamento', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
             { label: 'Concluídas', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
