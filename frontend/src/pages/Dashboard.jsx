@@ -11,7 +11,6 @@ import {
   ArrowUpRight,
   Sparkles,
   FileCheck2,
-  CalendarClock,
   ChevronRight,
   Plus,
   Target,
@@ -21,7 +20,6 @@ import {
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
-import StatusBadge from '../components/StatusBadge.jsx';
 
 function isoDate(date) {
   const y = date.getFullYear();
@@ -140,11 +138,6 @@ export default function Dashboard() {
 
   const isCommercialTeam = Boolean(user?.is_commercial_team);
   const pendingApproval = posts.filter((p) => p.status === 'pending_approval');
-  const upcoming = posts
-    .filter((p) => p.scheduled_at && new Date(p.scheduled_at) >= new Date())
-    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
-    .slice(0, 5);
-
   const taskStats = useMemo(() => {
     const { start, end } = getPeriod(referenceDate, period);
     const today = isoDate(new Date());
@@ -405,81 +398,6 @@ export default function Dashboard() {
         </section>
       )}
 
-      {!isCommercialTeam && (
-      <section className="grid gap-5 lg:grid-cols-2">
-        <div className="rounded-[24px] border border-slate-200/70 bg-white p-6 shadow-[0_10px_34px_rgba(15,23,42,0.04)]">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                <FileCheck2 size={19} />
-              </div>
-              <div>
-                <h2 className="font-semibold text-slate-900">Pendentes de aprovação</h2>
-                <p className="text-xs text-slate-400">Conteúdos que precisam de uma decisão.</p>
-              </div>
-            </div>
-            <Link to="/aprovacao" className="text-sm font-semibold text-[#0969ff] hover:underline">Ver tudo</Link>
-          </div>
-
-          {pendingApproval.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-5 py-8 text-center">
-              <CheckCircle2 className="mx-auto text-emerald-500" size={24} />
-              <p className="mt-2 text-sm font-medium text-slate-700">Tudo aprovado por aqui</p>
-              <p className="mt-1 text-xs text-slate-400">Nenhum conteúdo aguardando aprovação.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {pendingApproval.slice(0, 5).map((post) => (
-                <Link key={post.id} to="/aprovacao" className="group flex items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-3 transition hover:border-slate-200 hover:bg-slate-50">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-800">{post.title}</p>
-                    <p className="mt-0.5 text-xs text-slate-400">Aguardando revisão</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <StatusBadge status={post.status} />
-                    <ChevronRight size={16} className="text-slate-300 transition group-hover:text-slate-500" />
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-[24px] border border-slate-200/70 bg-white p-6 shadow-[0_10px_34px_rgba(15,23,42,0.04)]">
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0969ff]">
-              <CalendarClock size={19} />
-            </div>
-            <div>
-              <h2 className="font-semibold text-slate-900">Próximas publicações</h2>
-              <p className="text-xs text-slate-400">Conteúdos que já estão programados.</p>
-            </div>
-          </div>
-
-          {upcoming.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-5 py-8 text-center">
-              <CalendarDays className="mx-auto text-slate-400" size={24} />
-              <p className="mt-2 text-sm font-medium text-slate-700">Agenda livre</p>
-              <p className="mt-1 text-xs text-slate-400">Nenhuma publicação agendada ainda.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {upcoming.map((post) => (
-                <div key={post.id} className="flex items-center justify-between gap-4 rounded-xl border border-transparent px-3 py-3 transition hover:border-slate-200 hover:bg-slate-50">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-800">{post.title}</p>
-                    <p className="mt-0.5 text-xs text-slate-400">Publicação agendada</p>
-                  </div>
-                  <span className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-500">
-                    {new Date(post.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-      )}
     </div>
   );
 }
