@@ -73,55 +73,70 @@ export default function Dashboard() {
   const [clients, setClients] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [featuredTasks, setFeaturedTasks] = useState([]);
-  const [commercialLeads, setCommercialLeads] = useState([]);
+  const [commercialStats, setCommercialStats] = useState({ open: 0, meeting: 0, proposal: 0, negotiation: 0 });
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
   const [referenceDate, setReferenceDate] = useState(isoDate(new Date()));
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       try {
-        const suffix = selectedClient?.id ? `?client_id=${selectedClient.id}` : '';
-        let loadedTasks = [];
+        const taskParams = {
+          summary: 'dashboard',
+          ...(selectedClient?.id ? { client_id: selectedClient.id } : {}),
+        };
+
         if (user?.is_commercial_team) {
-          const [clientsResponse, tasksResponse] = await Promise.all([
+          const commercialParams = selectedClient?.id ? { client_id: selectedClient.id } : {};
+          const [clientsResponse, tasksResponse, summaryResponse] = await Promise.all([
             api.get('/commercial/clients'),
-            api.get(`/tasks${suffix}`),
+            api.get('/tasks', { params: taskParams }),
+            api.get('/commercial/dashboard-summary', { params: commercialParams }),
           ]);
-          const accessibleClients = clientsResponse.data.clients || [];
-          const clientIds = selectedClient?.id
-            ? [Number(selectedClient.id)]
-            : accessibleClients.map((client) => Number(client.id)).filter(Boolean);
-          const leadResponses = await Promise.all(
-            clientIds.map((clientId) => api.get('/commercial/leads', { params: { client_id: clientId } }))
-          );
+          if (cancelled) return;
           setPosts([]);
-          setClients(accessibleClients);
-          loadedTasks = tasksResponse.data.tasks || [];
-          setCommercialLeads(leadResponses.flatMap((response) => response.data.leads || []));
+          setClients(clientsResponse.data.clients || []);
+          setTasks(tasksResponse.data.tasks || []);
+          setCommercialStats(summaryResponse.data.stats || { open: 0, meeting: 0, proposal: 0, negotiation: 0 });
         } else {
-          const results = await Promise.all([api.get('/posts'), api.get('/clients'), api.get(`/tasks${suffix}`)]);
-          setPosts(results[0].data.posts || []);
-          setClients(results[1].data.clients || []);
-          loadedTasks = results[2].data.tasks || [];
-          setCommercialLeads([]);
+          const [postsResponse, clientsResponse, tasksResponse] = await Promise.all([
+            api.get('/posts', { params: { summary: 'dashboard' } }),
+            api.get('/clients', { params: { summary: 'dashboard' } }),
+            api.get('/tasks', { params: taskParams }),
+          ]);
+          if (cancelled) return;
+          setPosts(postsResponse.data.posts || []);
+          setClients(clientsResponse.data.clients || []);
+          setTasks(tasksResponse.data.tasks || []);
+          setCommercialStats({ open: 0, meeting: 0, proposal: 0, negotiation: 0 });
         }
-        setTasks(loadedTasks);
-        try {
-          const featuredResponse = await api.get('/tasks/featured/all');
-          setFeaturedTasks(featuredResponse.data.tasks || []);
-        } catch {
-          // Compatibilidade durante a publicação: se o backend ainda estiver
-          // reiniciando, preserva os destaques disponíveis na listagem atual.
-          setFeaturedTasks(loadedTasks.filter((task) => Number(task.is_featured) === 1));
-        }
+      } catch (error) {
+        console.error('Não foi possível carregar o resumo do painel:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
+
     load();
+    return () => { cancelled = true; };
   }, [user?.role, user?.is_commercial_team, selectedClient?.id]);
+
+  // Destaques carregam separadamente para nunca segurarem a abertura do painel.
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/tasks/featured/all')
+      .then((response) => {
+        if (!cancelled) setFeaturedTasks(response.data.tasks || []);
+      })
+      .catch(() => {
+        if (!cancelled) setFeaturedTasks([]);
+      });
+    return () => { cancelled = true; };
+  }, [user?.role, user?.is_operations_head]);
+
 
   const isCommercialTeam = Boolean(user?.is_commercial_team);
   const pendingApproval = posts.filter((p) => p.status === 'pending_approval');
@@ -145,7 +160,7 @@ export default function Dashboard() {
   const contentStats = isCommercialTeam ? [
     {
       label: 'Leads abertos',
-      value: commercialLeads.filter((lead) => !['won', 'lost'].includes(lead.stage)).length,
+      value: commercialStats.open,
       icon: Handshake,
       iconClass: 'bg-blue-50 text-[#0969ff]',
       accent: 'from-[#0969ff] to-[#4f8cff]',
@@ -153,7 +168,7 @@ export default function Dashboard() {
     },
     {
       label: 'Diagnósticos',
-      value: commercialLeads.filter((lead) => lead.stage === 'meeting').length,
+      value: commercialStats.meeting,
       icon: Target,
       iconClass: 'bg-violet-50 text-violet-600',
       accent: 'from-violet-400 to-purple-500',
@@ -161,7 +176,7 @@ export default function Dashboard() {
     },
     {
       label: 'Propostas enviadas',
-      value: commercialLeads.filter((lead) => lead.stage === 'proposal').length,
+      value: commercialStats.proposal,
       icon: FileCheck2,
       iconClass: 'bg-amber-50 text-amber-600',
       accent: 'from-amber-400 to-orange-400',
@@ -169,7 +184,7 @@ export default function Dashboard() {
     },
     {
       label: 'Em negociação',
-      value: commercialLeads.filter((lead) => lead.stage === 'negotiation').length,
+      value: commercialStats.negotiation,
       icon: CheckCircle2,
       iconClass: 'bg-emerald-50 text-emerald-600',
       accent: 'from-emerald-400 to-teal-400',
