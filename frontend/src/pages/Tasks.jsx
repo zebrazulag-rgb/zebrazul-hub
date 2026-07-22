@@ -150,6 +150,9 @@ export default function Tasks() {
   const [editingSubtask, setEditingSubtask] = useState(null);
   const [subtasks, setSubtasks] = useState([]);
   const [dragOverCol, setDragOverCol] = useState(null);
+  const [calendarDrag, setCalendarDrag] = useState(null);
+  const [calendarDropDay, setCalendarDropDay] = useState(null);
+  const [calendarFeedback, setCalendarFeedback] = useState('');
   const [cursor, setCursor] = useState(new Date());
   const [dayTasks, setDayTasks] = useState(null);
   const [sendingToFeed, setSendingToFeed] = useState(false);
@@ -399,6 +402,94 @@ export default function Tasks() {
     e.dataTransfer.effectAllowed = 'move';
   }
 
+  function canDragCalendarItem(item) {
+    if (!item) return false;
+    if (['admin', 'team'].includes(user?.role)) return true;
+    return user?.role === 'client'
+      && Number(item.created_by) === Number(user.id)
+      && item.status === 'pending';
+  }
+
+  function isoDateForCalendarDay(day) {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  function handleCalendarDragStart(event, item) {
+    if (!canDragCalendarItem(item)) {
+      event.preventDefault();
+      return;
+    }
+
+    const copyRequested = Boolean(event.altKey);
+    event.dataTransfer.setData('text/task-id', String(item.id));
+    event.dataTransfer.setData('text/plain', String(item.id));
+    event.dataTransfer.effectAllowed = 'copyMove';
+    setCalendarDrag({ id: item.id, copyRequested });
+    setCalendarFeedback('');
+  }
+
+  function handleCalendarDragOver(event, day) {
+    if (!day || !calendarDrag) return;
+    event.preventDefault();
+    const copyRequested = Boolean(event.altKey);
+    event.dataTransfer.dropEffect = copyRequested ? 'copy' : 'move';
+    setCalendarDrag((current) => current && current.copyRequested !== copyRequested
+      ? { ...current, copyRequested }
+      : current);
+    setCalendarDropDay(day);
+  }
+
+  function handleCalendarDragEnd() {
+    setCalendarDrag(null);
+    setCalendarDropDay(null);
+  }
+
+  async function handleCalendarDrop(event, day) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!day) return;
+
+    const taskId = Number(event.dataTransfer.getData('text/task-id') || event.dataTransfer.getData('text/plain') || calendarDrag?.id);
+    if (!taskId) {
+      handleCalendarDragEnd();
+      return;
+    }
+
+    const item = calendarTasks.find((task) => Number(task.id) === taskId);
+    if (!canDragCalendarItem(item)) {
+      setTaskError('Você não tem permissão para alterar este item.');
+      handleCalendarDragEnd();
+      return;
+    }
+
+    const targetDate = isoDateForCalendarDay(day);
+    const shouldCopy = Boolean(event.altKey || calendarDrag?.copyRequested);
+
+    if (!shouldCopy && String(item?.due_date || '').slice(0, 10) === targetDate) {
+      handleCalendarDragEnd();
+      return;
+    }
+
+    setTaskError('');
+    try {
+      if (shouldCopy) {
+        await api.post('/tasks/' + taskId + '/duplicate', { due_date: targetDate });
+        setCalendarFeedback('Item duplicado para ' + formatTaskDate(targetDate) + '.');
+      } else {
+        await api.put('/tasks/' + taskId, { due_date: targetDate });
+        setCalendarFeedback('Item movido para ' + formatTaskDate(targetDate) + '.');
+      }
+      await loadTasks();
+      window.setTimeout(() => setCalendarFeedback(''), 2600);
+    } catch (error) {
+      setTaskError(error.response?.data?.error || (shouldCopy
+        ? 'Não foi possível duplicar o item.'
+        : 'Não foi possível mover o item.'));
+    } finally {
+      handleCalendarDragEnd();
+    }
+  }
+
   function handleDrop(e, columnKey) {
     e.preventDefault();
     setDragOverCol(null);
@@ -441,7 +532,7 @@ export default function Tasks() {
 
   function openNewTaskForDate(day) {
     if (!day) return;
-    const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const iso = isoDateForCalendarDay(day);
     setDefaultTaskDate(iso);
     setDayTasks(null);
     setShowForm(true);
@@ -525,14 +616,24 @@ export default function Tasks() {
 
       {view === 'calendar' && (
         <div className="surface-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <button onClick={() => setCursor(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
-              <ChevronLeft size={20} />
-            </button>
-            <h2 className="font-semibold text-slate-800">{MONTHS[month]} de {year}</h2>
-            <button onClick={() => setCursor(new Date(year, month + 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
-              <ChevronRight size={20} />
-            </button>
+          <div className="mb-4">
+            <div className="flex items-center justify-between">
+              <button onClick={() => setCursor(new Date(year, month - 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+                <ChevronLeft size={20} />
+              </button>
+              <div className="text-center">
+                <h2 className="font-semibold text-slate-800">{MONTHS[month]} de {year}</h2>
+                <p className="mt-1 text-[11px] text-slate-400">Arraste para mudar a data · segure Alt/Option para duplicar</p>
+              </div>
+              <button onClick={() => setCursor(new Date(year, month + 1, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+                <ChevronRight size={20} />
+              </button>
+            </div>
+            {calendarFeedback && (
+              <div className="mx-auto mt-3 w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+                {calendarFeedback}
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-7 gap-1.5 text-center text-xs font-semibold text-slate-400 mb-2">
             {WEEKDAYS.map((w) => <div key={w}>{w}</div>)}
@@ -544,8 +645,15 @@ export default function Tasks() {
               return (
                 <div
                   key={idx}
-                  onClick={() => day && openNewTaskForDate(day)}
-                  className={'group min-h-[112px] rounded-xl border p-2 text-left flex flex-col transition ' + (!day ? 'border-transparent' : 'cursor-pointer border-slate-100 hover:border-zebrazul-300 hover:bg-zebrazul-50/30') + ' ' + (isToday ? 'ring-2 ring-zebrazul-400' : '')}
+                  onClick={() => day && !calendarDrag && openNewTaskForDate(day)}
+                  onDragOver={(event) => handleCalendarDragOver(event, day)}
+                  onDragEnter={(event) => { if (day && calendarDrag) { event.preventDefault(); setCalendarDropDay(day); } }}
+                  onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget)) return;
+                    setCalendarDropDay((current) => current === day ? null : current);
+                  }}
+                  onDrop={(event) => handleCalendarDrop(event, day)}
+                  className={'group min-h-[112px] rounded-xl border p-2 text-left flex flex-col transition ' + (!day ? 'border-transparent' : 'cursor-pointer border-slate-100 hover:border-zebrazul-300 hover:bg-zebrazul-50/30') + ' ' + (isToday ? 'ring-2 ring-zebrazul-400' : '') + ' ' + (calendarDropDay === day && calendarDrag ? (calendarDrag.copyRequested ? 'border-violet-400 bg-violet-50 ring-4 ring-violet-100' : 'border-zebrazul-400 bg-zebrazul-50 ring-4 ring-zebrazul-100') : '')}
                 >
                   {day && (
                     <>
@@ -560,9 +668,12 @@ export default function Tasks() {
                           <button
                             type="button"
                             key={item.id}
+                            draggable={canDragCalendarItem(item)}
+                            onDragStart={(event) => handleCalendarDragStart(event, item)}
+                            onDragEnd={handleCalendarDragEnd}
                             onClick={(event) => { event.stopPropagation(); openTask(item.id); }}
-                            className={`block w-full truncate rounded-md px-1.5 py-1 text-left text-[10px] font-medium shadow-sm ${item.parent_task_id ? 'border border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100' : 'bg-white text-slate-600 hover:text-zebrazul-700'}`}
-                            title={item.parent_task_id && item.parent_title ? `${item.title} — subtarefa de ${item.parent_title}` : item.title}
+                            className={`block w-full truncate rounded-md px-1.5 py-1 text-left text-[10px] font-medium shadow-sm ${canDragCalendarItem(item) ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${item.parent_task_id ? 'border border-indigo-100 bg-indigo-50 text-indigo-700 hover:bg-indigo-100' : 'bg-white text-slate-600 hover:text-zebrazul-700'}`}
+                            title={(item.parent_task_id && item.parent_title ? `${item.title} — subtarefa de ${item.parent_title}` : item.title) + (canDragCalendarItem(item) ? ' · arraste para mover; Alt/Option para duplicar' : '')}
                           >
                             {item.parent_task_id ? '↳ ' : ''}{item.title}
                           </button>
