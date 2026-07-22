@@ -136,6 +136,43 @@ router.get('/users', (req, res) => {
   res.json({ users: commercialUsers(scope.clientId, req.user.agency_id) });
 });
 
+// Resumo leve para o painel da equipe comercial. Evita uma requisição de
+// pipeline para cada cliente e não transfere os dados completos dos leads.
+router.get('/dashboard-summary', (req, res) => {
+  let clientIds;
+  if (req.query.client_id) {
+    const scope = resolveClientId(req, req.query.client_id);
+    if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
+    clientIds = [scope.clientId];
+  } else {
+    clientIds = accessibleClients(req.user).map((client) => Number(client.id)).filter(Boolean);
+  }
+
+  if (!clientIds.length) {
+    return res.json({ stats: { open: 0, meeting: 0, proposal: 0, negotiation: 0 } });
+  }
+
+  const placeholders = clientIds.map(() => '?').join(',');
+  const row = db.prepare(`
+    SELECT
+      SUM(CASE WHEN stage NOT IN ('won', 'lost') THEN 1 ELSE 0 END) AS open,
+      SUM(CASE WHEN stage = 'meeting' THEN 1 ELSE 0 END) AS meeting,
+      SUM(CASE WHEN stage = 'proposal' THEN 1 ELSE 0 END) AS proposal,
+      SUM(CASE WHEN stage = 'negotiation' THEN 1 ELSE 0 END) AS negotiation
+    FROM commercial_leads
+    WHERE agency_id = ? AND client_id IN (${placeholders})
+  `).get(Number(req.user.agency_id), ...clientIds) || {};
+
+  res.json({
+    stats: {
+      open: Number(row.open || 0),
+      meeting: Number(row.meeting || 0),
+      proposal: Number(row.proposal || 0),
+      negotiation: Number(row.negotiation || 0),
+    },
+  });
+});
+
 router.get('/leads', (req, res) => {
   const scope = resolveClientId(req, req.query.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });

@@ -82,8 +82,11 @@ function appendPostScope(req, query, params) {
 }
 
 router.get('/', (req, res) => {
-  const { client_id, status } = req.query;
-  let query = 'SELECT * FROM posts WHERE 1=1';
+  const { client_id, status, summary } = req.query;
+  const compact = summary === '1' || summary === 'dashboard';
+  let query = compact
+    ? 'SELECT id, client_id, title, status, scheduled_at, created_at FROM posts WHERE 1=1'
+    : 'SELECT * FROM posts WHERE 1=1';
   const params = [];
 
   query = appendPostScope(req, query, params);
@@ -100,7 +103,8 @@ router.get('/', (req, res) => {
   }
 
   query += ' ORDER BY COALESCE(scheduled_at, created_at) ASC';
-  const posts = db.prepare(query).all(...params).map(normalizePost);
+  const rows = db.prepare(query).all(...params);
+  const posts = compact ? rows : rows.map(normalizePost);
   res.json({ posts });
 });
 

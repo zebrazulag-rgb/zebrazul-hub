@@ -35,16 +35,19 @@ function ensureClientAccess(req, res, clientId) {
 }
 
 router.get('/', (req, res) => {
+  const fields = req.query.summary === '1' || req.query.summary === 'dashboard'
+    ? 'id, name, status, logo_color'
+    : '*';
   let rows;
   if (req.user.role === 'admin' || req.user.is_operations_head) {
-    rows = db.prepare('SELECT * FROM clients WHERE agency_id = ? ORDER BY name').all(req.user.agency_id);
+    rows = db.prepare(`SELECT ${fields} FROM clients WHERE agency_id = ? ORDER BY name`).all(req.user.agency_id);
   } else if (req.user.role === 'client') {
     rows = req.user.client_id
-      ? db.prepare('SELECT * FROM clients WHERE id = ? AND agency_id = ?').all(req.user.client_id, req.user.agency_id)
+      ? db.prepare(`SELECT ${fields} FROM clients WHERE id = ? AND agency_id = ?`).all(req.user.client_id, req.user.agency_id)
       : [];
   } else if (req.user.client_ids.length) {
     const placeholders = req.user.client_ids.map(() => '?').join(',');
-    rows = db.prepare(`SELECT * FROM clients WHERE agency_id = ? AND id IN (${placeholders}) ORDER BY name`)
+    rows = db.prepare(`SELECT ${fields} FROM clients WHERE agency_id = ? AND id IN (${placeholders}) ORDER BY name`)
       .all(req.user.agency_id, ...req.user.client_ids);
   } else rows = [];
   res.json({ clients: rows });

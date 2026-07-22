@@ -175,7 +175,45 @@ function getTaskSummary(taskId, agencyId) {
 }
 
 router.get('/', (req, res) => {
-  const { status, assignee_id, client_id } = req.query;
+  const { status, assignee_id, client_id, summary } = req.query;
+
+  // O painel precisa apenas de prazo e status. Esta rota compacta evita as
+  // contagens correlacionadas de subtarefas e o carregamento de responsáveis,
+  // além de incluir tarefas e subtarefas nas métricas gerais.
+  if (summary === 'dashboard') {
+    let compactQuery = `
+      SELECT t.id, t.client_id, t.parent_task_id, t.due_date, t.status, t.is_featured
+      FROM tasks t
+      WHERE t.agency_id = ?
+    `;
+    const compactParams = [req.user.agency_id];
+
+    if (req.user.role === 'team' && !req.user.is_operations_head) {
+      compactQuery += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
+      compactParams.push(Number(req.user.id));
+    } else if (req.user.role === 'client') {
+      compactQuery += ' AND t.client_id = ?';
+      compactParams.push(Number(req.user.client_id));
+    }
+
+    if (client_id) {
+      if (!ensureClientAccess(req, res, client_id)) return;
+      compactQuery += ' AND t.client_id = ?';
+      compactParams.push(Number(client_id));
+    }
+    if (status) {
+      compactQuery += ' AND t.status = ?';
+      compactParams.push(status);
+    }
+    if (assignee_id) {
+      compactQuery += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
+      compactParams.push(Number(assignee_id));
+    }
+
+    compactQuery += ' ORDER BY COALESCE(t.due_date, t.created_at) ASC';
+    return res.json({ tasks: db.prepare(compactQuery).all(...compactParams) });
+  }
+
   let query = taskSummaryQuery('WHERE t.parent_task_id IS NULL AND t.agency_id = ?');
   const params = [req.user.agency_id];
 
