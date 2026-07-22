@@ -160,6 +160,8 @@ function taskSummaryQuery(whereClause) {
       t.created_at, t.updated_at,
       c.name AS client_name,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'pending') AS subtask_pending,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'in_progress') AS subtask_in_progress,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'done') AS subtask_done
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
