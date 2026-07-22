@@ -494,10 +494,15 @@ router.delete('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
+router.post('/:id/duplicate', requireRole('admin', 'team', 'client'), (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
+  if (req.user.role === 'client' && !ensureModifyTask(req, res, task)) return;
+
+  const requestedDueDate = Object.prototype.hasOwnProperty.call(req.body || {}, 'due_date')
+    ? (req.body.due_date || null)
+    : task.due_date;
 
   const duplicate = db.transaction(() => {
     const info = db.prepare(`
@@ -505,7 +510,7 @@ router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
     `).run(
       req.user.agency_id, task.client_id, req.user.id, task.parent_task_id, task.task_type, `${task.title} (cópia)`, task.description,
-      task.content_type, task.caption, task.video_link, task.media_gallery, task.due_date,
+      task.content_type, task.caption, task.video_link, task.media_gallery, requestedDueDate,
       task.attachment_data, task.attachment_mime, task.attachment_filename
     );
     const assigneeIds = db.prepare('SELECT user_id FROM task_assignees WHERE task_id = ?').all(task.id).map((row) => row.user_id);
