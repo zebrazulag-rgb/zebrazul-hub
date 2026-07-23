@@ -35,6 +35,74 @@ function getConnection(clientId, agencyId) {
   `).get(clientId, agencyId) || null;
 }
 
+const configuredAutoSyncMinutes = Number(process.env.META_AUTO_SYNC_MINUTES || 30);
+const AUTO_SYNC_MAX_AGE_MINUTES = Number.isFinite(configuredAutoSyncMinutes) && configuredAutoSyncMinutes >= 5
+  ? configuredAutoSyncMinutes
+  : 30;
+const autoSyncLocks = new Map();
+
+function wantsAutoSync(req) {
+  return req.user?.role === 'client' && ['1', 'true', 'yes'].includes(String(req.query.auto_sync || '').toLowerCase());
+}
+
+function parseDatabaseDate(value) {
+  if (!value) return null;
+  const normalized = String(value).includes('T') ? String(value) : `${String(value).replace(' ', 'T')}Z`;
+  const timestamp = Date.parse(normalized);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isRecent(value, minutes = AUTO_SYNC_MAX_AGE_MINUTES) {
+  const timestamp = parseDatabaseDate(value);
+  return timestamp !== null && (Date.now() - timestamp) < minutes * 60 * 1000;
+}
+
+function getAdsSnapshotSyncedAt(connectionId, from, to) {
+  return db.prepare(`
+    SELECT synced_at
+    FROM meta_report_snapshots
+    WHERE meta_account_id = ? AND date_from = ? AND date_to = ?
+  `).get(connectionId, from, to)?.synced_at || null;
+}
+
+function shouldAutoSyncAds(connection, from, to) {
+  if (!connection || connection.last_sync_status === 'syncing') return false;
+  if (connection.last_sync_status === 'error' && isRecent(connection.updated_at, 10)) return false;
+  const snapshotSyncedAt = getAdsSnapshotSyncedAt(connection.id, from, to);
+  if (!snapshotSyncedAt) return true;
+  return !isRecent(snapshotSyncedAt);
+}
+
+async function autoSyncAdsIfNeeded(req, connection, clientId, from, to) {
+  if (!wantsAutoSync(req) || !connection) return { requested: false, refreshed: false };
+
+  const lockKey = `${req.user.agency_id}:${clientId}:${from}:${to}`;
+  const existingLock = autoSyncLocks.get(lockKey);
+  if (existingLock) {
+    try {
+      await existingLock;
+      return { requested: true, refreshed: true, shared: true };
+    } catch (error) {
+      return { requested: true, refreshed: false, error: error.message };
+    }
+  }
+
+  if (!shouldAutoSyncAds(connection, from, to)) {
+    return { requested: true, refreshed: false, fresh: true };
+  }
+
+  const syncPromise = syncMetaClient(clientId, from, to);
+  autoSyncLocks.set(lockKey, syncPromise);
+  try {
+    await syncPromise;
+    return { requested: true, refreshed: true };
+  } catch (error) {
+    return { requested: true, refreshed: false, error: error.message };
+  } finally {
+    autoSyncLocks.delete(lockKey);
+  }
+}
+
 function isIsoDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
   if (!match) return false;
@@ -275,14 +343,20 @@ router.delete('/client/:clientId/connection', requireRole('admin'), (req, res) =
   res.json({ ok: true });
 });
 
-router.get('/client/:clientId/report', (req, res) => {
+router.get('/client/:clientId/report', async (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
   if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
 
   try {
     const { from, to } = resolveDateRange(req.query);
-    res.json(getReportPayload(clientId, from, to, req.user.agency_id));
+    const connection = getConnection(clientId, req.user.agency_id);
+    const autoSync = await autoSyncAdsIfNeeded(req, connection, clientId, from, to);
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.json({
+      ...getReportPayload(clientId, from, to, req.user.agency_id),
+      auto_sync: autoSync,
+    });
   } catch (error) {
     apiErrorResponse(res, error);
   }

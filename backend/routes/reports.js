@@ -32,6 +32,7 @@ router.get('/:clientId', (req, res) => {
     return acc;
   }, { reach: 0, impressions: 0, engagement: 0, clicks: 0, leads: 0, spend: 0, conversions: 0 });
 
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.json({ metrics: rows, totals });
 });
 

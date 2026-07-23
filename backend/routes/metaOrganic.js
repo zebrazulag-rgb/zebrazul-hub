@@ -34,6 +34,80 @@ function getConnection(clientId, agencyId) {
   `).get(clientId, agencyId) || null;
 }
 
+const configuredAutoSyncMinutes = Number(process.env.META_AUTO_SYNC_MINUTES || 30);
+const AUTO_SYNC_MAX_AGE_MINUTES = Number.isFinite(configuredAutoSyncMinutes) && configuredAutoSyncMinutes >= 5
+  ? configuredAutoSyncMinutes
+  : 30;
+const autoSyncLocks = new Map();
+
+function wantsAutoSync(req) {
+  return req.user?.role === 'client' && ['1', 'true', 'yes'].includes(String(req.query.auto_sync || '').toLowerCase());
+}
+
+function parseDatabaseDate(value) {
+  if (!value) return null;
+  const normalized = String(value).includes('T') ? String(value) : `${String(value).replace(' ', 'T')}Z`;
+  const timestamp = Date.parse(normalized);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isRecent(value, minutes = AUTO_SYNC_MAX_AGE_MINUTES) {
+  const timestamp = parseDatabaseDate(value);
+  return timestamp !== null && (Date.now() - timestamp) < minutes * 60 * 1000;
+}
+
+function getOrganicSnapshotState(connection, from, to) {
+  const rows = db.prepare(`
+    SELECT platform, synced_at
+    FROM meta_organic_report_snapshots
+    WHERE organic_account_id = ? AND date_from = ? AND date_to = ?
+  `).all(connection.id, from, to);
+  const expected = Number(Boolean(connection.page_id)) + Number(Boolean(connection.instagram_account_id));
+  const newest = rows.reduce((latest, row) => {
+    const current = parseDatabaseDate(row.synced_at);
+    return current !== null && (latest === null || current > latest) ? current : latest;
+  }, null);
+  return { complete: expected > 0 && rows.length >= expected, newest };
+}
+
+function shouldAutoSyncOrganic(connection, from, to) {
+  if (!connection || connection.last_sync_status === 'syncing') return false;
+  if (connection.last_sync_status === 'error' && isRecent(connection.updated_at, 10)) return false;
+  const snapshot = getOrganicSnapshotState(connection, from, to);
+  if (!snapshot.complete || snapshot.newest === null) return true;
+  return (Date.now() - snapshot.newest) >= AUTO_SYNC_MAX_AGE_MINUTES * 60 * 1000;
+}
+
+async function autoSyncOrganicIfNeeded(req, connection, clientId, from, to) {
+  if (!wantsAutoSync(req) || !connection) return { requested: false, refreshed: false };
+
+  const lockKey = `${req.user.agency_id}:${clientId}:${from}:${to}`;
+  const existingLock = autoSyncLocks.get(lockKey);
+  if (existingLock) {
+    try {
+      await existingLock;
+      return { requested: true, refreshed: true, shared: true };
+    } catch (error) {
+      return { requested: true, refreshed: false, error: error.message };
+    }
+  }
+
+  if (!shouldAutoSyncOrganic(connection, from, to)) {
+    return { requested: true, refreshed: false, fresh: true };
+  }
+
+  const syncPromise = syncMetaOrganicClient(clientId, from, to);
+  autoSyncLocks.set(lockKey, syncPromise);
+  try {
+    await syncPromise;
+    return { requested: true, refreshed: true };
+  } catch (error) {
+    return { requested: true, refreshed: false, error: error.message };
+  } finally {
+    autoSyncLocks.delete(lockKey);
+  }
+}
+
 function isIsoDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
   if (!match) return false;
@@ -225,13 +299,19 @@ router.delete('/client/:clientId/connection', requireRole('admin'), (req, res) =
   res.json({ ok: true });
 });
 
-router.get('/client/:clientId/report', (req, res) => {
+router.get('/client/:clientId/report', async (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!ensureClientAccess(req, res, clientId)) return;
   if (!getClient(clientId, req.user.agency_id)) return res.status(404).json({ error: 'Cliente nao encontrado' });
   try {
     const { from, to } = resolveDateRange(req.query);
-    res.json(getReportPayload(clientId, from, to, req.user.agency_id));
+    const connection = getConnection(clientId, req.user.agency_id);
+    const autoSync = await autoSyncOrganicIfNeeded(req, connection, clientId, from, to);
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.json({
+      ...getReportPayload(clientId, from, to, req.user.agency_id),
+      auto_sync: autoSync,
+    });
   } catch (error) {
     apiErrorResponse(res, error);
   }
