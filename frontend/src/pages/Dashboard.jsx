@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Clock,
@@ -69,12 +69,16 @@ export default function Dashboard() {
   const { selectedClient } = useClientFilter();
   const [posts, setPosts] = useState([]);
   const [clients, setClients] = useState([]);
-  const [tasks, setTasks] = useState([]);
   const [featuredTasks, setFeaturedTasks] = useState([]);
   const [commercialStats, setCommercialStats] = useState({ open: 0, meeting: 0, proposal: 0, negotiation: 0 });
   const [loading, setLoading] = useState(true);
+  const [taskStatsLoading, setTaskStatsLoading] = useState(true);
   const [period, setPeriod] = useState('month');
   const [referenceDate, setReferenceDate] = useState(isoDate(new Date()));
+  const [taskStats, setTaskStats] = useState(() => {
+    const { start, end } = getPeriod(isoDate(new Date()), 'month');
+    return { total: 0, pending: 0, overdue: 0, done: 0, task_total: 0, subtask_total: 0, start, end };
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -82,33 +86,24 @@ export default function Dashboard() {
     async function load() {
       setLoading(true);
       try {
-        const taskParams = {
-          summary: 'dashboard',
-          ...(selectedClient?.id ? { client_id: selectedClient.id } : {}),
-        };
-
         if (user?.is_commercial_team) {
           const commercialParams = selectedClient?.id ? { client_id: selectedClient.id } : {};
-          const [clientsResponse, tasksResponse, summaryResponse] = await Promise.all([
+          const [clientsResponse, summaryResponse] = await Promise.all([
             api.get('/commercial/clients'),
-            api.get('/tasks', { params: taskParams }),
             api.get('/commercial/dashboard-summary', { params: commercialParams }),
           ]);
           if (cancelled) return;
           setPosts([]);
           setClients(clientsResponse.data.clients || []);
-          setTasks(tasksResponse.data.tasks || []);
           setCommercialStats(summaryResponse.data.stats || { open: 0, meeting: 0, proposal: 0, negotiation: 0 });
         } else {
-          const [postsResponse, clientsResponse, tasksResponse] = await Promise.all([
+          const [postsResponse, clientsResponse] = await Promise.all([
             api.get('/posts', { params: { summary: 'dashboard' } }),
             api.get('/clients', { params: { summary: 'dashboard' } }),
-            api.get('/tasks', { params: taskParams }),
           ]);
           if (cancelled) return;
           setPosts(postsResponse.data.posts || []);
           setClients(clientsResponse.data.clients || []);
-          setTasks(tasksResponse.data.tasks || []);
           setCommercialStats({ open: 0, meeting: 0, proposal: 0, negotiation: 0 });
         }
       } catch (error) {
@@ -136,18 +131,47 @@ export default function Dashboard() {
   }, [user?.role, user?.is_operations_head]);
 
 
+  useEffect(() => {
+    let cancelled = false;
+    const { start, end } = getPeriod(referenceDate, period);
+    const params = {
+      start_date: start,
+      end_date: end,
+      today_date: isoDate(new Date()),
+      ...(selectedClient?.id ? { client_id: selectedClient.id } : {}),
+    };
+
+    setTaskStatsLoading(true);
+    api.get('/tasks/dashboard-stats', { params })
+      .then((response) => {
+        if (cancelled) return;
+        const stats = response.data.stats || {};
+        setTaskStats({
+          total: Number(stats.total || 0),
+          pending: Number(stats.pending || 0),
+          overdue: Number(stats.overdue || 0),
+          done: Number(stats.done || 0),
+          task_total: Number(stats.task_total || 0),
+          subtask_total: Number(stats.subtask_total || 0),
+          start,
+          end,
+        });
+      })
+      .catch((error) => {
+        console.error('Não foi possível carregar o desempenho das tarefas e subtarefas:', error);
+        if (!cancelled) {
+          setTaskStats({ total: 0, pending: 0, overdue: 0, done: 0, task_total: 0, subtask_total: 0, start, end });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTaskStatsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [period, referenceDate, selectedClient?.id, user?.id, user?.role, user?.is_operations_head]);
+
   const isCommercialTeam = Boolean(user?.is_commercial_team);
   const pendingApproval = posts.filter((p) => p.status === 'pending_approval');
-  const taskStats = useMemo(() => {
-    const { start, end } = getPeriod(referenceDate, period);
-    const today = isoDate(new Date());
-    const filtered = tasks.filter((task) => task.due_date && task.due_date.slice(0, 10) >= start && task.due_date.slice(0, 10) <= end);
-    const overdue = filtered.filter((task) => task.status !== 'done' && task.due_date.slice(0, 10) < today);
-    const pending = filtered.filter((task) => task.status !== 'done' && task.due_date.slice(0, 10) >= today);
-    const done = filtered.filter((task) => task.status === 'done');
-    return { total: filtered.length, pending: pending.length, overdue: overdue.length, done: done.length, start, end };
-  }, [tasks, period, referenceDate]);
-
   const completionRate = taskStats.total ? Math.round((taskStats.done / taskStats.total) * 100) : 0;
   const activeClients = clients.filter((c) => c.status === 'active').length;
   const contentStats = isCommercialTeam ? [
@@ -344,7 +368,7 @@ export default function Dashboard() {
                 <div>
                   <h2 className="font-semibold text-slate-900">Desempenho das tarefas</h2>
                   <p className="text-xs text-slate-400">
-                    {taskStats.start.split('-').reverse().join('/')} até {taskStats.end.split('-').reverse().join('/')}
+                    {taskStats.start.split('-').reverse().join('/')} até {taskStats.end.split('-').reverse().join('/')} · inclui subtarefas
                   </p>
                 </div>
               </div>
@@ -365,7 +389,7 @@ export default function Dashboard() {
           <div className="grid gap-6 p-6 lg:grid-cols-[1fr_280px]">
             <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
               {[
-                { label: 'Existentes', value: taskStats.total, icon: ListChecks, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100' },
+                { label: 'Total geral', value: taskStats.total, icon: ListChecks, color: 'bg-blue-50 text-blue-600', border: 'border-blue-100', detail: `${taskStats.task_total} tarefas + ${taskStats.subtask_total} subtarefas` },
                 { label: 'Pendentes', value: taskStats.pending, icon: CircleDot, color: 'bg-amber-50 text-amber-600', border: 'border-amber-100' },
                 { label: 'Atrasadas', value: taskStats.overdue, icon: AlertCircle, color: 'bg-rose-50 text-rose-600', border: 'border-rose-100' },
                 { label: 'Concluídas', value: taskStats.done, icon: CheckCircle2, color: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-100' },
@@ -374,8 +398,9 @@ export default function Dashboard() {
                   <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${stat.color}`}>
                     <stat.icon size={17} />
                   </div>
-                  <p className="mt-4 text-2xl font-bold text-slate-900">{stat.value}</p>
+                  <p className="mt-4 text-2xl font-bold text-slate-900">{taskStatsLoading ? '—' : stat.value}</p>
                   <p className="mt-0.5 text-sm text-slate-500">{stat.label}</p>
+                  {stat.detail && <p className="mt-1 text-[11px] text-slate-400">{stat.detail}</p>}
                 </div>
               ))}
             </div>
@@ -385,8 +410,8 @@ export default function Dashboard() {
                 <span className="text-xs font-medium uppercase tracking-[0.16em] text-white/35">Conclusão</span>
                 <Target size={17} className="text-[#63a0ff]" />
               </div>
-              <p className="mt-5 text-4xl font-bold">{completionRate}%</p>
-              <p className="mt-1 text-sm text-white/45">das tarefas do período foram concluídas.</p>
+              <p className="mt-5 text-4xl font-bold">{taskStatsLoading ? '—' : `${completionRate}%`}</p>
+              <p className="mt-1 text-sm text-white/45">das tarefas e subtarefas do período foram concluídas.</p>
               <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-gradient-to-r from-[#0969ff] to-[#63a0ff] transition-all" style={{ width: `${completionRate}%` }} />
               </div>
