@@ -13,7 +13,6 @@ import {
   X,
   Compass,
   ChevronDown,
-  Sparkles,
   Palette,
   Building2,
   Settings,
@@ -136,7 +135,6 @@ export default function Layout({ children }) {
   const agencyPrimary = agency?.primary_color || '#0969ff';
   const agencySidebar = agency?.sidebar_color || '#121620';
   const agencyLogo = agency?.logo_data || zebraHubLogo;
-  const selectedClientName = selectedClient?.name || 'Todos os clientes';
 
   return (
     <div className="min-h-screen flex bg-[#f5f7fb] text-slate-900">
@@ -152,16 +150,13 @@ export default function Layout({ children }) {
         {user?.role !== 'client' && (
           <div className="px-4 pb-4">
             <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">Visualizando</span>
-                <Sparkles size={13} className="text-[#4f8cff]" />
-              </div>
               <div className="relative">
                 <span
                   className="absolute left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full ring-4 ring-white/5"
                   style={{ backgroundColor: accentColor }}
                 />
                 <select
+                  aria-label="Selecionar cliente"
                   className="w-full appearance-none rounded-xl border border-white/10 bg-[#0d1119] py-2.5 pl-8 pr-9 text-sm font-medium text-white outline-none transition focus:border-[#3f7cff]/60"
                   value={selectedClient?.id || 'all'}
                   onChange={(e) => {
@@ -177,7 +172,6 @@ export default function Layout({ children }) {
                 </select>
                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/45" />
               </div>
-              <p className="mt-2 truncate text-xs text-white/40">{selectedClientName}</p>
             </div>
           </div>
         )}
@@ -245,40 +239,42 @@ export default function Layout({ children }) {
         )}
 
         <div className="border-t border-white/[0.07] px-3 py-3">
-          <button
-            onClick={() => {
-              const currentName = user?.name || '';
-              initialProfileNameRef.current = currentName;
-              setProfileName(currentName);
-              setProfileError('');
-              setShowProfile(true);
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-white/[0.055]"
-          >
-            {user?.avatar_data ? (
-              <img src={user.avatar_data} alt="" className="h-9 w-9 shrink-0 rounded-xl object-cover ring-1 ring-white/10" />
-            ) : (
-              <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white ring-1 ring-white/10"
-                style={{ backgroundColor: user?.avatar_color || agencyPrimary }}
-              >
-                {user?.name?.[0]?.toUpperCase()}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const currentName = user?.name || '';
+                initialProfileNameRef.current = currentName;
+                setProfileName(currentName);
+                setProfileError('');
+                setShowProfile(true);
+              }}
+              className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2.5 py-2 transition hover:bg-white/[0.055]"
+            >
+              {user?.avatar_data ? (
+                <img src={user.avatar_data} alt="" className="h-9 w-9 shrink-0 rounded-xl object-cover ring-1 ring-white/10" />
+              ) : (
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white ring-1 ring-white/10"
+                  style={{ backgroundColor: user?.avatar_color || agencyPrimary }}
+                >
+                  {user?.name?.[0]?.toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1 text-left">
+                <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
+                <p className="truncate text-[11px] text-white/40">{roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team)}</p>
               </div>
-            )}
-            <div className="min-w-0 flex-1 text-left">
-              <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
-              <p className="truncate text-xs text-white/40">{roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team)}</p>
-            </div>
-          </button>
-          <button
-            onClick={handleLogout}
-            className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/45 transition hover:bg-red-500/10 hover:text-red-300"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.035]">
-              <LogOut size={16} />
-            </span>
-            Sair
-          </button>
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Sair"
+              title="Sair"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.035] text-white/45 transition hover:border-red-400/20 hover:bg-red-500/10 hover:text-red-300"
+            >
+              <LogOut size={17} />
+            </button>
+          </div>
         </div>
       </aside>
 
