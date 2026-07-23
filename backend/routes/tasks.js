@@ -242,6 +242,71 @@ router.get('/', (req, res) => {
 });
 
 
+// Métricas leves do painel. Cada registro é contabilizado individualmente,
+// portanto tarefas principais e subtarefas entram no total e nos status.
+router.get('/dashboard-stats', (req, res) => {
+  const { client_id, start_date, end_date, today_date } = req.query;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (!datePattern.test(String(start_date || '')) || !datePattern.test(String(end_date || ''))) {
+    return res.status(400).json({ error: 'Informe um período válido para o painel' });
+  }
+
+  const today = datePattern.test(String(today_date || ''))
+    ? String(today_date)
+    : new Date().toISOString().slice(0, 10);
+
+  let query = `
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done,
+      SUM(CASE WHEN t.status != 'done' AND substr(t.due_date, 1, 10) < ? THEN 1 ELSE 0 END) AS overdue,
+      SUM(CASE WHEN t.status != 'done' AND substr(t.due_date, 1, 10) >= ? THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN t.parent_task_id IS NULL THEN 1 ELSE 0 END) AS task_total,
+      SUM(CASE WHEN t.parent_task_id IS NOT NULL THEN 1 ELSE 0 END) AS subtask_total
+    FROM tasks t
+    WHERE t.agency_id = ?
+      AND t.due_date IS NOT NULL
+      AND substr(t.due_date, 1, 10) BETWEEN ? AND ?
+  `;
+  const params = [today, today, Number(req.user.agency_id), String(start_date), String(end_date)];
+
+  if (req.user.role === 'team' && !req.user.is_operations_head) {
+    // Uma subtarefa também entra quando sua tarefa principal está atribuída ao usuário,
+    // espelhando o total exibido na área de Tarefas.
+    query += `
+      AND (
+        t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)
+        OR t.parent_task_id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)
+      )
+    `;
+    params.push(Number(req.user.id), Number(req.user.id));
+  } else if (req.user.role === 'client') {
+    query += ' AND t.client_id = ?';
+    params.push(Number(req.user.client_id));
+  }
+
+  if (client_id) {
+    if (!ensureClientAccess(req, res, client_id)) return;
+    query += ' AND t.client_id = ?';
+    params.push(Number(client_id));
+  }
+
+  const row = db.prepare(query).get(...params) || {};
+  return res.json({
+    stats: {
+      total: Number(row.total || 0),
+      pending: Number(row.pending || 0),
+      overdue: Number(row.overdue || 0),
+      done: Number(row.done || 0),
+      task_total: Number(row.task_total || 0),
+      subtask_total: Number(row.subtask_total || 0),
+      includes_subtasks: true,
+    },
+  });
+});
+
+
 router.get('/calendar', (req, res) => {
   const { client_id } = req.query;
   let query = `
