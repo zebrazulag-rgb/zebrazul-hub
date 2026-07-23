@@ -129,3 +129,114 @@ body {
 .data-row {
   @apply rounded-2xl border border-slate-200/70 bg-white transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)];
 }
+
+/* Diagnóstico Estratégico: impressão completa e leitura sem cortes */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: auto !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .app-sidebar,
+  .no-print,
+  .strategic-navigation {
+    display: none !important;
+  }
+
+  .app-main {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .app-main > div {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .strategic-diagnosis-page {
+    display: block !important;
+  }
+
+  .strategic-diagnosis-page > section:first-child {
+    margin-bottom: 8mm !important;
+    border-radius: 18px !important;
+    box-shadow: none !important;
+  }
+
+  .strategic-report-section {
+    margin-bottom: 7mm !important;
+    overflow: visible !important;
+    border: 1px solid #dbe3ef !important;
+    border-radius: 14px !important;
+    box-shadow: none !important;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .strategic-report-section > div:first-child {
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  .diagnosis-subcard {
+    overflow: visible !important;
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .diagnosis-screen-control {
+    display: none !important;
+  }
+
+  .print-field-value {
+    display: block !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    border-color: #dbe3ef !important;
+    background: #ffffff !important;
+    color: #1e293b !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .diagnosis-table-wrapper {
+    overflow: visible !important;
+    border-radius: 10px !important;
+  }
+
+  .diagnosis-table-wrapper table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    font-size: 9px !important;
+  }
+
+  .diagnosis-table-wrapper th,
+  .diagnosis-table-wrapper td {
+    padding: 5px !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .diagnosis-table-wrapper td > span {
+    min-width: 0 !important;
+  }
+
+  .surface-card {
+    box-shadow: none !important;
+  }
+}

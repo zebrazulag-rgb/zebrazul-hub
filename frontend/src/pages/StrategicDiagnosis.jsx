@@ -8,6 +8,7 @@ import {
   CircleDot,
   FileText,
   Plus,
+  Printer,
   Search,
   Sparkles,
   Target,
@@ -209,6 +210,23 @@ export default function StrategicDiagnosis() {
     document.getElementById(`strategic-section-${sectionNumber}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  async function handlePrint() {
+    if (dirtyRef.current) await persistDiagnosis();
+
+    const previousTitle = document.title;
+    const companyName = diagnosisRef.current.fields.company_name || selectedClientRecord?.name || 'Cliente';
+    document.title = `Diagnóstico Estratégico - ${companyName} - ${year}`;
+
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+
+    window.addEventListener('afterprint', restoreTitle);
+    window.setTimeout(() => window.print(), 80);
+    window.setTimeout(restoreTitle, 5000);
+  }
+
   const filteredSections = strategicDiagnosisSections.filter((section) => (
     `${section.n} ${section.title}`.toLowerCase().includes(navSearch.trim().toLowerCase())
   ));
@@ -250,14 +268,14 @@ export default function StrategicDiagnosis() {
           <>
             {user?.role !== 'client' && clients.length > 1 && (
               <select
-                className="min-w-[210px] rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm font-medium text-white outline-none"
+                className="no-print min-w-[210px] rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm font-medium text-white outline-none"
                 value={String(clientId)}
                 onChange={(event) => setLocalClientId(event.target.value)}
               >
                 {clients.map((client) => <option className="text-slate-800" key={client.id} value={client.id}>{client.name}</option>)}
               </select>
             )}
-            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm text-white/80">
+            <label className="no-print flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 text-sm text-white/80">
               <CalendarDays size={16} />
               <input
                 type="number"
@@ -288,33 +306,41 @@ export default function StrategicDiagnosis() {
       {loading ? (
         <div className="surface-card p-8 text-sm text-slate-500">Carregando diagnóstico...</div>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="xl:sticky xl:top-6 xl:self-start">
-            <div className="surface-card overflow-hidden">
-              <div className="border-b border-slate-100 p-5">
-                <div className="flex items-center justify-between gap-3">
+        <>
+          <div className="strategic-navigation no-print sticky top-4 z-20 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/95 shadow-[0_16px_46px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+            <div className="flex flex-col gap-4 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-3">
                   <div>
-                    <p className="section-kicker">Progresso</p>
-                    <h2 className="section-title">Diagnóstico</h2>
+                    <p className="section-kicker">Progresso do diagnóstico</p>
+                    <h2 className="section-title">{progress.completed} de {progress.total} campos preenchidos</h2>
                   </div>
                   <span className="rounded-full bg-[#eef5ff] px-3 py-1 text-sm font-bold text-[#0969ff]">{progress.percent}%</span>
                 </div>
-                <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100">
+                <div className="mt-3 h-2.5 max-w-xl overflow-hidden rounded-full bg-slate-100">
                   <div className="h-full rounded-full bg-[#0969ff] transition-all" style={{ width: `${progress.percent}%` }} />
                 </div>
-                <p className="mt-2 text-xs text-slate-400">{progress.completed} de {progress.total} campos preenchidos · salvamento automático</p>
-                <div className="relative mt-4">
+                <p className="mt-2 text-xs text-slate-400">Salvamento automático ativo</p>
+              </div>
+
+              <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                <div className="relative min-w-0 flex-1 sm:min-w-[260px]">
                   <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
-                    className="input-field py-2 pl-9 text-sm"
+                    className="input-field py-2.5 pl-9 text-sm"
                     value={navSearch}
                     onChange={(event) => setNavSearch(event.target.value)}
                     placeholder="Buscar seção"
                   />
                 </div>
+                <button type="button" onClick={handlePrint} className="btn-secondary inline-flex items-center justify-center gap-2 whitespace-nowrap">
+                  <Printer size={16} /> Imprimir relatório completo
+                </button>
               </div>
+            </div>
 
-              <div className="max-h-[calc(100vh-290px)] space-y-1 overflow-y-auto p-3">
+            <div className="overflow-x-auto p-3">
+              <div className="grid auto-cols-[minmax(190px,240px)] grid-flow-col gap-2">
                 <SectionNavButton
                   number="00"
                   title="Identificação do projeto"
@@ -332,10 +358,10 @@ export default function StrategicDiagnosis() {
                 ))}
               </div>
             </div>
-          </aside>
+          </div>
 
           <main className="min-w-0 space-y-6">
-            <section id="strategic-section-00" data-section-number="00" className="surface-card scroll-mt-6 overflow-hidden">
+            <section id="strategic-section-00" data-section-number="00" className="surface-card strategic-report-section scroll-mt-52 overflow-hidden">
               <SectionHeader number="00" title="Identificação do projeto" description="Dados que contextualizam o documento e identificam a análise." />
               <div className="grid gap-4 p-6 md:grid-cols-2">
                 {strategicDiagnosisCoverFields.map((field) => (
@@ -354,7 +380,7 @@ export default function StrategicDiagnosis() {
                 id={`strategic-section-${section.n}`}
                 data-section-number={section.n}
                 key={section.n}
-                className="surface-card scroll-mt-6 overflow-hidden"
+                className="surface-card strategic-report-section scroll-mt-52 overflow-hidden"
               >
                 <SectionHeader number={section.n} title={section.title} description={section.desc} />
                 <div className="space-y-5 p-6">
@@ -373,8 +399,9 @@ export default function StrategicDiagnosis() {
               </section>
             ))}
           </main>
-        </div>
+        </>
       )}
+
     </div>
   );
 }
@@ -393,11 +420,11 @@ function SectionNavButton({ number, title, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm transition ${active ? 'bg-[#eef5ff] text-[#0969ff]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+      className={`flex min-h-[58px] w-full items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition ${active ? 'border-[#0969ff]/20 bg-[#eef5ff] text-[#0969ff]' : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-800'}`}
     >
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold ${active ? 'bg-[#0969ff] text-white' : 'bg-slate-100 text-slate-500'}`}>{number}</span>
-      <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
-      {active && <ChevronRight size={14} />}
+      <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold ${active ? 'bg-[#0969ff] text-white' : 'bg-slate-100 text-slate-500'}`}>{number}</span>
+      <span className="min-w-0 flex-1 whitespace-normal break-words font-medium leading-5">{title}</span>
+      {active && <ChevronRight size={14} className="mt-1 shrink-0" />}
     </button>
   );
 }
@@ -406,9 +433,9 @@ function SectionHeader({ number, title, description }) {
   return (
     <div className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5ff] text-sm font-bold text-[#0969ff]">{number}</span>
-      <div>
-        <h2 className="section-title">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+      <div className="min-w-0">
+        <h2 className="section-title break-words">{title}</h2>
+        <p className="mt-1 whitespace-normal break-words text-sm leading-6 text-slate-500">{description}</p>
       </div>
     </div>
   );
@@ -618,19 +645,24 @@ function DiagnosisBlock(props) {
 }
 
 function DiagnosisField({ label, name, value, onChange, type = 'input', placeholder = '', help, full = false }) {
+  const printableValue = type === 'date' && value
+    ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR')
+    : value;
+
   return (
-    <label className={`block ${full ? 'md:col-span-2' : ''}`}>
-      <span className="mb-1.5 block text-xs font-semibold text-slate-700">{label}</span>
+    <label className={`block min-w-0 ${full ? 'md:col-span-2' : ''}`}>
+      <span className="mb-1.5 block whitespace-normal break-words text-xs font-semibold text-slate-700">{label}</span>
       {type === 'textarea' ? (
-        <textarea
+        <AutoGrowTextarea
           name={name}
-          className="input-field min-h-[120px] resize-y bg-slate-50/55 leading-6"
+          className="diagnosis-screen-control input-field min-h-[120px] resize-none overflow-hidden bg-slate-50/55 leading-6"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
+          minHeight={120}
         />
       ) : type === 'date' ? (
-        <span className="flex w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-[#0969ff] focus-within:ring-4 focus-within:ring-[#0969ff]/10">
+        <span className="diagnosis-screen-control flex w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 focus-within:border-[#0969ff] focus-within:ring-4 focus-within:ring-[#0969ff]/10">
           <input
             name={name}
             type="date"
@@ -640,37 +672,58 @@ function DiagnosisField({ label, name, value, onChange, type = 'input', placehol
           />
         </span>
       ) : (
-        <input
+        <AutoGrowTextarea
           name={name}
-          className="input-field bg-slate-50/55"
+          rows={1}
+          className="diagnosis-screen-control input-field min-h-[44px] resize-none overflow-hidden bg-slate-50/55 leading-5"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
+          minHeight={44}
         />
       )}
-      {help && <span className="mt-1.5 block text-xs leading-5 text-slate-400">{help}</span>}
+      <span className="print-field-value hidden min-h-[34px] whitespace-pre-wrap break-words rounded-lg border border-slate-200 px-3 py-2 text-sm leading-5 text-slate-800">
+        {printableValue || '—'}
+      </span>
+      {help && <span className="mt-1.5 block whitespace-normal break-words text-xs leading-5 text-slate-400">{help}</span>}
     </label>
   );
 }
 
+function AutoGrowTextarea({ value, minHeight = 44, className = '', ...props }) {
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    element.style.height = '0px';
+    element.style.height = `${Math.max(minHeight, element.scrollHeight)}px`;
+  }, [value, minHeight]);
+
+  return <textarea ref={textareaRef} value={value} className={className} {...props} />;
+}
+
 function DiagnosisSelect({ label, value, onChange, options }) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-slate-700">{label}</span>
-      <select className="input-field bg-slate-50/55" value={value} onChange={(event) => onChange(event.target.value)}>
+    <label className="block min-w-0">
+      <span className="mb-1.5 block whitespace-normal break-words text-xs font-semibold text-slate-700">{label}</span>
+      <select className="diagnosis-screen-control input-field bg-slate-50/55" value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">Selecione</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
+      <span className="print-field-value hidden min-h-[34px] whitespace-pre-wrap break-words rounded-lg border border-slate-200 px-3 py-2 text-sm leading-5 text-slate-800">
+        {value || '—'}
+      </span>
     </label>
   );
 }
 
 function SubCard({ title, icon: Icon, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200/75 bg-slate-50/55 p-4 lg:p-5">
+    <div className="diagnosis-subcard rounded-2xl border border-slate-200/75 bg-slate-50/55 p-4 lg:p-5">
       <div className="mb-4 flex items-center gap-2.5">
         <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-[#0969ff] shadow-sm"><Icon size={15} /></span>
-        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+        <h3 className="min-w-0 whitespace-normal break-words text-sm font-semibold text-slate-800">{title}</h3>
       </div>
       {children}
     </div>
@@ -680,12 +733,12 @@ function SubCard({ title, icon: Icon, children }) {
 function DiagnosisTable({ block, rows, onChange, onAdd, onRemove }) {
   return (
     <div>
-      <div className="overflow-x-auto rounded-2xl border border-slate-200/80">
+      <div className="diagnosis-table-wrapper overflow-x-auto rounded-2xl border border-slate-200/80">
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="bg-slate-50">
               {block.columns.map((column) => <th key={column} className="border-b border-slate-200 px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">{column}</th>)}
-              {!block.fixedRows && <th className="w-14 border-b border-slate-200 px-3 py-3" />}
+              {!block.fixedRows && <th className="no-print w-14 border-b border-slate-200 px-3 py-3" />}
             </tr>
           </thead>
           <tbody>
@@ -698,18 +751,22 @@ function DiagnosisTable({ block, rows, onChange, onAdd, onRemove }) {
                       {isFixedLabel ? (
                         <span className="block min-w-[180px] py-2 font-medium text-slate-700">{row[columnIndex]}</span>
                       ) : (
-                        <textarea
-                          className="min-h-[54px] w-full min-w-[120px] resize-y rounded-xl border border-transparent bg-transparent px-2 py-2 text-sm text-slate-700 outline-none transition hover:bg-slate-50 focus:border-[#0969ff]/30 focus:bg-white focus:ring-4 focus:ring-[#0969ff]/10"
-                          value={row[columnIndex] || ''}
-                          onChange={(event) => onChange(block.id, rowIndex, columnIndex, event.target.value)}
-                        />
+                        <>
+                          <AutoGrowTextarea
+                            className="diagnosis-screen-control min-h-[54px] w-full min-w-[120px] resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-2 py-2 text-sm leading-5 text-slate-700 outline-none transition hover:bg-slate-50 focus:border-[#0969ff]/30 focus:bg-white focus:ring-4 focus:ring-[#0969ff]/10"
+                            value={row[columnIndex] || ''}
+                            minHeight={54}
+                            onChange={(event) => onChange(block.id, rowIndex, columnIndex, event.target.value)}
+                          />
+                          <span className="print-field-value hidden whitespace-pre-wrap break-words text-sm leading-5 text-slate-700">{row[columnIndex] || '—'}</span>
+                        </>
                       )}
                     </td>
                   );
                 })}
                 {!block.fixedRows && (
-                  <td className="px-3 py-2 align-middle">
-                    <button type="button" onClick={() => onRemove(rowIndex)} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-50 hover:text-red-600" aria-label="Excluir linha">
+                  <td className="no-print px-3 py-2 align-middle">
+                    <button type="button" onClick={() => onRemove(rowIndex)} className="no-print flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-50 hover:text-red-600" aria-label="Excluir linha">
                       <Trash2 size={16} />
                     </button>
                   </td>
@@ -720,7 +777,7 @@ function DiagnosisTable({ block, rows, onChange, onAdd, onRemove }) {
         </table>
       </div>
       {!block.fixedRows && (
-        <button type="button" onClick={onAdd} className="mt-3 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#0969ff]/30 bg-[#eef5ff]/60 px-3 py-2 text-sm font-semibold text-[#0969ff] transition hover:bg-[#eef5ff]">
+        <button type="button" onClick={onAdd} className="no-print mt-3 inline-flex items-center gap-2 rounded-xl border border-dashed border-[#0969ff]/30 bg-[#eef5ff]/60 px-3 py-2 text-sm font-semibold text-[#0969ff] transition hover:bg-[#eef5ff]">
           <Plus size={15} /> Adicionar linha
         </button>
       )}
