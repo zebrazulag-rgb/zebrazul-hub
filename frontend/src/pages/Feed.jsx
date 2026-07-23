@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -28,6 +28,11 @@ export default function Feed() {
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [reorderingPost, setReorderingPost] = useState(false);
+  const [galleryDraft, setGalleryDraft] = useState([]);
+  const [savingGalleryOrder, setSavingGalleryOrder] = useState(false);
+  const [galleryOrderError, setGalleryOrderError] = useState('');
+  const draggedGalleryIndexRef = useRef(null);
 
   useEffect(() => {
     if (user?.role !== 'client') {
@@ -167,6 +172,9 @@ export default function Feed() {
   }
 
   async function openFeedPost(post) {
+    setReorderingPost(false);
+    setGalleryDraft([]);
+    setGalleryOrderError('');
     // Abre imediatamente com os dados já disponíveis na grade.
     const listGallery = galleryFromPost(post);
     setOpenPost({ ...post, media_gallery: listGallery });
@@ -205,6 +213,72 @@ export default function Feed() {
     await navigator.clipboard.writeText(url);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2500);
+  }
+
+  function moveGalleryItem(items, fromIndex, toIndex) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {
+      return items;
+    }
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  }
+
+  function startGalleryReorder() {
+    const gallery = galleryFromPost(openPost);
+    setGalleryDraft(gallery);
+    setGalleryOrderError('');
+    setReorderingPost(true);
+  }
+
+  function cancelGalleryReorder() {
+    setReorderingPost(false);
+    setGalleryDraft([]);
+    setGalleryOrderError('');
+  }
+
+  function moveGallerySlide(fromIndex, toIndex) {
+    setGalleryDraft((current) => moveGalleryItem(current, fromIndex, toIndex));
+  }
+
+  function handleGalleryDragStart(event, index) {
+    draggedGalleryIndexRef.current = index;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function handleGalleryDrop(event, targetIndex) {
+    event.preventDefault();
+    const storedIndex = Number(event.dataTransfer.getData('text/plain'));
+    const sourceIndex = Number.isInteger(storedIndex) ? storedIndex : draggedGalleryIndexRef.current;
+    if (Number.isInteger(sourceIndex)) moveGallerySlide(sourceIndex, targetIndex);
+    draggedGalleryIndexRef.current = null;
+  }
+
+  async function saveGalleryOrder() {
+    if (!openPost?.id || galleryDraft.length < 2) return;
+    setSavingGalleryOrder(true);
+    setGalleryOrderError('');
+    try {
+      await api.put(`/posts/${openPost.id}`, { media_gallery: galleryDraft });
+      const nextPost = {
+        ...openPost,
+        media_gallery: galleryDraft,
+        media_data: galleryDraft[0]?.data || null,
+        media_mime: galleryDraft[0]?.mime || null,
+      };
+      setOpenPost(nextPost);
+      setPosts((current) => current.map((post) => (
+        String(post.id) === String(openPost.id) ? { ...post, ...nextPost } : post
+      )));
+      setReorderingPost(false);
+      setGalleryDraft([]);
+    } catch (err) {
+      setGalleryOrderError(err.response?.data?.error || 'Não foi possível salvar a nova ordem.');
+    } finally {
+      setSavingGalleryOrder(false);
+    }
   }
 
   return (
@@ -319,17 +393,94 @@ export default function Feed() {
             <div className="flex items-start justify-between gap-4 mb-4 min-w-0">
               <div className="min-w-0">
                 <h2 className="font-semibold text-slate-800 break-words">{openPost.title}</h2>
-                <StatusBadge status={openPost.status} />
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <StatusBadge status={openPost.status} />
+                  {user?.role !== 'client' && galleryFromPost(openPost).length > 1 && !reorderingPost && (
+                    <button
+                      type="button"
+                      onClick={startGalleryReorder}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-zebrazul-300 hover:text-zebrazul-700"
+                    >
+                      <ListOrdered size={13} /> Editar ordem
+                    </button>
+                  )}
+                </div>
               </div>
               <button onClick={() => setOpenPost(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0" aria-label="Fechar">×</button>
             </div>
+
+            {reorderingPost && (
+              <div className="mb-4 rounded-xl border border-zebrazul-100 bg-zebrazul-50/60 p-3">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Ordem do carrossel</p>
+                    <p className="text-xs text-slate-500">Arraste os slides ou use as setas. O slide 1 será a capa do feed.</p>
+                  </div>
+                  <GripVertical size={18} className="mt-0.5 shrink-0 text-slate-400" />
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                  {galleryDraft.map((item, index) => (
+                    <div
+                      key={`${item.filename || item.data?.slice(-24) || 'slide'}-${index}`}
+                      draggable={!savingGalleryOrder}
+                      onDragStart={(event) => handleGalleryDragStart(event, index)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => handleGalleryDrop(event, index)}
+                      className="group relative h-32 w-24 shrink-0 cursor-grab overflow-hidden rounded-lg border border-white bg-slate-100 shadow-sm active:cursor-grabbing"
+                      title={`Slide ${index + 1}`}
+                    >
+                      <img src={item.data} alt={`Slide ${index + 1}`} className="h-full w-full object-cover" />
+                      <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-950/75 px-2 py-0.5 text-[10px] font-semibold text-white">
+                        {index + 1}
+                      </span>
+                      <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-1">
+                        <button
+                          type="button"
+                          disabled={index === 0 || savingGalleryOrder}
+                          onClick={() => moveGallerySlide(index, index - 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label={`Mover slide ${index + 1} para a esquerda`}
+                        >
+                          <ChevronLeft size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === galleryDraft.length - 1 || savingGalleryOrder}
+                          onClick={() => moveGallerySlide(index, index + 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label={`Mover slide ${index + 1} para a direita`}
+                        >
+                          <ChevronRight size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {galleryOrderError && (
+                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{galleryOrderError}</p>
+                )}
+
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={cancelGalleryReorder} disabled={savingGalleryOrder} className="btn-secondary flex-1 py-2 text-sm">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={saveGalleryOrder} disabled={savingGalleryOrder} className="btn-primary flex flex-1 items-center justify-center gap-2 py-2 text-sm">
+                    {savingGalleryOrder && <Loader2 size={15} className="animate-spin" />}
+                    {savingGalleryOrder ? 'Salvando...' : 'Salvar ordem'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <InstagramPreview
               clientName={currentClient?.name}
               clientUsername={currentClient?.instagram_username}
               clientColor={currentClient?.logo_color}
               avatarSrc={currentClient?.avatar_data}
-              imageSrc={openPost.media_data}
-              images={openPost.media_gallery}
+              imageSrc={reorderingPost ? galleryDraft[0]?.data : openPost.media_data}
+              images={reorderingPost ? galleryDraft : openPost.media_gallery}
               caption={openPost.caption}
               contentType={openPost.content_type}
             />

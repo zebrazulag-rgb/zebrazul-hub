@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ImagePlus, Trash2 } from 'lucide-react';
+import { X, ImagePlus, Trash2, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
@@ -88,6 +88,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const initialFormRef = useRef(postToForm(post, defaultClientId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const draggedMediaIndexRef = useRef(null);
 
   useEffect(() => {
     const nextForm = postToForm(post, defaultClientId);
@@ -135,6 +136,37 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
       ...current,
       media_gallery: current.media_gallery.filter((_, itemIndex) => itemIndex !== index),
     }));
+  }
+
+  function moveMedia(fromIndex, toIndex) {
+    setForm((current) => {
+      if (
+        fromIndex === toIndex
+        || fromIndex < 0
+        || toIndex < 0
+        || fromIndex >= current.media_gallery.length
+        || toIndex >= current.media_gallery.length
+      ) return current;
+
+      const nextGallery = [...current.media_gallery];
+      const [moved] = nextGallery.splice(fromIndex, 1);
+      nextGallery.splice(toIndex, 0, moved);
+      return { ...current, media_gallery: nextGallery };
+    });
+  }
+
+  function handleMediaDragStart(event, index) {
+    draggedMediaIndexRef.current = index;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(index));
+  }
+
+  function handleMediaDrop(event, targetIndex) {
+    event.preventDefault();
+    const storedIndex = Number(event.dataTransfer.getData('text/plain'));
+    const sourceIndex = Number.isInteger(storedIndex) ? storedIndex : draggedMediaIndexRef.current;
+    if (Number.isInteger(sourceIndex)) moveMedia(sourceIndex, targetIndex);
+    draggedMediaIndexRef.current = null;
   }
 
   async function persistPost() {
@@ -246,8 +278,18 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
               {form.media_gallery.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
                   {form.media_gallery.map((item, index) => (
-                    <div key={`${item.filename || 'imagem'}-${index}`} className="relative aspect-[4/5] rounded-lg overflow-hidden bg-slate-100 group">
-                      <img src={item.data} alt="" className="w-full h-full object-cover" />
+                    <div
+                      key={`${item.filename || item.data?.slice(-24) || 'imagem'}-${index}`}
+                      draggable
+                      onDragStart={(event) => handleMediaDragStart(event, index)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => handleMediaDrop(event, index)}
+                      className="relative aspect-[4/5] cursor-grab overflow-hidden rounded-lg bg-slate-100 shadow-sm group active:cursor-grabbing"
+                    >
+                      <img src={item.data} alt={`Slide ${index + 1}`} className="w-full h-full object-cover" />
+                      <span className="absolute left-1.5 top-1.5 flex h-7 items-center gap-1 rounded-full bg-slate-950/70 px-2 text-[10px] font-semibold text-white">
+                        <GripVertical size={12} /> {index + 1}
+                      </span>
                       <button
                         type="button"
                         onClick={() => removeMedia(index)}
@@ -256,14 +298,31 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
                       >
                         <Trash2 size={14} />
                       </button>
-                      <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white rounded-full px-2 py-0.5 text-[10px]">
-                        {index + 1}
-                      </span>
+                      <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between gap-1">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => moveMedia(index, index - 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label={`Mover slide ${index + 1} para a esquerda`}
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === form.media_gallery.length - 1}
+                          onClick={() => moveMedia(index, index + 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label={`Mover slide ${index + 1} para a direita`}
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-400 mt-2">A primeira imagem será usada como capa na grade.</p>
+              <p className="text-xs text-slate-400 mt-2">Arraste as imagens ou use as setas para mudar a ordem. A primeira será a capa na grade.</p>
             </div>
 
             <div>
