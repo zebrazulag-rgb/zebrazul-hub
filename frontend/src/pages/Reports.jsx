@@ -160,13 +160,40 @@ export default function Reports() {
     setMetaError('');
   }, [clientId]);
 
-  async function loadPaidReports() {
-    setLoadingReport(true);
+  useEffect(() => {
+    if (user?.role !== 'client' || !clientId) return undefined;
+
+    const refreshVisibleReport = () => {
+      if (document.visibilityState === 'visible') {
+        loadPaidReports({ silent: true });
+      }
+    };
+
+    const intervalId = window.setInterval(refreshVisibleReport, 5 * 60 * 1000);
+    window.addEventListener('focus', refreshVisibleReport);
+    document.addEventListener('visibilitychange', refreshVisibleReport);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshVisibleReport);
+      document.removeEventListener('visibilitychange', refreshVisibleReport);
+    };
+  }, [user?.role, clientId, from, to, connectionsVersion]);
+
+  async function loadPaidReports({ silent = false } = {}) {
+    if (!silent) setLoadingReport(true);
     setMetaError('');
     try {
       const [manualResponse, metaResponse] = await Promise.all([
-        api.get(`/reports/${clientId}`, { params: { from, to } }),
-        api.get(`/meta/client/${clientId}/report`, { params: { from, to } }),
+        api.get(`/reports/${clientId}`, { params: { from, to, _ts: Date.now() } }),
+        api.get(`/meta/client/${clientId}/report`, {
+          params: {
+            from,
+            to,
+            auto_sync: user?.role === 'client' ? 1 : 0,
+            _ts: Date.now(),
+          },
+        }),
       ]);
       setMetrics(manualResponse.data.metrics || []);
       setManualTotals(manualResponse.data.totals || null);
@@ -174,7 +201,7 @@ export default function Reports() {
     } catch (error) {
       setMetaError(error.response?.data?.error || 'Não foi possível carregar o relatório de tráfego pago.');
     } finally {
-      setLoadingReport(false);
+      if (!silent) setLoadingReport(false);
     }
   }
 

@@ -106,17 +106,42 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
     onReportLoaded?.(report);
   }, [report, onReportLoaded]);
 
-  async function loadReport() {
-    setLoading(true);
+  useEffect(() => {
+    if (user?.role !== 'client' || !clientId) return undefined;
+
+    const refreshVisibleReport = () => {
+      if (document.visibilityState === 'visible') loadReport({ silent: true });
+    };
+
+    const intervalId = window.setInterval(refreshVisibleReport, 5 * 60 * 1000);
+    window.addEventListener('focus', refreshVisibleReport);
+    document.addEventListener('visibilitychange', refreshVisibleReport);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshVisibleReport);
+      document.removeEventListener('visibilitychange', refreshVisibleReport);
+    };
+  }, [user?.role, clientId, from, to, refreshKey]);
+
+  async function loadReport({ silent = false } = {}) {
+    if (!silent) setLoading(true);
     setError('');
     try {
-      const { data } = await api.get(`/meta-organic/client/${clientId}/report`, { params: { from, to } });
+      const { data } = await api.get(`/meta-organic/client/${clientId}/report`, {
+        params: {
+          from,
+          to,
+          auto_sync: user?.role === 'client' ? 1 : 0,
+          _ts: Date.now(),
+        },
+      });
       setReport(data);
     } catch (requestError) {
       setReport(null);
       setError(requestError.response?.data?.error || 'Não foi possível carregar o relatório orgânico.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
