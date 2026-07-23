@@ -44,6 +44,8 @@ export default function StrategicDiagnosis() {
   const revisionRef = useRef(0);
   const diagnosisRef = useRef(diagnosis);
   const saveTimerRef = useRef(null);
+  const navigationRef = useRef(null);
+  const [navigationHeight, setNavigationHeight] = useState(240);
 
   const clientId = user?.role === 'client'
     ? Number(user.client_id)
@@ -55,6 +57,25 @@ export default function StrategicDiagnosis() {
   useEffect(() => {
     diagnosisRef.current = diagnosis;
   }, [diagnosis]);
+
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return undefined;
+
+    const updateNavigationHeight = () => {
+      setNavigationHeight(Math.ceil(navigation.getBoundingClientRect().height));
+    };
+
+    updateNavigationHeight();
+    const observer = new ResizeObserver(updateNavigationHeight);
+    observer.observe(navigation);
+    window.addEventListener('resize', updateNavigationHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateNavigationHeight);
+    };
+  }, [loading, clientId]);
 
   useEffect(() => {
     api.get('/clients').then(({ data }) => {
@@ -258,7 +279,10 @@ export default function StrategicDiagnosis() {
   }
 
   return (
-    <div className="strategic-diagnosis-page space-y-6">
+    <div
+      className="strategic-diagnosis-page space-y-6"
+      style={{ '--strategic-navigation-offset': `${navigationHeight + 28}px` }}
+    >
       <PageHero
         icon={BrainCircuit}
         eyebrow={selectedClientRecord?.name || 'Metodologia Zebrazul'}
@@ -307,7 +331,10 @@ export default function StrategicDiagnosis() {
         <div className="surface-card p-8 text-sm text-slate-500">Carregando diagnóstico...</div>
       ) : (
         <>
-          <div className="strategic-navigation no-print sticky top-4 z-20 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/95 shadow-[0_16px_46px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+          <div
+            ref={navigationRef}
+            className="strategic-navigation no-print sticky top-4 z-40 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/95 shadow-[0_16px_46px_rgba(15,23,42,0.10)] backdrop-blur-xl"
+          >
             <div className="flex flex-col gap-4 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-3">
@@ -361,7 +388,7 @@ export default function StrategicDiagnosis() {
           </div>
 
           <main className="min-w-0 space-y-6">
-            <section id="strategic-section-00" data-section-number="00" className="surface-card strategic-report-section scroll-mt-52 overflow-hidden">
+            <section id="strategic-section-00" data-section-number="00" className="surface-card strategic-report-section overflow-hidden">
               <SectionHeader number="00" title="Identificação do projeto" description="Dados que contextualizam o documento e identificam a análise." />
               <div className="grid gap-4 p-6 md:grid-cols-2">
                 {strategicDiagnosisCoverFields.map((field) => (
@@ -380,7 +407,7 @@ export default function StrategicDiagnosis() {
                 id={`strategic-section-${section.n}`}
                 data-section-number={section.n}
                 key={section.n}
-                className="surface-card strategic-report-section scroll-mt-52 overflow-hidden"
+                className="surface-card strategic-report-section overflow-hidden"
               >
                 <SectionHeader number={section.n} title={section.title} description={section.desc} />
                 <div className="space-y-5 p-6">

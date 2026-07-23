@@ -68,11 +68,11 @@ body {
   @apply rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50;
 }
 
-.input-field {
+:where(.input-field) {
   @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:ring-4;
 }
 
-.input-field:focus {
+:where(.input-field):focus {
   border-color: var(--agency-primary);
   --tw-ring-color: color-mix(in srgb, var(--agency-primary) 12%, transparent);
 }
@@ -130,6 +130,13 @@ body {
   @apply rounded-2xl border border-slate-200/70 bg-white transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)];
 }
 
+/* Campos com ícones: mantém o espaçamento das utilities (pl-9, pl-10 etc.)
+   acima do padding padrão do componente, evitando que ícone e texto se sobreponham. */
+
+.strategic-report-section {
+  scroll-margin-top: var(--strategic-navigation-offset, 240px);
+}
+
 /* Diagnóstico Estratégico: impressão completa e leitura sem cortes */
 @media print {
   @page {
@@ -148,6 +155,12 @@ body {
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .app-shell {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
   .app-sidebar,

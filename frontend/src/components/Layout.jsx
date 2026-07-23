@@ -185,7 +185,7 @@ export default function Layout({ children }) {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#f5f7fb] text-slate-900">
+    <div className="app-shell flex h-screen min-h-0 overflow-hidden bg-[#f5f7fb] text-slate-900">
       <aside
         className={`app-sidebar sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[88px]' : 'w-[276px]'}`}
         style={{ backgroundColor: agencySidebar }}
@@ -410,7 +410,7 @@ export default function Layout({ children }) {
         </div>
       </aside>
 
-      <main className="app-main relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+      <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
         <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-8 py-8 xl:px-10">{children}</div>
       </main>
