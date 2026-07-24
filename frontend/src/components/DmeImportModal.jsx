@@ -63,7 +63,10 @@ export default function DmeImportModal({
 
   return (
     <ModalBackdrop onClose={onClose} disabled={applying} className="z-[70]" role="dialog">
-      <div className="my-auto flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.28)]">
+      <div
+        className="my-auto flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.28)]"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 sm:px-7">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -166,15 +169,22 @@ export default function DmeImportModal({
                   const selected = selectedIds.has(candidate.id);
                   const preview = candidatePreview(candidate);
                   return (
-                    <label
+                    <button
                       key={candidate.id}
-                      className={`block cursor-pointer rounded-2xl border p-4 transition ${selected ? 'border-[#0969ff]/35 bg-[#eef5ff]/45 shadow-[0_8px_24px_rgba(9,105,255,0.08)]' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={selected}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onToggle(candidate.id);
+                      }}
+                      className={`block w-full cursor-pointer rounded-2xl border p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0969ff]/35 ${selected ? 'border-[#0969ff]/35 bg-[#eef5ff]/45 shadow-[0_8px_24px_rgba(9,105,255,0.08)]' : 'border-slate-200 bg-white hover:border-slate-300'}`}
                     >
                       <div className="flex items-start gap-3">
                         <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${selected ? 'border-[#0969ff] bg-[#0969ff] text-white' : 'border-slate-300 bg-white text-transparent'}`}>
                           <Check size={13} strokeWidth={3} />
                         </span>
-                        <input type="checkbox" className="sr-only" checked={selected} onChange={() => onToggle(candidate.id)} />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="min-w-0 flex-1 break-words text-sm font-semibold text-slate-800">{candidate.label}</p>
@@ -191,7 +201,7 @@ export default function DmeImportModal({
                           )}
                         </div>
                       </div>
-                    </label>
+                    </button>
                   );
                 })}
               </div>
