@@ -18,6 +18,11 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import DmeImportModal from '../components/DmeImportModal.jsx';
+import {
+  buildDmeStrategicSuggestions,
+  prepareDmeImportCandidates,
+} from '../dmeStrategicImport.js';
 import {
   createStrategicDiagnosisData,
   mergeStrategicDiagnosisData,
@@ -46,6 +51,16 @@ export default function StrategicDiagnosis() {
   const saveTimerRef = useRef(null);
   const navigationRef = useRef(null);
   const [navigationHeight, setNavigationHeight] = useState(240);
+  const [dmeImportOpen, setDmeImportOpen] = useState(false);
+  const [dmeImportLoading, setDmeImportLoading] = useState(false);
+  const [dmeImportApplying, setDmeImportApplying] = useState(false);
+  const [dmeImportError, setDmeImportError] = useState('');
+  const [dmeAssessments, setDmeAssessments] = useState([]);
+  const [selectedDmeId, setSelectedDmeId] = useState(null);
+  const [dmeImportSource, setDmeImportSource] = useState(null);
+  const [dmeCandidates, setDmeCandidates] = useState([]);
+  const [selectedDmeCandidates, setSelectedDmeCandidates] = useState(() => new Set());
+  const [dmeImportNotice, setDmeImportNotice] = useState('');
 
   const clientId = user?.role === 'client'
     ? Number(user.client_id)
@@ -183,10 +198,15 @@ export default function StrategicDiagnosis() {
   function updateField(name, value) {
     dirtyRef.current = true;
     revisionRef.current += 1;
-    setDiagnosis((current) => ({
-      ...current,
-      fields: { ...current.fields, [name]: value },
-    }));
+    setDiagnosis((current) => {
+      const sources = { ...(current.sources || {}) };
+      delete sources[name];
+      return {
+        ...current,
+        fields: { ...current.fields, [name]: value },
+        sources,
+      };
+    });
   }
 
   function updateTableCell(tableId, rowIndex, columnIndex, value) {
@@ -194,41 +214,178 @@ export default function StrategicDiagnosis() {
     revisionRef.current += 1;
     setDiagnosis((current) => {
       const rows = (current.tables[tableId] || []).map((row) => [...row]);
+      const tableSources = { ...(current.tableSources || {}) };
       if (!rows[rowIndex]) rows[rowIndex] = [];
       rows[rowIndex][columnIndex] = value;
-      return { ...current, tables: { ...current.tables, [tableId]: rows } };
+      delete tableSources[tableId];
+      return { ...current, tables: { ...current.tables, [tableId]: rows }, tableSources };
     });
   }
 
   function addTableRow(block) {
     dirtyRef.current = true;
     revisionRef.current += 1;
-    setDiagnosis((current) => ({
-      ...current,
-      tables: {
-        ...current.tables,
-        [block.id]: [
-          ...(current.tables[block.id] || []),
-          block.columns.map(() => ''),
-        ],
-      },
-    }));
+    setDiagnosis((current) => {
+      const tableSources = { ...(current.tableSources || {}) };
+      delete tableSources[block.id];
+      return {
+        ...current,
+        tables: {
+          ...current.tables,
+          [block.id]: [
+            ...(current.tables[block.id] || []),
+            block.columns.map(() => ''),
+          ],
+        },
+        tableSources,
+      };
+    });
   }
 
   function removeTableRow(tableId, rowIndex) {
     dirtyRef.current = true;
     revisionRef.current += 1;
-    setDiagnosis((current) => ({
-      ...current,
-      tables: {
-        ...current.tables,
-        [tableId]: (current.tables[tableId] || []).filter((_, index) => index !== rowIndex),
-      },
-    }));
+    setDiagnosis((current) => {
+      const tableSources = { ...(current.tableSources || {}) };
+      delete tableSources[tableId];
+      return {
+        ...current,
+        tables: {
+          ...current.tables,
+          [tableId]: (current.tables[tableId] || []).filter((_, index) => index !== rowIndex),
+        },
+        tableSources,
+      };
+    });
   }
 
   function scrollToSection(sectionNumber) {
     document.getElementById(`strategic-section-${sectionNumber}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function selectDmeCandidates(predicate) {
+    setSelectedDmeCandidates(new Set(dmeCandidates.filter(predicate).map((candidate) => candidate.id)));
+  }
+
+  async function loadDmePreview(assessmentId) {
+    if (!assessmentId) return;
+    setDmeImportLoading(true);
+    setDmeImportError('');
+    setSelectedDmeId(Number(assessmentId));
+    try {
+      const { data } = await api.get(`/diagnostics/${assessmentId}`);
+      const result = buildDmeStrategicSuggestions(data.diagnostic, {
+        clientName: selectedClientRecord?.name,
+      });
+      const prepared = prepareDmeImportCandidates(result.candidates, diagnosisRef.current, result.source);
+      setDmeImportSource(result.source);
+      setDmeCandidates(prepared);
+      setSelectedDmeCandidates(new Set(prepared.filter((candidate) => candidate.defaultSelected).map((candidate) => candidate.id)));
+    } catch (error) {
+      setDmeImportSource(null);
+      setDmeCandidates([]);
+      setSelectedDmeCandidates(new Set());
+      setDmeImportError(error.response?.data?.error || 'Não foi possível ler as respostas deste DME.');
+    } finally {
+      setDmeImportLoading(false);
+    }
+  }
+
+  async function openDmeImport() {
+    if (!clientId) return;
+    setDmeImportOpen(true);
+    setDmeImportLoading(true);
+    setDmeImportError('');
+    setDmeAssessments([]);
+    setDmeCandidates([]);
+    setDmeImportSource(null);
+    setSelectedDmeCandidates(new Set());
+
+    try {
+      const { data } = await api.get('/diagnostics', { params: { client_id: clientId } });
+      const assessments = (data.diagnostics || []).filter((assessment) => assessment.status !== 'archived');
+      setDmeAssessments(assessments);
+      if (!assessments.length) {
+        setDmeImportError('Este cliente ainda não possui um DME disponível. Crie ou compartilhe o DME antes de retroalimentar o Diagnóstico Estratégico.');
+        setDmeImportLoading(false);
+        return;
+      }
+
+      const previousId = Number(diagnosisRef.current.dmeImport?.assessmentId);
+      const preferred = assessments.find((assessment) => Number(assessment.id) === previousId)
+        || assessments.find((assessment) => assessment.status === 'submitted')
+        || assessments.find((assessment) => Number(assessment.progress || 0) > 0)
+        || assessments[0];
+      await loadDmePreview(preferred.id);
+    } catch (error) {
+      setDmeImportLoading(false);
+      setDmeImportError(error.response?.data?.error || 'Não foi possível localizar os DMEs deste cliente.');
+    }
+  }
+
+  function toggleDmeCandidate(candidateId) {
+    setSelectedDmeCandidates((current) => {
+      const next = new Set(current);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+  }
+
+  async function applyDmeImport() {
+    if (!dmeImportSource || !selectedDmeCandidates.size) return;
+    setDmeImportApplying(true);
+    setDmeImportError('');
+
+    try {
+      const importedAt = new Date().toISOString();
+      const selected = dmeCandidates.filter((candidate) => selectedDmeCandidates.has(candidate.id));
+      const current = diagnosisRef.current;
+      const next = {
+        ...current,
+        fields: { ...current.fields },
+        tables: { ...current.tables },
+        sources: { ...(current.sources || {}) },
+        tableSources: { ...(current.tableSources || {}) },
+        dmeImport: {
+          ...dmeImportSource,
+          importedAt,
+          itemCount: selected.length,
+        },
+      };
+
+      selected.forEach((candidate) => {
+        const sourceMetadata = {
+          origin: 'dme',
+          kind: candidate.kind,
+          assessmentId: dmeImportSource.assessmentId,
+          assessmentTitle: dmeImportSource.title,
+          importedAt,
+          sourceKeys: candidate.sourceKeys || [],
+        };
+
+        if (candidate.targetType === 'table') {
+          next.tables[candidate.target] = candidate.value.map((row) => [...row]);
+          next.tableSources[candidate.target] = sourceMetadata;
+        } else {
+          next.fields[candidate.target] = candidate.value;
+          next.sources[candidate.target] = sourceMetadata;
+        }
+      });
+
+      dirtyRef.current = true;
+      revisionRef.current += 1;
+      diagnosisRef.current = next;
+      setDiagnosis(next);
+      await persistDiagnosis(next);
+      setDmeImportOpen(false);
+      setDmeImportNotice(`${selected.length} informações do DME foram aplicadas. Os campos que você editar a partir de agora passam a ser considerados manuais.`);
+      window.setTimeout(() => setDmeImportNotice(''), 7000);
+    } catch (error) {
+      setDmeImportError(error.response?.data?.error || 'Não foi possível aplicar os dados do DME.');
+    } finally {
+      setDmeImportApplying(false);
+    }
   }
 
   async function handlePrint() {
@@ -327,6 +484,13 @@ export default function StrategicDiagnosis() {
         </div>
       )}
 
+      {dmeImportNotice && (
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <Sparkles size={18} className="mt-0.5 shrink-0" />
+          <span>{dmeImportNotice}</span>
+        </div>
+      )}
+
       {loading ? (
         <div className="surface-card p-8 text-sm text-slate-500">Carregando diagnóstico...</div>
       ) : (
@@ -347,7 +511,12 @@ export default function StrategicDiagnosis() {
                 <div className="mt-3 h-2.5 max-w-xl overflow-hidden rounded-full bg-slate-100">
                   <div className="h-full rounded-full bg-[#0969ff] transition-all" style={{ width: `${progress.percent}%` }} />
                 </div>
-                <p className="mt-2 text-xs text-slate-400">Salvamento automático ativo</p>
+                <p className="mt-2 text-xs text-slate-400">
+                  Salvamento automático ativo
+                  {diagnosis.dmeImport?.importedAt && (
+                    <span className="ml-2">• DME integrado em {new Date(diagnosis.dmeImport.importedAt).toLocaleString('pt-BR')}</span>
+                  )}
+                </p>
               </div>
 
               <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
@@ -360,6 +529,11 @@ export default function StrategicDiagnosis() {
                     placeholder="Buscar seção"
                   />
                 </div>
+                {user?.role !== 'client' && !user?.is_commercial_team && (
+                  <button type="button" onClick={openDmeImport} className="btn-secondary inline-flex items-center justify-center gap-2 whitespace-nowrap">
+                    <Sparkles size={16} /> {diagnosis.dmeImport ? 'Atualizar com DME' : 'Preencher com DME'}
+                  </button>
+                )}
                 <button type="button" onClick={handlePrint} className="btn-secondary inline-flex items-center justify-center gap-2 whitespace-nowrap">
                   <Printer size={16} /> Imprimir relatório completo
                 </button>
@@ -396,6 +570,7 @@ export default function StrategicDiagnosis() {
                     key={field.name}
                     {...field}
                     value={diagnosis.fields[field.name] || ''}
+                    source={diagnosis.sources?.[field.name]}
                     onChange={(value) => updateField(field.name, value)}
                   />
                 ))}
@@ -429,6 +604,25 @@ export default function StrategicDiagnosis() {
         </>
       )}
 
+      <DmeImportModal
+        open={dmeImportOpen}
+        loading={dmeImportLoading}
+        error={dmeImportError}
+        assessments={dmeAssessments}
+        selectedAssessmentId={selectedDmeId}
+        onAssessmentChange={loadDmePreview}
+        source={dmeImportSource}
+        candidates={dmeCandidates}
+        selectedIds={selectedDmeCandidates}
+        onToggle={toggleDmeCandidate}
+        onSelectEmpty={() => selectDmeCandidates((candidate) => candidate.state === 'empty')}
+        onSelectSafe={() => selectDmeCandidates((candidate) => candidate.state !== 'manual')}
+        onSelectAll={() => selectDmeCandidates(() => true)}
+        onClear={() => setSelectedDmeCandidates(new Set())}
+        onApply={applyDmeImport}
+        onClose={() => !dmeImportApplying && setDmeImportOpen(false)}
+        applying={dmeImportApplying}
+      />
     </div>
   );
 }
@@ -480,6 +674,7 @@ function DiagnosisBlock(props) {
         placeholder={block.placeholder}
         help={block.help}
         value={diagnosis.fields[block.name] || ''}
+        source={diagnosis.sources?.[block.name]}
         onChange={(value) => updateField(block.name, value)}
       />
     );
@@ -495,6 +690,7 @@ function DiagnosisBlock(props) {
             name={field[1]}
             placeholder={field[2] || ''}
             value={diagnosis.fields[field[1]] || ''}
+            source={diagnosis.sources?.[field[1]]}
             onChange={(value) => updateField(field[1], value)}
           />
         ))}
@@ -512,6 +708,7 @@ function DiagnosisBlock(props) {
             name={item[1]}
             type="textarea"
             value={diagnosis.fields[item[1]] || ''}
+            source={diagnosis.sources?.[item[1]]}
             onChange={(value) => updateField(item[1], value)}
           />
         ))}
@@ -524,6 +721,7 @@ function DiagnosisBlock(props) {
       <DiagnosisTable
         block={block}
         rows={diagnosis.tables[block.id] || []}
+        source={diagnosis.tableSources?.[block.id]}
         onChange={updateTableCell}
         onAdd={() => addTableRow(block)}
         onRemove={(rowIndex) => removeTableRow(block.id, rowIndex)}
@@ -542,13 +740,14 @@ function DiagnosisBlock(props) {
                 ['Fragilidades', 'weaknesses'], ['Consequências', 'consequences'], ['Recomendação', 'recommendation'],
               ].map(([label, suffix]) => {
                 const name = `pillar_${index}_${suffix}`;
-                return <DiagnosisField key={name} label={label} name={name} type="textarea" value={diagnosis.fields[name] || ''} onChange={(value) => updateField(name, value)} />;
+                return <DiagnosisField key={name} label={label} name={name} type="textarea" value={diagnosis.fields[name] || ''} source={diagnosis.sources?.[name]} onChange={(value) => updateField(name, value)} />;
               })}
             </div>
             <div className="mt-4 max-w-sm">
               <DiagnosisSelect
                 label="Nível de prioridade"
                 value={diagnosis.fields[`pillar_${index}_priority`] || ''}
+                source={diagnosis.sources?.[`pillar_${index}_priority`]}
                 onChange={(value) => updateField(`pillar_${index}_priority`, value)}
                 options={['Baixa', 'Média', 'Alta', 'Crítica']}
               />
@@ -570,7 +769,7 @@ function DiagnosisBlock(props) {
                 ['Evidência', 'evidence', 'textarea'], ['Impacto', 'impact', 'textarea'],
               ].map(([label, suffix, type]) => {
                 const name = `cause_${index}_${suffix}`;
-                return <DiagnosisField key={name} label={label} name={name} type={type} value={diagnosis.fields[name] || ''} onChange={(value) => updateField(name, value)} />;
+                return <DiagnosisField key={name} label={label} name={name} type={type} value={diagnosis.fields[name] || ''} source={diagnosis.sources?.[name]} onChange={(value) => updateField(name, value)} />;
               })}
             </div>
           </SubCard>
@@ -585,8 +784,8 @@ function DiagnosisBlock(props) {
         {block.items.map((item) => (
           <SubCard key={item[1]} title={item[0]} icon={Sparkles}>
             <div className="space-y-4">
-              <DiagnosisField label={item[2]} name={`${item[1]}_description`} type="textarea" value={diagnosis.fields[`${item[1]}_description`] || ''} onChange={(value) => updateField(`${item[1]}_description`, value)} />
-              <DiagnosisField label={item[3]} name={`${item[1]}_action`} type="textarea" value={diagnosis.fields[`${item[1]}_action`] || ''} onChange={(value) => updateField(`${item[1]}_action`, value)} />
+              <DiagnosisField label={item[2]} name={`${item[1]}_description`} type="textarea" value={diagnosis.fields[`${item[1]}_description`] || ''} source={diagnosis.sources?.[`${item[1]}_description`]} onChange={(value) => updateField(`${item[1]}_description`, value)} />
+              <DiagnosisField label={item[3]} name={`${item[1]}_action`} type="textarea" value={diagnosis.fields[`${item[1]}_action`] || ''} source={diagnosis.sources?.[`${item[1]}_action`]} onChange={(value) => updateField(`${item[1]}_action`, value)} />
             </div>
           </SubCard>
         ))}
@@ -604,7 +803,7 @@ function DiagnosisBlock(props) {
                 ['Situação atual', 'current'], ['Gargalos', 'gaps'], ['Oportunidades', 'opportunities'],
               ].map(([label, suffix]) => {
                 const name = `journey_${index}_${suffix}`;
-                return <DiagnosisField key={name} label={label} name={name} type="textarea" value={diagnosis.fields[name] || ''} onChange={(value) => updateField(name, value)} />;
+                return <DiagnosisField key={name} label={label} name={name} type="textarea" value={diagnosis.fields[name] || ''} source={diagnosis.sources?.[name]} onChange={(value) => updateField(name, value)} />;
               })}
             </div>
           </SubCard>
@@ -624,7 +823,7 @@ function DiagnosisBlock(props) {
                 ['Problema que resolve', 'problem', 'textarea'], ['Movimentos principais', 'moves', 'textarea'],
               ].map(([label, suffix, type]) => {
                 const name = `strategy_pillar_${index}_${suffix}`;
-                return <DiagnosisField key={name} label={label} name={name} type={type} value={diagnosis.fields[name] || ''} onChange={(value) => updateField(name, value)} />;
+                return <DiagnosisField key={name} label={label} name={name} type={type} value={diagnosis.fields[name] || ''} source={diagnosis.sources?.[name]} onChange={(value) => updateField(name, value)} />;
               })}
             </div>
           </SubCard>
@@ -644,7 +843,7 @@ function DiagnosisBlock(props) {
                 ['Resultado esperado', 'result', 'textarea'], ['Responsáveis e dependências', 'owners', 'textarea'],
               ].map(([label, suffix, type]) => {
                 const name = `priority_${index}_${suffix}`;
-                return <DiagnosisField key={name} label={label} name={name} type={type} value={diagnosis.fields[name] || ''} onChange={(value) => updateField(name, value)} />;
+                return <DiagnosisField key={name} label={label} name={name} type={type} value={diagnosis.fields[name] || ''} source={diagnosis.sources?.[name]} onChange={(value) => updateField(name, value)} />;
               })}
             </div>
           </SubCard>
@@ -659,8 +858,8 @@ function DiagnosisBlock(props) {
         {CYCLE_FRONTS.map((front, index) => (
           <SubCard key={front} title={`Frente ${index + 1} — ${front}`} icon={Target}>
             <div className="space-y-4">
-              <DiagnosisField label="Objetivo" name={`cycle_front_${index}_goal`} type="textarea" value={diagnosis.fields[`cycle_front_${index}_goal`] || ''} onChange={(value) => updateField(`cycle_front_${index}_goal`, value)} />
-              <DiagnosisField label="Projetos possíveis" name={`cycle_front_${index}_projects`} type="textarea" value={diagnosis.fields[`cycle_front_${index}_projects`] || ''} onChange={(value) => updateField(`cycle_front_${index}_projects`, value)} />
+              <DiagnosisField label="Objetivo" name={`cycle_front_${index}_goal`} type="textarea" value={diagnosis.fields[`cycle_front_${index}_goal`] || ''} source={diagnosis.sources?.[`cycle_front_${index}_goal`]} onChange={(value) => updateField(`cycle_front_${index}_goal`, value)} />
+              <DiagnosisField label="Projetos possíveis" name={`cycle_front_${index}_projects`} type="textarea" value={diagnosis.fields[`cycle_front_${index}_projects`] || ''} source={diagnosis.sources?.[`cycle_front_${index}_projects`]} onChange={(value) => updateField(`cycle_front_${index}_projects`, value)} />
             </div>
           </SubCard>
         ))}
@@ -671,14 +870,17 @@ function DiagnosisBlock(props) {
   return null;
 }
 
-function DiagnosisField({ label, name, value, onChange, type = 'input', placeholder = '', help, full = false }) {
+function DiagnosisField({ label, name, value, onChange, type = 'input', placeholder = '', help, full = false, source }) {
   const printableValue = type === 'date' && value
     ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR')
     : value;
 
   return (
     <label className={`block min-w-0 ${full ? 'md:col-span-2' : ''}`}>
-      <span className="mb-1.5 block whitespace-normal break-words text-xs font-semibold text-slate-700">{label}</span>
+      <span className="mb-1.5 flex flex-wrap items-center gap-2">
+        <span className="min-w-0 whitespace-normal break-words text-xs font-semibold text-slate-700">{label}</span>
+        <DmeSourceBadge source={source} />
+      </span>
       {type === 'textarea' ? (
         <AutoGrowTextarea
           name={name}
@@ -730,10 +932,13 @@ function AutoGrowTextarea({ value, minHeight = 44, className = '', ...props }) {
   return <textarea ref={textareaRef} value={value} className={className} {...props} />;
 }
 
-function DiagnosisSelect({ label, value, onChange, options }) {
+function DiagnosisSelect({ label, value, onChange, options, source }) {
   return (
     <label className="block min-w-0">
-      <span className="mb-1.5 block whitespace-normal break-words text-xs font-semibold text-slate-700">{label}</span>
+      <span className="mb-1.5 flex flex-wrap items-center gap-2">
+        <span className="min-w-0 whitespace-normal break-words text-xs font-semibold text-slate-700">{label}</span>
+        <DmeSourceBadge source={source} />
+      </span>
       <select className="diagnosis-screen-control input-field bg-slate-50/55" value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">Selecione</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -742,6 +947,22 @@ function DiagnosisSelect({ label, value, onChange, options }) {
         {value || '—'}
       </span>
     </label>
+  );
+}
+
+function DmeSourceBadge({ source }) {
+  if (!source || source.origin !== 'dme') return null;
+  const label = source.kind === 'direct' ? 'DME' : 'Sugestão DME';
+  const title = source.assessmentTitle
+    ? `${label} — ${source.assessmentTitle}`
+    : label;
+  return (
+    <span
+      className={`no-print inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${source.kind === 'direct' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}
+      title={title}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -757,9 +978,10 @@ function SubCard({ title, icon: Icon, children }) {
   );
 }
 
-function DiagnosisTable({ block, rows, onChange, onAdd, onRemove }) {
+function DiagnosisTable({ block, rows, onChange, onAdd, onRemove, source }) {
   return (
     <div>
+      {source && <div className="no-print mb-2"><DmeSourceBadge source={source} /></div>}
       <div className="diagnosis-table-wrapper overflow-x-auto rounded-2xl border border-slate-200/80">
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>

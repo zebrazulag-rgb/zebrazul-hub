@@ -316,7 +316,7 @@ export function createStrategicDiagnosisData() {
   const tables = {};
   strategicDiagnosisCoverFields.forEach((field) => registerScalar(fields, field.name));
   strategicDiagnosisSections.forEach((section) => section.blocks.forEach((block) => registerBlockFields(block, fields, tables)));
-  return { fields, tables };
+  return { fields, tables, sources: {}, tableSources: {}, dmeImport: null };
 }
 
 export function mergeStrategicDiagnosisData(rawData) {
@@ -330,6 +330,15 @@ export function mergeStrategicDiagnosisData(rawData) {
         Array.isArray(source.tables?.[tableId]) ? source.tables[tableId] : rows,
       ])
     ),
+    sources: source.sources && typeof source.sources === 'object' && !Array.isArray(source.sources)
+      ? source.sources
+      : {},
+    tableSources: source.tableSources && typeof source.tableSources === 'object' && !Array.isArray(source.tableSources)
+      ? source.tableSources
+      : {},
+    dmeImport: source.dmeImport && typeof source.dmeImport === 'object'
+      ? source.dmeImport
+      : null,
   };
 }
 
