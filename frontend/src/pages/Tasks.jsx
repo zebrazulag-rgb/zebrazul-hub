@@ -141,7 +141,6 @@ export default function Tasks() {
   const [calendarTasks, setCalendarTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
-  const [localClientId, setLocalClientId] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [defaultTaskDate, setDefaultTaskDate] = useState('');
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
@@ -166,11 +165,9 @@ export default function Tasks() {
   const [convertingTask, setConvertingTask] = useState(false);
   const [convertError, setConvertError] = useState('');
 
-  useEffect(() => {
-    setLocalClientId(user?.role === 'client' ? String(user.client_id || '') : (selectedClient?.id ? String(selectedClient.id) : 'all'));
-  }, [selectedClient, user?.role, user?.client_id]);
-
-  const effectiveClientId = localClientId !== 'all' ? localClientId : null;
+  const effectiveClientId = user?.role === 'client'
+    ? (user.client_id ? String(user.client_id) : null)
+    : (selectedClient?.id ? String(selectedClient.id) : null);
 
   const loadTasks = useCallback(async () => {
     const params = effectiveClientId ? ('?client_id=' + effectiveClientId) : '';
@@ -575,13 +572,7 @@ export default function Tasks() {
         </div>
       </PageHero>
 
-      <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {user?.role !== 'client' ? (
-          <select className="input-field sm:max-w-[260px]" value={localClientId} onChange={(e) => setLocalClientId(e.target.value)}>
-            <option value="all">Todos os clientes</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        ) : <span className="text-sm font-medium text-slate-500">Acompanhe suas solicitações</span>}
+      <div className="toolbar-panel flex items-center justify-end">
         <div className="segmented-control">
           <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
             <LayoutGrid size={14} /> Kanban
