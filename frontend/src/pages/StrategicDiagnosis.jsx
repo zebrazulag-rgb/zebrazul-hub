@@ -24,6 +24,11 @@ import {
   prepareDmeImportCandidates,
 } from '../dmeStrategicImport.js';
 import {
+  applyAiConsolidationToCandidates,
+  buildAiCandidatePayload,
+  mergeDmeSuggestionResults,
+} from '../dmeStrategicMerge.js';
+import {
   createStrategicDiagnosisData,
   mergeStrategicDiagnosisData,
   strategicDiagnosisCoverFields,
@@ -56,11 +61,14 @@ export default function StrategicDiagnosis() {
   const [dmeImportApplying, setDmeImportApplying] = useState(false);
   const [dmeImportError, setDmeImportError] = useState('');
   const [dmeAssessments, setDmeAssessments] = useState([]);
-  const [selectedDmeId, setSelectedDmeId] = useState(null);
+  const [selectedDmeIds, setSelectedDmeIds] = useState(() => new Set());
   const [dmeImportSource, setDmeImportSource] = useState(null);
   const [dmeCandidates, setDmeCandidates] = useState([]);
   const [selectedDmeCandidates, setSelectedDmeCandidates] = useState(() => new Set());
+  const [dmeAiLoading, setDmeAiLoading] = useState(false);
+  const [dmeAiResult, setDmeAiResult] = useState(null);
   const [dmeImportNotice, setDmeImportNotice] = useState('');
+  const dmePreviewRequestRef = useRef(0);
 
   const clientId = user?.role === 'client'
     ? Number(user.client_id)
@@ -267,27 +275,42 @@ export default function StrategicDiagnosis() {
     setSelectedDmeCandidates(new Set(dmeCandidates.filter(predicate).map((candidate) => candidate.id)));
   }
 
-  async function loadDmePreview(assessmentId) {
-    if (!assessmentId) return;
-    setDmeImportLoading(true);
-    setDmeImportError('');
-    setSelectedDmeId(Number(assessmentId));
-    try {
-      const { data } = await api.get(`/diagnostics/${assessmentId}`);
-      const result = buildDmeStrategicSuggestions(data.diagnostic, {
-        clientName: selectedClientRecord?.name,
-      });
-      const prepared = prepareDmeImportCandidates(result.candidates, diagnosisRef.current, result.source);
-      setDmeImportSource(result.source);
-      setDmeCandidates(prepared);
-      setSelectedDmeCandidates(new Set(prepared.filter((candidate) => candidate.defaultSelected).map((candidate) => candidate.id)));
-    } catch (error) {
+  async function loadDmePreview(assessmentIds) {
+    const ids = [...new Set([...(assessmentIds || [])].map(Number).filter(Boolean))];
+    const requestId = dmePreviewRequestRef.current + 1;
+    dmePreviewRequestRef.current = requestId;
+    setDmeAiResult(null);
+
+    if (!ids.length) {
       setDmeImportSource(null);
       setDmeCandidates([]);
       setSelectedDmeCandidates(new Set());
-      setDmeImportError(error.response?.data?.error || 'Não foi possível ler as respostas deste DME.');
-    } finally {
       setDmeImportLoading(false);
+      return;
+    }
+
+    setDmeImportLoading(true);
+    setDmeImportError('');
+    try {
+      const responses = await Promise.all(ids.map((id) => api.get(`/diagnostics/${id}`)));
+      if (requestId !== dmePreviewRequestRef.current) return;
+
+      const results = responses.map(({ data }) => buildDmeStrategicSuggestions(data.diagnostic, {
+        clientName: selectedClientRecord?.name,
+      }));
+      const merged = mergeDmeSuggestionResults(results);
+      const prepared = prepareDmeImportCandidates(merged.candidates, diagnosisRef.current, merged.source);
+      setDmeImportSource(merged.source);
+      setDmeCandidates(prepared);
+      setSelectedDmeCandidates(new Set(prepared.filter((candidate) => candidate.defaultSelected).map((candidate) => candidate.id)));
+    } catch (error) {
+      if (requestId !== dmePreviewRequestRef.current) return;
+      setDmeImportSource(null);
+      setDmeCandidates([]);
+      setSelectedDmeCandidates(new Set());
+      setDmeImportError(error.response?.data?.error || 'Não foi possível ler as respostas dos DMEs selecionados.');
+    } finally {
+      if (requestId === dmePreviewRequestRef.current) setDmeImportLoading(false);
     }
   }
 
@@ -299,7 +322,9 @@ export default function StrategicDiagnosis() {
     setDmeAssessments([]);
     setDmeCandidates([]);
     setDmeImportSource(null);
+    setSelectedDmeIds(new Set());
     setSelectedDmeCandidates(new Set());
+    setDmeAiResult(null);
 
     try {
       const { data } = await api.get('/diagnostics', { params: { client_id: clientId } });
@@ -311,16 +336,30 @@ export default function StrategicDiagnosis() {
         return;
       }
 
-      const previousId = Number(diagnosisRef.current.dmeImport?.assessmentId);
-      const preferred = assessments.find((assessment) => Number(assessment.id) === previousId)
-        || assessments.find((assessment) => assessment.status === 'submitted')
+      const previousIds = Array.isArray(diagnosisRef.current.dmeImport?.assessmentIds)
+        ? diagnosisRef.current.dmeImport.assessmentIds.map(Number).filter(Boolean)
+        : [Number(diagnosisRef.current.dmeImport?.assessmentId)].filter(Boolean);
+      const availableIds = new Set(assessments.map((assessment) => Number(assessment.id)));
+      const validPreviousIds = previousIds.filter((id) => availableIds.has(id));
+      const preferred = assessments.find((assessment) => assessment.status === 'submitted')
         || assessments.find((assessment) => Number(assessment.progress || 0) > 0)
         || assessments[0];
-      await loadDmePreview(preferred.id);
+      const initialIds = validPreviousIds.length ? validPreviousIds : [Number(preferred.id)];
+      const nextSelected = new Set(initialIds);
+      setSelectedDmeIds(nextSelected);
+      await loadDmePreview(nextSelected);
     } catch (error) {
       setDmeImportLoading(false);
       setDmeImportError(error.response?.data?.error || 'Não foi possível localizar os DMEs deste cliente.');
     }
+  }
+
+  function toggleDmeAssessment(assessmentId) {
+    const next = new Set(selectedDmeIds);
+    if (next.has(assessmentId)) next.delete(assessmentId);
+    else next.add(assessmentId);
+    setSelectedDmeIds(next);
+    loadDmePreview(next);
   }
 
   function toggleDmeCandidate(candidateId) {
@@ -332,6 +371,36 @@ export default function StrategicDiagnosis() {
     });
   }
 
+  async function generateDmeAiConsolidation() {
+    const assessmentIds = [...selectedDmeIds];
+    if (assessmentIds.length < 2 || !selectedDmeCandidates.size) return;
+    setDmeAiLoading(true);
+    setDmeImportError('');
+
+    try {
+      const { data } = await api.post('/ai/dme/consolidate', {
+        client_id: clientId,
+        assessment_ids: assessmentIds,
+        candidates: buildAiCandidatePayload(dmeCandidates, selectedDmeCandidates),
+        force: Boolean(dmeAiResult),
+      });
+      const nextCandidates = applyAiConsolidationToCandidates(dmeCandidates, data);
+      setDmeCandidates(nextCandidates);
+      setDmeAiResult(data);
+      setDmeImportSource((current) => current ? {
+        ...current,
+        aiGenerated: true,
+        aiModel: data.model,
+        aiCreatedAt: data.created_at,
+        aiCached: Boolean(data.cached),
+      } : current);
+    } catch (error) {
+      setDmeImportError(error.response?.data?.error || 'Não foi possível unificar os DMEs com IA. A consolidação determinística continua disponível.');
+    } finally {
+      setDmeAiLoading(false);
+    }
+  }
+
   async function applyDmeImport() {
     if (!dmeImportSource || !selectedDmeCandidates.size) return;
     setDmeImportApplying(true);
@@ -340,6 +409,8 @@ export default function StrategicDiagnosis() {
     try {
       const importedAt = new Date().toISOString();
       const selected = dmeCandidates.filter((candidate) => selectedDmeCandidates.has(candidate.id));
+      const assessmentIds = dmeImportSource.assessmentIds || [dmeImportSource.assessmentId].filter(Boolean);
+      const assessmentTitles = dmeImportSource.assessmentTitles || [dmeImportSource.title].filter(Boolean);
       const current = diagnosisRef.current;
       const next = {
         ...current,
@@ -349,19 +420,36 @@ export default function StrategicDiagnosis() {
         tableSources: { ...(current.tableSources || {}) },
         dmeImport: {
           ...dmeImportSource,
+          assessmentIds,
+          assessmentTitles,
           importedAt,
           itemCount: selected.length,
+          ai: dmeAiResult ? {
+            model: dmeAiResult.model,
+            cached: Boolean(dmeAiResult.cached),
+            createdAt: dmeAiResult.created_at,
+            summary: dmeAiResult.summary,
+          } : null,
         },
       };
 
       selected.forEach((candidate) => {
+        const usedAi = Boolean(candidate.aiGenerated);
         const sourceMetadata = {
-          origin: 'dme',
-          kind: candidate.kind,
-          assessmentId: dmeImportSource.assessmentId,
+          origin: usedAi ? 'dme_ai' : 'dme',
+          kind: usedAi ? 'ai' : candidate.kind,
+          assessmentId: assessmentIds[0] || null,
+          assessmentIds,
           assessmentTitle: dmeImportSource.title,
+          assessmentTitles,
+          respondents: dmeImportSource.respondents || [],
           importedAt,
           sourceKeys: candidate.sourceKeys || [],
+          model: usedAi ? candidate.aiMeta?.model || dmeAiResult?.model : null,
+          confidence: usedAi ? candidate.aiMeta?.confidence : null,
+          consensusPoints: usedAi ? candidate.aiMeta?.consensusPoints || [] : [],
+          divergences: usedAi ? candidate.aiMeta?.divergences || [] : [],
+          missingInformation: usedAi ? candidate.aiMeta?.missingInformation || [] : [],
         };
 
         if (candidate.targetType === 'table') {
@@ -379,10 +467,15 @@ export default function StrategicDiagnosis() {
       setDiagnosis(next);
       await persistDiagnosis(next);
       setDmeImportOpen(false);
-      setDmeImportNotice(`${selected.length} informações do DME foram aplicadas. Os campos que você editar a partir de agora passam a ser considerados manuais.`);
+      const aiApplied = selected.filter((candidate) => candidate.aiGenerated).length;
+      setDmeImportNotice(
+        aiApplied > 0
+          ? `${selected.length} informações foram aplicadas, incluindo ${aiApplied} sínteses consolidadas por IA. Campos editados depois disso passam a ser considerados manuais.`
+          : `${selected.length} informações dos DMEs foram aplicadas. Os campos que você editar a partir de agora passam a ser considerados manuais.`
+      );
       window.setTimeout(() => setDmeImportNotice(''), 7000);
     } catch (error) {
-      setDmeImportError(error.response?.data?.error || 'Não foi possível aplicar os dados do DME.');
+      setDmeImportError(error.response?.data?.error || 'Não foi possível aplicar os dados dos DMEs.');
     } finally {
       setDmeImportApplying(false);
     }
@@ -609,8 +702,8 @@ export default function StrategicDiagnosis() {
         loading={dmeImportLoading}
         error={dmeImportError}
         assessments={dmeAssessments}
-        selectedAssessmentId={selectedDmeId}
-        onAssessmentChange={loadDmePreview}
+        selectedAssessmentIds={selectedDmeIds}
+        onAssessmentToggle={toggleDmeAssessment}
         source={dmeImportSource}
         candidates={dmeCandidates}
         selectedIds={selectedDmeCandidates}
@@ -619,8 +712,12 @@ export default function StrategicDiagnosis() {
         onSelectSafe={() => selectDmeCandidates((candidate) => candidate.state !== 'manual')}
         onSelectAll={() => selectDmeCandidates(() => true)}
         onClear={() => setSelectedDmeCandidates(new Set())}
+        onGenerateAi={generateDmeAiConsolidation}
+        aiLoading={dmeAiLoading}
+        aiResult={dmeAiResult}
+        canUseAi={user?.role !== 'client' && !user?.is_commercial_team}
         onApply={applyDmeImport}
-        onClose={() => !dmeImportApplying && setDmeImportOpen(false)}
+        onClose={() => !dmeImportApplying && !dmeAiLoading && setDmeImportOpen(false)}
         applying={dmeImportApplying}
       />
     </div>
@@ -951,14 +1048,16 @@ function DiagnosisSelect({ label, value, onChange, options, source }) {
 }
 
 function DmeSourceBadge({ source }) {
-  if (!source || source.origin !== 'dme') return null;
-  const label = source.kind === 'direct' ? 'DME' : 'Sugestão DME';
-  const title = source.assessmentTitle
-    ? `${label} — ${source.assessmentTitle}`
-    : label;
+  if (!source || !['dme', 'dme_ai'].includes(source.origin)) return null;
+  const ai = source.origin === 'dme_ai';
+  const label = ai ? 'DME + IA' : source.kind === 'direct' ? 'DME' : 'Sugestão DME';
+  const sourceTitle = Array.isArray(source.assessmentTitles) && source.assessmentTitles.length
+    ? source.assessmentTitles.join(', ')
+    : source.assessmentTitle;
+  const title = sourceTitle ? `${label} — ${sourceTitle}` : label;
   return (
     <span
-      className={`no-print inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${source.kind === 'direct' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}
+      className={`no-print inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${ai ? 'bg-indigo-50 text-indigo-700' : source.kind === 'direct' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}
       title={title}
     >
       {label}

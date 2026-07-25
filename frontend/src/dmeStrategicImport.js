@@ -511,8 +511,16 @@ export function prepareDmeImportCandidates(candidates, diagnosis, source) {
     const hasCurrentValue = candidate.targetType === 'field'
       ? Boolean(clean(fields[candidate.target]))
       : tableHasMeaningfulData(tables[candidate.target], candidate.target);
-    const imported = existingSource?.origin === 'dme';
-    const sameAssessment = imported && Number(existingSource.assessmentId) === Number(source?.assessmentId);
+    const imported = ['dme', 'dme_ai'].includes(existingSource?.origin);
+    const existingAssessmentIds = Array.isArray(existingSource?.assessmentIds)
+      ? existingSource.assessmentIds.map(Number).filter(Boolean)
+      : [Number(existingSource?.assessmentId)].filter(Boolean);
+    const sourceAssessmentIds = Array.isArray(source?.assessmentIds)
+      ? source.assessmentIds.map(Number).filter(Boolean)
+      : [Number(source?.assessmentId)].filter(Boolean);
+    const sameAssessment = imported
+      && existingAssessmentIds.length === sourceAssessmentIds.length
+      && existingAssessmentIds.every((id) => sourceAssessmentIds.includes(id));
     const state = !hasCurrentValue ? 'empty' : imported ? 'imported' : 'manual';
 
     return {
