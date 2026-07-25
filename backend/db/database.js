@@ -545,6 +545,25 @@ CREATE TABLE IF NOT EXISTS diagnostic_assessments (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS ai_dme_consolidations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  assessment_ids_json TEXT NOT NULL DEFAULT '[]',
+  source_hash TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  model TEXT NOT NULL,
+  result_json TEXT NOT NULL DEFAULT '{}',
+  usage_json TEXT,
+  response_ids_json TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(agency_id, client_id, source_hash),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 
 CREATE INDEX IF NOT EXISTS idx_meta_organic_accounts_client ON meta_organic_accounts(client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_organic_daily_account_date ON meta_organic_daily_metrics(organic_account_id, platform, metric_date);
@@ -817,6 +836,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_posts_agency ON posts(agency_id, status, scheduled_at);
   CREATE INDEX IF NOT EXISTS idx_financial_agency ON financial_entries(agency_id, due_date);
+  CREATE INDEX IF NOT EXISTS idx_ai_dme_consolidations_client ON ai_dme_consolidations(agency_id, client_id, created_at DESC);
 `);
 
 const installationId = db.prepare("SELECT value FROM system_meta WHERE key = 'installation_id'").get();
@@ -844,7 +864,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '23', datetime('now'))
+   VALUES ('schema_version', '24', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
