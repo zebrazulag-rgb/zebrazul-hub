@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlignLeft,
   BringToFront,
@@ -205,6 +206,17 @@ export default function DraftBoardModal({ boardId, onClose, onSaved }) {
   const [saveError, setSaveError] = useState('');
   const [savedAt, setSavedAt] = useState('');
   const [historyTick, setHistoryTick] = useState(0);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscroll;
+    };
+  }, []);
 
   const selectedElement = useMemo(
     () => data.elements.find((element) => element.id === selectedId) || null,
@@ -582,32 +594,34 @@ export default function DraftBoardModal({ boardId, onClose, onSaved }) {
   }
 
   if (loading) {
-    return (
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-100">
+    return createPortal(
+      <div className="fixed inset-0 z-[120] flex h-[100dvh] w-screen items-center justify-center bg-slate-100">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 font-semibold text-slate-600 shadow-xl">
           <Loader2 size={20} className="animate-spin text-[#0969ff]" /> Abrindo rascunho...
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
   if (loadError) {
-    return (
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-100 p-6">
+    return createPortal(
+      <div className="fixed inset-0 z-[120] flex h-[100dvh] w-screen items-center justify-center bg-slate-100 p-6">
         <div className="max-w-md rounded-[28px] border border-red-200 bg-white p-7 text-center shadow-xl">
           <h2 className="text-xl font-bold text-slate-900">Não foi possível abrir</h2>
           <p className="mt-3 text-sm leading-6 text-red-600">{loadError}</p>
           <button onClick={onClose} className="btn-primary mt-6">Voltar para Materiais</button>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
   const canUndo = historyIndexRef.current > 0;
   const canRedo = historyIndexRef.current < historyRef.current.length - 1;
 
-  return (
-    <div className="fixed inset-0 z-[90] flex flex-col overflow-hidden bg-slate-100 text-slate-900">
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex h-[100dvh] w-screen flex-col overflow-hidden bg-slate-100 text-slate-900">
       <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 shadow-sm md:px-5">
         <button onClick={closeBoard} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" title="Fechar">
           <X size={20} />
@@ -762,6 +776,7 @@ export default function DraftBoardModal({ boardId, onClose, onSaved }) {
           </aside>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
