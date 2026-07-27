@@ -22,12 +22,15 @@ const diagnosticRoutes = require('./routes/diagnostics');
 const publicDiagnosticRoutes = require('./routes/publicDiagnostics');
 const commercialRoutes = require('./routes/commercial');
 const aiRoutes = require('./routes/ai');
+const materialRoutes = require('./routes/materials');
+const publicMaterialRoutes = require('./routes/publicMaterials');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
 const { syncAllConnectedAccounts, currentMonthRange } = require('./services/metaSync');
 const { syncAllOrganicAccounts, currentMonthRange: currentOrganicMonthRange } = require('./services/metaOrganicSync');
 const { authRequired } = require('./middleware/auth');
+const { seedBuiltInMaterials } = require('./services/materials');
 
 if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
   const allowDemoInProduction = String(process.env.ALLOW_DEMO_SEED_IN_PRODUCTION || 'false').toLowerCase() === 'true';
@@ -38,6 +41,7 @@ if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
 }
 
 bootstrapAdminIfNeeded();
+seedBuiltInMaterials();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -73,6 +77,7 @@ app.use('/api/tenant', tenantRoutes);
 app.use('/api/agencies', agencyRoutes);
 app.use('/api/diagnostics', diagnosticRoutes);
 app.use('/api/public/diagnostics', publicDiagnosticRoutes);
+app.use('/api/public/materials', publicMaterialRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/posts', postRoutes);
@@ -87,6 +92,7 @@ app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
 app.use('/api/commercial', commercialRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/materials', materialRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);
