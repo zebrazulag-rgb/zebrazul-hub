@@ -7,7 +7,10 @@ router.use(authRequired);
 
 const MAX_BOARD_BYTES = 2 * 1024 * 1024;
 const MAX_ELEMENTS = 600;
+const MAX_CALENDAR_ENTRIES = 1200;
 const ALLOWED_ELEMENT_TYPES = new Set(['sticky', 'text', 'rectangle', 'circle', 'checklist', 'drawing']);
+const ALLOWED_BOARD_TYPES = new Set(['canvas', 'calendar']);
+const ALLOWED_CALENDAR_STATUSES = new Set(['draft', 'planned', 'done']);
 
 function normalizeOptionalClientId(value) {
   if (value === undefined || value === null || value === '' || value === 'global') return null;
@@ -37,16 +40,47 @@ function fetchBoard(id, agencyId) {
   `).get(id, agencyId);
 }
 
-function boardSummary(row) {
-  let elementCount = 0;
+function currentMonthKey() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function isValidMonthKey(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return false;
+  const [year, month] = String(value).split('-').map(Number);
+  return year >= 2000 && year <= 2100 && month >= 1 && month <= 12;
+}
+
+function isValidDateKey(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function parseBoardData(raw) {
   try {
-    const parsed = JSON.parse(row.data_json || '{}');
-    elementCount = Array.isArray(parsed.elements) ? parsed.elements.length : 0;
+    const parsed = JSON.parse(raw || '{}');
+    if (!parsed || typeof parsed !== 'object') return { version: 1, boardType: 'canvas', background: '#f8fafc', elements: [] };
+    if (parsed.boardType === 'calendar') return parsed;
+    return { ...parsed, boardType: 'canvas' };
   } catch {
-    elementCount = 0;
+    return { version: 1, boardType: 'canvas', background: '#f8fafc', elements: [] };
   }
+}
+
+function boardSummary(row) {
+  const parsed = parseBoardData(row.data_json);
+  const boardType = parsed.boardType === 'calendar' ? 'calendar' : 'canvas';
+  const elementCount = boardType === 'calendar'
+    ? (Array.isArray(parsed.calendar?.entries) ? parsed.calendar.entries.length : 0)
+    : (Array.isArray(parsed.elements) ? parsed.elements.length : 0);
   const { data_json, ...summary } = row;
-  return { ...summary, element_count: elementCount };
+  return {
+    ...summary,
+    board_type: boardType,
+    element_count: elementCount,
+    item_count: elementCount,
+    calendar_month: boardType === 'calendar' && isValidMonthKey(parsed.calendar?.month) ? parsed.calendar.month : null,
+  };
 }
 
 function buildAccessWhere(user, values) {
@@ -61,13 +95,13 @@ function buildAccessWhere(user, values) {
   return `(b.client_id IS NULL OR b.client_id IN (${clientIds.map(() => '?').join(',')}))`;
 }
 
-function validateBoardData(input) {
-  const data = input && typeof input === 'object' ? input : null;
-  if (!data || !Array.isArray(data.elements)) throw new Error('Estrutura do rascunho invalida.');
+function validateCanvasData(data) {
+  if (!Array.isArray(data.elements)) throw new Error('Estrutura do rascunho invalida.');
   if (data.elements.length > MAX_ELEMENTS) throw new Error(`O rascunho pode ter no maximo ${MAX_ELEMENTS} elementos.`);
 
-  const normalized = {
+  return {
     version: Number(data.version || 1),
+    boardType: 'canvas',
     background: typeof data.background === 'string' ? data.background.slice(0, 32) : '#f8fafc',
     elements: data.elements.map((element, index) => {
       if (!element || typeof element !== 'object' || !ALLOWED_ELEMENT_TYPES.has(element.type)) {
@@ -95,7 +129,45 @@ function validateBoardData(input) {
       return normalizedElement;
     }),
   };
+}
 
+function validateCalendarData(data) {
+  const calendar = data.calendar && typeof data.calendar === 'object' ? data.calendar : {};
+  const entries = Array.isArray(calendar.entries) ? calendar.entries : [];
+  if (entries.length > MAX_CALENDAR_ENTRIES) {
+    throw new Error(`O calendario pode ter no maximo ${MAX_CALENDAR_ENTRIES} itens.`);
+  }
+
+  return {
+    version: Math.max(2, Number(data.version || 2)),
+    boardType: 'calendar',
+    calendar: {
+      month: isValidMonthKey(calendar.month) ? calendar.month : currentMonthKey(),
+      entries: entries.map((entry, index) => {
+        if (!entry || typeof entry !== 'object') throw new Error(`Item invalido na posicao ${index + 1}.`);
+        const date = String(entry.date || '').slice(0, 10);
+        if (!isValidDateKey(date)) throw new Error(`Data invalida no item ${index + 1}.`);
+        const status = ALLOWED_CALENDAR_STATUSES.has(entry.status) ? entry.status : 'draft';
+        return {
+          id: String(entry.id || `calendar-${index}`).slice(0, 120),
+          title: String(entry.title || 'Novo item').trim().slice(0, 220) || 'Novo item',
+          description: String(entry.description || '').slice(0, 5000),
+          date,
+          color: String(entry.color || '#dbeafe').slice(0, 32),
+          status,
+          category: String(entry.category || '').slice(0, 120),
+          createdAt: String(entry.createdAt || '').slice(0, 40),
+        };
+      }),
+    },
+  };
+}
+
+function validateBoardData(input) {
+  const data = input && typeof input === 'object' ? input : null;
+  if (!data) throw new Error('Estrutura do rascunho invalida.');
+  const boardType = ALLOWED_BOARD_TYPES.has(data.boardType) ? data.boardType : 'canvas';
+  const normalized = boardType === 'calendar' ? validateCalendarData(data) : validateCanvasData(data);
   const serialized = JSON.stringify(normalized);
   if (Buffer.byteLength(serialized, 'utf8') > MAX_BOARD_BYTES) throw new Error('O rascunho ficou grande demais para salvar.');
   return { normalized, serialized };
@@ -137,10 +209,9 @@ router.get('/:id', (req, res) => {
     return res.status(404).json({ error: 'Rascunho nao encontrado.' });
   }
 
-  let data = { version: 1, background: '#f8fafc', elements: [] };
-  try { data = JSON.parse(board.data_json || '{}'); } catch { /* usa vazio */ }
+  const data = parseBoardData(board.data_json);
   const { data_json, ...metadata } = board;
-  res.json({ board: { ...metadata, data } });
+  res.json({ board: { ...metadata, board_type: data.boardType === 'calendar' ? 'calendar' : 'canvas', data } });
 });
 
 router.post('/', (req, res) => {
@@ -158,7 +229,13 @@ router.post('/', (req, res) => {
   const title = String(req.body.title || '').trim();
   if (!title) return res.status(400).json({ error: 'Informe o titulo do rascunho.' });
 
-  const initialData = JSON.stringify({ version: 1, background: '#f8fafc', elements: [] });
+  const requestedType = String(req.body.board_type || 'canvas').trim().toLowerCase();
+  const boardType = ALLOWED_BOARD_TYPES.has(requestedType) ? requestedType : 'canvas';
+  const requestedMonth = isValidMonthKey(req.body.calendar_month) ? String(req.body.calendar_month) : currentMonthKey();
+  const initialData = boardType === 'calendar'
+    ? JSON.stringify({ version: 2, boardType: 'calendar', calendar: { month: requestedMonth, entries: [] } })
+    : JSON.stringify({ version: 1, boardType: 'canvas', background: '#f8fafc', elements: [] });
+
   const info = db.prepare(`
     INSERT INTO material_boards (
       agency_id, client_id, title, description, data_json, revision, created_by, updated_by
@@ -173,7 +250,7 @@ router.post('/', (req, res) => {
     req.user.id
   );
 
-  res.status(201).json({ id: Number(info.lastInsertRowid), revision: 1 });
+  res.status(201).json({ id: Number(info.lastInsertRowid), revision: 1, board_type: boardType });
 });
 
 router.put('/:id', (req, res) => {
@@ -226,7 +303,7 @@ router.put('/:id', (req, res) => {
   }
 
   if (!updates.length) return res.json({ ok: true, revision: Number(board.revision) });
-  updates.push("updated_by = ?", "updated_at = datetime('now')");
+  updates.push('updated_by = ?', "updated_at = datetime('now')");
   values.push(req.user.id);
 
   db.prepare(`UPDATE material_boards SET ${updates.join(', ')} WHERE id = ? AND agency_id = ?`)
