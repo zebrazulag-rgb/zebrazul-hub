@@ -22,6 +22,8 @@ import Cycle90Plan from './pages/Cycle90Plan.jsx';
 import MonthlyPlanning from './pages/MonthlyPlanning.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
+import Materials from './pages/Materials.jsx';
+import MaterialViewer from './pages/MaterialViewer.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -67,6 +69,8 @@ export default function App() {
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola/planejamento-mensal" replace />} />
       <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><Sales /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+      <Route path="/materiais" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
+      <Route path="/materiais/:id" element={<ProtectedRoute><MaterialViewer /></ProtectedRoute>} />
       <Route
         path="/financeiro"
         element={

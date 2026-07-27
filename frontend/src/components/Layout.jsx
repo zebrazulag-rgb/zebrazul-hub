@@ -21,6 +21,7 @@ import {
   Check,
   PanelLeftClose,
   PanelLeftOpen,
+  FolderOpen,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -152,6 +153,7 @@ export default function Layout({ children }) {
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
+    { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'] },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
   ];
 
