@@ -23,6 +23,7 @@ const publicDiagnosticRoutes = require('./routes/publicDiagnostics');
 const commercialRoutes = require('./routes/commercial');
 const aiRoutes = require('./routes/ai');
 const materialRoutes = require('./routes/materials');
+const materialBoardRoutes = require('./routes/materialBoards');
 const publicMaterialRoutes = require('./routes/publicMaterials');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
@@ -93,6 +94,7 @@ app.use('/api/meta-organic', metaOrganicRoutes);
 app.use('/api/commercial', commercialRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/materials', materialRoutes);
+app.use('/api/material-boards', materialBoardRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);
