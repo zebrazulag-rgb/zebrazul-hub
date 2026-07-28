@@ -59,9 +59,7 @@ function sanitizeCandidate(candidate) {
   if (targetType !== 'field') return null;
   const sources = (Array.isArray(candidate?.sources) ? candidate.sources : []).slice(0, 10).map((source) => ({
     assessmentId: Number(source?.assessmentId) || null,
-    assessmentTitle: clean(source?.assessmentTitle, 220),
-    respondent: clean(source?.respondent, 160),
-    value: clean(source?.value, 12000),
+    value: clean(source?.value, 6000),
   })).filter((source) => source.value);
   if (!sources.length) return null;
   return {
@@ -71,9 +69,17 @@ function sanitizeCandidate(candidate) {
     label: clean(candidate?.label, 260),
     section: clean(candidate?.section, 260),
     kind: clean(candidate?.kind, 40),
-    currentValue: clean(candidate?.currentValue, 12000),
     sources,
   };
+}
+
+function normalizedText(value) {
+  return clean(value, 6000).toLocaleLowerCase('pt-BR').replace(/\s+/g, ' ');
+}
+
+function needsAiConsolidation(candidate) {
+  const distinct = new Set((candidate?.sources || []).map((source) => normalizedText(source.value)).filter(Boolean));
+  return distinct.size > 1;
 }
 
 function stableHash(value) {
@@ -128,12 +134,14 @@ router.post('/dme/consolidate', async (req, res) => {
     .map(sanitizeCandidate)
     .filter(Boolean);
   if (!candidates.length) return res.status(400).json({ error: 'Selecione ao menos um campo com conteúdo para consolidar.' });
+  const requestedFieldCount = Math.max(candidates.length, Number(req.body.requested_field_count || 0));
 
   const sourceIds = new Set(assessmentIds);
   const invalidSource = candidates.some((candidate) => candidate.sources.some((source) => source.assessmentId && !sourceIds.has(source.assessmentId)));
   if (invalidSource) return res.status(400).json({ error: 'Os campos enviados possuem uma origem que não pertence aos DMEs selecionados.' });
 
-  const model = clean(process.env.OPENAI_MODEL, 120) || 'gpt-5.6';
+  const aiCandidates = candidates.filter(needsAiConsolidation);
+  const model = clean(process.env.OPENAI_DME_MODEL || process.env.OPENAI_MODEL, 120) || 'gpt-5.6';
   const scoreSummary = buildScoreSummary(rows);
   const assessments = rows.map((row) => {
     const answers = parseJson(row.answers_json, {});
@@ -154,9 +162,30 @@ router.post('/dme/consolidate', async (req, res) => {
     clientId,
     assessmentIds,
     scoreSummary,
-    candidates,
+    candidates: aiCandidates,
   };
   const sourceHash = stableHash(hashPayload);
+
+  if (!aiCandidates.length) {
+    return res.json({
+      summary: 'Os campos selecionados já possuem respostas iguais ou uma união determinística pronta. Nenhuma chamada à IA foi necessária.',
+      items: [],
+      consensus: [],
+      divergences: [],
+      missing_information: [],
+      model,
+      cached: false,
+      deterministic: true,
+      created_at: new Date().toISOString(),
+      score_summary: scoreSummary,
+      assessment_ids: assessmentIds,
+      requested_fields: requestedFieldCount,
+      ai_fields: 0,
+      skipped_fields: requestedFieldCount,
+      processing_ms: 0,
+      usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+    });
+  }
 
   if (!force) {
     const cached = db.prepare(`
@@ -178,12 +207,13 @@ router.post('/dme/consolidate', async (req, res) => {
     }
   }
 
+  const startedAt = Date.now();
   try {
     const result = await consolidateDmeCandidates({
       clientName: rows[0].client_name,
       scoreSummary,
       assessments,
-      candidates,
+      candidates: aiCandidates,
     });
     const createdAt = new Date().toISOString();
     const response = {
@@ -197,6 +227,11 @@ router.post('/dme/consolidate', async (req, res) => {
       created_at: createdAt,
       score_summary: scoreSummary,
       assessment_ids: assessmentIds,
+      requested_fields: requestedFieldCount,
+      ai_fields: aiCandidates.length,
+      skipped_fields: Math.max(0, requestedFieldCount - aiCandidates.length),
+      chunk_count: Number(result.chunkCount || 0),
+      processing_ms: Date.now() - startedAt,
     };
 
     db.prepare(`
