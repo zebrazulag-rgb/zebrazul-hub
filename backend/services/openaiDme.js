@@ -1,5 +1,5 @@
 const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
-const PROMPT_VERSION = 'dme-consolidation-v2-fast';
+const PROMPT_VERSION = 'dme-consolidation-v3-compatible';
 
 class OpenAIIntegrationError extends Error {
   constructor(message, status = 502, code = 'openai_error', details = null) {
@@ -35,7 +35,12 @@ function reasoningEffortFor(model) {
     process.env.OPENAI_DME_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT,
     20,
   ).toLowerCase();
-  return ['minimal', 'low', 'medium', 'high', 'xhigh'].includes(requested) ? requested : 'minimal';
+
+  // Não force um nível de raciocínio por padrão. Alguns modelos aceitam a
+  // Responses API, mas rejeitam determinados valores de reasoning.effort.
+  return ['minimal', 'low', 'medium', 'high', 'xhigh'].includes(requested)
+    ? requested
+    : null;
 }
 
 function responseSchema() {
@@ -60,7 +65,7 @@ function responseSchema() {
           properties: {
             id: { type: 'string' },
             unified_value: { type: 'string' },
-            confidence: { type: 'number', minimum: 0, maximum: 1 },
+            confidence: { type: 'number' },
             consensus_points: { type: 'array', items: { type: 'string' } },
             divergences: { type: 'array', items: { type: 'string' } },
             missing_information: { type: 'array', items: { type: 'string' } },
@@ -140,8 +145,8 @@ async function requestChunk({ apiKey, model, clientName, scoreSummary, assessmen
     fields_to_consolidate: candidates,
   };
 
-  try {
-    const requestBody = {
+  const buildRequestBody = ({ useStructuredOutput = true, includeReasoning = true } = {}) => {
+    const body = {
       model,
       store: false,
       max_output_tokens: outputTokenLimit(candidates.length),
@@ -155,18 +160,25 @@ async function requestChunk({ apiKey, model, clientName, scoreSummary, assessmen
           content: [{ type: 'input_text', text: JSON.stringify(userPayload) }],
         },
       ],
-      text: {
+    };
+
+    if (useStructuredOutput) {
+      body.text = {
         format: {
           type: 'json_schema',
           name: 'dme_strategic_consolidation',
           strict: true,
           schema: responseSchema(),
         },
-      },
-    };
-    const reasoningEffort = reasoningEffortFor(model);
-    if (reasoningEffort) requestBody.reasoning = { effort: reasoningEffort };
+      };
+    }
 
+    const reasoningEffort = includeReasoning ? reasoningEffortFor(model) : null;
+    if (reasoningEffort) body.reasoning = { effort: reasoningEffort };
+    return body;
+  };
+
+  const sendRequest = async (requestBody) => {
     const response = await fetch(OPENAI_API_URL, {
       method: 'POST',
       headers: {
@@ -176,16 +188,92 @@ async function requestChunk({ apiKey, model, clientName, scoreSummary, assessmen
       body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
-
     const payload = await response.json().catch(() => ({}));
+    return { response, payload };
+  };
+
+  const apiErrorInfo = (response, payload) => ({
+    status: response.status,
+    message: clean(payload?.error?.message, 1600),
+    code: clean(payload?.error?.code || payload?.error?.type, 160) || 'openai_http_error',
+    parameter: clean(payload?.error?.param, 160),
+  });
+
+  const isReasoningCompatibilityError = ({ status, message, parameter }) => (
+    status === 400
+    && /reasoning|effort/i.test(`${message} ${parameter}`)
+    && /unsupported|invalid|not supported|unknown parameter|unrecognized/i.test(message)
+  );
+
+  const isStructuredOutputCompatibilityError = ({ status, message, parameter }) => (
+    status === 400
+    && /json_schema|response_format|text\.format|structured output|schema/i.test(`${message} ${parameter}`)
+    && /unsupported|invalid|not supported|unknown parameter|unrecognized|not permitted/i.test(message)
+  );
+
+  const isModelAccessError = ({ code, message }) => (
+    ['model_not_found', 'model_access_denied', 'invalid_model'].includes(code)
+    || /model[^.]{0,100}(does not exist|not found|not available|do not have access|not permitted|not allowed)/i.test(message)
+  );
+
+  try {
+    let requestBody = buildRequestBody();
+    let { response, payload } = await sendRequest(requestBody);
+    let retriedWithoutReasoning = false;
+    let retriedWithoutStructuredOutput = false;
+
     if (!response.ok) {
-      const apiMessage = clean(payload?.error?.message, 1000);
-      const apiCode = clean(payload?.error?.code || payload?.error?.type, 120) || 'openai_http_error';
+      let info = apiErrorInfo(response, payload);
+
+      // Compatibilidade: se o modelo rejeitar reasoning.effort, tente novamente
+      // sem esse parâmetro. Isso não reduz a qualidade da consolidação textual.
+      if (requestBody.reasoning && isReasoningCompatibilityError(info)) {
+        retriedWithoutReasoning = true;
+        requestBody = buildRequestBody({ useStructuredOutput: true, includeReasoning: false });
+        ({ response, payload } = await sendRequest(requestBody));
+        info = apiErrorInfo(response, payload);
+      }
+
+      // Compatibilidade adicional: alguns modelos/versões podem aceitar a
+      // Responses API, mas rejeitar o schema estrito. Nesse caso, o prompt ainda
+      // exige JSON e o backend continua validando o retorno antes de aplicar.
+      if (!response.ok && isStructuredOutputCompatibilityError(info)) {
+        retriedWithoutStructuredOutput = true;
+        requestBody = buildRequestBody({ useStructuredOutput: false, includeReasoning: false });
+        ({ response, payload } = await sendRequest(requestBody));
+        info = apiErrorInfo(response, payload);
+      }
+    }
+
+    if (!response.ok) {
+      const info = apiErrorInfo(response, payload);
+      console.error('[OPENAI DME API]', JSON.stringify({
+        status: info.status,
+        code: info.code,
+        parameter: info.parameter || null,
+        model,
+        message: info.message,
+        retriedWithoutReasoning,
+        retriedWithoutStructuredOutput,
+      }));
+
       let friendly = 'A OpenAI não conseguiu processar a consolidação agora.';
-      if (response.status === 401) friendly = 'A chave da OpenAI configurada no Railway foi recusada. Gere uma nova chave e atualize OPENAI_API_KEY.';
-      else if (response.status === 429) friendly = 'O projeto da OpenAI atingiu um limite de uso, saldo ou requisições. Verifique Usage e Billing na plataforma.';
-      else if (response.status === 400 && /model/i.test(apiMessage)) friendly = `O modelo ${model} não está disponível para este projeto. Configure OPENAI_DME_MODEL ou OPENAI_MODEL no Railway com um modelo liberado.`;
-      throw new OpenAIIntegrationError(friendly, response.status >= 500 ? 502 : response.status, apiCode, apiMessage);
+      if (response.status === 401) {
+        friendly = 'A chave da OpenAI configurada no Railway foi recusada. Atualize OPENAI_API_KEY.';
+      } else if (response.status === 429) {
+        friendly = 'O projeto da OpenAI atingiu um limite de uso, saldo ou requisições. Verifique Usage e Billing na plataforma.';
+      } else if (isModelAccessError(info)) {
+        friendly = `O modelo ${model} não está disponível para esta chave ou projeto. Confira OPENAI_DME_MODEL e a chave do projeto no Railway.`;
+      } else if (response.status === 400 && info.message) {
+        friendly = `A OpenAI recusou uma configuração da análise: ${info.message}`;
+      }
+
+      throw new OpenAIIntegrationError(
+        friendly,
+        response.status >= 500 ? 502 : response.status,
+        info.code,
+        info.message,
+      );
     }
 
     const text = extractOutputText(payload);
@@ -195,7 +283,7 @@ async function requestChunk({ apiKey, model, clientName, scoreSummary, assessmen
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new OpenAIIntegrationError('A resposta da IA não veio no formato estruturado esperado.', 502, 'invalid_json');
+      throw new OpenAIIntegrationError('A resposta da IA não veio no formato estruturado esperado.', 502, 'invalid_json', clean(text, 1000));
     }
 
     return {
@@ -252,7 +340,7 @@ async function consolidateDmeCandidates({ clientName, scoreSummary, assessments,
     throw new OpenAIIntegrationError('A integração com IA ainda não está configurada no servidor. Adicione OPENAI_API_KEY no Railway.', 503, 'missing_api_key');
   }
 
-  const model = clean(process.env.OPENAI_DME_MODEL || process.env.OPENAI_MODEL, 120) || 'gpt-5.6';
+  const model = clean(process.env.OPENAI_DME_MODEL || process.env.OPENAI_MODEL, 120) || 'gpt-5.6-luna';
   const timeoutMs = Math.max(15000, Number(process.env.OPENAI_TIMEOUT_MS || 90000));
   const chunkSize = Math.max(6, Math.min(24, Number(process.env.OPENAI_DME_CHUNK_SIZE || 12)));
   const concurrency = Math.max(1, Math.min(4, Number(process.env.OPENAI_DME_CONCURRENCY || 3)));

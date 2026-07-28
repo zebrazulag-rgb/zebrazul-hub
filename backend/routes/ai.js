@@ -141,7 +141,7 @@ router.post('/dme/consolidate', async (req, res) => {
   if (invalidSource) return res.status(400).json({ error: 'Os campos enviados possuem uma origem que não pertence aos DMEs selecionados.' });
 
   const aiCandidates = candidates.filter(needsAiConsolidation);
-  const model = clean(process.env.OPENAI_DME_MODEL || process.env.OPENAI_MODEL, 120) || 'gpt-5.6';
+  const model = clean(process.env.OPENAI_DME_MODEL || process.env.OPENAI_MODEL, 120) || 'gpt-5.6-luna';
   const scoreSummary = buildScoreSummary(rows);
   const assessments = rows.map((row) => {
     const answers = parseJson(row.answers_json, {});
