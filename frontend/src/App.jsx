@@ -22,6 +22,7 @@ import Cycle90Plan from './pages/Cycle90Plan.jsx';
 import MonthlyPlanning from './pages/MonthlyPlanning.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
+import CommercialFunnel from './pages/CommercialFunnel.jsx';
 import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 
@@ -68,6 +69,7 @@ export default function App() {
       <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/ciclo-90-dias" replace />} />
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola/planejamento-mensal" replace />} />
       <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><Sales /></ProtectedRoute>} />
+      <Route path="/comercial/funil" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><CommercialFunnel /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/materiais" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
       <Route path="/materiais/:id" element={<ProtectedRoute><MaterialViewer /></ProtectedRoute>} />

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BriefcaseBusiness,
   CalendarClock,
@@ -12,6 +13,7 @@ import {
   Search,
   Target,
   Trash2,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import api from '../api';
@@ -19,6 +21,7 @@ import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import { notifyCommercialUpdated } from '../utils/commercialRealtime.js';
 
 const STAGES = [
   { key: 'new_lead', label: 'Novo lead', dot: 'bg-sky-500', soft: 'bg-sky-50 text-sky-700 border-sky-100', probability: 10 },
@@ -124,6 +127,7 @@ function LeadCard({ lead, onOpen, onDragStart }) {
 }
 
 export default function Sales() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { selectedClient, setSelectedClient } = useClientFilter();
   const [commercialClients, setCommercialClients] = useState([]);
@@ -267,6 +271,7 @@ export default function Sales() {
         const exists = current.some((item) => item.id === data.lead.id);
         return exists ? current.map((item) => item.id === data.lead.id ? data.lead : item) : [data.lead, ...current];
       });
+      notifyCommercialUpdated(clientId);
       setForm(null);
       setEditingLead(null);
     } catch (err) {
@@ -283,6 +288,7 @@ export default function Sales() {
     try {
       await api.delete(`/commercial/leads/${editingLead.id}`, { params: { client_id: clientId } });
       setLeads((current) => current.filter((item) => item.id !== editingLead.id));
+      notifyCommercialUpdated(clientId);
       setForm(null);
       setEditingLead(null);
     } catch (err) {
@@ -301,6 +307,7 @@ export default function Sales() {
     try {
       const { data } = await api.put(`/commercial/leads/${leadId}`, { stage, client_id: clientId });
       setLeads((items) => items.map((item) => item.id === leadId ? data.lead : item));
+      notifyCommercialUpdated(clientId);
     } catch {
       setLeads(previous);
     }
@@ -335,9 +342,14 @@ export default function Sales() {
           ? `Pipeline exclusivo de ${currentClient.name}, com oportunidades, responsáveis, propostas e próximos passos separados dos demais clientes.`
           : 'Selecione um cliente no filtro lateral para abrir o pipeline comercial correspondente.'}
         actions={clientId ? (
-          <button type="button" onClick={beginCreate} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5">
-            <Plus size={17} /> Nova oportunidade
-          </button>
+          <>
+            <button type="button" onClick={() => navigate('/comercial/funil')} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
+              <TrendingUp size={17} /> Ver funil
+            </button>
+            <button type="button" onClick={beginCreate} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5">
+              <Plus size={17} /> Nova oportunidade
+            </button>
+          </>
         ) : null}
       />
 
