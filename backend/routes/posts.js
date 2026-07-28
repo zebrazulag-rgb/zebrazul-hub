@@ -54,6 +54,7 @@ function normalizePost(post) {
   return {
     ...post,
     media_gallery: parseGallery(post.media_gallery, post.media_data, post.media_mime),
+    feed_visible: post.feed_visible == null ? 1 : Number(post.feed_visible),
   };
 }
 
@@ -209,6 +210,7 @@ router.put('/:id', (req, res) => {
     'scheduled_at',
     'status',
     'client_feedback',
+    'feed_visible',
   ];
 
   const updates = [];

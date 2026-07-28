@@ -84,7 +84,7 @@ router.get('/feed/:token', (req, res) => {
   const posts = db.prepare(`
     SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status
     FROM posts
-    WHERE client_id = ? AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','scheduled','draft')
+    WHERE client_id = ? AND COALESCE(feed_visible, 1) = 1 AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','scheduled','draft')
     ORDER BY scheduled_at DESC
   `).all(client.id);
 

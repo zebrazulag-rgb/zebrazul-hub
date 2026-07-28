@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS posts (
   scheduled_at TEXT,
   status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_approval','approved','rejected','scheduled','published')),
   client_feedback TEXT,
+  feed_visible INTEGER DEFAULT 1,
   share_token TEXT UNIQUE,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
@@ -708,6 +709,7 @@ tryAddColumn('tasks', 'feed_post_id', 'INTEGER REFERENCES posts(id)');
 tryAddColumn('tasks', 'task_type', "TEXT DEFAULT 'basic'");
 tryAddColumn('tasks', 'video_link', 'TEXT');
 tryAddColumn('posts', 'media_gallery', 'TEXT');
+tryAddColumn('posts', 'feed_visible', 'INTEGER DEFAULT 1');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
@@ -847,6 +849,11 @@ function migrateFinancialEntries() {
 
 migrateFinancialEntries();
 
+// Posts antigos devem continuar visíveis na grade após a criação da coluna.
+if (tableHasColumn('posts', 'feed_visible')) {
+  db.exec('UPDATE posts SET feed_visible = 1 WHERE feed_visible IS NULL');
+}
+
 // Cria a agência principal e migra toda a instalação atual para ela.
 // O slug pode ser alterado com DEFAULT_AGENCY_SLUG, mas permanece estável
 // depois da primeira inicialização para não quebrar links já publicados.
@@ -951,7 +958,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '26', datetime('now'))
+   VALUES ('schema_version', '27', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
