@@ -153,6 +153,43 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
   res.status(201).json({ id: info.lastInsertRowid });
 });
 
+router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
+
+  const requestedScheduledAt = Object.prototype.hasOwnProperty.call(req.body || {}, 'scheduled_at')
+    ? (req.body.scheduled_at || null)
+    : post.scheduled_at;
+
+  const info = db.prepare(`
+    INSERT INTO posts (
+      agency_id, client_id, created_by, title, caption, content_type, platforms,
+      media_url, media_data, media_mime, media_gallery, scheduled_at, status, feed_visible
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.user.agency_id,
+    post.client_id,
+    req.user.id,
+    `${post.title} (cópia)`,
+    post.caption || '',
+    post.content_type || 'feed',
+    post.platforms || '[]',
+    post.media_url || null,
+    post.media_data || null,
+    post.media_mime || null,
+    post.media_gallery || null,
+    requestedScheduledAt,
+    'draft',
+    post.feed_visible == null ? 1 : Number(post.feed_visible)
+  );
+
+  const duplicatedPost = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?')
+    .get(info.lastInsertRowid, req.user.agency_id);
+  res.status(201).json({ id: info.lastInsertRowid, post: normalizePost(duplicatedPost) });
+});
+
 router.post('/:id/share', (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post não encontrado' });
