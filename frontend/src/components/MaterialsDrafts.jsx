@@ -172,6 +172,103 @@ function NewBoardModal({ clients, selectedClient, user, onClose, onCreated }) {
   );
 }
 
+
+function EditBoardMetadataModal({ board, clients, user, onClose, onSaved }) {
+  const canTransfer = user?.role === 'admin' || user?.is_operations_head;
+  const [title, setTitle] = useState(board?.title || '');
+  const [description, setDescription] = useState(board?.description || '');
+  const [clientId, setClientId] = useState(board?.client_id ? String(board.client_id) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!title.trim()) return setError('Informe o título do rascunho.');
+
+    setSaving(true);
+    setError('');
+    try {
+      const payload = {
+        title: title.trim(),
+        description: description.trim(),
+      };
+      if (canTransfer) payload.client_id = clientId || null;
+
+      await api.put(`/material-boards/${board.id}`, payload);
+      onSaved();
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Não foi possível atualizar o rascunho.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalBackdrop onClose={onClose} disabled={saving}>
+      <form onSubmit={submit} className="w-full max-w-xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#0969ff]"><FilePenLine size={21} /></span>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0969ff]">Informações do rascunho</p>
+              <h2 className="mt-1 text-xl font-bold text-slate-900">Editar rascunho</h2>
+              <p className="mt-1 text-sm text-slate-500">Atualize o nome, a descrição e o cliente vinculado.</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={20} /></button>
+        </div>
+
+        <div className="grid gap-5 px-6 py-6">
+          <label>
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">Nome do rascunho</span>
+            <input autoFocus className="input-field" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Nome do rascunho" maxLength={180} />
+          </label>
+
+          <label>
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">Descrição</span>
+            <textarea className="input-field min-h-28 resize-y" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Explique o objetivo deste rascunho." maxLength={1200} />
+            <span className="mt-1.5 block text-right text-xs text-slate-400">{description.length}/1200</span>
+          </label>
+
+          {canTransfer ? (
+            <label>
+              <span className="mb-1.5 block text-sm font-semibold text-slate-700">Cliente</span>
+              <select className="input-field" value={clientId} onChange={(event) => setClientId(event.target.value)}>
+                <option value="">Rascunho geral da agência</option>
+                {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+              </select>
+              <span className="mt-1.5 block text-xs leading-5 text-slate-400">Ao trocar o cliente, o rascunho passa a respeitar o acesso do novo cliente.</span>
+            </label>
+          ) : (
+            <div>
+              <span className="mb-1.5 block text-sm font-semibold text-slate-700">Cliente</span>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600">
+                {board.client_name || 'Rascunho geral da agência'}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">Tipo</span>
+            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600">
+              {board.board_type === 'calendar' ? <CalendarDays size={17} /> : <LayoutTemplate size={17} />}
+              {board.board_type === 'calendar' ? 'Calendário' : 'Quadro livre'}
+            </div>
+            <span className="mt-1.5 block text-xs leading-5 text-slate-400">O tipo não pode ser alterado depois da criação para preservar o conteúdo.</span>
+          </div>
+        </div>
+
+        {error && <div className="mx-6 mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</div>}
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
+          <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">Cancelar</button>
+          <button type="submit" disabled={saving} className="btn-primary min-w-32">{saving ? 'Salvando...' : 'Salvar alterações'}</button>
+        </div>
+      </form>
+    </ModalBackdrop>
+  );
+}
+
 function CalendarPreview() {
   return (
     <div className="absolute inset-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -210,6 +307,7 @@ export default function MaterialsDrafts({ clients = [] }) {
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [openBoard, setOpenBoard] = useState(null);
+  const [editingBoard, setEditingBoard] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
 
   async function loadBoards({ silent = false } = {}) {
@@ -324,8 +422,9 @@ export default function MaterialsDrafts({ clients = [] }) {
                 <div className="absolute right-4 top-4">
                   <button onClick={(event) => { event.stopPropagation(); setMenuOpen((current) => current === board.id ? null : board.id); }} className="rounded-xl border border-white/70 bg-white/90 p-2 text-slate-500 shadow-sm backdrop-blur hover:text-slate-900"><MoreHorizontal size={18} /></button>
                   {menuOpen === board.id && (
-                    <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
-                      <button onClick={() => { setMenuOpen(null); setOpenBoard(board); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">{isCalendar ? <CalendarDays size={15} /> : <PencilRuler size={15} />} Abrir e editar</button>
+                    <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                      <button onClick={() => { setMenuOpen(null); setOpenBoard(board); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">{isCalendar ? <CalendarDays size={15} /> : <PencilRuler size={15} />} Abrir conteúdo</button>
+                      <button onClick={() => { setMenuOpen(null); setEditingBoard(board); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"><FilePenLine size={15} /> Editar informações</button>
                       {(user?.role === 'admin' || user?.is_operations_head || Number(board.created_by) === Number(user?.id)) && (
                         <button onClick={() => deleteBoard(board)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"><Trash2 size={15} /> Excluir</button>
                       )}
@@ -345,6 +444,16 @@ export default function MaterialsDrafts({ clients = [] }) {
           user={user}
           onClose={() => setCreating(false)}
           onCreated={(board) => { setCreating(false); setOpenBoard(board); loadBoards({ silent: true }); }}
+        />
+      )}
+
+      {editingBoard && (
+        <EditBoardMetadataModal
+          board={editingBoard}
+          clients={clients}
+          user={user}
+          onClose={() => setEditingBoard(null)}
+          onSaved={() => { setEditingBoard(null); loadBoards({ silent: true }); }}
         />
       )}
 
