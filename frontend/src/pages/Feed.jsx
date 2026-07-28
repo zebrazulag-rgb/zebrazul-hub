@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -21,7 +21,12 @@ export default function Feed() {
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
+  const [hiddenPosts, setHiddenPosts] = useState([]);
   const [openPost, setOpenPost] = useState(null);
+  const [editingPost, setEditingPost] = useState(null);
+  const [showHiddenPosts, setShowHiddenPosts] = useState(false);
+  const [postActionLoading, setPostActionLoading] = useState(null);
+  const [postActionError, setPostActionError] = useState('');
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
   const initialProfileDraftRef = useRef({});
@@ -56,7 +61,10 @@ export default function Feed() {
     setClientId(selectedClient?.id || '');
     if (!selectedClient) {
       setPosts([]);
+      setHiddenPosts([]);
       setOpenPost(null);
+      setEditingPost(null);
+      setShowHiddenPosts(false);
       setCreatingPost(false);
     }
   }, [selectedClient, user]);
@@ -64,6 +72,7 @@ export default function Feed() {
   async function loadPosts(targetClientId = clientId) {
     if (!targetClientId) {
       setPosts([]);
+      setHiddenPosts([]);
       return;
     }
 
@@ -71,11 +80,12 @@ export default function Feed() {
     const upcoming = res.data.posts
       .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(post.status))
       .sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
-    setPosts(upcoming);
+    setPosts(upcoming.filter((post) => Number(post.feed_visible ?? 1) !== 0));
+    setHiddenPosts(upcoming.filter((post) => Number(post.feed_visible ?? 1) === 0));
   }
 
   useEffect(() => {
-    loadPosts(clientId).catch(() => setPosts([]));
+    loadPosts(clientId).catch(() => { setPosts([]); setHiddenPosts([]); });
   }, [clientId]);
 
   const currentClient = clients.find((client) => String(client.id) === String(clientId));
@@ -290,6 +300,52 @@ export default function Feed() {
     }
   }
 
+
+  function startEditPost(post = openPost) {
+    if (!post) return;
+    setPostActionError('');
+    setReorderingPost(false);
+    setGalleryDraft([]);
+    setOpenPost(null);
+    setShowHiddenPosts(false);
+    setEditingPost(post);
+  }
+
+  async function updatePostVisibility(post, visible) {
+    if (!post?.id) return;
+    setPostActionLoading(`visibility-${post.id}`);
+    setPostActionError('');
+    try {
+      await api.put(`/posts/${post.id}`, { feed_visible: visible ? 1 : 0 });
+      setOpenPost(null);
+      await loadPosts(clientId);
+      setCalendarRefreshKey((current) => current + 1);
+    } catch (err) {
+      setPostActionError(err.response?.data?.error || 'Não foi possível atualizar a exibição do post.');
+    } finally {
+      setPostActionLoading(null);
+    }
+  }
+
+  async function deletePost(post) {
+    if (!post?.id) return;
+    const confirmed = window.confirm(`Excluir definitivamente “${post.title}”? Essa ação não pode ser desfeita.`);
+    if (!confirmed) return;
+
+    setPostActionLoading(`delete-${post.id}`);
+    setPostActionError('');
+    try {
+      await api.delete(`/posts/${post.id}`);
+      setOpenPost(null);
+      await loadPosts(clientId);
+      setCalendarRefreshKey((current) => current + 1);
+    } catch (err) {
+      setPostActionError(err.response?.data?.error || 'Não foi possível excluir o post.');
+    } finally {
+      setPostActionLoading(null);
+    }
+  }
+
   return (
     <div className="space-y-6 min-w-0">
       <div className="flex items-center justify-between flex-wrap gap-4 min-w-0">
@@ -310,6 +366,15 @@ export default function Feed() {
             >
               <Plus size={17} /> Nova publicação
             </button>
+            {activeView === 'grid' && hiddenPosts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setPostActionError(''); setShowHiddenPosts(true); }}
+                className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+              >
+                <EyeOff size={16} /> Fora da grade ({hiddenPosts.length})
+              </button>
+            )}
             {activeView === 'grid' && (
               <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
                 {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
@@ -374,6 +439,23 @@ export default function Feed() {
         />
       )}
 
+
+      {editingPost && clientId && (
+        <PostModal
+          clients={currentClient ? [currentClient] : clients.filter((client) => String(client.id) === String(clientId))}
+          defaultClientId={clientId}
+          post={editingPost}
+          lockClient
+          requireSchedule
+          onClose={() => setEditingPost(null)}
+          onSaved={async () => {
+            setEditingPost(null);
+            await loadPosts(clientId);
+            setCalendarRefreshKey((current) => current + 1);
+          }}
+        />
+      )}
+
       {editingProfile && (
         <ModalBackdrop onClose={handleProfileRequestClose} disabled={savingProfile} className="bg-black/45">
           <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">
@@ -403,6 +485,74 @@ export default function Feed() {
         </ModalBackdrop>
       )}
 
+      {showHiddenPosts && (
+        <ModalBackdrop onClose={() => setShowHiddenPosts(false)} disabled={Boolean(postActionLoading)}>
+          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Posts fora da grade</h2>
+                <p className="text-sm text-slate-500">Eles continuam salvos e podem permanecer no calendário, mas não aparecem na prévia nem no link compartilhado do feed.</p>
+              </div>
+              <button type="button" onClick={() => setShowHiddenPosts(false)} className="text-2xl leading-none text-slate-400 hover:text-slate-600" aria-label="Fechar">×</button>
+            </div>
+
+            {postActionError && (
+              <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{postActionError}</p>
+            )}
+
+            <div className="space-y-3">
+              {hiddenPosts.map((post) => (
+                <div key={post.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-3 sm:flex-row sm:items-center">
+                  <div className="h-20 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                    {post.media_data ? <img src={post.media_data} alt="" className="h-full w-full object-cover" /> : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-800 break-words">{post.title}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {post.scheduled_at ? new Date(post.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }) : 'Sem data'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => updatePostVisibility(post, true)}
+                      disabled={Boolean(postActionLoading)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      {postActionLoading === `visibility-${post.id}` ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
+                      Voltar à grade
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEditPost(post)}
+                      disabled={Boolean(postActionLoading)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-zebrazul-300 hover:text-zebrazul-700 disabled:opacity-50"
+                    >
+                      <Pencil size={14} /> Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deletePost(post)}
+                      disabled={Boolean(postActionLoading)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {postActionLoading === `delete-${post.id}` ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {hiddenPosts.length === 0 && (
+                <div className="py-12 text-center">
+                  <RotateCcw size={28} className="mx-auto mb-2 text-slate-300" />
+                  <p className="text-sm text-slate-400">Nenhum post está fora da grade.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
       {openPost && (
         <ModalBackdrop onClose={() => setOpenPost(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-6 min-w-0" role="dialog" aria-modal="true">
@@ -411,19 +561,59 @@ export default function Feed() {
                 <h2 className="font-semibold text-slate-800 break-words">{openPost.title}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <StatusBadge status={openPost.status} />
-                  {user?.role !== 'client' && galleryFromPost(openPost).length > 1 && !reorderingPost && (
-                    <button
-                      type="button"
-                      onClick={startGalleryReorder}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-zebrazul-300 hover:text-zebrazul-700"
-                    >
-                      <ListOrdered size={13} /> Editar ordem
-                    </button>
-                  )}
                 </div>
               </div>
               <button onClick={() => setOpenPost(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0" aria-label="Fechar">×</button>
             </div>
+
+            {user?.role !== 'client' && !reorderingPost && (
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Gerenciar post</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={startGalleryReorder}
+                    disabled={galleryFromPost(openPost).length < 2 || Boolean(postActionLoading)}
+                    title={galleryFromPost(openPost).length < 2 ? 'Disponível para posts com duas ou mais imagens' : 'Alterar a ordem das imagens do carrossel'}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-zebrazul-300 hover:text-zebrazul-700 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <ListOrdered size={16} /> Editar ordem
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startEditPost(openPost)}
+                    disabled={Boolean(postActionLoading)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-zebrazul-300 hover:text-zebrazul-700 disabled:opacity-50"
+                  >
+                    <Pencil size={16} /> Editar post
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updatePostVisibility(openPost, false)}
+                    disabled={Boolean(postActionLoading)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {postActionLoading === `visibility-${openPost.id}` ? <Loader2 size={16} className="animate-spin" /> : <EyeOff size={16} />}
+                    Tirar da grade
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deletePost(openPost)}
+                    disabled={Boolean(postActionLoading)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                  >
+                    {postActionLoading === `delete-${openPost.id}` ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                    Excluir post
+                  </button>
+                </div>
+                {galleryFromPost(openPost).length < 2 && (
+                  <p className="mt-2 text-[11px] text-slate-400">“Editar ordem” é liberado quando o post possui duas ou mais imagens.</p>
+                )}
+                {postActionError && (
+                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{postActionError}</p>
+                )}
+              </div>
+            )}
 
             {reorderingPost && (
               <div className="mb-4 rounded-xl border border-zebrazul-100 bg-zebrazul-50/60 p-3">
