@@ -205,9 +205,23 @@ export function mergeDmeSuggestionResults(results = []) {
   };
 }
 
+export function candidateNeedsAi(candidate) {
+  if (!candidate || candidate.targetType !== 'field') return false;
+  const distinct = new Set(
+    (candidate.sourceEntries || [])
+      .map((entry) => normalized(entry.value))
+      .filter(Boolean),
+  );
+  return distinct.size > 1;
+}
+
+export function countAiCandidates(candidates = [], selectedIds = new Set()) {
+  return candidates.filter((candidate) => selectedIds.has(candidate.id) && candidateNeedsAi(candidate)).length;
+}
+
 export function buildAiCandidatePayload(candidates = [], selectedIds = new Set()) {
   return candidates
-    .filter((candidate) => selectedIds.has(candidate.id))
+    .filter((candidate) => selectedIds.has(candidate.id) && candidateNeedsAi(candidate))
     .map((candidate) => ({
       id: candidate.id,
       targetType: candidate.targetType,
@@ -215,11 +229,8 @@ export function buildAiCandidatePayload(candidates = [], selectedIds = new Set()
       label: candidate.label,
       section: candidate.section,
       kind: candidate.kind,
-      currentValue: candidate.value,
       sources: (candidate.sourceEntries || []).map((entry) => ({
         assessmentId: entry.assessmentId,
-        assessmentTitle: entry.assessmentTitle,
-        respondent: entry.respondent,
         value: entry.value,
       })),
     }));

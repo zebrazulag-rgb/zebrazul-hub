@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   BrainCircuit,
@@ -65,6 +66,7 @@ export default function DmeImportModal({
   onGenerateAi,
   aiLoading,
   aiResult,
+  aiEligibleCount = 0,
   canUseAi = true,
   onApply,
   onClose,
@@ -165,10 +167,14 @@ export default function DmeImportModal({
                   onClick={onGenerateAi}
                   disabled={loading || busy || assessmentCount < 2 || !selectedCount}
                   className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
-                  title={assessmentCount < 2 ? 'Selecione pelo menos dois DMEs' : 'Criar uma síntese única com IA'}
+                  title={assessmentCount < 2 ? 'Selecione pelo menos dois DMEs' : 'Consolidar apenas os campos que realmente possuem respostas diferentes'}
                 >
                   {aiLoading ? <Loader2 size={15} className="animate-spin" /> : <BrainCircuit size={15} />}
-                  {aiLoading ? 'Unificando...' : aiResult ? 'Regenerar com IA' : 'Unificar com IA'}
+                  {aiLoading
+                    ? 'Unificando...'
+                    : aiEligibleCount > 0
+                      ? `${aiResult ? 'Regenerar' : 'Unificar'} ${aiEligibleCount} com IA`
+                      : 'Consolidação pronta'}
                 </button>
               )}
             </div>
@@ -182,6 +188,16 @@ export default function DmeImportModal({
               <span>{source.progress}% preenchido em média</span>
               {source.overallScore > 0 && <><span>•</span><span>Nota média {formatScore(source.overallScore)}/5</span></>}
               {source.respondent && <><span>•</span><span>Respondentes: {source.respondent}</span></>}
+            </div>
+          )}
+
+          {canUseAi && assessmentCount >= 2 && selectedCount > 0 && !aiLoading && (
+            <div className={`mt-3 rounded-xl border px-3 py-2 text-xs ${aiEligibleCount > 0 ? 'border-indigo-100 bg-indigo-50/70 text-indigo-800' : 'border-emerald-100 bg-emerald-50/70 text-emerald-800'}`}>
+              {aiEligibleCount > 0 ? (
+                <span><strong>{aiEligibleCount}</strong> dos <strong>{selectedCount}</strong> campos possuem respostas diferentes e serão enviados à IA. Os demais já estão unificados pelo próprio ZebraHub.</span>
+              ) : (
+                <span>Os <strong>{selectedCount}</strong> campos selecionados já estão coerentes entre os DMEs. Nenhuma chamada à IA será necessária.</span>
+              )}
             </div>
           )}
         </div>
@@ -221,56 +237,60 @@ export default function DmeImportModal({
                 </div>
               )}
 
-              <div className="mt-5 space-y-3">
-                {candidates.map((candidate) => {
-                  const selected = selectedIds.has(candidate.id);
-                  const preview = candidatePreview(candidate);
-                  return (
-                    <button
-                      key={candidate.id}
-                      type="button"
-                      role="checkbox"
-                      aria-checked={selected}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onToggle(candidate.id);
-                      }}
-                      className={`block w-full cursor-pointer rounded-2xl border p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0969ff]/35 ${selected ? 'border-[#0969ff]/35 bg-[#eef5ff]/45 shadow-[0_8px_24px_rgba(9,105,255,0.08)]' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${selected ? 'border-[#0969ff] bg-[#0969ff] text-white' : 'border-slate-300 bg-white text-transparent'}`}>
-                          <Check size={13} strokeWidth={3} />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="min-w-0 flex-1 break-words text-sm font-semibold text-slate-800">{candidate.label}</p>
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${kindClasses(candidate.kind)}`}>{kindLabel(candidate.kind)}</span>
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${stateClasses(candidate.state)}`}>{stateLabel(candidate.state)}</span>
+              {aiLoading ? (
+                <AiLoadingPanel fieldCount={aiEligibleCount} />
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {candidates.map((candidate) => {
+                    const selected = selectedIds.has(candidate.id);
+                    const preview = candidatePreview(candidate);
+                    return (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={selected}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onToggle(candidate.id);
+                        }}
+                        className={`block w-full cursor-pointer rounded-2xl border p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0969ff]/35 ${selected ? 'border-[#0969ff]/35 bg-[#eef5ff]/45 shadow-[0_8px_24px_rgba(9,105,255,0.08)]' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${selected ? 'border-[#0969ff] bg-[#0969ff] text-white' : 'border-slate-300 bg-white text-transparent'}`}>
+                            <Check size={13} strokeWidth={3} />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="min-w-0 flex-1 break-words text-sm font-semibold text-slate-800">{candidate.label}</p>
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${kindClasses(candidate.kind)}`}>{kindLabel(candidate.kind)}</span>
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${stateClasses(candidate.state)}`}>{stateLabel(candidate.state)}</span>
+                            </div>
+                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{candidate.section}</p>
+                            <p className="mt-2 line-clamp-5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{preview}</p>
+
+                            {candidate.aiMeta && (
+                              <div className="mt-3 grid gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-xs text-indigo-900/80 sm:grid-cols-3">
+                                <AiMetaList label="Consensos" values={candidate.aiMeta.consensusPoints} />
+                                <AiMetaList label="Divergências" values={candidate.aiMeta.divergences} />
+                                <AiMetaList label="O que falta" values={candidate.aiMeta.missingInformation} />
+                              </div>
+                            )}
+
+                            {candidate.state === 'manual' && candidate.targetType === 'field' && candidate.currentValue && (
+                              <div className="mt-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-3 py-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Texto atual protegido</p>
+                                <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-xs leading-5 text-amber-900/75">{candidate.currentValue}</p>
+                              </div>
+                            )}
                           </div>
-                          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{candidate.section}</p>
-                          <p className="mt-2 line-clamp-5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{preview}</p>
-
-                          {candidate.aiMeta && (
-                            <div className="mt-3 grid gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-xs text-indigo-900/80 sm:grid-cols-3">
-                              <AiMetaList label="Consensos" values={candidate.aiMeta.consensusPoints} />
-                              <AiMetaList label="Divergências" values={candidate.aiMeta.divergences} />
-                              <AiMetaList label="O que falta" values={candidate.aiMeta.missingInformation} />
-                            </div>
-                          )}
-
-                          {candidate.state === 'manual' && candidate.targetType === 'field' && candidate.currentValue && (
-                            <div className="mt-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-3 py-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Texto atual protegido</p>
-                              <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-xs leading-5 text-amber-900/75">{candidate.currentValue}</p>
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -293,6 +313,36 @@ export default function DmeImportModal({
   );
 }
 
+function AiLoadingPanel({ fieldCount }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const stage = elapsed < 4
+    ? 'Preparando somente os campos com respostas diferentes...'
+    : elapsed < 12
+      ? 'Consolidando os campos em blocos paralelos...'
+      : 'Finalizando a leitura estratégica e validando o resultado...';
+
+  return (
+    <div className="mt-5 flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-blue-50/60 p-7 text-center">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-200">
+        <Loader2 size={24} className="animate-spin" />
+      </span>
+      <p className="mt-4 text-base font-bold text-slate-800">Unificando {fieldCount} campo(s) relevante(s)</p>
+      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">{stage}</p>
+      <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs text-slate-500">
+        <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">{elapsed}s decorridos</span>
+        <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">Campos iguais não consomem IA</span>
+      </div>
+    </div>
+  );
+}
+
 function AiResultSummary({ result, aiCount }) {
   const consensus = (result.consensus || []).slice(0, 3);
   const divergences = (result.divergences || []).slice(0, 3);
@@ -312,6 +362,9 @@ function AiResultSummary({ result, aiCount }) {
         <div className="flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
           <span className="rounded-full bg-white/80 px-2.5 py-1">{result.model || 'Modelo configurado'}</span>
           {result.cached && <span className="rounded-full bg-white/80 px-2.5 py-1">Resultado reutilizado</span>}
+          {Number(result.ai_fields || 0) > 0 && <span className="rounded-full bg-white/80 px-2.5 py-1">{result.ai_fields} campos com IA</span>}
+          {Number(result.skipped_fields || 0) > 0 && <span className="rounded-full bg-white/80 px-2.5 py-1">{result.skipped_fields} resolvidos localmente</span>}
+          {Number(result.processing_ms || 0) > 0 && <span className="rounded-full bg-white/80 px-2.5 py-1">{Math.max(1, Math.round(result.processing_ms / 1000))}s</span>}
         </div>
       </div>
 

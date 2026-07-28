@@ -26,6 +26,7 @@ import {
 import {
   applyAiConsolidationToCandidates,
   buildAiCandidatePayload,
+  countAiCandidates,
   mergeDmeSuggestionResults,
 } from '../dmeStrategicMerge.js';
 import {
@@ -76,6 +77,10 @@ export default function StrategicDiagnosis() {
 
   const selectedClientRecord = clients.find((client) => Number(client.id) === Number(clientId));
   const progress = useMemo(() => strategicDiagnosisProgress(diagnosis), [diagnosis]);
+  const dmeAiEligibleCount = useMemo(
+    () => countAiCandidates(dmeCandidates, selectedDmeCandidates),
+    [dmeCandidates, selectedDmeCandidates],
+  );
 
   useEffect(() => {
     diagnosisRef.current = diagnosis;
@@ -374,6 +379,23 @@ export default function StrategicDiagnosis() {
   async function generateDmeAiConsolidation() {
     const assessmentIds = [...selectedDmeIds];
     if (assessmentIds.length < 2 || !selectedDmeCandidates.size) return;
+    const candidatePayload = buildAiCandidatePayload(dmeCandidates, selectedDmeCandidates);
+
+    if (!candidatePayload.length) {
+      setDmeImportError('');
+      setDmeAiResult({
+        summary: 'As respostas selecionadas já estão coerentes entre os DMEs. O ZebraHub manteve a união determinística e não precisou consumir a IA.',
+        items: [],
+        deterministic: true,
+        requested_fields: selectedDmeCandidates.size,
+        ai_fields: 0,
+        skipped_fields: selectedDmeCandidates.size,
+        processing_ms: 0,
+        created_at: new Date().toISOString(),
+      });
+      return;
+    }
+
     setDmeAiLoading(true);
     setDmeImportError('');
 
@@ -381,7 +403,8 @@ export default function StrategicDiagnosis() {
       const { data } = await api.post('/ai/dme/consolidate', {
         client_id: clientId,
         assessment_ids: assessmentIds,
-        candidates: buildAiCandidatePayload(dmeCandidates, selectedDmeCandidates),
+        candidates: candidatePayload,
+        requested_field_count: selectedDmeCandidates.size,
         force: Boolean(dmeAiResult),
       });
       const nextCandidates = applyAiConsolidationToCandidates(dmeCandidates, data);
@@ -715,6 +738,7 @@ export default function StrategicDiagnosis() {
         onGenerateAi={generateDmeAiConsolidation}
         aiLoading={dmeAiLoading}
         aiResult={dmeAiResult}
+        aiEligibleCount={dmeAiEligibleCount}
         canUseAi={user?.role !== 'client' && !user?.is_commercial_team}
         onApply={applyDmeImport}
         onClose={() => !dmeImportApplying && !dmeAiLoading && setDmeImportOpen(false)}
