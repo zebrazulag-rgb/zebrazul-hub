@@ -299,15 +299,13 @@ export default function Reports() {
           <div className="flex flex-wrap items-center gap-2">
             <input className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-sm text-white outline-none [color-scheme:dark]" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
             <input className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-sm text-white outline-none [color-scheme:dark]" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-            {user?.role === 'admin' && (
-              <button
-                type="button"
-                onClick={() => setConnectionsOpen(true)}
-                className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.09] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.14]"
-              >
-                <Settings2 size={16} /> Conexões
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setConnectionsOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.09] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.14]"
+            >
+              <Settings2 size={16} /> Conexões
+            </button>
           </div>
         )}
       >
@@ -390,11 +388,9 @@ export default function Reports() {
             <div className="icon-tile bg-slate-100 text-slate-400"><Megaphone size={19} /></div>
             <p className="mt-3 font-semibold text-slate-700">Sem tráfego pago conectado</p>
             <p className="mt-1 max-w-lg text-sm leading-6 text-slate-500">O relatório orgânico continua funcionando normalmente. A conta de anúncios pode ser vinculada depois, apenas nos clientes que utilizam mídia paga.</p>
-            {user?.role === 'admin' && (
-              <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={() => setConnectionsOpen(true)}>
-                <Settings2 size={16} /> Abrir conexões
-              </button>
-            )}
+            <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={() => setConnectionsOpen(true)}>
+              <Settings2 size={16} /> Conectar Meta
+            </button>
           </div>
         )}
       </section>
@@ -526,6 +522,7 @@ export default function Reports() {
         clientId={clientId}
         clientName={currentClient?.name}
         onChanged={handleConnectionsChanged}
+        user={user}
       />
     </div>
   );
