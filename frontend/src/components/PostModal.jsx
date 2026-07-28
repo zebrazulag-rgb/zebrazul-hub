@@ -88,6 +88,8 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const initialFormRef = useRef(postToForm(post, defaultClientId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [isUploadDropActive, setIsUploadDropActive] = useState(false);
+  const uploadDragDepthRef = useRef(0);
   const draggedMediaIndexRef = useRef(null);
 
   useEffect(() => {
@@ -106,29 +108,70 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
     }));
   }
 
-  async function handleFileChange(event) {
-    const files = Array.from(event.target.files || []);
+  async function addImageFiles(fileList) {
+    const files = Array.from(fileList || []);
     if (!files.length) return;
+
+    const invalidFile = files.find((file) => !file.type?.startsWith('image/'));
+    if (invalidFile) {
+      setError(`O arquivo “${invalidFile.name}” não é uma imagem válida.`);
+      return;
+    }
 
     const tooLarge = files.find((file) => file.size > 8 * 1024 * 1024);
     if (tooLarge) {
       setError(`A imagem “${tooLarge.name}” ultrapassa 8MB.`);
-      event.target.value = '';
       return;
     }
 
-    const converted = await Promise.all(files.map(async (file) => ({
-      data: await fileToBase64(file),
-      mime: file.type,
-      filename: file.name,
-    })));
+    try {
+      const converted = await Promise.all(files.map(async (file) => ({
+        data: await fileToBase64(file),
+        mime: file.type,
+        filename: file.name,
+      })));
 
-    setForm((current) => ({
-      ...current,
-      media_gallery: [...current.media_gallery, ...converted],
-    }));
-    setError('');
+      setForm((current) => ({
+        ...current,
+        media_gallery: [...current.media_gallery, ...converted],
+      }));
+      setError('');
+    } catch {
+      setError('Não foi possível carregar uma das imagens. Tente novamente.');
+    }
+  }
+
+  async function handleFileChange(event) {
+    await addImageFiles(event.target.files);
     event.target.value = '';
+  }
+
+  function handleUploadDragEnter(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    uploadDragDepthRef.current += 1;
+    setIsUploadDropActive(true);
+  }
+
+  function handleUploadDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleUploadDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    uploadDragDepthRef.current = Math.max(0, uploadDragDepthRef.current - 1);
+    if (uploadDragDepthRef.current === 0) setIsUploadDropActive(false);
+  }
+
+  async function handleUploadDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    uploadDragDepthRef.current = 0;
+    setIsUploadDropActive(false);
+    await addImageFiles(event.dataTransfer.files);
   }
 
   function removeMedia(index) {
@@ -281,9 +324,22 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
 
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Imagens do conteúdo</label>
-              <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-4 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
-                <ImagePlus size={18} />
-                Adicionar uma ou mais imagens
+              <label
+                onDragEnter={handleUploadDragEnter}
+                onDragOver={handleUploadDragOver}
+                onDragLeave={handleUploadDragLeave}
+                onDrop={handleUploadDrop}
+                className={`flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-4 text-center text-sm transition-all ${
+                  isUploadDropActive
+                    ? 'border-zebrazul-500 bg-zebrazul-50 text-zebrazul-700 shadow-sm'
+                    : 'border-slate-300 text-slate-500 hover:border-zebrazul-400 hover:bg-slate-50'
+                }`}
+              >
+                <ImagePlus size={20} />
+                <span className="font-medium">
+                  {isUploadDropActive ? 'Solte as imagens aqui' : 'Arraste as imagens para cá'}
+                </span>
+                <span className="text-xs text-slate-400">ou clique para escolher no computador</span>
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
               </label>
               {form.media_gallery.length > 0 && (
