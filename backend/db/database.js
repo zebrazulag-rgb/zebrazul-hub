@@ -606,6 +606,48 @@ CREATE TABLE IF NOT EXISTS materials (
 );
 
 
+
+CREATE TABLE IF NOT EXISTS meta_oauth_connections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL UNIQUE,
+  provider_user_id TEXT,
+  provider_user_name TEXT,
+  access_token_encrypted TEXT NOT NULL,
+  page_access_token_encrypted TEXT,
+  token_expires_at TEXT,
+  scopes_json TEXT DEFAULT '[]',
+  selected_page_id TEXT,
+  selected_instagram_account_id TEXT,
+  selected_ad_account_id TEXT,
+  status TEXT DEFAULT 'connected' CHECK(status IN ('connected','expired','error','disconnected')),
+  last_error TEXT,
+  connected_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (connected_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS meta_oauth_states (
+  nonce TEXT PRIMARY KEY,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  frontend_origin TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_meta_oauth_client ON meta_oauth_connections(agency_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_meta_oauth_state_expiry ON meta_oauth_states(expires_at, used_at);
+
 CREATE INDEX IF NOT EXISTS idx_meta_organic_accounts_client ON meta_organic_accounts(client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_organic_daily_account_date ON meta_organic_daily_metrics(organic_account_id, platform, metric_date);
 CREATE INDEX IF NOT EXISTS idx_meta_organic_report_period ON meta_organic_report_snapshots(organic_account_id, platform, date_from, date_to);
@@ -687,6 +729,8 @@ tryAddColumn('financial_entries', 'agency_id', 'INTEGER REFERENCES agencies(id)'
 tryAddColumn('report_metrics', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('meta_ad_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('meta_organic_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
+tryAddColumn('meta_ad_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
+tryAddColumn('meta_organic_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
 tryAddColumn('action_plans', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');

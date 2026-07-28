@@ -5,12 +5,14 @@ const {
   getDailyInsights,
   getAccountPeriodInsights,
   getCampaignPeriodInsights,
+  withMetaAccessToken,
 } = require('./metaAds');
+const { getClientTokenBundle, MetaOAuthError } = require('./metaOAuth');
 
 function getConnectionByClient(clientId) {
   return db.prepare(`
     SELECT id, client_id, account_id, account_name, currency, timezone_name,
-           account_status, last_synced_at, last_sync_status, last_sync_error
+           account_status, last_synced_at, last_sync_status, last_sync_error, oauth_connection_id
     FROM meta_ad_accounts
     WHERE client_id = ?
   `).get(clientId) || null;
@@ -33,12 +35,19 @@ async function syncMetaClient(clientId, dateFrom, dateTo) {
   setSyncState(connection.id, 'syncing');
 
   try {
-    const [account, daily, periodTotals, campaigns] = await Promise.all([
-      getAdAccount(connection.account_id),
-      getDailyInsights(connection.account_id, dateFrom, dateTo),
-      getAccountPeriodInsights(connection.account_id, dateFrom, dateTo),
-      getCampaignPeriodInsights(connection.account_id, dateFrom, dateTo),
-    ]);
+    let oauthBundle = null;
+    if (connection.oauth_connection_id) {
+      oauthBundle = getClientTokenBundle(clientId);
+    }
+    const [account, daily, periodTotals, campaigns] = await withMetaAccessToken(
+      oauthBundle?.userAccessToken,
+      () => Promise.all([
+        getAdAccount(connection.account_id),
+        getDailyInsights(connection.account_id, dateFrom, dateTo),
+        getAccountPeriodInsights(connection.account_id, dateFrom, dateTo),
+        getCampaignPeriodInsights(connection.account_id, dateFrom, dateTo),
+      ])
+    );
 
     const saveSync = db.transaction(() => {
       db.prepare('DELETE FROM meta_daily_metrics WHERE meta_account_id = ? AND metric_date BETWEEN ? AND ?')
@@ -142,7 +151,7 @@ async function syncMetaClient(clientId, dateFrom, dateTo) {
       date_to: dateTo,
     };
   } catch (error) {
-    const message = error instanceof MetaApiError ? error.message : 'Falha inesperada na sincronizacao';
+    const message = (error instanceof MetaApiError || error instanceof MetaOAuthError) ? error.message : 'Falha inesperada na sincronizacao';
     setSyncState(connection.id, 'error', message);
     throw error;
   }
@@ -164,7 +173,10 @@ function currentMonthRange() {
 }
 
 async function syncAllConnectedAccounts(range = currentMonthRange()) {
-  const connections = db.prepare('SELECT client_id FROM meta_ad_accounts ORDER BY client_id').all();
+  const hasGlobalToken = Boolean(String(process.env.META_ACCESS_TOKEN || '').trim());
+  const connections = hasGlobalToken
+    ? db.prepare('SELECT client_id FROM meta_ad_accounts ORDER BY client_id').all()
+    : db.prepare('SELECT client_id FROM meta_ad_accounts WHERE oauth_connection_id IS NOT NULL ORDER BY client_id').all();
   const result = { total: connections.length, success: 0, failed: 0, details: [] };
 
   for (const row of connections) {
@@ -177,7 +189,7 @@ async function syncAllConnectedAccounts(range = currentMonthRange()) {
       result.details.push({
         client_id: Number(row.client_id),
         ok: false,
-        error: error instanceof MetaApiError ? error.message : 'Falha inesperada',
+        error: (error instanceof MetaApiError || error instanceof MetaOAuthError) ? error.message : 'Falha inesperada',
       });
     }
   }

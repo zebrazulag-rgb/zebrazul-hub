@@ -1,4 +1,7 @@
 const crypto = require('crypto');
+const { AsyncLocalStorage } = require('async_hooks');
+
+const tokenContext = new AsyncLocalStorage();
 
 const DEFAULT_API_VERSION = 'v25.0';
 const REQUEST_TIMEOUT_MS = Number(process.env.META_REQUEST_TIMEOUT_MS || 30000);
@@ -15,17 +18,27 @@ class MetaApiError extends Error {
 }
 
 function getMetaConfig() {
+  const contextualToken = tokenContext.getStore()?.accessToken;
   return {
-    accessToken: String(process.env.META_ACCESS_TOKEN || '').trim(),
+    accessToken: String(contextualToken || process.env.META_ACCESS_TOKEN || '').trim(),
     appSecret: String(process.env.META_APP_SECRET || '').trim(),
     apiVersion: String(process.env.META_API_VERSION || DEFAULT_API_VERSION).trim(),
   };
 }
 
+
+function withMetaAccessToken(accessToken, callback) {
+  if (!accessToken) return callback();
+  return tokenContext.run({ accessToken: String(accessToken) }, callback);
+}
+
 function getMetaStatus() {
   const config = getMetaConfig();
+  const oauthConfigured = Boolean(String(process.env.META_APP_ID || '').trim() && String(process.env.META_APP_SECRET || '').trim());
   return {
-    configured: Boolean(config.accessToken),
+    configured: Boolean(config.accessToken || oauthConfigured),
+    global_token_configured: Boolean(config.accessToken),
+    oauth_configured: oauthConfigured,
     api_version: config.apiVersion,
   };
 }
@@ -339,4 +352,5 @@ module.exports = {
   getCampaignPeriodInsights,
   normalizeInsightRow,
   deriveOutcomeMetrics,
+  withMetaAccessToken,
 };

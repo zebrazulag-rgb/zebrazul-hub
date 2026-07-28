@@ -16,6 +16,7 @@ const actionPlanRoutes = require('./routes/actionPlans');
 const planningDocumentRoutes = require('./routes/planningDocuments');
 const metaRoutes = require('./routes/meta');
 const metaOrganicRoutes = require('./routes/metaOrganic');
+const metaOAuthRoutes = require('./routes/metaOAuth');
 const tenantRoutes = require('./routes/tenant');
 const agencyRoutes = require('./routes/agencies');
 const diagnosticRoutes = require('./routes/diagnostics');
@@ -45,6 +46,7 @@ bootstrapAdminIfNeeded();
 seedBuiltInMaterials();
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
@@ -54,6 +56,10 @@ app.get('/api/health', (req, res) => {
   const health = getHealthStatus();
   res.status(health.ok ? 200 : 503).json(health);
 });
+
+// O callback OAuth precisa aceitar o retorno da Meta sem o JWT do navegador.
+// As demais rotas deste modulo aplicam authRequired internamente.
+app.use('/api/meta-oauth', metaOAuthRoutes);
 
 // A Equipe Comercial usa o mesmo papel interno da equipe para manter
 // compatibilidade com o banco, mas fica isolada das demais áreas da API.
@@ -112,8 +118,9 @@ async function runAutomaticBackup(label) {
 
 
 async function runAutomaticOrganicSync(label) {
-  if (!String(process.env.META_ORGANIC_ACCESS_TOKEN || '').trim()) {
-    console.log(`[META ORGANIC] Sincronizacao ${label} ignorada: token organico nao configurado.`);
+  const oauthConnections = Number(db.prepare('SELECT COUNT(*) AS total FROM meta_oauth_connections').get()?.total || 0);
+  if (!String(process.env.META_ORGANIC_ACCESS_TOKEN || '').trim() && oauthConnections === 0) {
+    console.log(`[META ORGANIC] Sincronizacao ${label} ignorada: nenhuma autorizacao Meta configurada.`);
     return;
   }
 
@@ -127,8 +134,9 @@ async function runAutomaticOrganicSync(label) {
 }
 
 async function runAutomaticMetaSync(label) {
-  if (!String(process.env.META_ACCESS_TOKEN || '').trim()) {
-    console.log(`[META] Sincronizacao ${label} ignorada: token nao configurado.`);
+  const oauthConnections = Number(db.prepare('SELECT COUNT(*) AS total FROM meta_oauth_connections').get()?.total || 0);
+  if (!String(process.env.META_ACCESS_TOKEN || '').trim() && oauthConnections === 0) {
+    console.log(`[META] Sincronizacao ${label} ignorada: nenhuma autorizacao Meta configurada.`);
     return;
   }
 
