@@ -82,7 +82,7 @@ function postToForm(post, defaultClientId) {
   };
 }
 
-export default function PostModal({ clients, defaultClientId, post, onClose, onSaved }) {
+export default function PostModal({ clients, defaultClientId, post, onClose, onSaved, lockClient = false, requireSchedule = false }) {
   const isEditing = Boolean(post?.id);
   const [form, setForm] = useState(() => postToForm(post, defaultClientId));
   const initialFormRef = useRef(postToForm(post, defaultClientId));
@@ -177,6 +177,11 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
       return false;
     }
 
+    if (requireSchedule && !form.scheduled_at) {
+      setError('Informe a data e o horário para que a publicação apareça no Feed.');
+      return false;
+    }
+
     setSaving(true);
     try {
       const firstMedia = form.media_gallery[0] || null;
@@ -246,16 +251,22 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
           <form onSubmit={handleSubmit} className="space-y-4 min-w-0 max-w-full">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Cliente</label>
-              <select
-                className="input-field"
-                value={form.client_id}
-                onChange={(event) => setForm({ ...form, client_id: event.target.value })}
-              >
-                <option value="">Selecione um cliente</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>{client.name}</option>
-                ))}
-              </select>
+              {lockClient ? (
+                <div className="input-field flex items-center bg-slate-50 text-slate-700">
+                  {selectedClient?.name || 'Cliente selecionado na barra lateral'}
+                </div>
+              ) : (
+                <select
+                  className="input-field"
+                  value={form.client_id}
+                  onChange={(event) => setForm({ ...form, client_id: event.target.value })}
+                >
+                  <option value="">Selecione um cliente</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>{client.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div>
@@ -347,9 +358,10 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
                 </select>
               </div>
               <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Data/hora agendada</label>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Data/hora agendada{requireSchedule ? ' *' : ''}</label>
                 <input
                   type="datetime-local"
+                  required={requireSchedule}
                   className="input-field"
                   value={form.scheduled_at}
                   onChange={(event) => setForm({ ...form, scheduled_at: event.target.value })}

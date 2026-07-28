@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -10,16 +10,16 @@ import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import CalendarView from './CalendarView.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import PostModal from '../components/PostModal.jsx';
 import { formChanged } from '../utils/formState.js';
 
 export default function Feed() {
   const { user } = useAuth();
-  const { selectedClient, setSelectedClient } = useClientFilter();
+  const { selectedClient } = useClientFilter();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeView = searchParams.get('view') === 'calendar' ? 'calendar' : 'grid';
   const [clients, setClients] = useState([]);
-  const requestedClientId = searchParams.get('client_id');
-  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (requestedClientId || selectedClient?.id || ''));
+  const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
   const [openPost, setOpenPost] = useState(null);
   const [editingProfile, setEditingProfile] = useState(false);
@@ -32,6 +32,8 @@ export default function Feed() {
   const [galleryDraft, setGalleryDraft] = useState([]);
   const [savingGalleryOrder, setSavingGalleryOrder] = useState(false);
   const [galleryOrderError, setGalleryOrderError] = useState('');
+  const [creatingPost, setCreatingPost] = useState(false);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const draggedGalleryIndexRef = useRef(null);
 
   useEffect(() => {
@@ -39,41 +41,48 @@ export default function Feed() {
       api.get('/clients').then((res) => {
         const availableClients = res.data.clients || [];
         setClients(availableClients);
-        const requested = requestedClientId
-          ? availableClients.find((client) => String(client.id) === String(requestedClientId))
+        const selected = selectedClient
+          ? availableClients.find((client) => String(client.id) === String(selectedClient.id))
           : null;
-        const nextClient = requested || selectedClient || availableClients[0] || null;
-        setClientId((current) => requested?.id || current || nextClient?.id || '');
-        if (requested) setSelectedClient(requested);
+        setClientId(selected?.id || '');
       });
     } else if (user?.client_id) {
       api.get(`/clients/${user.client_id}`).then((res) => setClients([res.data.client]));
     }
-  }, [user, selectedClient, requestedClientId, setSelectedClient]);
+  }, [user, selectedClient]);
 
   useEffect(() => {
-    if (user?.role !== 'client' && selectedClient) setClientId(selectedClient.id);
+    if (user?.role === 'client') return;
+    setClientId(selectedClient?.id || '');
+    if (!selectedClient) {
+      setPosts([]);
+      setOpenPost(null);
+      setCreatingPost(false);
+    }
   }, [selectedClient, user]);
 
-  useEffect(() => {
-    if (!clientId) {
+  async function loadPosts(targetClientId = clientId) {
+    if (!targetClientId) {
       setPosts([]);
       return;
     }
 
-    api.get(`/posts?client_id=${clientId}`).then((res) => {
-      const upcoming = res.data.posts
-        .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(post.status))
-        .sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
-      setPosts(upcoming);
-    });
+    const res = await api.get(`/posts?client_id=${targetClientId}`);
+    const upcoming = res.data.posts
+      .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(post.status))
+      .sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
+    setPosts(upcoming);
+  }
+
+  useEffect(() => {
+    loadPosts(clientId).catch(() => setPosts([]));
   }, [clientId]);
 
   const currentClient = clients.find((client) => String(client.id) === String(clientId));
 
   function switchView(view) {
     setOpenPost(null);
-    setSearchParams(view === 'calendar' ? { view: 'calendar', client_id: String(clientId || '') } : { client_id: String(clientId || '') }, { replace: true });
+    setSearchParams(view === 'calendar' ? { view: 'calendar' } : {}, { replace: true });
   }
 
   function startEditProfile() {
@@ -292,23 +301,15 @@ export default function Feed() {
               : 'Prévia do feed com as datas mais futuras no topo e as mais próximas na base.'}
           </p>
         </div>
-        {user?.role !== 'client' && clients.length > 0 && (
+        {clientId && user?.role !== 'client' && (
           <div className="flex items-center gap-2 flex-wrap">
-            <select
-              className="input-field w-56"
-              value={clientId}
-              onChange={(event) => {
-                const nextId = event.target.value;
-                setClientId(nextId);
-                const nextClient = clients.find((client) => String(client.id) === String(nextId));
-                if (nextClient) setSelectedClient(nextClient);
-                setSearchParams(activeView === 'calendar'
-                  ? { view: 'calendar', client_id: nextId }
-                  : { client_id: nextId }, { replace: true });
-              }}
+            <button
+              type="button"
+              onClick={() => setCreatingPost(true)}
+              className="btn-primary flex items-center gap-2 whitespace-nowrap"
             >
-              {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-            </select>
+              <Plus size={17} /> Nova publicação
+            </button>
             {activeView === 'grid' && (
               <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
                 {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
@@ -343,7 +344,7 @@ export default function Feed() {
       )}
 
       {clientId && activeView === 'calendar' && (
-        <CalendarView embedded clientId={clientId} />
+        <CalendarView key={`${clientId}-${calendarRefreshKey}`} embedded clientId={clientId} />
       )}
 
       {clientId && activeView === 'grid' && (
@@ -356,6 +357,21 @@ export default function Feed() {
             onEdit={startEditProfile}
           />
         </div>
+      )}
+
+      {creatingPost && clientId && (
+        <PostModal
+          clients={currentClient ? [currentClient] : clients.filter((client) => String(client.id) === String(clientId))}
+          defaultClientId={clientId}
+          lockClient
+          requireSchedule
+          onClose={() => setCreatingPost(false)}
+          onSaved={async () => {
+            setCreatingPost(false);
+            await loadPosts(clientId);
+            setCalendarRefreshKey((current) => current + 1);
+          }}
+        />
       )}
 
       {editingProfile && (
