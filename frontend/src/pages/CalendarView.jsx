@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -20,6 +20,14 @@ function buildMonthGrid(year, month) {
   return cells;
 }
 
+function sameCalendarDate(value, year, month, day) {
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime())
+    && date.getFullYear() === year
+    && date.getMonth() === month
+    && date.getDate() === day;
+}
+
 export default function CalendarView({ embedded = false, clientId: controlledClientId }) {
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
@@ -30,8 +38,14 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
   const [posts, setPosts] = useState([]);
   const [cursor, setCursor] = useState(new Date());
   const [dayPosts, setDayPosts] = useState(null);
+  const [calendarDrag, setCalendarDrag] = useState(null);
+  const [calendarDropDay, setCalendarDropDay] = useState(null);
+  const [calendarFeedback, setCalendarFeedback] = useState('');
+  const [calendarError, setCalendarError] = useState('');
+  const [savingPostId, setSavingPostId] = useState(null);
 
   const clientId = controlledClientId ?? localClientId;
+  const canManageCalendar = ['admin', 'team'].includes(user?.role);
 
   useEffect(() => {
     if (embedded || user?.role === 'client') return;
@@ -43,16 +57,19 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
     api.get('/clients').then((res) => setClients(res.data.clients));
   }, [embedded, user]);
 
-  useEffect(() => {
-    if (!clientId) {
+  async function loadPosts(targetClientId = clientId) {
+    if (!targetClientId) {
       setPosts([]);
       return;
     }
 
-    const params = clientId !== 'all' ? `?client_id=${clientId}` : '';
-    api.get(`/posts${params}`).then((res) => {
-      setPosts(res.data.posts.filter((post) => post.scheduled_at));
-    });
+    const params = targetClientId !== 'all' ? `?client_id=${targetClientId}` : '';
+    const res = await api.get(`/posts${params}`);
+    setPosts(res.data.posts.filter((post) => post.scheduled_at && Number(post.feed_visible ?? 1) !== 0));
+  }
+
+  useEffect(() => {
+    loadPosts(clientId).catch(() => setPosts([]));
   }, [clientId]);
 
   const year = cursor.getFullYear();
@@ -61,15 +78,119 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
 
   function postsForDay(day) {
     if (!day) return [];
-    return posts.filter((post) => {
-      const date = new Date(post.scheduled_at);
-      return date.getFullYear() === year && date.getMonth() === month && date.getDate() === day;
-    });
+    return posts.filter((post) => sameCalendarDate(post.scheduled_at, year, month, day));
   }
 
   function changeMonth(delta) {
     setCursor(new Date(year, month + delta, 1));
     setDayPosts(null);
+    setCalendarDrag(null);
+    setCalendarDropDay(null);
+  }
+
+  function scheduledAtForDay(post, day) {
+    const original = new Date(post.scheduled_at);
+    const target = new Date(
+      year,
+      month,
+      day,
+      Number.isNaN(original.getTime()) ? 12 : original.getHours(),
+      Number.isNaN(original.getTime()) ? 0 : original.getMinutes(),
+      Number.isNaN(original.getTime()) ? 0 : original.getSeconds(),
+      0
+    );
+    return target.toISOString();
+  }
+
+  function handleCalendarDragStart(event, post) {
+    if (!canManageCalendar || savingPostId) {
+      event.preventDefault();
+      return;
+    }
+
+    const copyRequested = Boolean(event.altKey);
+    event.stopPropagation();
+    event.dataTransfer.setData('text/post-id', String(post.id));
+    event.dataTransfer.setData('text/plain', String(post.id));
+    event.dataTransfer.effectAllowed = 'copyMove';
+    setCalendarDrag({ id: Number(post.id), copyRequested });
+    setCalendarFeedback('');
+    setCalendarError('');
+  }
+
+  function handleCalendarDragOver(event, day) {
+    if (!day || !calendarDrag || !canManageCalendar) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const copyRequested = Boolean(event.altKey || calendarDrag.copyRequested);
+    event.dataTransfer.dropEffect = copyRequested ? 'copy' : 'move';
+    setCalendarDrag((current) => current && current.copyRequested !== copyRequested
+      ? { ...current, copyRequested }
+      : current);
+    setCalendarDropDay(day);
+  }
+
+  function handleCalendarDragEnd() {
+    setCalendarDrag(null);
+    setCalendarDropDay(null);
+  }
+
+  async function handleCalendarDrop(event, day) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!day || !canManageCalendar) {
+      handleCalendarDragEnd();
+      return;
+    }
+
+    const postId = Number(
+      event.dataTransfer.getData('text/post-id')
+      || event.dataTransfer.getData('text/plain')
+      || calendarDrag?.id
+    );
+    const post = posts.find((item) => Number(item.id) === postId);
+    if (!post) {
+      setCalendarError('Não foi possível identificar a publicação arrastada.');
+      handleCalendarDragEnd();
+      return;
+    }
+
+    const shouldCopy = Boolean(event.altKey || calendarDrag?.copyRequested);
+    if (!shouldCopy && sameCalendarDate(post.scheduled_at, year, month, day)) {
+      handleCalendarDragEnd();
+      return;
+    }
+
+    const scheduledAt = scheduledAtForDay(post, day);
+    setSavingPostId(postId);
+    setCalendarError('');
+
+    try {
+      if (shouldCopy) {
+        const { data } = await api.post(`/posts/${postId}/duplicate`, { scheduled_at: scheduledAt });
+        if (data.post) {
+          setPosts((current) => [...current, data.post]);
+        } else {
+          await loadPosts();
+        }
+        setCalendarFeedback(`Publicação duplicada para ${day} de ${MONTHS[month]}.`);
+      } else {
+        await api.put(`/posts/${postId}`, { scheduled_at: scheduledAt });
+        setPosts((current) => current.map((item) => (
+          Number(item.id) === postId ? { ...item, scheduled_at: scheduledAt } : item
+        )));
+        setCalendarFeedback(`Publicação movida para ${day} de ${MONTHS[month]}.`);
+      }
+
+      window.setTimeout(() => setCalendarFeedback(''), 2800);
+    } catch (error) {
+      setCalendarError(error.response?.data?.error || (shouldCopy
+        ? 'Não foi possível duplicar a publicação.'
+        : 'Não foi possível alterar a data da publicação.'));
+    } finally {
+      setSavingPostId(null);
+      handleCalendarDragEnd();
+    }
   }
 
   return (
@@ -95,14 +216,34 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
         </div>
       ) : (
         <div className="card p-5 min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <button onClick={() => changeMonth(-1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Mês anterior">
-              <ChevronLeft size={20} />
-            </button>
-            <h2 className="font-semibold text-slate-800">{MONTHS[month]} de {year}</h2>
-            <button onClick={() => changeMonth(1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Próximo mês">
-              <ChevronRight size={20} />
-            </button>
+          <div className="mb-4">
+            <div className="flex items-center justify-between">
+              <button onClick={() => changeMonth(-1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Mês anterior">
+                <ChevronLeft size={20} />
+              </button>
+              <div className="text-center">
+                <h2 className="font-semibold text-slate-800">{MONTHS[month]} de {year}</h2>
+                {canManageCalendar && (
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Arraste para alterar a data · segure Alt/Option para duplicar
+                  </p>
+                )}
+              </div>
+              <button onClick={() => changeMonth(1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Próximo mês">
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            {calendarFeedback && (
+              <div className="mx-auto mt-3 w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+                {calendarFeedback}
+              </div>
+            )}
+            {calendarError && (
+              <div className="mx-auto mt-3 w-fit max-w-full rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700">
+                {calendarError}
+              </div>
+            )}
           </div>
 
           <div className="overflow-x-auto pb-1">
@@ -114,37 +255,75 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
                 {cells.map((day, index) => {
                   const dayItems = postsForDay(day);
                   const isToday = day && new Date().toDateString() === new Date(year, month, day).toDateString();
+                  const isDropTarget = Boolean(day && calendarDrag && calendarDropDay === day);
                   return (
-                    <button
+                    <div
                       key={`${day || 'empty'}-${index}`}
-                      disabled={!day}
-                      onClick={() => day && dayItems.length > 0 && setDayPosts({ day, items: dayItems })}
-                      className={`h-32 rounded-lg border p-1.5 text-left flex flex-col min-w-0 ${
+                      onClick={() => day && !calendarDrag && dayItems.length > 0 && setDayPosts({ day, items: dayItems })}
+                      onDragOver={(event) => handleCalendarDragOver(event, day)}
+                      onDragEnter={(event) => {
+                        if (day && calendarDrag && canManageCalendar) {
+                          event.preventDefault();
+                          setCalendarDropDay(day);
+                        }
+                      }}
+                      onDragLeave={(event) => {
+                        if (event.currentTarget.contains(event.relatedTarget)) return;
+                        setCalendarDropDay((current) => current === day ? null : current);
+                      }}
+                      onDrop={(event) => handleCalendarDrop(event, day)}
+                      className={`h-32 rounded-lg border p-1.5 text-left flex flex-col min-w-0 transition ${
                         !day ? 'border-transparent' : 'border-slate-100 hover:border-zebrazul-300'
-                      } ${isToday ? 'ring-2 ring-zebrazul-400' : ''}`}
+                      } ${day && dayItems.length > 0 && !calendarDrag ? 'cursor-pointer' : ''} ${
+                        isToday ? 'ring-2 ring-zebrazul-400' : ''
+                      } ${isDropTarget ? (
+                        calendarDrag.copyRequested
+                          ? 'border-violet-400 bg-violet-50 ring-4 ring-violet-100'
+                          : 'border-zebrazul-400 bg-zebrazul-50 ring-4 ring-zebrazul-100'
+                      ) : ''}`}
                     >
                       {day && (
                         <>
                           <span className="text-xs text-slate-500">{day}</span>
-                          <div className="flex-1 min-h-0 mt-1 overflow-hidden">
-                            {dayItems.slice(0, 1).map((post) => (
-                              <div key={post.id} className="w-full h-full rounded overflow-hidden bg-slate-100 flex items-center justify-center">
+                          <div className="flex-1 min-h-0 mt-1 space-y-1 overflow-hidden">
+                            {dayItems.slice(0, 2).map((post) => (
+                              <div
+                                key={post.id}
+                                draggable={canManageCalendar && !savingPostId}
+                                onDragStart={(event) => handleCalendarDragStart(event, post)}
+                                onDragEnd={handleCalendarDragEnd}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (!calendarDrag) setDayPosts({ day, items: dayItems });
+                                }}
+                                title={`${post.title || 'Publicação'}${canManageCalendar ? ' · arraste para mover; Alt/Option para duplicar' : ''}`}
+                                className={`relative w-full rounded overflow-hidden bg-slate-100 flex items-center justify-center ${
+                                  dayItems.length === 1 ? 'h-full' : 'h-[calc(50%_-_2px)]'
+                                } ${canManageCalendar ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                                  Number(savingPostId) === Number(post.id) ? 'opacity-60' : ''
+                                }`}
+                              >
                                 {post.media_data ? (
-                                  <img src={post.media_data} alt="" className="w-full h-full object-cover" />
+                                  <img src={post.media_data} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
                                 ) : (
                                   <ImageIcon size={14} className="text-slate-300" />
+                                )}
+                                {Number(savingPostId) === Number(post.id) && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-white/55">
+                                    <Loader2 size={16} className="animate-spin text-zebrazul-600" />
+                                  </div>
                                 )}
                               </div>
                             ))}
                           </div>
                           {dayItems.length > 0 && (
                             <span className="text-[9px] text-zebrazul-600 font-medium mt-1">
-                              {dayItems.length} post{dayItems.length > 1 ? 's' : ''}
+                              {dayItems.length} post{dayItems.length > 1 ? 's' : ''}{dayItems.length > 2 ? ' · ver todos' : ''}
                             </span>
                           )}
                         </>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -157,9 +336,14 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
         <ModalBackdrop onClose={() => setDayPosts(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between gap-4 mb-4">
-              <h2 className="font-semibold text-slate-800 min-w-0 break-words">
-                Publicações — {dayPosts.day} de {MONTHS[month]}
-              </h2>
+              <div className="min-w-0">
+                <h2 className="font-semibold text-slate-800 min-w-0 break-words">
+                  Publicações — {dayPosts.day} de {MONTHS[month]}
+                </h2>
+                {canManageCalendar && (
+                  <p className="mt-1 text-[11px] text-slate-400">Feche esta janela para arrastar as publicações no calendário.</p>
+                )}
+              </div>
               <button onClick={() => setDayPosts(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0" aria-label="Fechar">×</button>
             </div>
             <div className="space-y-3">
