@@ -1,0 +1,307 @@
+/*
+ * ZebraHub — All Black global (aplicação forçada)
+ * Importado DEPOIS de index.css em main.jsx para vencer as classes claras.
+ */
+
+:root {
+  --zh-bg: #05070b;
+  --zh-bg-soft: #080b11;
+  --zh-surface: #0d1118;
+  --zh-surface-2: #111722;
+  --zh-surface-3: #171e29;
+  --zh-border: #242d39;
+  --zh-border-soft: #1a222c;
+  --zh-text: #f4f7fb;
+  --zh-text-soft: #d6dde8;
+  --zh-muted: #9aa6b6;
+  --zh-muted-2: #667386;
+  --zh-blue-soft: rgba(9, 105, 255, 0.16);
+  --zh-shadow: 0 18px 55px rgba(0, 0, 0, 0.34);
+}
+
+html.zebrahub-all-black,
+html.zebrahub-all-black body,
+body.zebrahub-all-black,
+body.zebrahub-all-black #root,
+body.zebrahub-all-black .app-shell,
+body.zebrahub-all-black .app-main {
+  color-scheme: dark;
+  background-color: var(--zh-bg) !important;
+  color: var(--zh-text) !important;
+}
+
+body.zebrahub-all-black .app-main {
+  background-image:
+    radial-gradient(circle at 72% -8%, rgba(9, 105, 255, 0.14), transparent 34%),
+    linear-gradient(180deg, #070a0f 0%, #05070b 100%) !important;
+}
+
+/* Componentes reutilizáveis */
+body.zebrahub-all-black :is(.card, .surface-card, .toolbar-panel, .data-row) {
+  border-color: var(--zh-border) !important;
+  background: var(--zh-surface) !important;
+  color: var(--zh-text) !important;
+  box-shadow: var(--zh-shadow) !important;
+}
+
+body.zebrahub-all-black :is(.soft-panel, .segmented-control) {
+  border-color: var(--zh-border) !important;
+  background: var(--zh-bg-soft) !important;
+}
+
+body.zebrahub-all-black .btn-secondary {
+  border-color: var(--zh-border) !important;
+  background: var(--zh-surface-2) !important;
+  color: var(--zh-text-soft) !important;
+}
+
+body.zebrahub-all-black .btn-secondary:hover {
+  border-color: #3a4656 !important;
+  background: var(--zh-surface-3) !important;
+  color: #fff !important;
+}
+
+body.zebrahub-all-black :is(.page-title, .section-title) {
+  color: var(--zh-text) !important;
+}
+
+body.zebrahub-all-black :is(.page-subtitle, .section-kicker) {
+  color: var(--zh-muted) !important;
+}
+
+/* Converte os fundos claros usados nas telas */
+body.zebrahub-all-black [class~="bg-white"],
+body.zebrahub-all-black [class~="bg-white/95"],
+body.zebrahub-all-black [class~="bg-white/90"],
+body.zebrahub-all-black [class~="bg-white/85"],
+body.zebrahub-all-black [class~="bg-white/80"],
+body.zebrahub-all-black [class~="bg-white/75"],
+body.zebrahub-all-black [class~="bg-white/70"],
+body.zebrahub-all-black [class~="bg-white/60"],
+body.zebrahub-all-black [class~="bg-white/55"],
+body.zebrahub-all-black [class~="bg-white/50"] {
+  background-color: var(--zh-surface) !important;
+  background-image: none !important;
+}
+
+body.zebrahub-all-black [class~="bg-slate-50"],
+body.zebrahub-all-black [class~="bg-slate-50/90"],
+body.zebrahub-all-black [class~="bg-slate-50/80"],
+body.zebrahub-all-black [class~="bg-slate-50/75"],
+body.zebrahub-all-black [class~="bg-slate-50/70"],
+body.zebrahub-all-black [class~="bg-slate-50/65"],
+body.zebrahub-all-black [class~="bg-slate-50/60"],
+body.zebrahub-all-black [class~="bg-slate-50/55"],
+body.zebrahub-all-black [class~="bg-slate-50/50"],
+body.zebrahub-all-black [class~="bg-slate-50/45"],
+body.zebrahub-all-black [class~="bg-slate-100"],
+body.zebrahub-all-black [class~="bg-slate-200"],
+body.zebrahub-all-black [class~="bg-slate-200/70"],
+body.zebrahub-all-black [class~="bg-gray-50"],
+body.zebrahub-all-black [class~="bg-gray-100"],
+body.zebrahub-all-black [class~="bg-[#f5f7fb]"],
+body.zebrahub-all-black [class~="bg-[#eef5ff]"],
+body.zebrahub-all-black [class~="bg-[#eef5ff]/45"],
+body.zebrahub-all-black [class~="bg-[#ececec]"] {
+  background-color: var(--zh-surface-2) !important;
+  background-image: none !important;
+}
+
+/* Texto */
+body.zebrahub-all-black [class~="text-slate-950"],
+body.zebrahub-all-black [class~="text-slate-900"],
+body.zebrahub-all-black [class~="text-slate-800"],
+body.zebrahub-all-black [class~="text-slate-700"],
+body.zebrahub-all-black [class~="text-gray-900"],
+body.zebrahub-all-black [class~="text-gray-800"],
+body.zebrahub-all-black [class~="text-black"],
+body.zebrahub-all-black [class~="text-[#121620]"] {
+  color: var(--zh-text) !important;
+}
+
+body.zebrahub-all-black [class~="text-slate-600"],
+body.zebrahub-all-black [class~="text-gray-600"] {
+  color: var(--zh-text-soft) !important;
+}
+
+body.zebrahub-all-black [class~="text-slate-500"],
+body.zebrahub-all-black [class~="text-slate-400"],
+body.zebrahub-all-black [class~="text-gray-500"],
+body.zebrahub-all-black [class~="text-gray-400"] {
+  color: var(--zh-muted) !important;
+}
+
+body.zebrahub-all-black [class~="text-slate-300"],
+body.zebrahub-all-black [class~="text-slate-200"] {
+  color: #c5ceda !important;
+}
+
+/* Bordas */
+body.zebrahub-all-black [class~="border-slate-100"],
+body.zebrahub-all-black [class~="border-slate-200"],
+body.zebrahub-all-black [class~="border-slate-200/70"],
+body.zebrahub-all-black [class~="border-slate-200/80"],
+body.zebrahub-all-black [class~="border-slate-300"],
+body.zebrahub-all-black [class~="border-gray-100"],
+body.zebrahub-all-black [class~="border-gray-200"],
+body.zebrahub-all-black [class~="border-black/5"] {
+  border-color: var(--zh-border) !important;
+}
+
+body.zebrahub-all-black [class~="divide-slate-100"] > :not([hidden]) ~ :not([hidden]),
+body.zebrahub-all-black [class~="divide-slate-200"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--zh-border-soft) !important;
+}
+
+body.zebrahub-all-black hr {
+  border-color: var(--zh-border) !important;
+}
+
+/* Formulários */
+body.zebrahub-all-black input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+body.zebrahub-all-black textarea,
+body.zebrahub-all-black select,
+body.zebrahub-all-black [contenteditable="true"],
+body.zebrahub-all-black .input-field {
+  border-color: var(--zh-border) !important;
+  background-color: #0a0e14 !important;
+  color: var(--zh-text) !important;
+  box-shadow: none !important;
+}
+
+body.zebrahub-all-black input::placeholder,
+body.zebrahub-all-black textarea::placeholder {
+  color: var(--zh-muted-2) !important;
+  opacity: 1;
+}
+
+body.zebrahub-all-black select option {
+  background: #0b0f15;
+  color: var(--zh-text);
+}
+
+body.zebrahub-all-black input[type="date"],
+body.zebrahub-all-black input[type="datetime-local"],
+body.zebrahub-all-black input[type="time"] {
+  color-scheme: dark;
+}
+
+body.zebrahub-all-black input[type="checkbox"],
+body.zebrahub-all-black input[type="radio"] {
+  accent-color: var(--agency-primary, #0969ff);
+}
+
+/* Cores de estados em versão dark */
+body.zebrahub-all-black [class~="bg-blue-50"],
+body.zebrahub-all-black [class~="bg-blue-100"],
+body.zebrahub-all-black [class~="bg-zebrazul-50"],
+body.zebrahub-all-black [class~="bg-zebrazul-100"] {
+  background-color: rgba(37, 99, 235, 0.16) !important;
+}
+
+body.zebrahub-all-black [class~="bg-emerald-50"],
+body.zebrahub-all-black [class~="bg-emerald-100"],
+body.zebrahub-all-black [class~="bg-green-50"],
+body.zebrahub-all-black [class~="bg-green-100"] {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+body.zebrahub-all-black [class~="bg-amber-50"],
+body.zebrahub-all-black [class~="bg-amber-100"],
+body.zebrahub-all-black [class~="bg-yellow-50"],
+body.zebrahub-all-black [class~="bg-yellow-100"] {
+  background-color: rgba(245, 158, 11, 0.14) !important;
+}
+
+body.zebrahub-all-black [class~="bg-red-50"],
+body.zebrahub-all-black [class~="bg-red-100"],
+body.zebrahub-all-black [class~="bg-rose-50"],
+body.zebrahub-all-black [class~="bg-pink-50"] {
+  background-color: rgba(244, 63, 94, 0.13) !important;
+}
+
+body.zebrahub-all-black [class~="bg-indigo-50"],
+body.zebrahub-all-black [class~="bg-indigo-100"],
+body.zebrahub-all-black [class~="bg-violet-50"],
+body.zebrahub-all-black [class~="bg-violet-100"] {
+  background-color: rgba(124, 58, 237, 0.15) !important;
+}
+
+/* Navegação ativa da sidebar — elimina o bloco branco */
+body.zebrahub-all-black .app-sidebar a.bg-white,
+body.zebrahub-all-black .app-sidebar button.bg-white,
+body.zebrahub-all-black .app-sidebar [class~="bg-white"] {
+  border: 1px solid rgba(47, 106, 200, 0.42) !important;
+  background: #14233d !important;
+  color: #fff !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Calendários, kanbans e tabelas */
+body.zebrahub-all-black table,
+body.zebrahub-all-black thead,
+body.zebrahub-all-black tbody,
+body.zebrahub-all-black tr,
+body.zebrahub-all-black th,
+body.zebrahub-all-black td {
+  border-color: var(--zh-border-soft) !important;
+}
+
+body.zebrahub-all-black thead,
+body.zebrahub-all-black th {
+  color: var(--zh-muted) !important;
+}
+
+body.zebrahub-all-black tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.025) !important;
+}
+
+/* Portais: modais, popovers, drawers e menus */
+body.zebrahub-all-black [role="dialog"],
+body.zebrahub-all-black [role="menu"],
+body.zebrahub-all-black [role="listbox"] {
+  color: var(--zh-text);
+}
+
+body.zebrahub-all-black [role="dialog"] [class~="bg-white"],
+body.zebrahub-all-black [role="menu"][class~="bg-white"],
+body.zebrahub-all-black [role="listbox"][class~="bg-white"] {
+  background-color: var(--zh-surface) !important;
+}
+
+/* Skeletons e estados vazios */
+body.zebrahub-all-black [class*="animate-pulse"] [class*="bg-slate-"] {
+  background-color: #151c27 !important;
+}
+
+/* Scrollbars */
+body.zebrahub-all-black ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body.zebrahub-all-black ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  background: rgba(148, 163, 184, 0.28);
+  background-clip: padding-box;
+}
+
+/* Mantém cabeçalhos já escuros/gradientes e botões primários intactos. */
+body.zebrahub-all-black [class*="from-[#121620]"],
+body.zebrahub-all-black [class*="bg-gradient-to"],
+body.zebrahub-all-black .btn-primary {
+  color: #fff;
+}
+
+/* Impressão continua clara */
+@media print {
+  html.zebrahub-all-black,
+  html.zebrahub-all-black body,
+  body.zebrahub-all-black,
+  body.zebrahub-all-black #root,
+  body.zebrahub-all-black .app-shell,
+  body.zebrahub-all-black .app-main {
+    color-scheme: light !important;
+    background: #fff !important;
+    color: #1e293b !important;
+  }
+}
