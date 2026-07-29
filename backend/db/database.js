@@ -190,6 +190,25 @@ CREATE TABLE IF NOT EXISTS post_comments (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS commercial_stages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  stage_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  subtitle TEXT,
+  probability INTEGER DEFAULT 10,
+  color_key TEXT DEFAULT 'blue',
+  position INTEGER DEFAULT 0,
+  stage_type TEXT DEFAULT 'open' CHECK(stage_type IN ('open','won','lost')),
+  is_system INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  UNIQUE(agency_id, client_id, stage_key)
+);
+
 CREATE TABLE IF NOT EXISTS commercial_leads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
@@ -202,6 +221,7 @@ CREATE TABLE IF NOT EXISTS commercial_leads (
   phone TEXT,
   source TEXT,
   stage TEXT DEFAULT 'new_lead' CHECK(stage IN ('new_lead','contacted','meeting','proposal','negotiation','won','lost')),
+  stage_key TEXT,
   estimated_value REAL DEFAULT 0,
   probability INTEGER DEFAULT 10,
   next_action TEXT,
@@ -723,6 +743,7 @@ tryAddColumn('users', 'is_agency_owner', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_operations_head', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_commercial_team', 'INTEGER DEFAULT 0');
 tryAddColumn('commercial_leads', 'client_id', 'INTEGER REFERENCES clients(id)');
+tryAddColumn('commercial_leads', 'stage_key', 'TEXT');
 tryAddColumn('clients', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('social_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('posts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
@@ -917,12 +938,24 @@ if (!commercialClientScopeMigration) {
   initializeCommercialClientScope();
 }
 
+// Preserva o valor das etapas antigas e passa a usar `stage_key` para permitir
+// quadros personalizados sem reconstruir a tabela legada, que possui CHECK fixo.
+if (tableHasColumn('commercial_leads', 'stage_key')) {
+  db.exec(`
+    UPDATE commercial_leads
+    SET stage_key = stage
+    WHERE stage_key IS NULL OR trim(stage_key) = ''
+  `);
+}
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_tasks_featured ON tasks(agency_id, is_featured, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage ON commercial_leads(agency_id, stage, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage_key ON commercial_leads(agency_id, client_id, stage_key, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_commercial_stages_client_position ON commercial_stages(agency_id, client_id, position);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_client_stage ON commercial_leads(agency_id, client_id, stage, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_next_action ON commercial_leads(agency_id, next_action_date);
   CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
