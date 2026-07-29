@@ -5,31 +5,32 @@ import {
   BriefcaseBusiness,
   CalendarClock,
   CheckCircle2,
-  ChevronRight,
+  CircleAlert,
   CircleDollarSign,
   Clock3,
+  Eye,
+  HeartPulse,
+  Plus,
   RefreshCw,
   Target,
   TrendingDown,
   TrendingUp,
   Users,
-  X,
   Zap,
 } from 'lucide-react';
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
-import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { subscribeCommercialUpdates } from '../utils/commercialRealtime.js';
 
 const STAGES = [
-  { key: 'new_lead', label: 'Novo lead', short: 'Entrada', gradient: 'linear-gradient(135deg,#1686ff,#0969ff)', soft: 'bg-blue-50 text-blue-700', probability: 10 },
-  { key: 'contacted', label: 'Contato feito', short: 'Conexão', gradient: 'linear-gradient(135deg,#5166f6,#4852d9)', soft: 'bg-indigo-50 text-indigo-700', probability: 20 },
-  { key: 'meeting', label: 'Diagnóstico', short: 'Leitura', gradient: 'linear-gradient(135deg,#8b5cf6,#7048d7)', soft: 'bg-violet-50 text-violet-700', probability: 35 },
-  { key: 'proposal', label: 'Proposta enviada', short: 'Proposta', gradient: 'linear-gradient(135deg,#f5a524,#e88b0a)', soft: 'bg-amber-50 text-amber-700', probability: 55 },
-  { key: 'negotiation', label: 'Negociação', short: 'Decisão', gradient: 'linear-gradient(135deg,#f97316,#ea580c)', soft: 'bg-orange-50 text-orange-700', probability: 75 },
-  { key: 'won', label: 'Negócio ganho', short: 'Resultado', gradient: 'linear-gradient(135deg,#20b981,#079669)', soft: 'bg-emerald-50 text-emerald-700', probability: 100 },
+  { key: 'new_lead', label: 'Novo lead', short: 'Entrada', gradient: 'linear-gradient(100deg,#2d8cff 0%,#0969ff 100%)', soft: 'bg-blue-50 text-blue-700', probability: 10 },
+  { key: 'contacted', label: 'Contato feito', short: 'Conexão', gradient: 'linear-gradient(100deg,#5b68f6 0%,#4552d9 100%)', soft: 'bg-indigo-50 text-indigo-700', probability: 20 },
+  { key: 'meeting', label: 'Diagnóstico', short: 'Leitura', gradient: 'linear-gradient(100deg,#9668f7 0%,#7048d7 100%)', soft: 'bg-violet-50 text-violet-700', probability: 35 },
+  { key: 'proposal', label: 'Proposta enviada', short: 'Proposta', gradient: 'linear-gradient(100deg,#ffad24 0%,#ed8d0b 100%)', soft: 'bg-amber-50 text-amber-700', probability: 55 },
+  { key: 'negotiation', label: 'Negociação', short: 'Decisão', gradient: 'linear-gradient(100deg,#ff7a19 0%,#e9520d 100%)', soft: 'bg-orange-50 text-orange-700', probability: 75 },
+  { key: 'won', label: 'Negócio ganho', short: 'Resultado', gradient: 'linear-gradient(100deg,#34be88 0%,#079669 100%)', soft: 'bg-emerald-50 text-emerald-700', probability: 100 },
 ];
 
 const STAGE_INDEX = Object.fromEntries(STAGES.map((stage, index) => [stage.key, index]));
@@ -65,25 +66,43 @@ function relativeTime(value) {
   return `há ${minutes} min`;
 }
 
-function MetricCard({ icon: Icon, label, value, helper, accent = 'text-[#0969ff] bg-blue-50' }) {
+function MetricCard({ icon: Icon, label, value, helper, accent = 'text-[#0969ff] bg-blue-50', helperTone = 'text-slate-400' }) {
   return (
-    <div className="surface-card relative overflow-hidden p-5">
-      <div className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-slate-100/80 blur-2xl" />
-      <span className={`icon-tile relative ${accent}`}><Icon size={19} /></span>
-      <p className="relative mt-5 text-2xl font-bold tracking-tight text-slate-950">{value}</p>
-      <p className="relative mt-1 text-sm font-semibold text-slate-700">{label}</p>
-      <p className="relative mt-1 text-xs leading-5 text-slate-400">{helper}</p>
+    <div className="surface-card group relative min-w-0 overflow-hidden p-4 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_42px_rgba(15,23,42,0.08)] sm:p-5">
+      <div className="pointer-events-none absolute -right-7 -top-8 h-24 w-24 rounded-full bg-slate-100/90 blur-2xl transition group-hover:scale-110" />
+      <div className="relative flex items-start gap-3">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${accent}`}><Icon size={19} /></span>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-slate-500">{label}</p>
+          <p className="mt-1 truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{value}</p>
+        </div>
+      </div>
+      <p className={`relative mt-3 truncate text-[11px] font-medium ${helperTone}`}>{helper}</p>
     </div>
   );
 }
 
 function OwnerAvatar({ lead }) {
-  if (lead.owner_avatar) return <img src={lead.owner_avatar} alt="" className="h-8 w-8 rounded-full object-cover" />;
+  if (lead.owner_avatar) return <img src={lead.owner_avatar} alt="" className="h-8 w-8 rounded-xl object-cover" />;
   return (
-    <span className="flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ backgroundColor: lead.owner_color || '#0969ff' }}>
+    <span className="flex h-8 w-8 items-center justify-center rounded-xl text-[11px] font-bold text-white" style={{ backgroundColor: lead.owner_color || '#0969ff' }}>
       {(lead.owner_name || '?')[0]?.toUpperCase()}
     </span>
   );
+}
+
+function LeadStatus({ lead }) {
+  const staleDays = daysBetween(lead.updated_at);
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = Boolean(lead.next_action_date && String(lead.next_action_date).slice(0, 10) < today);
+
+  if (overdue || staleDays >= 7) {
+    return <span className="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-bold text-rose-600">Atrasado</span>;
+  }
+  if (staleDays >= 4) {
+    return <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">Atenção</span>;
+  }
+  return <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">No prazo</span>;
 }
 
 export default function CommercialFunnel() {
@@ -220,6 +239,11 @@ export default function CommercialFunnel() {
       return { stage, exact, reached, exactValue, reachedValue, currentMetric, advance, idleDays };
     });
 
+    const lostValue = lost.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
+    const healthScore = open.length ? Math.max(0, Math.round(100 - ((atRisk.length / open.length) * 100))) : 100;
+    const highValueNegotiations = open.filter((lead) => Number(lead.estimated_value || 0) >= 5000).length;
+    const busiestStage = [...stageRows].sort((a, b) => b.exact.length - a.exact.length)[0];
+
     return {
       open,
       won,
@@ -231,41 +255,53 @@ export default function CommercialFunnel() {
       averageCycle,
       atRisk,
       stageRows,
+      lostValue,
+      healthScore,
+      highValueNegotiations,
+      busiestStage,
     };
   }, [leads, mode]);
 
   const maxMetric = Math.max(0, ...analytics.stageRows.map((row) => row.currentMetric));
-  const selectedStageData = selectedStage ? analytics.stageRows.find((row) => row.stage.key === selectedStage) : null;
+  const fallbackStage = analytics.stageRows.find((row) => row.exact.length > 0) || analytics.stageRows[0];
+  const activeStageKey = selectedStage || fallbackStage?.stage.key;
+  const activeStageData = analytics.stageRows.find((row) => row.stage.key === activeStageKey) || fallbackStage;
+  const activeStageLeads = activeStageData?.exact || [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHero
         icon={Target}
         eyebrow="Inteligência comercial ao vivo"
         title={currentClient?.name ? `Funil comercial · ${currentClient.name}` : 'Funil comercial'}
         description={currentClient?.name
-          ? `Acompanhe o avanço das oportunidades de ${currentClient.name}, valores, conversão e riscos em uma leitura executiva que se atualiza automaticamente.`
+          ? `Acompanhe o avanço das oportunidades de ${currentClient.name}, conversão, valores e riscos em uma leitura executiva atualizada automaticamente.`
           : 'Selecione um cliente no filtro lateral para abrir a leitura completa do funil.'}
         actions={(
           <>
-            <button type="button" onClick={() => navigate('/comercial')} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
-              <ArrowLeft size={17} /> Voltar ao pipeline
-            </button>
             {clientId && (
-              <button type="button" onClick={() => loadData({ silent: true })} disabled={refreshing} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5 disabled:opacity-60">
-                <RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} /> Atualizar agora
+              <button type="button" onClick={() => navigate('/comercial')} className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(9,105,255,0.32)] transition hover:-translate-y-0.5 hover:bg-[#075de2]">
+                <Plus size={17} /> Nova oportunidade
               </button>
             )}
+            <button type="button" onClick={() => navigate('/comercial')} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5">
+              <ArrowLeft size={17} /> Voltar ao pipeline
+            </button>
           </>
         )}
       >
         {clientId && (
-          <div className="flex flex-wrap items-center gap-3 border-t border-white/10 pt-5 text-xs text-white/55">
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1.5 text-emerald-200">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Atualização automática ativa
-            </span>
-            <span>{lastUpdated ? `Sincronizado ${relativeTime(lastUpdated)}` : 'Sincronizando dados...'}</span>
-            <span className="hidden">{clock}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5 text-xs text-white/55">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1.5 text-emerald-200">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> Atualização automática ativa
+              </span>
+              <span>{lastUpdated ? `Sincronizado ${relativeTime(lastUpdated)}` : 'Sincronizando dados...'}</span>
+              <span className="hidden">{clock}</span>
+            </div>
+            <button type="button" onClick={() => loadData({ silent: true })} disabled={refreshing} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 font-semibold text-white transition hover:bg-white/10 disabled:opacity-60">
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Atualizar agora
+            </button>
           </div>
         )}
       </PageHero>
@@ -278,192 +314,236 @@ export default function CommercialFunnel() {
         </section>
       ) : loading ? (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-6">
-            {[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="h-40 animate-pulse rounded-3xl bg-slate-200/70" />)}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+            {[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="h-32 animate-pulse rounded-3xl bg-slate-200/70" />)}
           </div>
-          <div className="h-[620px] animate-pulse rounded-[30px] bg-slate-200/70" />
+          <div className="h-[560px] animate-pulse rounded-[30px] bg-slate-200/70" />
         </div>
       ) : (
         <>
-          <section className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-            <MetricCard icon={BriefcaseBusiness} label="Oportunidades ativas" value={analytics.open.length} helper={`${analytics.atRisk.length} precisam de atenção`} />
-            <MetricCard icon={CircleDollarSign} label="Pipeline aberto" value={formatCurrency(analytics.pipelineValue, true)} helper="valor bruto em negociação" accent="bg-violet-50 text-violet-600" />
-            <MetricCard icon={Zap} label="Previsão ponderada" value={formatCurrency(analytics.weightedValue, true)} helper="valor ajustado pela probabilidade" accent="bg-amber-50 text-amber-600" />
-            <MetricCard icon={Target} label="Conversão geral" value={`${Math.round(analytics.conversion)}%`} helper={`${analytics.won.length} ganhos de ${analytics.won.length + analytics.lost.length} finalizados`} accent="bg-orange-50 text-orange-600" />
-            <MetricCard icon={TrendingUp} label="Ticket médio ganho" value={formatCurrency(analytics.averageTicket, true)} helper="média dos negócios fechados" accent="bg-emerald-50 text-emerald-600" />
-            <MetricCard icon={Clock3} label="Ciclo médio" value={`${Math.round(analytics.averageCycle)} dias`} helper="da entrada ao encerramento" accent="bg-slate-100 text-slate-600" />
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+            <MetricCard icon={BriefcaseBusiness} label="Leads no pipeline" value={analytics.open.length} helper={`${analytics.atRisk.length} exigem atenção`} helperTone={analytics.atRisk.length ? 'text-amber-600' : 'text-emerald-600'} />
+            <MetricCard icon={CircleDollarSign} label="Valor em aberto" value={formatCurrency(analytics.pipelineValue, true)} helper={`${formatCurrency(analytics.weightedValue, true)} de previsão`} accent="bg-emerald-50 text-emerald-600" helperTone="text-emerald-600" />
+            <MetricCard icon={TrendingUp} label="Taxa de conversão" value={`${Math.round(analytics.conversion)}%`} helper={`${analytics.won.length} ganhos de ${analytics.won.length + analytics.lost.length} finalizados`} accent="bg-violet-50 text-violet-600" helperTone="text-violet-600" />
+            <MetricCard icon={Zap} label="Ticket médio" value={formatCurrency(analytics.averageTicket, true)} helper="média dos negócios ganhos" accent="bg-orange-50 text-orange-600" helperTone="text-orange-600" />
+            <MetricCard icon={Clock3} label="Ciclo médio" value={`${Math.round(analytics.averageCycle)} dias`} helper="da entrada ao encerramento" accent="bg-blue-50 text-blue-600" helperTone="text-blue-600" />
+            <MetricCard icon={TrendingDown} label="Perdas" value={analytics.lost.length} helper={formatCurrency(analytics.lostValue, true)} accent="bg-rose-50 text-rose-600" helperTone="text-rose-600" />
           </section>
 
-          <section className="surface-card overflow-hidden p-0">
-            <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="section-kicker">Visão do funil</p>
-                <h2 className="section-title mt-1">Da entrada ao fechamento</h2>
-                <p className="mt-1 text-sm text-slate-500">A largura mostra o volume acumulado que chegou a cada etapa.</p>
+          <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="surface-card overflow-hidden p-0">
+              <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                <div>
+                  <p className="section-kicker">Funil de oportunidades</p>
+                  <h2 className="section-title mt-1">Da entrada ao fechamento</h2>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                    <button type="button" onClick={() => setMode('quantity')} className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition ${mode === 'quantity' ? 'bg-[#0969ff] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                      Ver por quantidade
+                    </button>
+                    <button type="button" onClick={() => setMode('value')} className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition ${mode === 'value' ? 'bg-[#0969ff] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                      Ver por valor
+                    </button>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Tempo real
+                  </span>
+                </div>
               </div>
-              <div className="inline-flex w-fit rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                <button type="button" onClick={() => setMode('quantity')} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === 'quantity' ? 'bg-white text-[#0969ff] shadow-sm' : 'text-slate-500'}`}>
-                  Quantidade
-                </button>
-                <button type="button" onClick={() => setMode('value')} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${mode === 'value' ? 'bg-white text-[#0969ff] shadow-sm' : 'text-slate-500'}`}>
-                  Valor
-                </button>
-              </div>
-            </div>
 
-            <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:p-7">
-              <div className="relative overflow-hidden rounded-[26px] border border-slate-200/75 bg-[radial-gradient(circle_at_top,#f5f9ff_0%,#ffffff_58%)] px-4 py-7 sm:px-8">
-                <div className="pointer-events-none absolute inset-0 opacity-50" style={{ backgroundImage: 'linear-gradient(rgba(148,163,184,.08) 1px, transparent 1px),linear-gradient(90deg,rgba(148,163,184,.08) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
-                <div className="relative mx-auto max-w-4xl space-y-2.5">
+              <div className="relative overflow-hidden px-3 py-5 sm:px-5 lg:px-6">
+                <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'linear-gradient(rgba(148,163,184,.08) 1px, transparent 1px),linear-gradient(90deg,rgba(148,163,184,.08) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
+                <div className="relative mx-auto max-w-5xl space-y-1">
                   {analytics.stageRows.map((row, index) => {
                     const ratio = maxMetric ? row.currentMetric / maxMetric : 0;
-                    const fallbackWidth = 100 - (index * 8.5);
-                    const width = maxMetric ? Math.max(43, 42 + (ratio * 58)) : fallbackWidth;
-                    const isSelected = selectedStage === row.stage.key;
+                    const fallbackWidth = 100 - (index * 6.5);
+                    const width = maxMetric ? Math.max(64, 62 + (ratio * 38)) : fallbackWidth;
+                    const isSelected = activeStageKey === row.stage.key;
+                    const conversionLabel = index === analytics.stageRows.length - 1
+                      ? '100% concluídas'
+                      : `${Math.round(row.advance)}% avançam`;
+
                     return (
-                      <div key={row.stage.key} className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedStage(row.stage.key)}
-                          className={`group relative mx-auto block min-h-[84px] overflow-hidden px-5 py-4 text-left text-white shadow-[0_14px_35px_rgba(15,23,42,0.12)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(15,23,42,0.18)] ${isSelected ? 'ring-4 ring-[#0969ff]/20' : ''}`}
-                          style={{
-                            width: `${width}%`,
-                            background: row.stage.gradient,
-                            clipPath: 'polygon(3% 0,97% 0,92% 100%,8% 100%)',
-                          }}
-                        >
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/10 via-transparent to-black/10" />
-                          <div className="relative flex items-center justify-between gap-4">
+                      <button
+                        key={row.stage.key}
+                        type="button"
+                        onClick={() => setSelectedStage(row.stage.key)}
+                        className={`group relative mx-auto block min-h-[66px] overflow-hidden px-5 py-3 text-left text-white shadow-[0_8px_22px_rgba(15,23,42,0.11)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_13px_30px_rgba(15,23,42,0.16)] ${isSelected ? 'z-10 ring-4 ring-[#0969ff]/16' : ''}`}
+                        style={{
+                          width: `${width}%`,
+                          background: row.stage.gradient,
+                          clipPath: 'polygon(2.5% 0,97.5% 0,93.5% 100%,6.5% 100%)',
+                        }}
+                      >
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/10 via-transparent to-black/10" />
+                        <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(135px,0.7fr)]">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/16 text-xs font-bold">{String(index + 1).padStart(2, '0')}</span>
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/16 text-[11px] font-bold">{String(index + 1).padStart(2, '0')}</span>
-                                <div>
-                                  <p className="truncate text-sm font-bold sm:text-base">{row.stage.label}</p>
-                                  <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-white/60">{row.stage.short}</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <p className="text-xl font-bold sm:text-2xl">{mode === 'quantity' ? row.reached.length : formatCurrency(row.reachedValue, true)}</p>
-                              <p className="text-[10px] text-white/65">{row.exact.length} nesta etapa</p>
+                              <p className="truncate text-sm font-bold sm:text-base">{row.stage.label}</p>
+                              <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/65">{row.stage.short}</p>
                             </div>
                           </div>
-                        </button>
-                        {index < analytics.stageRows.length - 1 && (
-                          <div className="relative z-10 mx-auto -my-1 flex h-5 items-center justify-center">
-                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-500 shadow-sm">
-                              {Math.round(row.advance)}% avançam
-                            </span>
+
+                          <span className="hidden rounded-full border border-white/20 bg-white/90 px-3 py-1.5 text-[10px] font-bold text-slate-600 shadow-sm sm:inline-flex">{conversionLabel}</span>
+
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-bold sm:text-base">{row.reached.length} oportunidade{row.reached.length === 1 ? '' : 's'}</p>
+                            <p className="mt-0.5 text-[10px] font-medium text-white/72">{formatCurrency(row.reachedValue)}</p>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
               </div>
-
-              <aside className="space-y-4">
-                <div className="rounded-[24px] bg-[#121620] p-5 text-white shadow-[0_18px_45px_rgba(18,22,32,0.18)]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Saúde do pipeline</p>
-                      <p className="mt-2 text-3xl font-bold">{analytics.atRisk.length ? `${analytics.atRisk.length} alertas` : 'Saudável'}</p>
-                    </div>
-                    <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${analytics.atRisk.length ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/15 text-emerald-300'}`}>
-                      {analytics.atRisk.length ? <CalendarClock size={21} /> : <CheckCircle2 size={21} />}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-white/55">{analytics.atRisk.length ? 'Oportunidades com ação atrasada ou sem movimentação há 7 dias.' : 'Nenhuma oportunidade exige atenção imediata.'}</p>
-                  <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#0969ff] to-cyan-400 transition-all" style={{ width: `${analytics.open.length ? Math.max(8, 100 - (analytics.atRisk.length / analytics.open.length * 100)) : 100}%` }} />
-                  </div>
-                </div>
-
-                <button type="button" onClick={() => setSelectedStage('lost')} className="w-full rounded-[24px] border border-rose-100 bg-rose-50/70 p-5 text-left transition hover:border-rose-200 hover:bg-rose-50">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-rose-500">Perdas registradas</p>
-                      <p className="mt-2 text-2xl font-bold text-slate-900">{analytics.lost.length}</p>
-                      <p className="mt-1 text-xs text-slate-500">{formatCurrency(analytics.lost.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0))} fora do pipeline</p>
-                    </div>
-                    <TrendingDown size={22} className="text-rose-500" />
-                  </div>
-                </button>
-
-                <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Leitura rápida</p>
-                      <p className="mt-2 text-sm font-semibold text-slate-800">Clique em uma etapa</p>
-                    </div>
-                    <Users size={20} className="text-[#0969ff]" />
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">Veja empresas, valores, responsáveis, próximos passos e tempo sem movimentação.</p>
-                </div>
-              </aside>
             </div>
-          </section>
-        </>
-      )}
 
-      {selectedStage && (
-        <ModalBackdrop onClose={() => setSelectedStage(null)} className="items-stretch justify-end p-0" role="dialog">
-          <aside className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-2xl">
-            <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 px-6 py-5 backdrop-blur">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="section-kicker">Detalhes da etapa</p>
-                  <h2 className="mt-1 text-xl font-bold text-slate-950">{selectedStage === 'lost' ? 'Oportunidades perdidas' : selectedStageData?.stage.label}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{selectedStage === 'lost' ? analytics.lost.length : selectedStageData?.exact.length || 0} oportunidade(s) atualmente.</p>
+            <aside className="space-y-4">
+              <div className="surface-card p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Saúde do pipeline</p>
+                      <CircleAlert size={14} className="text-slate-300" />
+                    </div>
+                    <p className={`mt-3 text-3xl font-bold ${analytics.healthScore >= 75 ? 'text-emerald-600' : analytics.healthScore >= 50 ? 'text-amber-600' : 'text-rose-600'}`}>
+                      {analytics.healthScore >= 75 ? 'Saudável' : analytics.healthScore >= 50 ? 'Atenção' : 'Crítico'}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">{analytics.atRisk.length ? `${analytics.atRisk.length} oportunidade(s) precisam de acompanhamento.` : 'Seu pipeline está em ótima forma.'}</p>
+                  </div>
+                  <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${analytics.healthScore >= 75 ? 'bg-emerald-50 text-emerald-600' : analytics.healthScore >= 50 ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'}`}>
+                    <HeartPulse size={25} />
+                  </span>
                 </div>
-                <button type="button" onClick={() => setSelectedStage(null)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200"><X size={18} /></button>
+                <div className="mt-5 flex items-center gap-3">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div className={`h-full rounded-full transition-all ${analytics.healthScore >= 75 ? 'bg-emerald-500' : analytics.healthScore >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${analytics.healthScore}%` }} />
+                  </div>
+                  <span className="text-sm font-bold text-slate-700">{analytics.healthScore}%</span>
+                </div>
               </div>
+
+              <button type="button" onClick={() => navigate('/comercial')} className="surface-card group w-full p-5 text-left transition hover:-translate-y-0.5 hover:border-rose-200">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Perdas registradas</p>
+                    <p className="mt-3 text-3xl font-bold text-rose-600">{analytics.lost.length}</p>
+                    <p className="mt-2 text-sm font-semibold text-rose-600">{formatCurrency(analytics.lostValue)}</p>
+                    <p className="mt-0.5 text-xs text-slate-400">valor perdido</p>
+                  </div>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 transition group-hover:scale-105">
+                    <TrendingDown size={22} />
+                  </span>
+                </div>
+              </button>
+
+              <div className="surface-card p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Leitura rápida</p>
+                  <Zap size={20} className="text-[#0969ff]" />
+                </div>
+                <ul className="mt-4 space-y-3 text-xs leading-5 text-slate-600">
+                  <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0969ff]" /> {analytics.highValueNegotiations} negociação(ões) acima de R$ 5 mil</li>
+                  <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0969ff]" /> {analytics.atRisk.length} oportunidade(s) sem avanço ou atrasada(s)</li>
+                  <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0969ff]" /> Maior volume: {analytics.busiestStage?.stage.label || 'Sem dados'}</li>
+                </ul>
+              </div>
+            </aside>
+          </section>
+
+          <section className="surface-card overflow-hidden p-0">
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+              <div>
+                <p className="text-sm font-semibold text-slate-600">Etapa selecionada: <span className="text-[#0969ff]">{activeStageData?.stage.label || 'Sem etapa'}</span></p>
+                <p className="mt-1 text-xs text-slate-400">{activeStageLeads.length} oportunidade(s) atualmente nesta etapa.</p>
+              </div>
+              <button type="button" onClick={() => navigate('/comercial')} className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+                <Eye size={15} /> Ver todas as oportunidades
+              </button>
             </div>
 
-            <div className="space-y-3 p-5">
-              {(selectedStage === 'lost' ? analytics.lost : selectedStageData?.exact || []).map((lead) => {
-                const staleDays = daysBetween(lead.updated_at);
-                const overdue = lead.next_action_date && String(lead.next_action_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
-                return (
-                  <button key={lead.id} type="button" onClick={() => navigate('/comercial')} className="group w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
-                    <div className="flex items-start gap-3">
-                      <OwnerAvatar lead={lead} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full min-w-[900px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                    <th className="px-6 py-3">Empresa</th>
+                    <th className="px-4 py-3">Responsável</th>
+                    <th className="px-4 py-3">Valor</th>
+                    <th className="px-4 py-3">Próximo passo</th>
+                    <th className="px-4 py-3">Tempo parado</th>
+                    <th className="px-6 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeStageLeads.slice(0, 5).map((lead) => (
+                    <tr key={lead.id} className="border-b border-slate-100/80 text-xs text-slate-600 transition hover:bg-slate-50/70 last:border-b-0">
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-[10px] font-bold text-slate-600">{String(lead.company_name || '?').slice(0, 2).toUpperCase()}</span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-slate-900">{lead.company_name}</p>
-                            <p className="mt-0.5 truncate text-xs text-slate-500">{lead.contact_name || lead.owner_name || 'Contato não informado'}</p>
+                            <p className="max-w-[190px] truncate font-semibold text-slate-900">{lead.company_name}</p>
+                            <p className="mt-0.5 max-w-[190px] truncate text-[10px] text-slate-400">{lead.contact_name || 'Contato não informado'}</p>
                           </div>
-                          <ChevronRight size={17} className="mt-0.5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#0969ff]" />
                         </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{formatCurrency(lead.estimated_value)}</span>
-                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${overdue || staleDays >= 7 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                            {overdue ? 'Ação atrasada' : `${staleDays} dia(s) sem mover`}
-                          </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <OwnerAvatar lead={lead} />
+                          <span className="max-w-[145px] truncate">{lead.owner_name || 'Sem responsável'}</span>
                         </div>
-                        {(lead.next_action || lead.next_action_date) && (
-                          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
-                            <p className="text-xs font-medium text-slate-700">{lead.next_action || 'Próxima ação'}</p>
-                            <p className="mt-1 flex items-center gap-1 text-[10px] text-slate-400"><CalendarClock size={11} /> {formatDate(lead.next_action_date)}</p>
+                      </td>
+                      <td className="px-4 py-3.5 font-semibold text-slate-800">{formatCurrency(lead.estimated_value)}</td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <CalendarClock size={14} className="shrink-0 text-slate-400" />
+                          <div className="min-w-0">
+                            <p className="max-w-[185px] truncate">{lead.next_action || 'Sem próximo passo'}</p>
+                            <p className="mt-0.5 text-[10px] text-slate-400">{formatDate(lead.next_action_date)}</p>
                           </div>
-                        )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">{daysBetween(lead.updated_at)} dia(s)</td>
+                      <td className="px-6 py-3.5"><LeadStatus lead={lead} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-3 p-4 lg:hidden">
+              {activeStageLeads.slice(0, 5).map((lead) => (
+                <button key={lead.id} type="button" onClick={() => navigate('/comercial')} className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300">
+                  <div className="flex items-start gap-3">
+                    <OwnerAvatar lead={lead} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-slate-900">{lead.company_name}</p>
+                          <p className="mt-0.5 truncate text-xs text-slate-400">{lead.owner_name || 'Sem responsável'}</p>
+                        </div>
+                        <LeadStatus lead={lead} />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                        <span className="font-bold text-slate-800">{formatCurrency(lead.estimated_value)}</span>
+                        <span className="text-slate-400">{daysBetween(lead.updated_at)} dia(s) parado</span>
                       </div>
                     </div>
-                  </button>
-                );
-              })}
-
-              {(selectedStage === 'lost' ? analytics.lost : selectedStageData?.exact || []).length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-12 text-center">
-                  <CheckCircle2 size={28} className="mx-auto text-emerald-500" />
-                  <p className="mt-3 text-sm font-semibold text-slate-700">Nenhuma oportunidade nesta etapa</p>
-                  <p className="mt-1 text-xs text-slate-400">O funil será atualizado assim que um negócio chegar aqui.</p>
-                </div>
-              )}
+                  </div>
+                </button>
+              ))}
             </div>
-          </aside>
-        </ModalBackdrop>
+
+            {activeStageLeads.length === 0 && (
+              <div className="px-5 py-12 text-center">
+                <CheckCircle2 size={30} className="mx-auto text-emerald-500" />
+                <p className="mt-3 text-sm font-semibold text-slate-700">Nenhuma oportunidade nesta etapa</p>
+                <p className="mt-1 text-xs text-slate-400">O painel será atualizado assim que um negócio chegar aqui.</p>
+              </div>
+            )}
+          </section>
+        </>
       )}
     </div>
   );
