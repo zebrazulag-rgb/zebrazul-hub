@@ -11,6 +11,7 @@ import {
   Phone,
   Plus,
   Search,
+  Settings2,
   Target,
   Trash2,
   TrendingUp,
@@ -19,21 +20,16 @@ import {
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import CommercialStageManager from '../components/CommercialStageManager.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { notifyCommercialUpdated } from '../utils/commercialRealtime.js';
+import {
+  commercialStageMap,
+  decorateCommercialStage,
+  firstOpenCommercialStage,
+} from '../utils/commercialStages.js';
 
-const STAGES = [
-  { key: 'new_lead', label: 'Novo lead', dot: 'bg-sky-500', soft: 'bg-sky-50 text-sky-700 border-sky-100', probability: 10 },
-  { key: 'contacted', label: 'Contato feito', dot: 'bg-indigo-500', soft: 'bg-indigo-50 text-indigo-700 border-indigo-100', probability: 20 },
-  { key: 'meeting', label: 'Diagnóstico', dot: 'bg-violet-500', soft: 'bg-violet-50 text-violet-700 border-violet-100', probability: 35 },
-  { key: 'proposal', label: 'Proposta enviada', dot: 'bg-amber-500', soft: 'bg-amber-50 text-amber-700 border-amber-100', probability: 55 },
-  { key: 'negotiation', label: 'Negociação', dot: 'bg-orange-500', soft: 'bg-orange-50 text-orange-700 border-orange-100', probability: 75 },
-  { key: 'won', label: 'Fechado', dot: 'bg-emerald-500', soft: 'bg-emerald-50 text-emerald-700 border-emerald-100', probability: 100 },
-  { key: 'lost', label: 'Perdido', dot: 'bg-rose-500', soft: 'bg-rose-50 text-rose-700 border-rose-100', probability: 0 },
-];
-
-const STAGE_MAP = Object.fromEntries(STAGES.map((stage) => [stage.key, stage]));
 const ORIGINS = ['Indicação', 'Instagram', 'Site', 'Evento', 'Prospecção ativa', 'Parceria', 'Outro'];
 
 function todayISO() {
@@ -56,20 +52,20 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
-function isOverdue(value, stage) {
-  return Boolean(value && !['won', 'lost'].includes(stage) && String(value).slice(0, 10) < todayISO());
+function isOverdue(value, stageType) {
+  return Boolean(value && !['won', 'lost'].includes(stageType) && String(value).slice(0, 10) < todayISO());
 }
 
-function emptyForm(currentUserId) {
+function emptyForm(currentUserId, defaultStage) {
   return {
     company_name: '',
     contact_name: '',
     email: '',
     phone: '',
     source: '',
-    stage: 'new_lead',
+    stage: defaultStage?.stage_key || '',
     estimated_value: '',
-    probability: 10,
+    probability: Number(defaultStage?.probability || 0),
     owner_user_id: currentUserId || '',
     next_action: '',
     next_action_date: '',
@@ -87,9 +83,12 @@ function OwnerAvatar({ lead }) {
   );
 }
 
-function LeadCard({ lead, onOpen, onDragStart }) {
-  const stage = STAGE_MAP[lead.stage] || STAGE_MAP.new_lead;
-  const overdue = isOverdue(lead.next_action_date, lead.stage);
+function LeadCard({ lead, stage, onOpen, onDragStart }) {
+  const safeStage = stage || {
+    soft: 'bg-slate-100 text-slate-700 border-slate-200',
+    stage_type: 'open',
+  };
+  const overdue = isOverdue(lead.next_action_date, safeStage.stage_type);
   return (
     <button
       type="button"
@@ -111,7 +110,7 @@ function LeadCard({ lead, onOpen, onDragStart }) {
 
           <div className="mt-3 flex items-center justify-between gap-2">
             <span className="text-sm font-bold text-slate-800">{formatCurrency(lead.estimated_value)}</span>
-            <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${stage.soft}`}>{lead.probability}%</span>
+            <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${safeStage.soft}`}>{lead.probability}%</span>
           </div>
 
           {(lead.next_action || lead.next_action_date) && (
@@ -132,6 +131,7 @@ export default function Sales() {
   const { selectedClient, setSelectedClient } = useClientFilter();
   const [commercialClients, setCommercialClients] = useState([]);
   const [leads, setLeads] = useState([]);
+  const [stages, setStages] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -142,11 +142,16 @@ export default function Sales() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const [stageManagerOpen, setStageManagerOpen] = useState(false);
 
   const clientId = user?.role === 'client' ? Number(user.client_id) : Number(selectedClient?.id || 0);
   const currentClient = user?.role === 'client'
     ? commercialClients.find((client) => Number(client.id) === Number(user.client_id))
     : selectedClient;
+
+  const decoratedStages = useMemo(() => stages.map(decorateCommercialStage), [stages]);
+  const stageMap = useMemo(() => commercialStageMap(stages), [stages]);
+  const defaultStage = useMemo(() => firstOpenCommercialStage(stages), [stages]);
 
   useEffect(() => {
     let active = true;
@@ -162,18 +167,21 @@ export default function Sales() {
   async function loadData() {
     if (!clientId) {
       setLeads([]);
+      setStages([]);
       setTeamUsers([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const [leadResponse, usersResponse] = await Promise.all([
+      const [leadResponse, usersResponse, stageResponse] = await Promise.all([
         api.get('/commercial/leads', { params: { client_id: clientId } }),
         api.get('/commercial/users', { params: { client_id: clientId } }),
+        api.get('/commercial/stages', { params: { client_id: clientId } }),
       ]);
       setLeads(leadResponse.data.leads || []);
       setTeamUsers(usersResponse.data.users || []);
+      setStages(stageResponse.data.stages || []);
     } finally {
       setLoading(false);
     }
@@ -196,15 +204,15 @@ export default function Sales() {
     });
   }, [leads, ownerFilter, search]);
 
-  const openLeads = leads.filter((lead) => !['won', 'lost'].includes(lead.stage));
+  const openLeads = leads.filter((lead) => stageMap[lead.stage]?.stage_type === 'open');
   const pipelineValue = openLeads.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
-  const finalizedLeads = leads.filter((lead) => ['won', 'lost'].includes(lead.stage));
-  const wonLeads = finalizedLeads.filter((lead) => lead.stage === 'won');
+  const finalizedLeads = leads.filter((lead) => ['won', 'lost'].includes(stageMap[lead.stage]?.stage_type));
+  const wonLeads = finalizedLeads.filter((lead) => stageMap[lead.stage]?.stage_type === 'won');
   const closeRate = finalizedLeads.length ? (wonLeads.length / finalizedLeads.length) * 100 : 0;
-  const wonThisMonth = leads.filter((lead) => lead.stage === 'won' && String(lead.closed_at || lead.updated_at || '').slice(0, 10) >= monthStartISO());
+  const wonThisMonth = leads.filter((lead) => stageMap[lead.stage]?.stage_type === 'won' && String(lead.closed_at || lead.updated_at || '').slice(0, 10) >= monthStartISO());
   const wonValue = wonThisMonth.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
   const followUps = leads
-    .filter((lead) => lead.next_action_date && !['won', 'lost'].includes(lead.stage))
+    .filter((lead) => lead.next_action_date && stageMap[lead.stage]?.stage_type === 'open')
     .sort((a, b) => String(a.next_action_date).localeCompare(String(b.next_action_date)))
     .slice(0, 8);
 
@@ -214,7 +222,7 @@ export default function Sales() {
     const defaultOwnerId = teamUsers.some((member) => Number(member.id) === Number(user?.id))
       ? user.id
       : teamUsers[0]?.id;
-    setForm(emptyForm(defaultOwnerId));
+    setForm(emptyForm(defaultOwnerId, defaultStage));
     setError('');
   }
 
@@ -226,9 +234,9 @@ export default function Sales() {
       email: lead.email || '',
       phone: lead.phone || '',
       source: lead.source || '',
-      stage: lead.stage || 'new_lead',
+      stage: lead.stage || defaultStage?.stage_key || '',
       estimated_value: lead.estimated_value ?? '',
-      probability: lead.probability ?? STAGE_MAP[lead.stage]?.probability ?? 10,
+      probability: lead.probability ?? stageMap[lead.stage]?.probability ?? 0,
       owner_user_id: lead.owner_user_id || '',
       next_action: lead.next_action || '',
       next_action_date: lead.next_action_date ? String(lead.next_action_date).slice(0, 10) : '',
@@ -242,8 +250,8 @@ export default function Sales() {
     setForm((current) => ({
       ...current,
       stage,
-      probability: STAGE_MAP[stage]?.probability ?? current.probability,
-      lost_reason: stage === 'lost' ? current.lost_reason : '',
+      probability: stageMap[stage]?.probability ?? current.probability,
+      lost_reason: stageMap[stage]?.stage_type === 'lost' ? current.lost_reason : '',
     }));
   }
 
@@ -302,7 +310,7 @@ export default function Sales() {
     const currentLead = leads.find((lead) => lead.id === leadId);
     if (!currentLead || currentLead.stage === stage) return;
     const previous = leads;
-    const optimistic = { ...currentLead, stage, probability: STAGE_MAP[stage]?.probability ?? currentLead.probability };
+    const optimistic = { ...currentLead, stage, probability: stageMap[stage]?.probability ?? currentLead.probability };
     setLeads((items) => items.map((item) => item.id === leadId ? optimistic : item));
     try {
       const { data } = await api.put(`/commercial/leads/${leadId}`, { stage, client_id: clientId });
@@ -343,6 +351,9 @@ export default function Sales() {
           : 'Selecione um cliente no filtro lateral para abrir o pipeline comercial correspondente.'}
         actions={clientId ? (
           <>
+            <button type="button" onClick={() => setStageManagerOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
+              <Settings2 size={17} /> Gerenciar quadros
+            </button>
             <button type="button" onClick={() => navigate('/comercial/funil')} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
               <TrendingUp size={17} /> Ver funil
             </button>
@@ -393,7 +404,7 @@ export default function Sales() {
       ) : (
         <section className="overflow-x-auto pb-3">
           <div className="flex min-w-max gap-4">
-            {STAGES.map((stage) => {
+            {decoratedStages.map((stage) => {
               const items = filteredLeads.filter((lead) => lead.stage === stage.key);
               const total = items.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
               return (
@@ -418,7 +429,7 @@ export default function Sales() {
                     </button>
                   </div>
                   <div className="space-y-3">
-                    {items.map((lead) => <LeadCard key={lead.id} lead={lead} onOpen={beginEdit} onDragStart={onDragStart} />)}
+                    {items.map((lead) => <LeadCard key={lead.id} lead={lead} stage={stageMap[lead.stage]} onOpen={beginEdit} onDragStart={onDragStart} />)}
                     {items.length === 0 && (
                       <div className="flex min-h-28 items-center justify-center rounded-2xl border border-dashed border-slate-300/80 bg-white/55 px-5 text-center text-xs text-slate-400">
                         Arraste uma oportunidade para esta etapa.
@@ -442,7 +453,7 @@ export default function Sales() {
             <Target size={22} className="text-[#0969ff]" />
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-            {STAGES.filter((stage) => !['won', 'lost'].includes(stage.key)).map((stage) => {
+            {decoratedStages.filter((stage) => stage.stage_type === 'open').map((stage) => {
               const count = leads.filter((lead) => lead.stage === stage.key).length;
               return (
                 <div key={stage.key} className="rounded-2xl border border-slate-200/70 bg-slate-50/70 p-4">
@@ -466,18 +477,30 @@ export default function Sales() {
           <div className="mt-5 space-y-3">
             {followUps.map((lead) => (
               <button key={lead.id} type="button" onClick={() => beginEdit(lead)} className="flex w-full items-start gap-3 rounded-2xl border border-slate-200/70 p-3 text-left transition hover:border-slate-300 hover:bg-slate-50">
-                <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isOverdue(lead.next_action_date, lead.stage) ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isOverdue(lead.next_action_date, stageMap[lead.stage]?.stage_type) ? 'bg-rose-500' : 'bg-amber-400'}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold text-slate-800">{lead.company_name}</span>
                   <span className="mt-0.5 block truncate text-xs text-slate-500">{lead.next_action || 'Próximo contato'}</span>
                 </span>
-                <span className={`shrink-0 text-[10px] font-semibold ${isOverdue(lead.next_action_date, lead.stage) ? 'text-rose-600' : 'text-slate-400'}`}>{formatDate(lead.next_action_date)}</span>
+                <span className={`shrink-0 text-[10px] font-semibold ${isOverdue(lead.next_action_date, stageMap[lead.stage]?.stage_type) ? 'text-rose-600' : 'text-slate-400'}`}>{formatDate(lead.next_action_date)}</span>
               </button>
             ))}
             {followUps.length === 0 && <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">Nenhum próximo passo agendado.</p>}
           </div>
         </div>
       </section>
+
+      <CommercialStageManager
+        open={stageManagerOpen}
+        onClose={() => setStageManagerOpen(false)}
+        clientId={clientId}
+        stages={stages}
+        leadCounts={Object.fromEntries(stages.map((stage) => [stage.stage_key, leads.filter((lead) => lead.stage === stage.stage_key).length]))}
+        onStagesChange={(nextStages) => {
+          setStages(nextStages);
+          notifyCommercialUpdated(clientId);
+        }}
+      />
 
       {form && (
         <ModalBackdrop onClose={() => !saving && setForm(null)} disabled={saving} className="z-[70]">
@@ -522,7 +545,7 @@ export default function Sales() {
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Etapa do funil</label>
                     <select className="input-field" value={form.stage} onChange={(event) => changeStage(event.target.value)}>
-                      {STAGES.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}
+                      {decoratedStages.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}
                     </select>
                   </div>
                   <div>
@@ -556,7 +579,7 @@ export default function Sales() {
                   <label className="mb-1 block text-sm font-medium text-slate-700">Anotações comerciais</label>
                   <textarea className="input-field min-h-28" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Contexto, dores percebidas, objeções, próximos passos..." />
                 </div>
-                {form.stage === 'lost' && (
+                {stageMap[form.stage]?.stage_type === 'lost' && (
                   <div className="md:col-span-2">
                     <label className="mb-1 block text-sm font-medium text-rose-700">Motivo da perda</label>
                     <textarea className="input-field min-h-20 border-rose-200 bg-rose-50/50" value={form.lost_reason} onChange={(event) => setForm({ ...form, lost_reason: event.target.value })} placeholder="Registre por que a oportunidade não avançou." />

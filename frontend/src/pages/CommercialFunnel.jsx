@@ -23,17 +23,11 @@ import PageHero from '../components/PageHero.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { subscribeCommercialUpdates } from '../utils/commercialRealtime.js';
+import {
+  commercialStageMap,
+  decorateCommercialStage,
+} from '../utils/commercialStages.js';
 
-const STAGES = [
-  { key: 'new_lead', label: 'Novo lead', short: 'Entrada', gradient: 'linear-gradient(100deg,#2d8cff 0%,#0969ff 100%)', soft: 'bg-blue-50 text-blue-700', probability: 10 },
-  { key: 'contacted', label: 'Contato feito', short: 'Conexão', gradient: 'linear-gradient(100deg,#5b68f6 0%,#4552d9 100%)', soft: 'bg-indigo-50 text-indigo-700', probability: 20 },
-  { key: 'meeting', label: 'Diagnóstico', short: 'Leitura', gradient: 'linear-gradient(100deg,#9668f7 0%,#7048d7 100%)', soft: 'bg-violet-50 text-violet-700', probability: 35 },
-  { key: 'proposal', label: 'Proposta enviada', short: 'Proposta', gradient: 'linear-gradient(100deg,#ffad24 0%,#ed8d0b 100%)', soft: 'bg-amber-50 text-amber-700', probability: 55 },
-  { key: 'negotiation', label: 'Negociação', short: 'Decisão', gradient: 'linear-gradient(100deg,#ff7a19 0%,#e9520d 100%)', soft: 'bg-orange-50 text-orange-700', probability: 75 },
-  { key: 'won', label: 'Negócio ganho', short: 'Resultado', gradient: 'linear-gradient(100deg,#34be88 0%,#079669 100%)', soft: 'bg-emerald-50 text-emerald-700', probability: 100 },
-];
-
-const STAGE_INDEX = Object.fromEntries(STAGES.map((stage, index) => [stage.key, index]));
 
 function formatCurrency(value, compact = false) {
   return new Intl.NumberFormat('pt-BR', {
@@ -73,11 +67,11 @@ function MetricCard({ icon: Icon, label, value, helper, accent = 'text-[#0969ff]
       <div className="relative flex items-start gap-3">
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${accent}`}><Icon size={19} /></span>
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-slate-500">{label}</p>
-          <p className="mt-1 truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{value}</p>
+          <p className="text-xs font-semibold leading-5 text-slate-500">{label}</p>
+          <p className="mt-1 break-words text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{value}</p>
         </div>
       </div>
-      <p className={`relative mt-3 truncate text-[11px] font-medium ${helperTone}`}>{helper}</p>
+      <p className={`relative mt-3 min-h-8 text-[11px] font-medium leading-4 ${helperTone}`}>{helper}</p>
     </div>
   );
 }
@@ -111,6 +105,7 @@ export default function CommercialFunnel() {
   const { selectedClient, setSelectedClient } = useClientFilter();
   const [commercialClients, setCommercialClients] = useState([]);
   const [leads, setLeads] = useState([]);
+  const [stages, setStages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [mode, setMode] = useState('quantity');
@@ -123,6 +118,11 @@ export default function CommercialFunnel() {
   const currentClient = user?.role === 'client'
     ? commercialClients.find((client) => Number(client.id) === Number(user.client_id))
     : selectedClient;
+
+  const decoratedStages = useMemo(() => stages.map(decorateCommercialStage), [stages]);
+  const stageMap = useMemo(() => commercialStageMap(stages), [stages]);
+  const funnelStages = useMemo(() => decoratedStages.filter((stage) => stage.stage_type !== 'lost'), [decoratedStages]);
+  const funnelStageIndex = useMemo(() => Object.fromEntries(funnelStages.map((stage, index) => [stage.key, index])), [funnelStages]);
 
   useEffect(() => {
     let active = true;
@@ -139,6 +139,7 @@ export default function CommercialFunnel() {
     if (!clientId || requestInFlight.current) {
       if (!clientId) {
         setLeads([]);
+        setStages([]);
         setLoading(false);
       }
       return;
@@ -148,8 +149,12 @@ export default function CommercialFunnel() {
     if (silent) setRefreshing(true);
     else setLoading(true);
     try {
-      const { data } = await api.get('/commercial/leads', { params: { client_id: clientId } });
-      setLeads(data.leads || []);
+      const [leadResponse, stageResponse] = await Promise.all([
+        api.get('/commercial/leads', { params: { client_id: clientId } }),
+        api.get('/commercial/stages', { params: { client_id: clientId } }),
+      ]);
+      setLeads(leadResponse.data.leads || []);
+      setStages(stageResponse.data.stages || []);
       setLastUpdated(new Date());
     } finally {
       requestInFlight.current = false;
@@ -195,9 +200,9 @@ export default function CommercialFunnel() {
   }, []);
 
   const analytics = useMemo(() => {
-    const open = leads.filter((lead) => !['won', 'lost'].includes(lead.stage));
-    const won = leads.filter((lead) => lead.stage === 'won');
-    const lost = leads.filter((lead) => lead.stage === 'lost');
+    const open = leads.filter((lead) => stageMap[lead.stage]?.stage_type === 'open');
+    const won = leads.filter((lead) => stageMap[lead.stage]?.stage_type === 'won');
+    const lost = leads.filter((lead) => stageMap[lead.stage]?.stage_type === 'lost');
     const finalized = [...won, ...lost];
     const pipelineValue = open.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
     const weightedValue = open.reduce((sum, lead) => sum + (Number(lead.estimated_value || 0) * Number(lead.probability || 0) / 100), 0);
@@ -212,17 +217,17 @@ export default function CommercialFunnel() {
       return overdue || daysBetween(lead.updated_at) >= 7;
     });
 
-    const stageRows = STAGES.map((stage, index) => {
+    const stageRows = funnelStages.map((stage, index) => {
       const exact = leads.filter((lead) => lead.stage === stage.key);
       const reached = leads.filter((lead) => {
-        if (lead.stage === 'lost') return false;
-        const leadIndex = STAGE_INDEX[lead.stage];
+        if (stageMap[lead.stage]?.stage_type === 'lost') return false;
+        const leadIndex = funnelStageIndex[lead.stage];
         return Number.isInteger(leadIndex) && leadIndex >= index;
       });
-      const nextReached = index < STAGES.length - 1
+      const nextReached = index < funnelStages.length - 1
         ? leads.filter((lead) => {
-          if (lead.stage === 'lost') return false;
-          const leadIndex = STAGE_INDEX[lead.stage];
+          if (stageMap[lead.stage]?.stage_type === 'lost') return false;
+          const leadIndex = funnelStageIndex[lead.stage];
           return Number.isInteger(leadIndex) && leadIndex >= index + 1;
         })
         : reached;
@@ -260,9 +265,8 @@ export default function CommercialFunnel() {
       highValueNegotiations,
       busiestStage,
     };
-  }, [leads, mode]);
+  }, [leads, mode, funnelStages, funnelStageIndex, stageMap]);
 
-  const maxMetric = Math.max(0, ...analytics.stageRows.map((row) => row.currentMetric));
   const fallbackStage = analytics.stageRows.find((row) => row.exact.length > 0) || analytics.stageRows[0];
   const activeStageKey = selectedStage || fallbackStage?.stage.key;
   const activeStageData = analytics.stageRows.find((row) => row.stage.key === activeStageKey) || fallbackStage;
@@ -314,14 +318,14 @@ export default function CommercialFunnel() {
         </section>
       ) : loading ? (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="h-32 animate-pulse rounded-3xl bg-slate-200/70" />)}
           </div>
           <div className="h-[560px] animate-pulse rounded-[30px] bg-slate-200/70" />
         </div>
       ) : (
         <>
-          <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <MetricCard icon={BriefcaseBusiness} label="Leads no pipeline" value={analytics.open.length} helper={`${analytics.atRisk.length} exigem atenção`} helperTone={analytics.atRisk.length ? 'text-amber-600' : 'text-emerald-600'} />
             <MetricCard icon={CircleDollarSign} label="Valor em aberto" value={formatCurrency(analytics.pipelineValue, true)} helper={`${formatCurrency(analytics.weightedValue, true)} de previsão`} accent="bg-emerald-50 text-emerald-600" helperTone="text-emerald-600" />
             <MetricCard icon={TrendingUp} label="Taxa de conversão" value={`${Math.round(analytics.conversion)}%`} helper={`${analytics.won.length} ganhos de ${analytics.won.length + analytics.lost.length} finalizados`} accent="bg-violet-50 text-violet-600" helperTone="text-violet-600" />
@@ -330,7 +334,7 @@ export default function CommercialFunnel() {
             <MetricCard icon={TrendingDown} label="Perdas" value={analytics.lost.length} helper={formatCurrency(analytics.lostValue, true)} accent="bg-rose-50 text-rose-600" helperTone="text-rose-600" />
           </section>
 
-          <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="surface-card overflow-hidden p-0">
               <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
                 <div>
@@ -354,48 +358,44 @@ export default function CommercialFunnel() {
 
               <div className="relative overflow-hidden px-3 py-5 sm:px-5 lg:px-6">
                 <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'linear-gradient(rgba(148,163,184,.08) 1px, transparent 1px),linear-gradient(90deg,rgba(148,163,184,.08) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
-                <div className="relative mx-auto max-w-5xl space-y-1">
-                  {analytics.stageRows.map((row, index) => {
-                    const ratio = maxMetric ? row.currentMetric / maxMetric : 0;
-                    const fallbackWidth = 100 - (index * 6.5);
-                    const width = maxMetric ? Math.max(64, 62 + (ratio * 38)) : fallbackWidth;
-                    const isSelected = activeStageKey === row.stage.key;
-                    const conversionLabel = index === analytics.stageRows.length - 1
-                      ? '100% concluídas'
-                      : `${Math.round(row.advance)}% avançam`;
+                <div className="relative overflow-x-auto pb-1">
+                  <div className="mx-auto min-w-[760px] max-w-5xl space-y-2 px-1">
+                    {analytics.stageRows.map((row, index) => {
+                      const isSelected = activeStageKey === row.stage.key;
+                      const conversionLabel = index === analytics.stageRows.length - 1
+                        ? '100% concluídas'
+                        : `${Math.round(row.advance)}% avançam`;
+                      const width = Math.max(74, 100 - (index * 5));
 
-                    return (
-                      <button
-                        key={row.stage.key}
-                        type="button"
-                        onClick={() => setSelectedStage(row.stage.key)}
-                        className={`group relative mx-auto block min-h-[66px] overflow-hidden px-5 py-3 text-left text-white shadow-[0_8px_22px_rgba(15,23,42,0.11)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_13px_30px_rgba(15,23,42,0.16)] ${isSelected ? 'z-10 ring-4 ring-[#0969ff]/16' : ''}`}
-                        style={{
-                          width: `${width}%`,
-                          background: row.stage.gradient,
-                          clipPath: 'polygon(2.5% 0,97.5% 0,93.5% 100%,6.5% 100%)',
-                        }}
-                      >
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/10 via-transparent to-black/10" />
-                        <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(135px,0.7fr)]">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/16 text-xs font-bold">{String(index + 1).padStart(2, '0')}</span>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-bold sm:text-base">{row.stage.label}</p>
-                              <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/65">{row.stage.short}</p>
+                      return (
+                        <button
+                          key={row.stage.key}
+                          type="button"
+                          onClick={() => setSelectedStage(row.stage.key)}
+                          className={`group relative mx-auto block min-h-[76px] rounded-[20px] px-6 py-4 text-left text-white shadow-[0_8px_22px_rgba(15,23,42,0.11)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_13px_30px_rgba(15,23,42,0.16)] ${isSelected ? 'z-10 ring-4 ring-[#0969ff]/16' : ''}`}
+                          style={{ width: `${width}%`, background: row.stage.gradient }}
+                        >
+                          <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-gradient-to-r from-white/10 via-transparent to-black/10" />
+                          <div className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-5">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/16 text-xs font-bold">{String(index + 1).padStart(2, '0')}</span>
+                              <div className="min-w-0">
+                                <p className="text-base font-bold leading-5">{row.stage.label}</p>
+                                <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/70">{row.stage.short}</p>
+                              </div>
+                            </div>
+
+                            <span className="inline-flex justify-center rounded-full border border-white/20 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-sm">{conversionLabel}</span>
+
+                            <div className="min-w-0 text-right">
+                              <p className="text-base font-bold leading-5">{row.reached.length} oportunidade{row.reached.length === 1 ? '' : 's'}</p>
+                              <p className="mt-1 text-xs font-semibold text-white/80">{formatCurrency(row.reachedValue)}</p>
                             </div>
                           </div>
-
-                          <span className="hidden rounded-full border border-white/20 bg-white/90 px-3 py-1.5 text-[10px] font-bold text-slate-600 shadow-sm sm:inline-flex">{conversionLabel}</span>
-
-                          <div className="shrink-0 text-right">
-                            <p className="text-sm font-bold sm:text-base">{row.reached.length} oportunidade{row.reached.length === 1 ? '' : 's'}</p>
-                            <p className="mt-0.5 text-[10px] font-medium text-white/72">{formatCurrency(row.reachedValue)}</p>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
