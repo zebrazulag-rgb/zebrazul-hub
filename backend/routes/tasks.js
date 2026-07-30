@@ -152,11 +152,51 @@ function parseGallery(value) {
   }
 }
 
+function addTaskRecordToFeed(task, userId, agencyId) {
+  if (task.feed_post_id) {
+    const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(task.feed_post_id, agencyId);
+    if (existingPost) {
+      db.prepare(`UPDATE posts SET feed_visible = 1, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+        .run(existingPost.id, agencyId);
+      return { postId: Number(existingPost.id), action: 'reactivated' };
+    }
+  }
+
+  if (!task.client_id) throw new Error('A tarefa precisa estar vinculada a um cliente');
+  const taskGallery = parseGallery(task.media_gallery);
+  if (!task.attachment_data && taskGallery.length === 0) {
+    throw new Error('Anexe ao menos uma imagem antes de enviar para o feed');
+  }
+
+  const info = db.prepare(`
+    INSERT INTO posts (
+      agency_id, client_id, created_by, title, caption, content_type, platforms,
+      media_data, media_mime, media_gallery, scheduled_at, status, feed_visible
+    ) VALUES (?, ?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft', 1)
+  `).run(
+    agencyId,
+    task.client_id,
+    userId,
+    task.title,
+    task.caption || '',
+    task.content_type || 'feed',
+    task.attachment_data || taskGallery[0]?.data || null,
+    task.attachment_mime || taskGallery[0]?.mime || null,
+    taskGallery.length ? JSON.stringify(taskGallery) : null,
+    task.due_date || null
+  );
+
+  db.prepare(`UPDATE tasks SET feed_post_id = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+    .run(info.lastInsertRowid, task.id, agencyId);
+  return { postId: Number(info.lastInsertRowid), action: 'created' };
+}
+
 function taskSummaryQuery(whereClause) {
   return `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.due_date, t.status, t.is_featured, t.attachment_filename, t.feed_post_id,
+      COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
@@ -165,6 +205,7 @@ function taskSummaryQuery(whereClause) {
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'done') AS subtask_done
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
+    LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
     ${whereClause}
   `;
 }
@@ -313,6 +354,7 @@ router.get('/calendar', (req, res) => {
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.due_date, t.status, t.is_featured, t.attachment_filename, t.feed_post_id,
+      COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
       parent.title AS parent_title,
@@ -326,6 +368,7 @@ router.get('/calendar', (req, res) => {
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
     WHERE t.agency_id = ? AND t.due_date IS NOT NULL
   `;
   const params = [req.user.agency_id];
@@ -450,12 +493,13 @@ router.get('/:id', (req, res) => {
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.description, t.content_type, t.caption, t.video_link,
       t.due_date, t.status, t.is_featured, t.attachment_mime, t.attachment_filename,
-      t.feed_post_id, t.created_at, t.updated_at,
+      t.feed_post_id, COALESCE(p.feed_visible, 0) AS feed_post_visible, t.created_at, t.updated_at,
       CASE WHEN t.attachment_data IS NOT NULL AND length(t.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
       c.name AS client_name, c.logo_color AS client_color
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
+    LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
     WHERE t.id = ? AND t.agency_id = ?
   `).get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
@@ -466,8 +510,10 @@ router.get('/:id', (req, res) => {
   let subtaskQuery = `
     SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type,
            st.title, st.status, st.due_date, st.attachment_filename, st.feed_post_id,
+           COALESCE(sp.feed_visible, 0) AS feed_post_visible,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment
     FROM tasks st
+    LEFT JOIN posts sp ON sp.id = st.feed_post_id AND sp.agency_id = st.agency_id
     WHERE st.parent_task_id = ? AND st.agency_id = ?
   `;
   const subtaskParams = [req.params.id, req.user.agency_id];
@@ -634,23 +680,67 @@ router.post('/:id/add-to-feed', requireRole('admin', 'team'), (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
-  if (!task.client_id) return res.status(400).json({ error: 'A tarefa precisa estar vinculada a um cliente' });
-  const taskGallery = parseGallery(task.media_gallery);
-  if (!task.attachment_data && taskGallery.length === 0) return res.status(400).json({ error: 'Anexe ao menos uma imagem antes de enviar para o feed' });
 
-  const info = db.prepare(`
-    INSERT INTO posts (agency_id, client_id, created_by, title, caption, content_type, platforms, media_data, media_mime, media_gallery, scheduled_at, status)
-    VALUES (?, ?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft')
-  `).run(
-    req.user.agency_id, task.client_id, req.user.id, task.title, task.caption || '', task.content_type || 'feed',
-    task.attachment_data || taskGallery[0]?.data || null,
-    task.attachment_mime || taskGallery[0]?.mime || null,
-    taskGallery.length ? JSON.stringify(taskGallery) : null,
-    task.due_date || null
-  );
+  try {
+    const result = addTaskRecordToFeed(task, req.user.id, req.user.agency_id);
+    return res.status(result.action === 'created' ? 201 : 200).json({
+      post_id: result.postId,
+      feed_visible: 1,
+      action: result.action,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Não foi possível adicionar à grade' });
+  }
+});
 
-  db.prepare('UPDATE tasks SET feed_post_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND agency_id = ?').run(info.lastInsertRowid, task.id, req.user.agency_id);
-  res.status(201).json({ post_id: info.lastInsertRowid });
+router.post('/:id/remove-from-feed', requireRole('admin', 'team'), (req, res) => {
+  if (req.user?.is_commercial_team) {
+    return res.status(403).json({ error: 'A Equipe Comercial não possui acesso ao Feed' });
+  }
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, task)) return;
+  if (!task.feed_post_id) return res.json({ ok: true, feed_visible: 0 });
+
+  db.prepare(`UPDATE posts SET feed_visible = 0, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+    .run(task.feed_post_id, req.user.agency_id);
+  return res.json({ ok: true, post_id: Number(task.feed_post_id), feed_visible: 0 });
+});
+
+router.post('/:id/add-all-to-feed', requireRole('admin', 'team'), (req, res) => {
+  if (req.user?.is_commercial_team) {
+    return res.status(403).json({ error: 'A Equipe Comercial não possui acesso ao Feed' });
+  }
+  const parent = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!parent) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, parent)) return;
+
+  const candidates = db.prepare(`
+    SELECT * FROM tasks
+    WHERE agency_id = ? AND (id = ? OR parent_task_id = ?)
+    ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, COALESCE(due_date, created_at) ASC
+  `).all(req.user.agency_id, parent.id, parent.id, parent.id);
+
+  const added = [];
+  const skipped = [];
+  for (const task of candidates) {
+    if (req.user.role === 'team' && !req.user.is_operations_head && Number(task.id) !== Number(parent.id)) {
+      const assigned = db.prepare('SELECT 1 FROM task_assignees WHERE task_id = ? AND user_id = ?').get(task.id, req.user.id);
+      if (!assigned) continue;
+    }
+    if (task.task_type !== 'post') {
+      skipped.push({ id: Number(task.id), title: task.title, reason: 'Não é uma publicação' });
+      continue;
+    }
+    try {
+      const result = addTaskRecordToFeed(task, req.user.id, req.user.agency_id);
+      added.push({ id: Number(task.id), post_id: result.postId, action: result.action });
+    } catch (error) {
+      skipped.push({ id: Number(task.id), title: task.title, reason: error.message });
+    }
+  }
+
+  return res.json({ added, skipped, total_added: added.length, total_skipped: skipped.length });
 });
 
 module.exports = router;
