@@ -32,7 +32,7 @@ export function createPlanningDocumentData(coverFields, sections) {
   const tables = {};
   coverFields.forEach((field) => registerField(fields, field.name));
   sections.forEach((section) => section.blocks.forEach((block) => registerBlock(block, fields, tables)));
-  return { fields, tables };
+  return { fields, tables, stageImport: null, aiImport: null };
 }
 
 export function mergePlanningDocumentData(rawData, coverFields, sections) {
@@ -46,6 +46,12 @@ export function mergePlanningDocumentData(rawData, coverFields, sections) {
         Array.isArray(source.tables?.[id]) ? source.tables[id] : rows,
       ])
     ),
+    stageImport: source.stageImport && typeof source.stageImport === 'object'
+      ? source.stageImport
+      : null,
+    aiImport: source.aiImport && typeof source.aiImport === 'object'
+      ? source.aiImport
+      : null,
   };
 }
 

@@ -10,6 +10,14 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from './PageHero.jsx';
+import PreviousStageImportBanner from './PreviousStageImportBanner.jsx';
+import {
+  applyPlanningAiResult,
+  buildPlanningAiSchema,
+  planningAiTargetCount,
+  planningAiTargets,
+} from '../planningAi.js';
+import { detachImportedField, detachImportedTable, stageSourceSignature } from '../planningStageChain.js';
 
 export default function PlanningDocumentEditor({
   documentType,
@@ -29,6 +37,7 @@ export default function PlanningDocumentEditor({
   periodControls,
   heroMetrics = [],
   defaultValues,
+  previousStage,
 }) {
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
@@ -39,6 +48,10 @@ export default function PlanningDocumentEditor({
   const [saveError, setSaveError] = useState('');
   const [navSearch, setNavSearch] = useState('');
   const [activeSection, setActiveSection] = useState('00');
+  const [sourceStage, setSourceStage] = useState(null);
+  const [importingStage, setImportingStage] = useState(false);
+  const [aiFilling, setAiFilling] = useState(false);
+  const [aiSummary, setAiSummary] = useState('');
   const dirtyRef = useRef(false);
   const revisionRef = useRef(0);
   const documentRef = useRef(documentData);
@@ -50,6 +63,20 @@ export default function PlanningDocumentEditor({
   const selectedClientRecord = clients.find((client) => Number(client.id) === Number(clientId));
   const progress = useMemo(() => getProgress(documentData), [documentData, getProgress]);
   const sectionPrefix = documentType.replace(/[^a-z0-9]+/gi, '-');
+  const aiSchema = useMemo(() => buildPlanningAiSchema(coverFields, sections, coverTitle), [coverFields, sections, coverTitle]);
+  const aiPreviewData = useMemo(() => {
+    if (!sourceStage?.data || !previousStage?.buildData) return documentData;
+    return previousStage.buildData(documentData, sourceStage.data, {
+      clientId,
+      clientName: selectedClientRecord?.name || '',
+      year,
+      periodKey,
+      periodLabel,
+      ...(sourceStage.context || {}),
+      sourceUpdatedAt: sourceStage.updatedAt,
+    }, 'empty');
+  }, [documentData, sourceStage, previousStage, clientId, selectedClientRecord?.name, year, periodKey, periodLabel]);
+  const aiTargetCount = useMemo(() => planningAiTargetCount(aiSchema, aiPreviewData), [aiSchema, aiPreviewData]);
 
   useEffect(() => { documentRef.current = documentData; }, [documentData]);
 
@@ -71,29 +98,55 @@ export default function PlanningDocumentEditor({
 
     setLoading(true);
     setSaveError('');
+    setAiSummary('');
     try {
-      const { data } = await api.get('/planning-documents', {
-        params: { client_id: clientId, type: documentType, period_key: periodKey },
-      });
-      const record = data.document || null;
-      const next = mergeData(record?.data || null);
-      if (!record && typeof defaultValues === 'function') {
-        defaultValues(next, {
-          clientName: selectedClientRecord?.name || '',
-          year,
-          periodKey,
-          periodLabel,
-        });
+      const context = {
+        clientId,
+        clientName: selectedClientRecord?.name || '',
+        year,
+        periodKey,
+        periodLabel,
+      };
+      const [documentResponse, previousResult] = await Promise.all([
+        api.get('/planning-documents', {
+          params: { client_id: clientId, type: documentType, period_key: periodKey },
+        }),
+        previousStage?.loadSource
+          ? previousStage.loadSource(context).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      const record = documentResponse.data.document || null;
+      const recordHasContent = hasPlanningContent(record?.data);
+      let next = mergeData(record?.data || null);
+      if (!recordHasContent && typeof defaultValues === 'function') defaultValues(next, context);
+
+      const normalizedSource = previousResult?.data
+        ? {
+          ...previousResult,
+          signature: stageSourceSignature(previousResult.data),
+        }
+        : null;
+      setSourceStage(normalizedSource);
+
+      let autoImported = false;
+      if (!recordHasContent && normalizedSource && previousStage?.buildData) {
+        next = previousStage.buildData(next, normalizedSource.data, {
+          ...context,
+          ...(normalizedSource.context || {}),
+          sourceUpdatedAt: normalizedSource.updatedAt,
+        }, 'empty');
+        autoImported = Boolean(next.stageImport);
       }
-      dirtyRef.current = false;
-      revisionRef.current = 0;
+
+      dirtyRef.current = autoImported;
+      revisionRef.current = autoImported ? 1 : 0;
       setDocumentData(next);
     } catch (error) {
       setSaveError(error.response?.data?.error || `Não foi possível abrir ${title}.`);
     } finally {
       setLoading(false);
     }
-  }, [clientId, periodKey, documentType, createData, mergeData, defaultValues, selectedClientRecord?.name, year, periodLabel, title]);
+  }, [clientId, periodKey, documentType, createData, mergeData, defaultValues, selectedClientRecord?.name, year, periodLabel, title, previousStage]);
 
   useEffect(() => { loadDocument(); }, [loadDocument]);
 
@@ -162,42 +215,113 @@ export default function PlanningDocumentEditor({
 
   function updateField(name, value) {
     markDirty();
-    setDocumentData((current) => ({
-      ...current,
-      fields: { ...current.fields, [name]: value },
-    }));
+    setDocumentData((current) => {
+      const detached = detachImportedField(current, name);
+      return {
+        ...detached,
+        fields: { ...detached.fields, [name]: value },
+      };
+    });
   }
 
   function updateTableCell(tableId, rowIndex, columnIndex, value) {
     markDirty();
     setDocumentData((current) => {
-      const rows = (current.tables[tableId] || []).map((row) => [...row]);
+      const detached = detachImportedTable(current, tableId);
+      const rows = (detached.tables[tableId] || []).map((row) => [...row]);
       if (!rows[rowIndex]) rows[rowIndex] = [];
       rows[rowIndex][columnIndex] = value;
-      return { ...current, tables: { ...current.tables, [tableId]: rows } };
+      return { ...detached, tables: { ...detached.tables, [tableId]: rows } };
     });
   }
 
   function addTableRow(block) {
     markDirty();
-    setDocumentData((current) => ({
-      ...current,
-      tables: {
-        ...current.tables,
-        [block.id]: [...(current.tables[block.id] || []), block.columns.map(() => '')],
-      },
-    }));
+    setDocumentData((current) => {
+      const detached = detachImportedTable(current, block.id);
+      return {
+        ...detached,
+        tables: {
+          ...detached.tables,
+          [block.id]: [...(detached.tables[block.id] || []), block.columns.map(() => '')],
+        },
+      };
+    });
   }
 
   function removeTableRow(tableId, rowIndex) {
     markDirty();
-    setDocumentData((current) => ({
-      ...current,
-      tables: {
-        ...current.tables,
-        [tableId]: (current.tables[tableId] || []).filter((_, index) => index !== rowIndex),
-      },
-    }));
+    setDocumentData((current) => {
+      const detached = detachImportedTable(current, tableId);
+      return {
+        ...detached,
+        tables: {
+          ...detached.tables,
+          [tableId]: (detached.tables[tableId] || []).filter((_, index) => index !== rowIndex),
+        },
+      };
+    });
+  }
+
+  function applyPreviousStage(mode) {
+    if (!sourceStage?.data || !previousStage?.buildData) return;
+    setImportingStage(true);
+    markDirty();
+    setDocumentData((current) => previousStage.buildData(current, sourceStage.data, {
+      clientId,
+      clientName: selectedClientRecord?.name || '',
+      year,
+      periodKey,
+      periodLabel,
+      ...(sourceStage.context || {}),
+      sourceUpdatedAt: sourceStage.updatedAt,
+    }, mode));
+    window.setTimeout(() => setImportingStage(false), 220);
+  }
+
+  async function fillWithAi() {
+    if (!sourceStage?.data || !previousStage?.buildData || aiFilling) return;
+    setAiFilling(true);
+    setAiSummary('');
+    setSaveError('');
+    try {
+      const seed = previousStage.buildData(documentRef.current, sourceStage.data, {
+        clientId,
+        clientName: selectedClientRecord?.name || '',
+        year,
+        periodKey,
+        periodLabel,
+        ...(sourceStage.context || {}),
+        sourceUpdatedAt: sourceStage.updatedAt,
+      }, 'empty');
+      const targetSchema = planningAiTargets(aiSchema, seed);
+      if (!targetSchema.fields.length && !targetSchema.tables.length) {
+        setAiSummary('Todos os campos possíveis já estão preenchidos.');
+        return;
+      }
+      const { data } = await api.post('/ai/planning/fill', {
+        client_id: clientId,
+        source_label: previousStage.sourceLabel,
+        source_period_label: sourceStage.periodLabel || '',
+        target_label: title,
+        target_period_label: periodLabel,
+        source_data: sourceStage.data,
+        target_data: seed,
+        target_schema: targetSchema,
+      });
+      const next = applyPlanningAiResult(seed, data, {
+        sourceType: previousStage.sourceType,
+        sourceLabel: previousStage.sourceLabel,
+        sourcePeriodLabel: sourceStage.periodLabel || '',
+      });
+      markDirty();
+      setDocumentData(next);
+      setAiSummary(data.summary || 'A IA preencheu os campos possíveis. Revise o conteúdo antes de finalizar.');
+    } catch (error) {
+      setSaveError(error.response?.data?.error || `A IA não conseguiu preencher ${title} agora.`);
+    } finally {
+      setAiFilling(false);
+    }
   }
 
   const filteredSections = sections.filter((section) => (
@@ -254,6 +378,28 @@ export default function PlanningDocumentEditor({
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
           <span>{saveError}</span>
         </div>
+      )}
+
+      {previousStage && !loading && (
+        <PreviousStageImportBanner
+          sourceLabel={previousStage.sourceLabel}
+          targetLabel={title}
+          sourceAvailable={Boolean(sourceStage?.data)}
+          sourcePeriodLabel={sourceStage?.periodLabel || ''}
+          imported={documentData.stageImport?.sourceType === previousStage.sourceType}
+          updateAvailable={Boolean(
+            documentData.stageImport?.sourceType === previousStage.sourceType
+            && sourceStage?.signature
+            && documentData.stageImport?.sourceSignature !== sourceStage.signature
+          )}
+          importing={importingStage}
+          aiFilling={aiFilling}
+          aiTargetCount={aiTargetCount}
+          aiSummary={aiSummary}
+          onFillWithAi={fillWithAi}
+          onFillEmpty={() => applyPreviousStage('empty')}
+          onRefresh={() => applyPreviousStage('refresh')}
+        />
       )}
 
       {loading ? (
@@ -318,6 +464,17 @@ export default function PlanningDocumentEditor({
       )}
     </div>
   );
+}
+
+function hasPlanningContent(data) {
+  if (!data || typeof data !== 'object') return false;
+  const fieldContent = Object.values(data.fields || {}).some((value) => String(value || '').trim());
+  const tableContent = Object.values(data.tables || {}).some((rows) => (
+    Array.isArray(rows) && rows.some((row) => (
+      Array.isArray(row) && row.some((value) => String(value || '').trim())
+    ))
+  ));
+  return fieldContent || tableContent;
 }
 
 function HeroMetric({ value, label }) {

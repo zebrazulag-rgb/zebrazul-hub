@@ -159,7 +159,7 @@ export function createAnnualPlanData() {
   const tables = {};
   annualPlanCoverFields.forEach((field) => registerField(fields, field.name));
   annualPlanSections.forEach((section) => section.blocks.forEach((block) => registerBlock(block, fields, tables)));
-  return { fields, tables };
+  return { fields, tables, stageImport: null, aiImport: null };
 }
 
 export function mergeAnnualPlanData(rawData) {
@@ -168,6 +168,12 @@ export function mergeAnnualPlanData(rawData) {
   return {
     fields: { ...defaults.fields, ...(source.fields || {}) },
     tables: Object.fromEntries(Object.entries(defaults.tables).map(([id, rows]) => [id, Array.isArray(source.tables?.[id]) ? source.tables[id] : rows])),
+    stageImport: source.stageImport && typeof source.stageImport === 'object'
+      ? source.stageImport
+      : null,
+    aiImport: source.aiImport && typeof source.aiImport === 'object'
+      ? source.aiImport
+      : null,
   };
 }
 
