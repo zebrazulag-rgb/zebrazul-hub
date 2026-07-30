@@ -255,29 +255,23 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[30px] bg-[#121620] px-7 py-7 text-white shadow-[0_20px_65px_rgba(18,22,32,0.18)] lg:px-9 lg:py-8">
-        <div className="absolute -right-20 -top-28 h-80 w-80 rounded-full bg-[#0969ff]/35 blur-3xl" />
-        <div className="absolute bottom-0 right-1/3 h-28 w-28 rounded-full bg-cyan-400/10 blur-2xl" />
-        <div className="relative flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+      <section className="py-2">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-3 py-1.5 text-xs font-medium text-white/65">
-              <Sparkles size={14} className="text-[#63a0ff]" />
-              {selectedClient?.name || 'Visão geral da operação'}
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight lg:text-4xl">Olá, {user?.name?.split(' ')[0]}.</h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-white/55 lg:text-base">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 lg:text-4xl">Olá, {user?.name?.split(' ')[0]}.</h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500 lg:text-base">
               {isCommercialTeam
                 ? 'Acompanhe o pipeline de vendas e as tarefas comerciais dos clientes liberados para você.'
                 : 'Tudo que precisa da sua atenção está organizado aqui. Acompanhe tarefas, aprovações e publicações em um único lugar.'}
             </p>
-            <p className="mt-5 text-xs font-medium capitalize tracking-wide text-white/35">{formatDate(new Date())}</p>
+            <p className="mt-4 text-xs font-medium capitalize tracking-wide text-slate-400">{formatDate(new Date())}</p>
           </div>
 
           <div className="flex flex-wrap gap-2.5">
-            <Link to="/tarefas" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+            <Link to="/tarefas" className="btn-primary inline-flex items-center gap-2 text-sm">
               <Plus size={17} /> Nova tarefa
             </Link>
-            <Link to={isCommercialTeam ? '/comercial' : '/aprovacao'} className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.055] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
+            <Link to={isCommercialTeam ? '/comercial' : '/aprovacao'} className="btn-secondary inline-flex items-center gap-2 text-sm">
               {isCommercialTeam ? 'Abrir comercial' : 'Ver aprovações'} <ArrowUpRight size={16} />
             </Link>
           </div>
@@ -301,10 +295,10 @@ export default function Dashboard() {
       </section>
 
       {(featuredTasks.length > 0 || user?.role === 'admin' || user?.role === 'team') && (
-        <section className="rounded-[26px] border border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-white p-6 shadow-[0_12px_38px_rgba(146,64,14,0.06)]">
+        <section className="surface-card p-5">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400 text-white shadow-[0_8px_22px_rgba(245,158,11,0.28)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0969ff]">
                 <Star size={20} fill="currentColor" />
               </div>
               <div>
@@ -312,13 +306,13 @@ export default function Dashboard() {
                 <p className="text-xs text-slate-500">Prioridades da operação inteira, mesmo quando um cliente está selecionado no filtro.</p>
               </div>
             </div>
-            <Link to="/tarefas" className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 transition hover:text-amber-900">
+            <Link to="/tarefas" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0969ff] transition hover:text-blue-700">
               Gerenciar tarefas <ChevronRight size={15} />
             </Link>
           </div>
 
           {featuredTasks.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-amber-200 bg-white/70 px-5 py-7 text-center">
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-5 py-6 text-center">
               <p className="text-sm font-medium text-slate-700">Nenhuma prioridade destacada ainda.</p>
               <p className="mt-1 text-xs text-slate-400">Abra uma tarefa ou edite o cadastro e ative “Destacar no painel principal”.</p>
             </div>
@@ -330,14 +324,14 @@ export default function Dashboard() {
                   <Link
                     key={task.id}
                     to={`/tarefas?task_id=${task.id}`}
-                    className="group rounded-2xl border border-amber-100 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-[0_14px_30px_rgba(146,64,14,0.08)]"
+                    className="group rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-[0_14px_30px_rgba(9,105,255,0.08)]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="line-clamp-2 text-sm font-semibold text-slate-800">{task.title}</p>
-                        <p className="mt-1 truncate text-xs font-medium text-amber-700">{task.client_name || 'Tarefa interna'}</p>
+                        <p className="mt-1 truncate text-xs font-medium text-[#0969ff]">{task.client_name || 'Tarefa interna'}</p>
                       </div>
-                      <Star size={15} className="shrink-0 text-amber-500" fill="currentColor" />
+                      <Star size={15} className="shrink-0 text-[#0969ff]" fill="currentColor" />
                     </div>
                     <div className="mt-4 flex items-center justify-between gap-3">
                       <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.className}`}>{status.label}</span>

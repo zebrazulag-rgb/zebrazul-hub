@@ -1,0 +1,417 @@
+:root,
+html[data-zebrahub-theme="light"] {
+  --zh-bg: #f5f7fb;
+  --zh-bg-soft: #eef2f7;
+  --zh-surface: #ffffff;
+  --zh-surface-2: #f8fafc;
+  --zh-surface-3: #eef2f7;
+  --zh-border: #e2e8f0;
+  --zh-border-soft: #edf1f5;
+  --zh-text: #121620;
+  --zh-text-soft: #475569;
+  --zh-muted: #64748b;
+  --zh-muted-2: #94a3b8;
+  --zh-shadow: 0 12px 38px rgba(15, 23, 42, 0.055);
+}
+
+html[data-zebrahub-theme="dark"] {
+  --zh-bg: #07090d;
+  --zh-bg-soft: #0b0e14;
+  --zh-surface: #10141b;
+  --zh-surface-2: #141a23;
+  --zh-surface-3: #1a2230;
+  --zh-border: #26303d;
+  --zh-border-soft: #1d2530;
+  --zh-text: #f5f7fb;
+  --zh-text-soft: #d3dae5;
+  --zh-muted: #9aa6b6;
+  --zh-muted-2: #6f7c8e;
+  --zh-shadow: 0 20px 58px rgba(0, 0, 0, 0.30);
+}
+
+html,
+body,
+#root,
+.app-shell,
+.app-main {
+  background: var(--zh-bg);
+  color: var(--zh-text);
+}
+
+.app-main {
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+html[data-zebrahub-theme="dark"] .app-main {
+  background-image:
+    radial-gradient(circle at 72% -8%, rgba(9, 105, 255, 0.10), transparent 34%),
+    linear-gradient(180deg, #090c12 0%, #07090d 100%);
+}
+
+.card,
+.surface-card,
+.toolbar-panel,
+.data-row {
+  border-color: var(--zh-border) !important;
+  background: var(--zh-surface) !important;
+  color: var(--zh-text) !important;
+  box-shadow: var(--zh-shadow) !important;
+}
+
+.soft-panel,
+.segmented-control {
+  border-color: var(--zh-border) !important;
+  background: var(--zh-surface-2) !important;
+}
+
+.page-title,
+.section-title {
+  color: var(--zh-text) !important;
+}
+
+.page-subtitle,
+.section-kicker {
+  color: var(--zh-muted) !important;
+}
+
+.btn-secondary {
+  border-color: var(--zh-border) !important;
+  background: var(--zh-surface) !important;
+  color: var(--zh-text-soft) !important;
+}
+
+.btn-secondary:hover {
+  border-color: color-mix(in srgb, var(--zh-border) 55%, var(--agency-primary)) !important;
+  background: var(--zh-surface-2) !important;
+  color: var(--zh-text) !important;
+}
+
+/* Cabeçalho global sem bloco preenchido, sem ícone e sem legenda superior. */
+.page-hero {
+  padding: 2px 2px 0;
+  color: var(--zh-text);
+}
+
+.page-hero-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+@media (min-width: 1024px) {
+  .page-hero-heading {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.page-hero-title {
+  color: var(--zh-text);
+}
+
+.page-hero-description {
+  color: var(--zh-muted);
+}
+
+.page-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-hero-actions > :is(button, a)[class*="bg-white"] {
+  border-color: transparent !important;
+  background: var(--agency-primary) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--agency-primary) 24%, transparent) !important;
+}
+
+.page-hero-actions > :is(button, a)[class*="bg-white/"] {
+  border-color: var(--zh-border) !important;
+  background: var(--zh-surface) !important;
+  color: var(--zh-text-soft) !important;
+}
+
+.page-hero-metrics {
+  margin-top: 22px;
+}
+
+.page-hero-metrics [class*="border-white"] {
+  border-color: var(--zh-border) !important;
+}
+
+.page-hero-metrics [class*="bg-white/"] {
+  background: var(--zh-surface) !important;
+}
+
+.page-hero-metrics [class~="text-white"] {
+  color: var(--zh-text) !important;
+}
+
+.page-hero-metrics [class*="text-white/"] {
+  color: var(--zh-muted) !important;
+}
+
+/* Tema escuro: conversão consistente das utilities claras existentes. */
+html[data-zebrahub-theme="dark"] [class~="bg-white"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/95"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/90"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/85"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/80"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/75"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/70"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/60"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/55"],
+html[data-zebrahub-theme="dark"] [class~="bg-white/50"] {
+  background-color: var(--zh-surface) !important;
+  background-image: none !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/90"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/80"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/75"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/70"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/65"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/60"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/55"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-50/50"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-100"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-200"],
+html[data-zebrahub-theme="dark"] [class~="bg-slate-200/70"],
+html[data-zebrahub-theme="dark"] [class~="bg-gray-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-gray-100"],
+html[data-zebrahub-theme="dark"] [class~="bg-[#f5f7fb]"],
+html[data-zebrahub-theme="dark"] [class~="bg-[#eef5ff]"],
+html[data-zebrahub-theme="dark"] [class~="bg-[#ececec]"] {
+  background-color: var(--zh-surface-2) !important;
+  background-image: none !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="text-slate-950"],
+html[data-zebrahub-theme="dark"] [class~="text-slate-900"],
+html[data-zebrahub-theme="dark"] [class~="text-slate-800"],
+html[data-zebrahub-theme="dark"] [class~="text-slate-700"],
+html[data-zebrahub-theme="dark"] [class~="text-gray-900"],
+html[data-zebrahub-theme="dark"] [class~="text-gray-800"],
+html[data-zebrahub-theme="dark"] [class~="text-black"],
+html[data-zebrahub-theme="dark"] [class~="text-[#121620]"] {
+  color: var(--zh-text) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="text-slate-600"],
+html[data-zebrahub-theme="dark"] [class~="text-gray-600"] {
+  color: var(--zh-text-soft) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="text-slate-500"],
+html[data-zebrahub-theme="dark"] [class~="text-slate-400"],
+html[data-zebrahub-theme="dark"] [class~="text-gray-500"],
+html[data-zebrahub-theme="dark"] [class~="text-gray-400"] {
+  color: var(--zh-muted) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="text-slate-300"],
+html[data-zebrahub-theme="dark"] [class~="text-slate-200"] {
+  color: #c5ceda !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="border-slate-100"],
+html[data-zebrahub-theme="dark"] [class~="border-slate-200"],
+html[data-zebrahub-theme="dark"] [class~="border-slate-200/70"],
+html[data-zebrahub-theme="dark"] [class~="border-slate-200/80"],
+html[data-zebrahub-theme="dark"] [class~="border-slate-300"],
+html[data-zebrahub-theme="dark"] [class~="border-gray-100"],
+html[data-zebrahub-theme="dark"] [class~="border-gray-200"],
+html[data-zebrahub-theme="dark"] [class~="border-black/5"] {
+  border-color: var(--zh-border) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="divide-slate-100"] > :not([hidden]) ~ :not([hidden]),
+html[data-zebrahub-theme="dark"] [class~="divide-slate-200"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--zh-border-soft) !important;
+}
+
+html[data-zebrahub-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html[data-zebrahub-theme="dark"] textarea,
+html[data-zebrahub-theme="dark"] select,
+html[data-zebrahub-theme="dark"] [contenteditable="true"],
+html[data-zebrahub-theme="dark"] .input-field {
+  border-color: var(--zh-border) !important;
+  background-color: #0b0f15 !important;
+  color: var(--zh-text) !important;
+  box-shadow: none !important;
+}
+
+html[data-zebrahub-theme="dark"] input::placeholder,
+html[data-zebrahub-theme="dark"] textarea::placeholder {
+  color: var(--zh-muted-2) !important;
+}
+
+html[data-zebrahub-theme="dark"] select option {
+  background: #0b0f15;
+  color: var(--zh-text);
+}
+
+html[data-zebrahub-theme="dark"] input[type="date"],
+html[data-zebrahub-theme="dark"] input[type="datetime-local"],
+html[data-zebrahub-theme="dark"] input[type="time"] {
+  color-scheme: dark;
+}
+
+html[data-zebrahub-theme="dark"] [class~="bg-blue-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-blue-100"],
+html[data-zebrahub-theme="dark"] [class~="bg-zebrazul-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-zebrazul-100"] {
+  background-color: rgba(37, 99, 235, 0.16) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="bg-emerald-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-emerald-100"],
+html[data-zebrahub-theme="dark"] [class~="bg-green-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-green-100"] {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="bg-amber-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-amber-100"],
+html[data-zebrahub-theme="dark"] [class~="bg-yellow-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-yellow-100"] {
+  background-color: rgba(245, 158, 11, 0.14) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="bg-red-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-red-100"],
+html[data-zebrahub-theme="dark"] [class~="bg-rose-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-pink-50"] {
+  background-color: rgba(244, 63, 94, 0.13) !important;
+}
+
+html[data-zebrahub-theme="dark"] [class~="bg-indigo-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-indigo-100"],
+html[data-zebrahub-theme="dark"] [class~="bg-violet-50"],
+html[data-zebrahub-theme="dark"] [class~="bg-violet-100"] {
+  background-color: rgba(124, 58, 237, 0.15) !important;
+}
+
+html[data-zebrahub-theme="dark"] .app-sidebar a.bg-white,
+html[data-zebrahub-theme="dark"] .app-sidebar button.bg-white,
+html[data-zebrahub-theme="dark"] .app-sidebar [class~="bg-white"] {
+  border: 1px solid rgba(47, 106, 200, 0.42) !important;
+  background: #14233d !important;
+  color: #fff !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3) !important;
+}
+
+html[data-zebrahub-theme="dark"] table,
+html[data-zebrahub-theme="dark"] thead,
+html[data-zebrahub-theme="dark"] tbody,
+html[data-zebrahub-theme="dark"] tr,
+html[data-zebrahub-theme="dark"] th,
+html[data-zebrahub-theme="dark"] td {
+  border-color: var(--zh-border-soft) !important;
+}
+
+/* Feed sempre claro, independentemente da preferência global. */
+html.zebrahub-feed-light .app-main {
+  color-scheme: light;
+  background: #f5f7fb !important;
+  background-image: radial-gradient(circle at 72% -8%, rgba(9,105,255,0.10), transparent 34%) !important;
+  color: #121620 !important;
+}
+
+html.zebrahub-feed-light .feed-page,
+html.zebrahub-feed-light .feed-page [class~="bg-white"] {
+  background-color: #fff !important;
+  color: #121620 !important;
+}
+
+html.zebrahub-feed-light .feed-page [class~="bg-slate-50"],
+html.zebrahub-feed-light .feed-page [class~="bg-slate-100"] {
+  background-color: #f8fafc !important;
+}
+
+html.zebrahub-feed-light .feed-page [class^="text-slate-"],
+html.zebrahub-feed-light .feed-page [class*=" text-slate-"] {
+  color: revert;
+}
+
+/* Comercial: leitura mais confortável e scrollbar visível. */
+.commercial-board {
+  scrollbar-color: color-mix(in srgb, var(--agency-primary) 35%, var(--zh-border)) transparent;
+  scrollbar-width: thin;
+}
+
+.commercial-board::-webkit-scrollbar {
+  height: 12px;
+}
+
+.commercial-board::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--agency-primary) 30%, var(--zh-border));
+  background-clip: padding-box;
+}
+
+.settings-shell {
+  min-height: 680px;
+}
+
+.settings-nav-card {
+  border-color: var(--zh-border);
+  background: var(--zh-surface);
+  box-shadow: var(--zh-shadow);
+}
+
+.settings-content-card {
+  min-width: 0;
+  border: 1px solid var(--zh-border);
+  border-radius: 22px;
+  background: var(--zh-surface);
+  padding: 24px;
+  box-shadow: var(--zh-shadow);
+}
+
+.settings-section-header {
+  border-color: var(--zh-border) !important;
+}
+
+@media (max-width: 640px) {
+  .settings-content-card {
+    padding: 18px;
+  }
+}
+
+@media print {
+  html,
+  body,
+  #root,
+  .app-shell,
+  .app-main {
+    color-scheme: light !important;
+    background: #fff !important;
+    color: #1e293b !important;
+  }
+}
+
+html.zebrahub-feed-light .feed-page [class~="text-slate-950"],
+html.zebrahub-feed-light .feed-page [class~="text-slate-900"],
+html.zebrahub-feed-light .feed-page [class~="text-slate-800"],
+html.zebrahub-feed-light .feed-page [class~="text-slate-700"] { color: #1e293b !important; }
+html.zebrahub-feed-light .feed-page [class~="text-slate-600"] { color: #475569 !important; }
+html.zebrahub-feed-light .feed-page [class~="text-slate-500"] { color: #64748b !important; }
+html.zebrahub-feed-light .feed-page [class~="text-slate-400"] { color: #94a3b8 !important; }
+html.zebrahub-feed-light .feed-page [class~="border-slate-100"] { border-color: #f1f5f9 !important; }
+html.zebrahub-feed-light .feed-page [class~="border-slate-200"],
+html.zebrahub-feed-light .feed-page [class~="border-slate-200/70"],
+html.zebrahub-feed-light .feed-page [class~="border-slate-200/80"] { border-color: #e2e8f0 !important; }
+html.zebrahub-feed-light .feed-page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+html.zebrahub-feed-light .feed-page textarea,
+html.zebrahub-feed-light .feed-page select,
+html.zebrahub-feed-light .feed-page .input-field {
+  color-scheme: light;
+  border-color: #e2e8f0 !important;
+  background: #fff !important;
+  color: #1e293b !important;
+}

@@ -52,13 +52,7 @@ export default function Layout({ children }) {
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
   });
 
-  const settingsPaths = ['/clientes', '/usuarios', '/marca', '/agencias'];
-  const settingsActive = settingsPaths.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`));
-  const [settingsOpen, setSettingsOpen] = useState(settingsActive);
-
-  useEffect(() => {
-    if (settingsActive) setSettingsOpen(true);
-  }, [settingsActive]);
+  const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
 
   useEffect(() => {
     window.localStorage.setItem('zebrahub.sidebar.collapsed', sidebarCollapsed ? '1' : '0');
@@ -162,12 +156,7 @@ export default function Layout({ children }) {
     return item.roles.includes(user?.role);
   });
 
-  const settingsItems = [
-    { to: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'team'] },
-    { to: '/usuarios', label: 'Usuários', icon: UserCog, roles: ['admin'] },
-    { to: '/marca', label: 'Marca da agência', icon: Palette, roles: ['admin'] },
-    ...(user?.is_platform_owner ? [{ to: '/agencias', label: 'Agências', icon: Building2, roles: ['admin'] }] : []),
-  ].filter((item) => !user?.is_commercial_team && item.roles.includes(user?.role));
+  const canSeeSettings = !user?.is_commercial_team;
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -312,53 +301,14 @@ export default function Layout({ children }) {
               ))}
           </div>
 
-          {settingsItems.length > 0 && (
+          {canSeeSettings && (
             <div className="mt-5 border-t border-white/[0.07] pt-4">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen((open) => !open)}
-                className={`group flex w-full items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
-                  settingsActive
-                    ? 'bg-white/[0.075] text-white'
-                    : 'text-white/62 hover:bg-white/[0.06] hover:text-white'
-                }`}
-                aria-expanded={settingsOpen}
-                title={sidebarCollapsed ? 'Configurações' : undefined}
-              >
-                <span className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${settingsActive ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'}`} style={settingsActive ? { backgroundColor: agencyPrimary } : undefined}>
-                  <Settings size={17} strokeWidth={2} />
-                </span>
-                {!sidebarCollapsed && (
-                  <>
-                    <span className="flex-1 text-left">Configurações</span>
-                    <ChevronDown size={15} className={`text-white/40 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
-                  </>
-                )}
-              </button>
-
-              {settingsOpen && (
-                <div className={`${sidebarCollapsed ? 'mt-1.5 space-y-1' : 'ml-7 mt-1.5 space-y-1 border-l border-white/10 pl-3'}`}>
-                  {settingsItems.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      title={sidebarCollapsed ? item.label : undefined}
-                      className={({ isActive }) => `group flex items-center rounded-xl py-2 text-sm transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-2.5 px-3'} ${
-                        isActive
-                          ? 'bg-white text-[#121620] shadow-[0_8px_22px_rgba(0,0,0,0.15)]'
-                          : 'text-white/52 hover:bg-white/[0.055] hover:text-white'
-                      }`}
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <item.icon size={15} style={isActive ? { color: agencyPrimary } : undefined} />
-                          {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-                        </>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
+              <SidebarLink
+                item={{ to: '/configuracoes/aparencia', label: 'Configurações', icon: Settings }}
+                agencyPrimary={agencyPrimary}
+                collapsed={sidebarCollapsed}
+                activeOverride={settingsActive}
+              />
             </div>
           )}
         </nav>
@@ -486,33 +436,37 @@ function ClientAvatar({ client = null, allClientsColor = '#0969ff', sizeClass = 
   );
 }
 
-function SidebarLink({ item, agencyPrimary, collapsed = false }) {
+function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = null }) {
   return (
     <NavLink
       to={item.to}
       end={item.to === '/'}
       title={collapsed ? item.label : undefined}
-      className={({ isActive }) =>
-        `group relative flex items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
-          isActive
+      className={({ isActive }) => {
+        const active = activeOverride == null ? isActive : activeOverride;
+        return `group relative flex items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
+          active
             ? 'bg-white text-[#121620] shadow-[0_10px_28px_rgba(0,0,0,0.18)]'
             : 'text-white/62 hover:bg-white/[0.06] hover:text-white'
-        }`
-      }
+        }`;
+      }}
     >
-      {({ isActive }) => (
+      {({ isActive }) => {
+        const active = activeOverride == null ? isActive : activeOverride;
+        return (
         <>
           <span
             className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-              isActive ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'
+              active ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'
             }`}
-            style={isActive ? { backgroundColor: agencyPrimary } : undefined}
+            style={active ? { backgroundColor: agencyPrimary } : undefined}
           >
             <item.icon size={17} strokeWidth={2} />
           </span>
           {!collapsed && <span className="truncate">{item.label}</span>}
         </>
-      )}
+        );
+      }}
     </NavLink>
   );
 }

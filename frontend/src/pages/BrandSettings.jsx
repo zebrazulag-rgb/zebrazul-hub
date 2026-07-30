@@ -3,6 +3,7 @@ import { ImageUp, Palette, Save, ExternalLink, Mail, Phone, CheckCircle2 } from 
 import api from '../api';
 import { useTenant } from '../context/TenantContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import SettingsSectionHeader from '../components/SettingsSectionHeader.jsx';
 
 const DEFAULT_FORM = {
   name: '', product_name: '', logo_data: null, logo_mime: null,
@@ -11,7 +12,7 @@ const DEFAULT_FORM = {
   support_email: '', support_whatsapp: '', footer_text: 'Tecnologia ZebraHub',
 };
 
-export default function BrandSettings() {
+export default function BrandSettings({ embedded = false }) {
   const { agency, updateAgency } = useTenant();
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
@@ -63,29 +64,40 @@ export default function BrandSettings() {
 
   const subdomain = `${agency?.slug || 'agencia'}.zebrahub.com.br`;
 
+  const saveButton = (
+    <button onClick={save} disabled={saving} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60">
+      <Save size={17} /> {saving ? 'Salvando...' : 'Salvar identidade'}
+    </button>
+  );
+
   return (
     <div className="space-y-6">
-      <PageHero
-        icon={Palette}
-        eyebrow="Plano Essencial · Cobranding"
-        title="Marca da agência"
-        description="Personalize o ambiente uma vez. A identidade será aplicada ao login, menu lateral e experiência dos clientes."
-        actions={
-          <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-60">
-            <Save size={17} /> {saving ? 'Salvando...' : 'Salvar identidade'}
-          </button>
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
-            <p className="text-xs text-white/45">Plano</p><p className="mt-1 font-semibold text-white">Essencial</p>
+      {embedded ? (
+        <SettingsSectionHeader
+          title="Marca da agência"
+          description="Logo, cores, contatos e identidade aplicados em todo o ambiente."
+          actions={saveButton}
+        >
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">Plano <strong className="text-slate-900">Essencial</strong></span>
+          <span className="max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">Subdomínio <strong className="text-slate-900">{subdomain}</strong></span>
+        </SettingsSectionHeader>
+      ) : (
+        <PageHero
+          title="Marca da agência"
+          description="Personalize o ambiente uma vez. A identidade será aplicada ao login, menu lateral e experiência dos clientes."
+          actions={saveButton}
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+              <p className="text-xs text-white/45">Plano</p><p className="mt-1 font-semibold text-white">Essencial</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 sm:col-span-2">
+              <p className="text-xs text-white/45">Subdomínio reservado</p>
+              <p className="mt-1 truncate font-semibold text-white">{subdomain}</p>
+            </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 sm:col-span-2">
-            <p className="text-xs text-white/45">Subdomínio reservado</p>
-            <p className="mt-1 truncate font-semibold text-white">{subdomain}</p>
-          </div>
-        </div>
-      </PageHero>
+        </PageHero>
+      )}
 
       {message && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"><CheckCircle2 size={17} />{message}</div>}
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}

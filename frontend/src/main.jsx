@@ -5,26 +5,21 @@ import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ClientFilterProvider } from './context/ClientFilterContext.jsx';
 import { TenantProvider } from './context/TenantContext.jsx';
+import { initializeTheme } from './utils/theme.js';
 import './index.css';
-import './dark-theme.css';
+import './theme.css';
 
-// Tema all black aplicado em tempo de execução para não depender do index.html
-// nem de cache do template estático.
-if (typeof document !== 'undefined') {
-  document.documentElement.classList.add('zebrahub-all-black');
-  document.documentElement.dataset.zebrahubTheme = 'all-black';
-  document.body.classList.add('zebrahub-all-black');
-}
+initializeTheme();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <TenantProvider>
-      <AuthProvider>
-        <ClientFilterProvider>
-          <App />
-        </ClientFilterProvider>
-      </AuthProvider>
+        <AuthProvider>
+          <ClientFilterProvider>
+            <App />
+          </ClientFilterProvider>
+        </AuthProvider>
       </TenantProvider>
     </BrowserRouter>
   </React.StrictMode>

@@ -5,16 +5,12 @@ import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Approval from './pages/Approval.jsx';
 import Reports from './pages/Reports.jsx';
-import Clients from './pages/Clients.jsx';
-import UserManagement from './pages/UserManagement.jsx';
 import Tasks from './pages/Tasks.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import Finance from './pages/Finance.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
-import BrandSettings from './pages/BrandSettings.jsx';
-import Agencies from './pages/Agencies.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
 import CompassPage from './pages/Compass.jsx';
 import AnnualActionPlan from './pages/AnnualActionPlan.jsx';
@@ -25,6 +21,7 @@ import Sales from './pages/Sales.jsx';
 import CommercialFunnel from './pages/CommercialFunnel.jsx';
 import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
+import Settings from './pages/Settings.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -81,30 +78,11 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/clientes"
-        element={
-          <ProtectedRoute roles={['admin', 'team']}>
-            <Clients />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/usuarios"
-        element={
-          <ProtectedRoute roles={['admin']}>
-            <UserManagement />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/marca"
-        element={<ProtectedRoute roles={['admin']}><BrandSettings /></ProtectedRoute>}
-      />
-      <Route
-        path="/agencias"
-        element={<ProtectedRoute roles={['admin']} platformOnly><Agencies /></ProtectedRoute>}
-      />
+      <Route path="/configuracoes/:section?" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/clientes" element={<Navigate to="/configuracoes/clientes" replace />} />
+      <Route path="/usuarios" element={<Navigate to="/configuracoes/usuarios" replace />} />
+      <Route path="/marca" element={<Navigate to="/configuracoes/marca" replace />} />
+      <Route path="/agencias" element={<Navigate to="/configuracoes/agencias" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

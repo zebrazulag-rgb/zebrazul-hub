@@ -156,7 +156,10 @@ export default function Tasks() {
   const [dayTasks, setDayTasks] = useState(null);
   const [sendingToFeed, setSendingToFeed] = useState(false);
   const [sendingSubtaskToFeedId, setSendingSubtaskToFeedId] = useState(null);
+  const [removingFromFeedId, setRemovingFromFeedId] = useState(null);
+  const [addingAllToFeed, setAddingAllToFeed] = useState(false);
   const [feedError, setFeedError] = useState('');
+  const [feedNotice, setFeedNotice] = useState('');
   const [taskError, setTaskError] = useState('');
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [parentOptions, setParentOptions] = useState([]);
@@ -241,6 +244,7 @@ export default function Tasks() {
     });
     setSubtasks([]);
     setFeedError('');
+    setFeedNotice('');
     setTaskError('');
 
     try {
@@ -379,18 +383,66 @@ export default function Tasks() {
   async function sendToFeed(id, source = 'task') {
     setSendingToFeed(true);
     setFeedError('');
+    setFeedNotice('');
     try {
       const { data } = await api.post('/tasks/' + id + '/add-to-feed');
+      const patch = { feed_post_id: data.post_id, feed_post_visible: 1 };
       if (source === 'subtask') {
-        setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, feed_post_id: data.post_id } : item));
+        setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, ...patch } : item));
       } else {
-        setSelectedTask((prev) => ({ ...prev, feed_post_id: data.post_id }));
+        setSelectedTask((prev) => ({ ...prev, ...patch }));
       }
+      setFeedNotice(data.action === 'reactivated' ? 'Publicação devolvida à grade.' : 'Publicação adicionada à grade.');
     } catch (err) {
       setFeedError(err.response?.data?.error || 'Erro ao enviar para o feed.');
     } finally {
       setSendingToFeed(false);
       setSendingSubtaskToFeedId(null);
+    }
+  }
+
+  async function removeFromFeed(id, source = 'task') {
+    setRemovingFromFeedId(id);
+    setFeedError('');
+    setFeedNotice('');
+    try {
+      await api.post('/tasks/' + id + '/remove-from-feed');
+      if (source === 'subtask') {
+        setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, feed_post_visible: 0 } : item));
+      } else {
+        setSelectedTask((previous) => previous ? { ...previous, feed_post_visible: 0 } : previous);
+      }
+      setFeedNotice('Publicação removida da grade sem apagar o conteúdo.');
+    } catch (err) {
+      setFeedError(err.response?.data?.error || 'Não foi possível remover da grade.');
+    } finally {
+      setRemovingFromFeedId(null);
+    }
+  }
+
+  async function addAllToFeed() {
+    if (!selectedTask?.id) return;
+    setAddingAllToFeed(true);
+    setFeedError('');
+    setFeedNotice('');
+    try {
+      const { data } = await api.post('/tasks/' + selectedTask.id + '/add-all-to-feed');
+      const byTaskId = new Map((data.added || []).map((item) => [Number(item.id), item]));
+      const parentResult = byTaskId.get(Number(selectedTask.id));
+      if (parentResult) {
+        setSelectedTask((previous) => previous ? { ...previous, feed_post_id: parentResult.post_id, feed_post_visible: 1 } : previous);
+      }
+      setSubtasks((previous) => previous.map((item) => {
+        const result = byTaskId.get(Number(item.id));
+        return result ? { ...item, feed_post_id: result.post_id, feed_post_visible: 1 } : item;
+      }));
+      const added = Number(data.total_added || 0);
+      const skipped = Number(data.total_skipped || 0);
+      setFeedNotice(`${added} publicação${added === 1 ? '' : 'ões'} adicionada${added === 1 ? '' : 's'} à grade${skipped ? ` · ${skipped} item(ns) ignorado(s)` : ''}.`);
+    } catch (err) {
+      setFeedError(err.response?.data?.error || 'Não foi possível adicionar todos à grade.');
+    } finally {
+      setAddingAllToFeed(false);
     }
   }
 
@@ -888,6 +940,16 @@ export default function Tasks() {
             </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
+              {user?.role !== 'client' && !user?.is_commercial_team && selectedTask.client_id && (selectedTask.task_type === 'post' || subtasks.some((item) => item.task_type === 'post')) && (
+                <button
+                  type="button"
+                  onClick={addAllToFeed}
+                  disabled={addingAllToFeed}
+                  className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+                >
+                  <Grid3x3 size={15} /> {addingAllToFeed ? 'Adicionando publicações...' : 'Adicionar todos à grade'}
+                </button>
+              )}
               {user?.role !== 'client' && !selectedTask.parent_task_id && (
                 <button
                   onClick={() => toggleFeatured(selectedTask.id, Number(selectedTask.is_featured) !== 1)}
@@ -921,21 +983,32 @@ export default function Tasks() {
                 </button>
               )}
               {user?.role !== 'client' && !user?.is_commercial_team && selectedTask.task_type === 'post' && selectedTask.client_id && (
-                selectedTask.feed_post_id ? (
-                  <Link to={`/feed?client_id=${selectedTask.client_id}`} className="flex-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
-                    <ExternalLink size={14} /> Ver no Feed
-                  </Link>
+                Number(selectedTask.feed_post_visible) === 1 ? (
+                  <div className="col-span-2 grid grid-cols-2 gap-2">
+                    <Link to={`/feed?client_id=${selectedTask.client_id}`} className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
+                      <ExternalLink size={14} /> Ver no Feed
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => removeFromFeed(selectedTask.id)}
+                      disabled={removingFromFeedId === selectedTask.id}
+                      className="bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 size={14} /> {removingFromFeedId === selectedTask.id ? 'Removendo...' : 'Remover da grade'}
+                    </button>
+                  </div>
                 ) : (
                   <button
                     onClick={() => sendToFeed(selectedTask.id)}
                     disabled={sendingToFeed}
-                    className="flex-1 bg-zebrazul-50 text-zebrazul-700 hover:bg-zebrazul-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                    className="col-span-2 bg-zebrazul-50 text-zebrazul-700 hover:bg-zebrazul-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
                   >
-                    <Grid3x3 size={14} /> {sendingToFeed ? 'Enviando...' : 'Adicionar à grade'}
+                    <Grid3x3 size={14} /> {sendingToFeed ? 'Enviando...' : selectedTask.feed_post_id ? 'Devolver à grade' : 'Adicionar à grade'}
                   </button>
                 )
               )}
             </div>
+            {feedNotice && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">{feedNotice}</p>}
             {feedError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{feedError}</p>}
 
             <div className="border-t border-slate-100 pt-4">
@@ -967,20 +1040,32 @@ export default function Tasks() {
                         {s.due_date && <span className="text-[11px] text-slate-400">· {formatTaskDate(s.due_date)}</span>}
                       </div>
                       {user?.role !== 'client' && !user?.is_commercial_team && s.task_type === 'post' && s.client_id && (
-                        s.feed_post_id ? (
-                          <Link to={`/feed?client_id=${s.client_id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline">
-                            <ExternalLink size={11} /> Ver na grade
-                          </Link>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => { setSendingSubtaskToFeedId(s.id); sendToFeed(s.id, 'subtask'); }}
-                            disabled={sendingSubtaskToFeedId === s.id}
-                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-zebrazul-600 hover:underline disabled:opacity-50"
-                          >
-                            <Grid3x3 size={11} /> {sendingSubtaskToFeedId === s.id ? 'Adicionando...' : 'Adicionar à grade'}
-                          </button>
-                        )
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          {Number(s.feed_post_visible) === 1 ? (
+                            <>
+                              <Link to={`/feed?client_id=${s.client_id}`} className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline">
+                                <ExternalLink size={11} /> Ver na grade
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => removeFromFeed(s.id, 'subtask')}
+                                disabled={removingFromFeedId === s.id}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 hover:underline disabled:opacity-50"
+                              >
+                                <Trash2 size={11} /> {removingFromFeedId === s.id ? 'Removendo...' : 'Remover da grade'}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => { setSendingSubtaskToFeedId(s.id); sendToFeed(s.id, 'subtask'); }}
+                              disabled={sendingSubtaskToFeedId === s.id}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-zebrazul-600 hover:underline disabled:opacity-50"
+                            >
+                              <Grid3x3 size={11} /> {sendingSubtaskToFeedId === s.id ? 'Adicionando...' : s.feed_post_id ? 'Devolver à grade' : 'Adicionar à grade'}
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                     {(['admin', 'team'].includes(user?.role) || (user?.role === 'client' && Number(s.created_by) === Number(user.id) && s.status === 'pending')) && (

@@ -26,6 +26,7 @@ import { formChanged } from '../utils/formState.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import SettingsSectionHeader from '../components/SettingsSectionHeader.jsx';
 
 const SOCIAL_FIELDS = [
   { platform: 'instagram', label: 'Instagram', placeholder: '@usuario ou link' },
@@ -286,7 +287,7 @@ function DetailRow({ icon: Icon, label, value, href }) {
   );
 }
 
-export default function Clients() {
+export default function Clients({ embedded = false }) {
   const { user } = useAuth();
   const { selectedClient, setSelectedClient } = useClientFilter();
   const [clients, setClients] = useState([]);
@@ -355,33 +356,50 @@ export default function Clients() {
     archived: clients.filter((client) => client.status === 'archived').length,
   };
 
+  const clientStatItems = [
+    { label: 'Total', value: clientStats.total, icon: Building2 },
+    { label: 'Ativos', value: clientStats.active, icon: CheckCircle2 },
+    { label: 'Pausados', value: clientStats.paused, icon: PauseCircle },
+    { label: 'Arquivados', value: clientStats.archived, icon: Archive },
+  ];
+
+  const newClientButton = user?.role !== 'client' ? (
+    <button onClick={() => setFormMode('create')} className="btn-primary inline-flex items-center gap-2 text-sm">
+      <Plus size={17} /> Novo cliente
+    </button>
+  ) : null;
+
   return (
     <div className="space-y-6 min-w-0 max-w-full">
-      <PageHero
-        icon={BriefcaseBusiness}
-        eyebrow="Carteira de contas"
-        title="Clientes"
-        description="Centralize informações comerciais, contatos, redes sociais e o status de cada conta gerenciada."
-        actions={user?.role !== 'client' && (
-          <button onClick={() => setFormMode('create')} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
-            <Plus size={17} /> Novo cliente
-          </button>
-        )}
-      >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: 'Total', value: clientStats.total, icon: Building2, color: 'text-blue-300' },
-            { label: 'Ativos', value: clientStats.active, icon: CheckCircle2, color: 'text-emerald-300' },
-            { label: 'Pausados', value: clientStats.paused, icon: PauseCircle, color: 'text-amber-300' },
-            { label: 'Arquivados', value: clientStats.archived, icon: Archive, color: 'text-slate-300' },
-          ].map((item) => (
-            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
-              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
-              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
-            </div>
+      {embedded ? (
+        <SettingsSectionHeader
+          title="Clientes"
+          description="Contas, contatos, redes sociais e status reunidos nesta área."
+          actions={newClientButton}
+        >
+          {clientStatItems.map((item) => (
+            <span key={item.label} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+              <item.icon size={13} className="text-[#0969ff]" />
+              <strong className="text-slate-900">{item.value}</strong> {item.label}
+            </span>
           ))}
-        </div>
-      </PageHero>
+        </SettingsSectionHeader>
+      ) : (
+        <PageHero
+          title="Clientes"
+          description="Centralize informações comerciais, contatos, redes sociais e o status de cada conta gerenciada."
+          actions={newClientButton}
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {clientStatItems.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+                <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} /> {item.label}</div>
+                <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </PageHero>
+      )}
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {clients.map((client) => (

@@ -402,7 +402,17 @@ export default function Sales() {
           {[1, 2, 3, 4, 5].map((item) => <div key={item} className="h-72 animate-pulse rounded-3xl bg-slate-200/70" />)}
         </div>
       ) : (
-        <section className="overflow-x-auto pb-3">
+        <section className="commercial-board overflow-hidden rounded-[26px] border border-slate-200/70 bg-white/40">
+          <div className="flex flex-col gap-2 border-b border-slate-200/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Pipeline visual</h2>
+              <p className="mt-0.5 text-xs text-slate-500">Arraste as oportunidades entre os quadros. Use “Gerenciar quadros” para criar, renomear, reorganizar ou excluir etapas.</p>
+            </div>
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Atualização automática
+            </span>
+          </div>
+          <div className="overflow-x-auto p-4">
           <div className="flex min-w-max gap-4">
             {decoratedStages.map((stage) => {
               const items = filteredLeads.filter((lead) => lead.stage === stage.key);
@@ -413,14 +423,14 @@ export default function Sales() {
                   onDragOver={(event) => { event.preventDefault(); setDragOverStage(stage.key); }}
                   onDragLeave={() => setDragOverStage((current) => current === stage.key ? null : current)}
                   onDrop={(event) => onDrop(event, stage.key)}
-                  className={`w-[300px] shrink-0 rounded-[24px] border p-3 transition ${dragOverStage === stage.key ? 'border-[#0969ff] bg-blue-50/60 shadow-[0_0_0_4px_rgba(9,105,255,0.08)]' : 'border-slate-200/80 bg-slate-100/65'}`}
+                  className={`w-[350px] shrink-0 rounded-[22px] border p-3.5 transition ${dragOverStage === stage.key ? 'border-[#0969ff] bg-blue-50/60 shadow-[0_0_0_4px_rgba(9,105,255,0.08)]' : 'border-slate-200/80 bg-slate-50/70 shadow-[0_8px_24px_rgba(15,23,42,0.035)]'}`}
                 >
-                  <div className="flex items-start justify-between gap-3 px-1 pb-3 pt-1">
+                  <div className="sticky top-0 z-[1] flex items-start justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white/90 px-3 pb-3 pt-3 shadow-sm backdrop-blur">
                     <div>
                       <div className="flex items-center gap-2">
                         <span className={`h-2.5 w-2.5 rounded-full ${stage.dot}`} />
-                        <h2 className="text-sm font-semibold text-slate-800">{stage.label}</h2>
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">{items.length}</span>
+                        <h2 className="max-w-[190px] break-words text-sm font-semibold leading-5 text-slate-800">{stage.label}</h2>
+                        <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">{items.length}</span>
                       </div>
                       <p className="mt-1 pl-[18px] text-xs text-slate-400">{formatCurrency(total)}</p>
                     </div>
@@ -428,10 +438,10 @@ export default function Sales() {
                       <Plus size={15} />
                     </button>
                   </div>
-                  <div className="space-y-3">
+                  <div className="mt-3 space-y-3">
                     {items.map((lead) => <LeadCard key={lead.id} lead={lead} stage={stageMap[lead.stage]} onOpen={beginEdit} onDragStart={onDragStart} />)}
                     {items.length === 0 && (
-                      <div className="flex min-h-28 items-center justify-center rounded-2xl border border-dashed border-slate-300/80 bg-white/55 px-5 text-center text-xs text-slate-400">
+                      <div className="flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300/80 bg-white/70 px-5 text-center text-xs leading-5 text-slate-400">
                         Arraste uma oportunidade para esta etapa.
                       </div>
                     )}
@@ -439,6 +449,7 @@ export default function Sales() {
                 </div>
               );
             })}
+          </div>
           </div>
         </section>
       )}

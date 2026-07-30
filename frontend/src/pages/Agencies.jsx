@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Building2, Plus, Users, BriefcaseBusiness, Globe2, X, CheckCircle2, PauseCircle } from 'lucide-react';
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
+import SettingsSectionHeader from '../components/SettingsSectionHeader.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { tenantBaseDomain, tenantHostForSlug } from '../tenant.js';
 
@@ -15,7 +16,7 @@ function slugify(value) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
 }
 
-export default function Agencies() {
+export default function Agencies({ embedded = false }) {
   const [agencies, setAgencies] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
@@ -75,27 +76,50 @@ export default function Agencies() {
     return acc;
   }, { clients: 0, users: 0, active: 0 });
 
+  const agencyStatItems = [
+    { label: 'Agências', value: agencies.length, icon: Building2 },
+    { label: 'Ativas', value: totals.active, icon: CheckCircle2 },
+    { label: 'Clientes', value: totals.clients, icon: BriefcaseBusiness },
+    { label: 'Usuários', value: totals.users, icon: Users },
+  ];
+
+  const newAgencyButton = (
+    <button onClick={() => { setShowForm(true); setError(''); }} className="btn-primary inline-flex items-center gap-2 text-sm">
+      <Plus size={17}/> Nova agência
+    </button>
+  );
+
   return (
     <div className="space-y-6">
-      <PageHero
-        icon={Building2}
-        eyebrow="Administração da plataforma"
-        title="Agências"
-        description="Crie ambientes isolados com marca, acesso próprio, equipe e clientes separados."
-        actions={<button onClick={() => { setShowForm(true); setError(''); }} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900"><Plus size={17}/> Nova agência</button>}
-      >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ['Agências', agencies.length, Building2], ['Ativas', totals.active, CheckCircle2],
-            ['Clientes', totals.clients, BriefcaseBusiness], ['Usuários', totals.users, Users],
-          ].map(([label, value, Icon]) => (
-            <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
-              <div className="flex items-center gap-2 text-xs text-white/45"><Icon size={14}/>{label}</div>
-              <p className="mt-1 text-2xl font-bold text-white">{value}</p>
-            </div>
+      {embedded ? (
+        <SettingsSectionHeader
+          title="Agências"
+          description="Ambientes isolados, acessos, limites e identidade de cada operação."
+          actions={newAgencyButton}
+        >
+          {agencyStatItems.map((item) => (
+            <span key={item.label} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+              <item.icon size={13} className="text-[#0969ff]" />
+              <strong className="text-slate-900">{item.value}</strong> {item.label}
+            </span>
           ))}
-        </div>
-      </PageHero>
+        </SettingsSectionHeader>
+      ) : (
+        <PageHero
+          title="Agências"
+          description="Crie ambientes isolados com marca, acesso próprio, equipe e clientes separados."
+          actions={newAgencyButton}
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {agencyStatItems.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+                <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14}/>{item.label}</div>
+                <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </PageHero>
+      )}
 
       {success && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>}
       {error && !showForm && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}

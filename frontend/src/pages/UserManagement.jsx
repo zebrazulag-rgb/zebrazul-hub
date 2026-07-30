@@ -7,6 +7,7 @@ import { formChanged } from '../utils/formState.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import SettingsSectionHeader from '../components/SettingsSectionHeader.jsx';
 
 const ROLE_OPTIONS = [
   { value: 'operations_head', label: 'Head de Operação', icon: BriefcaseBusiness },
@@ -18,7 +19,7 @@ const ROLE_OPTIONS = [
 
 const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '', client_ids: [] };
 
-export default function UserManagement() {
+export default function UserManagement({ embedded = false }) {
   const { user: currentUser, refreshUser } = useAuth();
   const { agency } = useTenant();
   const [clients, setClients] = useState([]);
@@ -218,38 +219,55 @@ export default function UserManagement() {
     clients: users.filter((item) => item.role === 'client').length,
   };
 
+  const userStatItems = [
+    { label: 'Total', value: userStats.total, icon: UsersIcon },
+    { label: 'Administradores', value: userStats.admins, icon: Shield },
+    { label: 'Heads', value: userStats.heads, icon: BriefcaseBusiness },
+    { label: 'Equipe', value: userStats.team, icon: UsersIcon },
+    { label: 'Comercial', value: userStats.commercial, icon: Handshake },
+    { label: 'Clientes', value: userStats.clients, icon: Building2 },
+  ];
+
+  const newUserButton = (
+    <button
+      onClick={() => { setShowForm(true); setForm(EMPTY_FORM); clearMessages(); }}
+      className="btn-primary inline-flex items-center gap-2 text-sm"
+    >
+      <Plus size={17} /> Novo usuário
+    </button>
+  );
+
   return (
     <div className="space-y-6 min-w-0">
-      <PageHero
-        icon={UsersIcon}
-        eyebrow="Controle de acesso"
-        title="Usuários"
-        description="Gerencie equipe, clientes, senhas e permissões com clareza e segurança."
-        actions={
-          <button
-            onClick={() => { setShowForm(true); setForm(EMPTY_FORM); clearMessages(); }}
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl"
-          >
-            <Plus size={17} /> Novo usuário
-          </button>
-        }
-      >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-          {[
-            { label: 'Total', value: userStats.total, icon: UsersIcon, color: 'text-blue-300' },
-            { label: 'Administradores', value: userStats.admins, icon: Shield, color: 'text-violet-300' },
-            { label: 'Heads de Operação', value: userStats.heads, icon: BriefcaseBusiness, color: 'text-sky-300' },
-            { label: 'Equipe', value: userStats.team, icon: UsersIcon, color: 'text-cyan-300' },
-            { label: 'Equipe comercial', value: userStats.commercial, icon: Handshake, color: 'text-amber-300' },
-            { label: 'Clientes', value: userStats.clients, icon: Building2, color: 'text-emerald-300' },
-          ].map((item) => (
-            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
-              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
-              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
-            </div>
+      {embedded ? (
+        <SettingsSectionHeader
+          title="Usuários"
+          description="Equipe, clientes, senhas e permissões do ambiente."
+          actions={newUserButton}
+        >
+          {userStatItems.map((item) => (
+            <span key={item.label} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+              <item.icon size={13} className="text-[#0969ff]" />
+              <strong className="text-slate-900">{item.value}</strong> {item.label}
+            </span>
           ))}
-        </div>
-      </PageHero>
+        </SettingsSectionHeader>
+      ) : (
+        <PageHero
+          title="Usuários"
+          description="Gerencie equipe, clientes, senhas e permissões com clareza e segurança."
+          actions={newUserButton}
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            {userStatItems.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+                <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} /> {item.label}</div>
+                <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </PageHero>
+      )}
 
       {success && (
         <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">

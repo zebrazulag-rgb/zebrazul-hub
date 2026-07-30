@@ -15,6 +15,15 @@ import { formChanged } from '../utils/formState.js';
 
 export default function Feed() {
   const { user } = useAuth();
+
+  useEffect(() => {
+    document.documentElement.classList.add('zebrahub-feed-light');
+    document.body.classList.add('zebrahub-feed-light');
+    return () => {
+      document.documentElement.classList.remove('zebrahub-feed-light');
+      document.body.classList.remove('zebrahub-feed-light');
+    };
+  }, []);
   const { selectedClient } = useClientFilter();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeView = searchParams.get('view') === 'calendar' ? 'calendar' : 'grid';
@@ -347,7 +356,7 @@ export default function Feed() {
   }
 
   return (
-    <div className="space-y-6 min-w-0">
+    <div className="feed-page space-y-6 min-w-0">
       <div className="flex items-center justify-between flex-wrap gap-4 min-w-0">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-800">Feed</h1>
