@@ -7,6 +7,7 @@ const {
   OpenAIIntegrationError,
   consolidateDmeCandidates,
 } = require('../services/openaiDme');
+const { fillPlanningStage } = require('../services/openaiPlanning');
 
 const router = express.Router();
 router.use(authRequired);
@@ -270,6 +271,51 @@ router.post('/dme/consolidate', async (req, res) => {
     }
     console.error('[OPENAI DME] Erro inesperado:', error);
     return res.status(500).json({ error: 'Ocorreu um erro inesperado ao consolidar os DMEs com IA.' });
+  }
+});
+
+
+router.post('/planning/fill', async (req, res) => {
+  if (req.user?.is_commercial_team) {
+    return res.status(403).json({ error: 'A Equipe Comercial não possui acesso ao preenchimento estratégico com IA.' });
+  }
+
+  const clientId = Number(req.body.client_id);
+  if (!clientId) return res.status(400).json({ error: 'Selecione um cliente.' });
+  if (!canAccessClient(req.user, clientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+
+  const sourceLabel = clean(req.body.source_label, 180);
+  const targetLabel = clean(req.body.target_label, 180);
+  const sourceData = req.body.source_data && typeof req.body.source_data === 'object' ? req.body.source_data : null;
+  const targetData = req.body.target_data && typeof req.body.target_data === 'object' ? req.body.target_data : {};
+  const targetSchema = req.body.target_schema && typeof req.body.target_schema === 'object' ? req.body.target_schema : {};
+
+  if (!sourceLabel || !targetLabel) return res.status(400).json({ error: 'Informe as etapas de origem e destino.' });
+  if (!sourceData) return res.status(400).json({ error: 'A etapa anterior ainda não possui dados para usar como base.' });
+
+  const startedAt = Date.now();
+  try {
+    const result = await fillPlanningStage({
+      sourceLabel,
+      targetLabel,
+      sourceData,
+      targetData,
+      targetSchema,
+      sourcePeriodLabel: clean(req.body.source_period_label, 180),
+      targetPeriodLabel: clean(req.body.target_period_label, 180),
+    });
+    return res.json({
+      ...result,
+      processing_ms: Date.now() - startedAt,
+      created_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof OpenAIIntegrationError) {
+      console.error('[OPENAI PLANNING]', error.code, error.details || error.message);
+      return res.status(error.status || 502).json({ error: error.message, code: error.code });
+    }
+    console.error('[OPENAI PLANNING] Erro inesperado:', error);
+    return res.status(500).json({ error: 'Ocorreu um erro inesperado ao preencher o planejamento com IA.' });
   }
 });
 
