@@ -93,8 +93,9 @@ export default function PlanningDocumentEditor({
           : Promise.resolve(null),
       ]);
       const record = documentResponse.data.document || null;
+      const recordHasContent = hasPlanningContent(record?.data);
       let next = mergeData(record?.data || null);
-      if (!record && typeof defaultValues === 'function') defaultValues(next, context);
+      if (!recordHasContent && typeof defaultValues === 'function') defaultValues(next, context);
 
       const normalizedSource = previousResult?.data
         ? {
@@ -105,7 +106,7 @@ export default function PlanningDocumentEditor({
       setSourceStage(normalizedSource);
 
       let autoImported = false;
-      if (!record && normalizedSource && previousStage?.buildData) {
+      if (!recordHasContent && normalizedSource && previousStage?.buildData) {
         next = previousStage.buildData(next, normalizedSource.data, {
           ...context,
           ...(normalizedSource.context || {}),
@@ -391,6 +392,17 @@ export default function PlanningDocumentEditor({
       )}
     </div>
   );
+}
+
+function hasPlanningContent(data) {
+  if (!data || typeof data !== 'object') return false;
+  const fieldContent = Object.values(data.fields || {}).some((value) => String(value || '').trim());
+  const tableContent = Object.values(data.tables || {}).some((rows) => (
+    Array.isArray(rows) && rows.some((row) => (
+      Array.isArray(row) && row.some((value) => String(value || '').trim())
+    ))
+  ));
+  return fieldContent || tableContent;
 }
 
 function HeroMetric({ value, label }) {

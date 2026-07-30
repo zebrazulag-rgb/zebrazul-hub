@@ -89,7 +89,8 @@ export default function AnnualActionPlan() {
 
       let next = mergeAnnualPlanData(rawAnnual);
       let autoImported = false;
-      if (!rawAnnual) {
+      const annualHasContent = hasPlanningContent(rawAnnual);
+      if (!annualHasContent) {
         next.fields.company = selectedClientRecord?.name || '';
         next.fields.year_label = String(year);
         if (normalizedSource) {
