@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 
-const COLORS = ['#dbeafe', '#dcfce7', '#fef3c7', '#fce7f3', '#ede9fe', '#fee2e2', '#e2e8f0'];
+const COLORS = ['#2563eb', '#059669', '#d97706', '#db2777', '#7c3aed', '#dc2626', '#0891b2'];
 const WEEK_DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 function uid() {
@@ -301,7 +301,7 @@ export default function CalendarDraftBoardModal({ boardId, onClose, onSaved }) {
       </div>
     </div>
   ) : (
-    <div className="fixed inset-0 z-[120] flex h-[100dvh] w-screen flex-col overflow-hidden bg-slate-100 text-slate-900">
+    <div className="calendar-draft-board fixed inset-0 z-[120] flex h-[100dvh] w-screen flex-col overflow-hidden bg-slate-100 text-slate-900">
       <header className="z-30 flex min-h-16 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 py-2 shadow-sm md:px-5">
         <button onClick={closeBoard} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" title="Fechar">
           <X size={20} />
@@ -343,7 +343,7 @@ export default function CalendarDraftBoardModal({ boardId, onClose, onSaved }) {
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <main className="min-w-0 flex-1 overflow-auto p-3 md:p-5">
-          <section className="mx-auto min-w-[920px] max-w-[1500px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_16px_50px_rgba(15,23,42,0.08)]">
+          <section className="calendar-surface mx-auto min-w-[920px] max-w-[1500px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_16px_50px_rgba(15,23,42,0.08)]">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 md:px-6">
               <div className="flex items-center gap-2">
                 <button onClick={() => changeMonth(-1)} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><ChevronLeft size={19} /></button>
@@ -358,7 +358,7 @@ export default function CalendarDraftBoardModal({ boardId, onClose, onSaved }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+            <div className="calendar-weekdays grid grid-cols-7 border-b border-slate-200 bg-slate-50">
               {WEEK_DAYS.map((day) => <div key={day} className="border-r border-slate-200 px-3 py-2 text-center text-xs font-bold uppercase tracking-[0.12em] text-slate-500 last:border-r-0">{day}</div>)}
             </div>
 
@@ -370,7 +370,7 @@ export default function CalendarDraftBoardModal({ boardId, onClose, onSaved }) {
                     key={day.key}
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={() => handleDrop(day.key)}
-                    className={`group min-h-[145px] border-b border-r border-slate-200 p-2 transition last:border-r-0 ${!day.inMonth ? 'bg-slate-50/70' : 'bg-white'} ${index % 7 === 6 ? 'border-r-0' : ''}`}
+                    className={`calendar-day-cell group min-h-[145px] border-b border-r border-slate-200 p-2 transition last:border-r-0 ${!day.inMonth ? 'calendar-day-outside bg-slate-50/70' : 'calendar-day-current bg-white'} ${index % 7 === 6 ? 'border-r-0' : ''}`}
                   >
                     <div className="flex items-center justify-between">
                       <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${day.isToday ? 'bg-[#0969ff] text-white' : day.inMonth ? 'text-slate-700' : 'text-slate-300'}`}>{day.day}</span>
@@ -388,11 +388,11 @@ export default function CalendarDraftBoardModal({ boardId, onClose, onSaved }) {
                           }}
                           onDragEnd={() => setDraggedId(null)}
                           onClick={() => setSelectedId(entry.id)}
-                          className={`block w-full rounded-lg border px-2.5 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow ${selectedId === entry.id ? 'border-[#0969ff] ring-2 ring-blue-100' : 'border-black/5'}`}
+                          className={`calendar-entry-card block w-full rounded-lg border px-2.5 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow ${selectedId === entry.id ? 'border-white ring-2 ring-blue-300' : 'border-white/15'}`}
                           style={{ background: entry.color || COLORS[0], opacity: draggedId === entry.id ? 0.45 : 1 }}
                         >
-                          <span className={`block truncate text-xs font-bold text-slate-800 ${entry.status === 'done' ? 'line-through opacity-60' : ''}`}>{entry.title}</span>
-                          {(entry.category || entry.status !== 'draft') && <span className="mt-1 block truncate text-[10px] font-semibold text-slate-500">{entry.category || statusLabel(entry.status)}</span>}
+                          <span className={`calendar-entry-title block truncate text-xs font-bold text-white ${entry.status === 'done' ? 'line-through opacity-70' : ''}`}>{entry.title}</span>
+                          {(entry.category || entry.status !== 'draft') && <span className="calendar-entry-meta mt-1 block truncate text-[10px] font-semibold text-white/80">{entry.category || statusLabel(entry.status)}</span>}
                         </button>
                       ))}
                       {dayEntries.length > 5 && <button onClick={() => setSelectedId(dayEntries[5].id)} className="w-full rounded-lg bg-slate-100 px-2 py-1.5 text-left text-[10px] font-bold text-slate-500">+ {dayEntries.length - 5} itens</button>}
@@ -405,7 +405,7 @@ export default function CalendarDraftBoardModal({ boardId, onClose, onSaved }) {
         </main>
 
         {selectedEntry && (
-          <aside className="z-20 w-[340px] shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-[-12px_0_35px_rgba(15,23,42,0.06)]">
+          <aside className="calendar-entry-editor z-20 w-[340px] shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-[-12px_0_35px_rgba(15,23,42,0.06)]">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#0969ff]">Item do calendário</p>

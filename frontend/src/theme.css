@@ -415,3 +415,127 @@ html.zebrahub-feed-light .feed-page .input-field {
   background: #fff !important;
   color: #1e293b !important;
 }
+
+
+/* Feed: acompanha o tema global; apenas o simulador do Instagram permanece claro. */
+.feed-page {
+  color: var(--zh-text);
+}
+
+html[data-zebrahub-theme="dark"] .feed-page {
+  background: transparent !important;
+}
+
+.instagram-preview-stage {
+  min-width: 0;
+  padding: 8px 0 28px;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup,
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="bg-white"] {
+  color-scheme: light;
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="bg-slate-50"],
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="bg-slate-100"],
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="bg-slate-200"] {
+  background: #f1f5f9 !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="bg-[#ececec]"] {
+  background: #ececec !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-black"],
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-slate-950"],
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-slate-900"],
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-slate-800"],
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-slate-700"] {
+  color: #0f172a !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-slate-600"] {
+  color: #475569 !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-slate-500"] {
+  color: #64748b !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-slate-400"] {
+  color: #94a3b8 !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="border-slate-100"],
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="border-slate-200"] {
+  border-color: #e2e8f0 !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup svg {
+  color: #0f172a;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup a,
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup a svg {
+  color: #244f9c !important;
+}
+
+html[data-zebrahub-theme="dark"] .instagram-profile-mockup [class~="text-white"] {
+  color: #ffffff !important;
+}
+
+/* Calendário de rascunho: contraste reforçado no modo noturno. */
+html[data-zebrahub-theme="dark"] .calendar-draft-board {
+  background: #07090d !important;
+  color: #f8fafc !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-draft-board > header,
+html[data-zebrahub-theme="dark"] .calendar-surface,
+html[data-zebrahub-theme="dark"] .calendar-entry-editor {
+  border-color: #263244 !important;
+  background: #0d121a !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-weekdays {
+  border-color: #2b3748 !important;
+  background: #131b27 !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-weekdays > div {
+  border-color: #2b3748 !important;
+  color: #d7e0ec !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-day-cell {
+  border-color: #263244 !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-day-current {
+  background: #0e151f !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-day-outside {
+  background: #090d13 !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-day-cell:hover {
+  background: #121c2a !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-entry-card {
+  color: #ffffff !important;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.24) !important;
+}
+
+html[data-zebrahub-theme="dark"] .calendar-entry-title,
+html[data-zebrahub-theme="dark"] .calendar-entry-meta {
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+html[data-zebrahub-theme="dark"] .calendar-entry-meta {
+  opacity: 0.88;
+}

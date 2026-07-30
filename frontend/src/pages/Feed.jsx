@@ -16,14 +16,6 @@ import { formChanged } from '../utils/formState.js';
 export default function Feed() {
   const { user } = useAuth();
 
-  useEffect(() => {
-    document.documentElement.classList.add('zebrahub-feed-light');
-    document.body.classList.add('zebrahub-feed-light');
-    return () => {
-      document.documentElement.classList.remove('zebrahub-feed-light');
-      document.body.classList.remove('zebrahub-feed-light');
-    };
-  }, []);
   const { selectedClient } = useClientFilter();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeView = searchParams.get('view') === 'calendar' ? 'calendar' : 'grid';
@@ -422,7 +414,7 @@ export default function Feed() {
       )}
 
       {clientId && activeView === 'grid' && (
-        <div className="flex justify-center">
+        <div className="instagram-preview-stage flex justify-center">
           <InstagramProfileMockup
             client={currentClient}
             posts={posts}

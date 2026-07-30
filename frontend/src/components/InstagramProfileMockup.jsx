@@ -14,7 +14,7 @@ export default function InstagramProfileMockup({ client, posts, onPostClick, edi
   const profileLink = client?.instagram_link || '';
 
   return (
-    <div className="w-full max-w-[620px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl">
+    <div className="instagram-profile-mockup w-full max-w-[620px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl">
       <div className="flex items-center justify-between px-5 py-4">
         <ArrowLeft size={28} strokeWidth={2.2} />
         <p className="min-w-0 flex-1 truncate px-4 text-center text-[23px] font-bold text-black">{username}</p>
