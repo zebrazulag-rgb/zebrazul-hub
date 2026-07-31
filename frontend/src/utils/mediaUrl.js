@@ -1,6 +1,7 @@
 const configuredApiBase = String(import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const configuredMediaOrigin = String(import.meta.env.VITE_MEDIA_ORIGIN || '').replace(/\/$/, '');
-const DEFAULT_BACKEND_ORIGIN = 'https://zebrazul-hub-production.up.railway.app';
+const LEGACY_BACKEND_ORIGIN = 'https://zebrazul-hub-production.up.railway.app';
+const MEDIA_PATH_TOKEN = '/api/media/';
 
 function originFrom(value) {
   if (!/^https?:\/\//i.test(value)) return '';
@@ -11,16 +12,20 @@ function originFrom(value) {
   }
 }
 
-function getMediaOrigin() {
+function browserOrigin() {
+  return typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : '';
+}
+
+function getPrimaryMediaOrigin() {
   return (
     originFrom(configuredMediaOrigin) ||
     originFrom(configuredApiBase) ||
-    DEFAULT_BACKEND_ORIGIN
+    browserOrigin() ||
+    LEGACY_BACKEND_ORIGIN
   );
 }
-
-const mediaOrigin = getMediaOrigin();
-const MEDIA_PATH_TOKEN = '/api/media/';
 
 function mediaPathFrom(value) {
   if (typeof value !== 'string') return '';
@@ -36,10 +41,23 @@ function mediaPathFrom(value) {
   return '';
 }
 
-export function resolveMediaUrl(value) {
+export function mediaUrlCandidates(value) {
   const mediaPath = mediaPathFrom(value);
-  if (!mediaPath) return value;
-  return `${mediaOrigin}${mediaPath}`;
+  if (!mediaPath) return value ? [value] : [];
+
+  const origins = [
+    getPrimaryMediaOrigin(),
+    browserOrigin(),
+    originFrom(configuredApiBase),
+    originFrom(configuredMediaOrigin),
+    LEGACY_BACKEND_ORIGIN,
+  ].filter(Boolean);
+
+  return [...new Set(origins.map((origin) => `${origin}${mediaPath}`))];
+}
+
+export function resolveMediaUrl(value) {
+  return mediaUrlCandidates(value)[0] || value;
 }
 
 function resolveSrcSet(value) {
@@ -87,6 +105,10 @@ function rewriteElementMedia(element) {
 
   const attributes = ['src', 'poster'];
   for (const attribute of attributes) {
+    // While an image/video is trying a fallback origin, do not force it back
+    // to the primary URL through the MutationObserver.
+    if (element.dataset?.mediaCandidateIndex && (attribute === 'src' || attribute === 'poster')) continue;
+
     const current = element.getAttribute(attribute);
     const resolved = resolveMediaUrl(current);
     if (current && resolved && resolved !== current) {
@@ -105,10 +127,26 @@ function rewriteElementMedia(element) {
   }
 }
 
+function tryNextMediaCandidate(target) {
+  const current = target.getAttribute('src') || target.currentSrc || target.src;
+  const original = target.dataset.mediaOriginal || current;
+  const candidates = mediaUrlCandidates(original);
+  if (candidates.length <= 1) return false;
+
+  target.dataset.mediaOriginal = original;
+  const currentIndex = Math.max(0, candidates.indexOf(current));
+  const nextIndex = Number(target.dataset.mediaCandidateIndex || currentIndex) + 1;
+  if (nextIndex >= candidates.length) return false;
+
+  target.dataset.mediaCandidateIndex = String(nextIndex);
+  target.src = candidates[nextIndex];
+  return true;
+}
+
 /**
- * Proteção global para componentes antigos que ainda entregam URLs relativas.
- * Assim imagens, vídeos e posters funcionam mesmo quando algum componente não
- * passou pelo interceptor do Axios.
+ * Compatibility layer for old components and deployments. It rewrites managed
+ * media URLs and, on network failure, tries the current API origin, the app
+ * proxy and the legacy Railway origin before giving up.
  */
 export function installMediaDomFallback() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -147,14 +185,7 @@ export function installMediaDomFallback() {
     (event) => {
       const target = event.target;
       if (!(target instanceof HTMLImageElement) && !(target instanceof HTMLVideoElement)) return;
-      if (target.dataset.mediaRetry === '1') return;
-
-      const current = target.getAttribute('src') || target.currentSrc || target.src;
-      const resolved = resolveMediaUrl(current);
-      if (!resolved || resolved === current) return;
-
-      target.dataset.mediaRetry = '1';
-      target.src = resolved;
+      tryNextMediaCandidate(target);
     },
     true
   );
