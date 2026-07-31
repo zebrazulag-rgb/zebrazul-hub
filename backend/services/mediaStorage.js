@@ -138,29 +138,43 @@ function candidateMediaNames(requestedName) {
   const safe = safeMediaName(requestedName);
 
   // A primeira migração gerou identificadores legados com comprimentos
-  // diferentes (incluindo 50 caracteres) e, em alguns casos, sem extensão.
-  // Mantemos a validação estrita em hexadecimal para impedir path traversal.
+  // diferentes e, em alguns casos, sem extensão. O navegador de volume do
+  // Railway também encurta visualmente nomes longos para caber no terminal.
+  // Aceitamos somente prefixos hexadecimais longos para manter a rota segura.
   if (!/^[a-f0-9]{32,128}(?:\.[a-z0-9]{1,12})?$/i.test(safe)) return [];
 
   const safeLower = safe.toLowerCase();
   const requestedStem = mediaStem(safeLower);
-  const candidates = [safe, requestedStem];
+  const exactCandidates = [safe, requestedStem];
+  const prefixMatches = [];
 
   try {
     for (const entry of fs.readdirSync(mediaStorageDirectory)) {
       const normalized = String(entry).toLowerCase();
       const entryStem = mediaStem(normalized);
+
       if (
         normalized === safeLower ||
         normalized === requestedStem ||
         entryStem === requestedStem
       ) {
-        candidates.push(entry);
+        exactCandidates.push(entry);
+        continue;
+      }
+
+      // Resolve URLs antigas ou nomes copiados da interface do Railway que
+      // contenham apenas o começo do hash. Com 32+ caracteres, uma colisão é
+      // extremamente improvável; ainda assim, só aceitamos quando há um único
+      // arquivo correspondente.
+      if (requestedStem.length >= 32 && entryStem.startsWith(requestedStem)) {
+        prefixMatches.push(entry);
       }
     }
   } catch {}
 
-  return [...new Set(candidates.map((value) => path.basename(value)))];
+  const uniqueExact = [...new Set(exactCandidates.map((value) => path.basename(value)))];
+  if (prefixMatches.length === 1) uniqueExact.push(path.basename(prefixMatches[0]));
+  return [...new Set(uniqueExact)];
 }
 
 function mediaFileFromName(filename) {
