@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/api/media/:path*",
+      "destination": "https://zebrazul-hub-production.up.railway.app/api/media/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -6,10 +6,12 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { ClientFilterProvider } from './context/ClientFilterContext.jsx';
 import { TenantProvider } from './context/TenantContext.jsx';
 import { initializeTheme } from './utils/theme.js';
+import { installMediaDomFallback } from './utils/mediaUrl.js';
 import './index.css';
 import './theme.css';
 
 initializeTheme();
+installMediaDomFallback();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

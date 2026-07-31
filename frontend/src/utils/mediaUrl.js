@@ -1,23 +1,58 @@
 const configuredApiBase = String(import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const configuredMediaOrigin = String(import.meta.env.VITE_MEDIA_ORIGIN || '').replace(/\/$/, '');
+const DEFAULT_BACKEND_ORIGIN = 'https://zebrazul-hub-production.up.railway.app';
 
-function backendOrigin() {
-  if (/^https?:\/\//i.test(configuredApiBase)) {
-    try {
-      const url = new URL(configuredApiBase);
-      return url.origin;
-    } catch {
-      return '';
-    }
+function originFrom(value) {
+  if (!/^https?:\/\//i.test(value)) return '';
+  try {
+    return new URL(value).origin;
+  } catch {
+    return '';
   }
+}
+
+function getMediaOrigin() {
+  return (
+    originFrom(configuredMediaOrigin) ||
+    originFrom(configuredApiBase) ||
+    DEFAULT_BACKEND_ORIGIN
+  );
+}
+
+const mediaOrigin = getMediaOrigin();
+const MEDIA_PATH_TOKEN = '/api/media/';
+
+function mediaPathFrom(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || /^(data:|blob:)/i.test(trimmed)) return '';
+
+  const tokenIndex = trimmed.indexOf(MEDIA_PATH_TOKEN);
+  if (tokenIndex >= 0) return trimmed.slice(tokenIndex);
+
+  if (trimmed.startsWith('api/media/')) return `/${trimmed}`;
+  if (trimmed.startsWith('media/')) return `/api/${trimmed}`;
+
   return '';
 }
 
-const apiOrigin = backendOrigin();
-
 export function resolveMediaUrl(value) {
-  if (typeof value !== 'string' || !value) return value;
-  if (!apiOrigin || !value.includes('/api/media/')) return value;
-  return value.replaceAll('/api/media/', `${apiOrigin}/api/media/`);
+  const mediaPath = mediaPathFrom(value);
+  if (!mediaPath) return value;
+  return `${mediaOrigin}${mediaPath}`;
+}
+
+function resolveSrcSet(value) {
+  if (typeof value !== 'string' || !value.trim()) return value;
+  return value
+    .split(',')
+    .map((entry) => {
+      const parts = entry.trim().split(/\s+/);
+      if (!parts[0]) return entry;
+      parts[0] = resolveMediaUrl(parts[0]);
+      return parts.join(' ');
+    })
+    .join(', ');
 }
 
 export function resolveMediaTree(value, seen = new WeakSet()) {
@@ -45,4 +80,82 @@ export function attachMediaResolver(client) {
     return response;
   });
   return client;
+}
+
+function rewriteElementMedia(element) {
+  if (!(element instanceof Element)) return;
+
+  const attributes = ['src', 'poster'];
+  for (const attribute of attributes) {
+    const current = element.getAttribute(attribute);
+    const resolved = resolveMediaUrl(current);
+    if (current && resolved && resolved !== current) {
+      element.setAttribute(attribute, resolved);
+    }
+  }
+
+  const srcSet = element.getAttribute('srcset');
+  const resolvedSrcSet = resolveSrcSet(srcSet);
+  if (srcSet && resolvedSrcSet && resolvedSrcSet !== srcSet) {
+    element.setAttribute('srcset', resolvedSrcSet);
+  }
+
+  for (const child of element.querySelectorAll?.('[src], [poster], [srcset]') || []) {
+    rewriteElementMedia(child);
+  }
+}
+
+/**
+ * Proteção global para componentes antigos que ainda entregam URLs relativas.
+ * Assim imagens, vídeos e posters funcionam mesmo quando algum componente não
+ * passou pelo interceptor do Axios.
+ */
+export function installMediaDomFallback() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.__zebrahubMediaFallbackInstalled) return;
+  window.__zebrahubMediaFallbackInstalled = true;
+
+  const rewriteDocument = () => rewriteElementMedia(document.documentElement);
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', rewriteDocument, { once: true });
+  } else {
+    rewriteDocument();
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes') {
+        rewriteElementMedia(mutation.target);
+        continue;
+      }
+      for (const node of mutation.addedNodes) {
+        if (node instanceof Element) rewriteElementMedia(node);
+      }
+    }
+  });
+
+  observer.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['src', 'poster', 'srcset'],
+  });
+
+  document.addEventListener(
+    'error',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLImageElement) && !(target instanceof HTMLVideoElement)) return;
+      if (target.dataset.mediaRetry === '1') return;
+
+      const current = target.getAttribute('src') || target.currentSrc || target.src;
+      const resolved = resolveMediaUrl(current);
+      if (!resolved || resolved === current) return;
+
+      target.dataset.mediaRetry = '1';
+      target.src = resolved;
+    },
+    true
+  );
 }
