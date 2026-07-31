@@ -120,25 +120,43 @@ function externalizeGallery(value, fallbackData = null, fallbackMime = null) {
 }
 
 function safeMediaName(filename) {
-  const decoded = decodeURIComponent(String(filename || ''));
+  let decoded;
+  try {
+    decoded = decodeURIComponent(String(filename || ''));
+  } catch {
+    decoded = String(filename || '');
+  }
   return path.basename(decoded).trim();
+}
+
+function mediaStem(filename) {
+  const extension = path.extname(filename);
+  return extension ? filename.slice(0, -extension.length) : filename;
 }
 
 function candidateMediaNames(requestedName) {
   const safe = safeMediaName(requestedName);
-  if (!/^[a-f0-9]{64}(?:\.[a-z0-9]+)?$/i.test(safe)) return [];
 
-  const hash = safe.slice(0, 64).toLowerCase();
-  const candidates = [safe];
+  // A primeira migração gerou identificadores legados com comprimentos
+  // diferentes (incluindo 50 caracteres) e, em alguns casos, sem extensão.
+  // Mantemos a validação estrita em hexadecimal para impedir path traversal.
+  if (!/^[a-f0-9]{32,128}(?:\.[a-z0-9]{1,12})?$/i.test(safe)) return [];
 
-  // Compatibilidade com a primeira migração, que gravou alguns arquivos apenas
-  // com o hash, sem extensão, enquanto o banco podia conter hash.extensão.
-  candidates.push(hash);
+  const safeLower = safe.toLowerCase();
+  const requestedStem = mediaStem(safeLower);
+  const candidates = [safe, requestedStem];
 
   try {
     for (const entry of fs.readdirSync(mediaStorageDirectory)) {
       const normalized = String(entry).toLowerCase();
-      if (normalized === hash || normalized.startsWith(`${hash}.`)) candidates.push(entry);
+      const entryStem = mediaStem(normalized);
+      if (
+        normalized === safeLower ||
+        normalized === requestedStem ||
+        entryStem === requestedStem
+      ) {
+        candidates.push(entry);
+      }
     }
   } catch {}
 
@@ -159,25 +177,28 @@ function detectMimeFromFile(filePath) {
   const extension = path.extname(filePath).slice(1).toLowerCase();
   if (extension && EXTENSION_MIMES[extension]) return EXTENSION_MIMES[extension];
 
-  let header;
+  let descriptor;
   try {
-    const descriptor = fs.openSync(filePath, 'r');
-    header = Buffer.alloc(32);
+    descriptor = fs.openSync(filePath, 'r');
+    const header = Buffer.alloc(64);
     fs.readSync(descriptor, header, 0, header.length, 0);
-    fs.closeSync(descriptor);
+
+    if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return 'image/jpeg';
+    if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+    if (header.subarray(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
+    if (header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+    if (header.subarray(0, 4).toString('ascii') === '%PDF') return 'application/pdf';
+    if (header.subarray(4, 8).toString('ascii') === 'ftyp') return 'video/mp4';
+    if (header.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return 'video/webm';
+    const text = header.toString('utf8').trimStart().toLowerCase();
+    if (text.startsWith('<svg') || text.startsWith('<?xml')) return 'image/svg+xml';
   } catch {
     return 'application/octet-stream';
+  } finally {
+    if (descriptor !== undefined) {
+      try { fs.closeSync(descriptor); } catch {}
+    }
   }
-
-  if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return 'image/jpeg';
-  if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
-  if (header.subarray(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
-  if (header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
-  if (header.subarray(0, 4).toString('ascii') === '%PDF') return 'application/pdf';
-  if (header.subarray(4, 8).toString('ascii') === 'ftyp') return 'video/mp4';
-  if (header.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return 'video/webm';
-  const text = header.toString('utf8').trimStart().toLowerCase();
-  if (text.startsWith('<svg') || text.startsWith('<?xml')) return 'image/svg+xml';
   return 'application/octet-stream';
 }
 
