@@ -28,6 +28,8 @@ const materialBoardRoutes = require('./routes/materialBoards');
 const publicMaterialRoutes = require('./routes/publicMaterials');
 const videoReviewRoutes = require('./routes/videoReviews');
 const publicVideoReviewRoutes = require('./routes/publicVideoReviews');
+const mediaRoutes = require('./routes/media');
+const { runMediaMigration } = require('./services/mediaMigration');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
@@ -53,6 +55,8 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
+
+app.use('/api/media', mediaRoutes);
 
 app.get('/api/health', (req, res) => {
   const health = getHealthStatus();
@@ -165,6 +169,15 @@ app.listen(PORT, async () => {
   console.log(`Armazenamento seguro: ${health.storage.safe ? 'SIM' : 'NAO'}`);
   console.log(`Diretorio de backups: ${health.backup.directory}`);
   console.log('==============================================');
+
+  if (String(process.env.MEDIA_AUTO_MIGRATE || 'true').toLowerCase() === 'true') {
+    try {
+      const result = runMediaMigration({ vacuum: String(process.env.MEDIA_MIGRATION_VACUUM || 'true').toLowerCase() === 'true' });
+      console.log('[MEDIA] Migracao de midias:', result);
+    } catch (error) {
+      console.error('[MEDIA] Falha na migracao de midias:', error);
+    }
+  }
 
   if (String(process.env.AUTO_BACKUP_ON_START || 'true').toLowerCase() === 'true') {
     await runAutomaticBackup('startup');

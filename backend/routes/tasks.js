@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
+const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
@@ -150,6 +151,11 @@ function parseGallery(value) {
   } catch {
     return [];
   }
+}
+
+function serializeExternalGallery(value, fallbackData = null, fallbackMime = null) {
+  const gallery = externalizeGallery(value, fallbackData, fallbackMime);
+  return gallery.length ? JSON.stringify(gallery) : null;
 }
 
 function addTaskRecordToFeed(task, userId, agencyId) {
@@ -555,10 +561,10 @@ router.post('/', (req, res) => {
     `).run(
       req.user.agency_id, finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
       content_type || null, caption || null, video_link || null,
-      Array.isArray(media_gallery) ? JSON.stringify(media_gallery) : null,
+      serializeExternalGallery(media_gallery),
       due_date || null, req.user.role === 'client' ? 'pending' : (status || 'pending'),
       req.user.role === 'client' || parent_task_id ? 0 : (Number(is_featured) === 1 ? 1 : 0),
-      attachment_data || null, attachment_mime || null, attachment_filename || null
+      persistMedia(attachment_data, attachment_mime || 'application/octet-stream'), attachment_mime || null, attachment_filename || null
     );
     setAssignees(info.lastInsertRowid, finalAssigneeIds);
     return info.lastInsertRowid;
@@ -609,7 +615,9 @@ router.put('/:id', (req, res) => {
     if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
     updates.push(`${field} = ?`);
     if (field === 'media_gallery') {
-      values.push(Array.isArray(req.body.media_gallery) ? JSON.stringify(req.body.media_gallery) : null);
+      values.push(serializeExternalGallery(req.body.media_gallery));
+    } else if (field === 'attachment_data') {
+      values.push(persistMedia(req.body.attachment_data, req.body.attachment_mime || existing.attachment_mime || 'application/octet-stream'));
     } else if (field === 'title') {
       values.push(String(req.body.title).trim());
     } else if (field === 'client_id') {

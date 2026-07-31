@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
+const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
@@ -45,7 +46,7 @@ function parseGallery(value, fallbackData = null, fallbackMime = null) {
 }
 
 function serializeGallery(value, fallbackData = null, fallbackMime = null) {
-  const gallery = parseGallery(value, fallbackData, fallbackMime);
+  const gallery = externalizeGallery(value, fallbackData, fallbackMime);
   return gallery.length ? JSON.stringify(gallery) : null;
 }
 
@@ -145,7 +146,7 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
   ).run(
     req.user.agency_id, client_id, req.user.id, title, caption || '', content_type || 'feed',
     JSON.stringify(platforms || []), media_url || null,
-    media_data || media_gallery?.[0]?.data || null,
+    persistMedia(media_data || media_gallery?.[0]?.data || null, media_mime || media_gallery?.[0]?.mime || 'image/jpeg'),
     media_mime || media_gallery?.[0]?.mime || null,
     serializeGallery(media_gallery, media_data, media_mime),
     scheduled_at || null, status || 'draft'
@@ -259,6 +260,8 @@ router.put('/:id', (req, res) => {
       values.push(JSON.stringify(req.body.platforms || []));
     } else if (field === 'media_gallery') {
       values.push(serializeGallery(req.body.media_gallery, req.body.media_data, req.body.media_mime));
+    } else if (field === 'media_data') {
+      values.push(persistMedia(req.body.media_data, req.body.media_mime || post.media_mime || 'image/jpeg'));
     } else if (field === 'title') {
       values.push(String(req.body.title).trim());
     } else {
@@ -267,7 +270,7 @@ router.put('/:id', (req, res) => {
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'media_gallery')) {
-    const gallery = parseGallery(req.body.media_gallery);
+    const gallery = externalizeGallery(req.body.media_gallery, req.body.media_data, req.body.media_mime);
     const first = gallery[0] || null;
     if (!Object.prototype.hasOwnProperty.call(req.body, 'media_data')) {
       updates.push('media_data = ?');

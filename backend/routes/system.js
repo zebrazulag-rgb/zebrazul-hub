@@ -6,6 +6,8 @@ const { authRequired, requirePlatformOwner } = require('../middleware/auth');
 const { createBackup, listBackups, findBackup, verifyBackup } = require('../db/backup');
 const { getHealthStatus } = require('../db/health');
 const { databasePath, backupDirectory, persistenceConfigured, storageSafe } = require('../db/config');
+const { mediaStorageDirectory, directorySize } = require('../services/mediaStorage');
+const { runMediaMigration } = require('../services/mediaMigration');
 
 const router = express.Router();
 
@@ -26,6 +28,36 @@ router.get('/status', (req, res) => {
     installation_id: installation?.value || null,
     last_backup: health.backup.last,
   });
+});
+
+
+router.get('/media-storage', (req, res) => {
+  const mediaRows = db.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM posts WHERE media_data LIKE '/api/media/%') AS post_media,
+      (SELECT COUNT(*) FROM tasks WHERE attachment_data LIKE '/api/media/%') AS task_attachments,
+      (SELECT COUNT(*) FROM clients WHERE avatar_data LIKE '/api/media/%') AS client_avatars,
+      (SELECT COUNT(*) FROM users WHERE avatar_data LIKE '/api/media/%') AS user_avatars,
+      (SELECT COUNT(*) FROM agencies WHERE logo_data LIKE '/api/media/%') AS agency_logos
+  `).get();
+  res.json({
+    directory: mediaStorageDirectory,
+    size_bytes: directorySize(mediaStorageDirectory),
+    references: mediaRows,
+  });
+});
+
+router.post('/media-migrate', (req, res) => {
+  try {
+    const result = runMediaMigration({
+      force: Boolean(req.body?.force),
+      vacuum: req.body?.vacuum !== false,
+    });
+    res.json({ ok: true, result });
+  } catch (error) {
+    console.error('[MEDIA] Erro na migracao manual:', error);
+    res.status(500).json({ error: 'Nao foi possivel migrar as midias', details: error.message });
+  }
 });
 
 router.get('/backups', (req, res) => {

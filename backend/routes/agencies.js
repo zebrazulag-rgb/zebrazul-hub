@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { authRequired, requirePlatformOwner } = require('../middleware/auth');
 const { normalizeSlug, publicAgency } = require('../services/tenant');
 
+const { persistMedia } = require('../services/mediaStorage');
 const router = express.Router();
 router.use(authRequired, requirePlatformOwner);
 
@@ -90,7 +91,7 @@ router.put('/:id', (req, res) => {
   for (const field of allowed) {
     if (req.body[field] !== undefined) {
       updates.push(`${field} = ?`);
-      values.push(['max_clients', 'max_users'].includes(field) ? Number(req.body[field]) : req.body[field]);
+      values.push(['max_clients', 'max_users'].includes(field) ? Number(req.body[field]) : field === 'logo_data' ? persistMedia(req.body[field], req.body.logo_mime || current.logo_mime || 'image/png') : req.body[field]);
     }
   }
   if (req.body.slug !== undefined) {

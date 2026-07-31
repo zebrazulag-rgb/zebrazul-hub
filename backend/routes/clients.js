@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
+const { persistMedia } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
@@ -115,7 +116,7 @@ router.put('/:id', requireRole('admin', 'team'), (req, res) => {
   for (const field of allowedFields) {
     if (Object.prototype.hasOwnProperty.call(req.body, field)) {
       updates.push(`${field} = ?`);
-      values.push(field === 'name' ? String(req.body[field]).trim() : (req.body[field] || null));
+      values.push(field === 'name' ? String(req.body[field]).trim() : field === 'avatar_data' ? persistMedia(req.body[field], req.body.avatar_mime || client.avatar_mime || 'image/jpeg') : (req.body[field] || null));
     }
   }
   const accounts = normalizeSocialAccounts(req.body.social_accounts ?? req.body.socials);

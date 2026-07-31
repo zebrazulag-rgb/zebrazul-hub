@@ -10,6 +10,7 @@ const {
 } = require('../middleware/auth');
 const { resolveAgency } = require('../services/tenant');
 
+const { persistMedia } = require('../services/mediaStorage');
 const router = express.Router();
 const VALID_ROLES = ['admin', 'team', 'operations_head', 'commercial_team', 'client'];
 
@@ -225,7 +226,7 @@ router.put('/me', authRequired, (req, res) => {
     UPDATE users SET name = COALESCE(?, name), avatar_data = COALESCE(?, avatar_data),
       avatar_mime = COALESCE(?, avatar_mime)
     WHERE id = ? AND agency_id = ?
-  `).run(name ? String(name).trim() : null, avatarData, avatarMime, req.user.id, req.user.agency_id);
+  `).run(name ? String(name).trim() : null, persistMedia(avatarData, avatarMime || 'image/jpeg'), avatarMime, req.user.id, req.user.agency_id);
 
   const user = db.prepare(`
     SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
@@ -276,7 +277,7 @@ router.put('/users/:id', authRequired, (req, res) => {
     nextPasswordHash = bcrypt.hashSync(req.body.password, 10);
   }
 
-  const nextAvatarData = req.body.avatar_data === undefined ? existing.avatar_data : req.body.avatar_data;
+  const nextAvatarData = req.body.avatar_data === undefined ? existing.avatar_data : persistMedia(req.body.avatar_data, req.body.avatar_mime || existing.avatar_mime || 'image/jpeg');
   const nextAvatarMime = req.body.avatar_mime === undefined ? existing.avatar_mime : req.body.avatar_mime;
 
   try {

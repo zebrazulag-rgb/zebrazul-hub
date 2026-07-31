@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authRequired } = require('../middleware/auth');
 const { resolveAgency, publicAgency } = require('../services/tenant');
+const { persistMedia } = require('../services/mediaStorage');
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.put('/me', authRequired, (req, res) => {
   for (const field of allowed) {
     if (req.body[field] !== undefined) {
       updates.push(`${field} = ?`);
-      values.push(req.body[field] === null ? null : String(req.body[field]).trim());
+      values.push(req.body[field] === null ? null : field === 'logo_data' ? persistMedia(String(req.body[field]).trim(), req.body.logo_mime || current.logo_mime || 'image/png') : String(req.body[field]).trim());
     }
   }
 
