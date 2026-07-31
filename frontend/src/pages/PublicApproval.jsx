@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react';
 import axios from 'axios';
+import { attachMediaResolver } from '../utils/mediaUrl';
 import InstagramPreview from '../components/InstagramPreview.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 
-const publicApi = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
+const publicApi = attachMediaResolver(axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' }));
 
 export default function PublicApproval() {
   const { token } = useParams();

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getTenantSlug } from './tenant';
+import { resolveMediaTree } from './utils/mediaUrl';
 
 // Em desenvolvimento usa o proxy do Vite (/api). Em produção, defina
 // VITE_API_URL com a URL pública do backend (ex: https://api.seudominio.com.br/api)
@@ -15,7 +16,10 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    res.data = resolveMediaTree(res.data);
+    return res;
+  },
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('zebrazul_token');

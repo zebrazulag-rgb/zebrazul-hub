@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { attachMediaResolver } from '../utils/mediaUrl';
 import InstagramPreview from '../components/InstagramPreview.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
-const publicApi = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
+const publicApi = attachMediaResolver(axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' }));
 
 export default function PublicFeed() {
   const { token } = useParams();

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { attachMediaResolver } from '../utils/mediaUrl';
 import {
   ArrowUp,
   Building2,
@@ -32,7 +33,7 @@ import {
   RECOMMENDATIONS,
 } from '../diagnosticConfig.js';
 
-const publicApi = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
+const publicApi = attachMediaResolver(axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' }));
 
 export default function PublicDiagnostic() {
   const { token } = useParams();
