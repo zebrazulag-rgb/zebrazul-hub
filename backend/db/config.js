@@ -1,5 +1,6 @@
 const os = require('os');
 const path = require('path');
+const { normalizeEnvironmentPath, resolveEnvironmentPath } = require('../utils/environmentPath');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
 const backendRoot = path.resolve(__dirname, '..');
@@ -17,29 +18,30 @@ const nodeEnvironment = String(process.env.NODE_ENV || 'production').toLowerCase
 const isProduction = nodeEnvironment === 'production';
 const allowUnsafeStorage = String(process.env.ALLOW_UNSAFE_STORAGE || 'false').toLowerCase() === 'true';
 
-const persistentRoot =
+const persistentRoot = normalizeEnvironmentPath(
   process.env.PERSISTENT_DATA_DIR ||
   process.env.RENDER_DISK_MOUNT_PATH ||
   process.env.RAILWAY_VOLUME_MOUNT_PATH ||
-  '';
+  ''
+);
 
-const persistenceConfigured = Boolean(process.env.DATABASE_PATH || persistentRoot);
+const persistenceConfigured = Boolean(normalizeEnvironmentPath(process.env.DATABASE_PATH) || persistentRoot);
 
-const configuredDatabasePath = process.env.DATABASE_PATH
-  ? path.resolve(process.env.DATABASE_PATH)
+const configuredDatabasePath = normalizeEnvironmentPath(process.env.DATABASE_PATH)
+  ? resolveEnvironmentPath(process.env.DATABASE_PATH)
   : persistentRoot
     ? path.resolve(persistentRoot, 'zebrazul_hub.sqlite')
     : legacyDatabasePath;
 
-const backupDirectory = process.env.BACKUP_DIR
-  ? path.resolve(process.env.BACKUP_DIR)
+const backupDirectory = normalizeEnvironmentPath(process.env.BACKUP_DIR)
+  ? resolveEnvironmentPath(process.env.BACKUP_DIR)
   : path.join(path.dirname(configuredDatabasePath), 'backups');
 
 // Os vídeos ficam fora do SQLite e, por padrão, usam o mesmo volume persistente
 // do banco. VIDEO_STORAGE_DIR pode apontar para outro disco/volume quando a
 // biblioteca crescer.
-const videoStorageDirectory = process.env.VIDEO_STORAGE_DIR
-  ? path.resolve(process.env.VIDEO_STORAGE_DIR)
+const videoStorageDirectory = normalizeEnvironmentPath(process.env.VIDEO_STORAGE_DIR)
+  ? resolveEnvironmentPath(process.env.VIDEO_STORAGE_DIR)
   : path.join(path.dirname(configuredDatabasePath), 'video-reviews');
 
 function isInside(childPath, parentPath) {

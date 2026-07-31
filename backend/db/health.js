@@ -4,6 +4,7 @@ const db = require('./database');
 const config = require('./config');
 const { listBackups } = require('./backup');
 const packageInfo = require('../package.json');
+const { getMediaStorageStatus } = require('../services/mediaStorage');
 
 function getDiskStats(targetPath) {
   try {
@@ -74,6 +75,7 @@ function getHealthStatus() {
       inside_temp: config.databaseInsideTemp,
       disk: getDiskStats(config.databasePath),
     },
+    media: getMediaStorageStatus(),
     integrations: {
       meta: {
         configured: Boolean(String(process.env.META_ACCESS_TOKEN || '').trim()),

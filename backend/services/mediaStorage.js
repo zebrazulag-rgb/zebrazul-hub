@@ -2,10 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { databasePath } = require('../db/config');
+const { normalizeEnvironmentPath, resolveEnvironmentPath } = require('../utils/environmentPath');
 
-const mediaStorageDirectory = process.env.MEDIA_STORAGE_DIR
-  ? path.resolve(process.env.MEDIA_STORAGE_DIR)
-  : path.join(path.dirname(databasePath), 'media');
+const configuredMediaDirectory = resolveEnvironmentPath(process.env.MEDIA_STORAGE_DIR);
+const mediaStorageDirectory = configuredMediaDirectory || path.join(path.dirname(databasePath), 'media');
 
 fs.mkdirSync(mediaStorageDirectory, { recursive: true });
 
@@ -36,12 +36,45 @@ const EXTENSION_MIMES = {
   bin: 'application/octet-stream',
 };
 
+function uniqueResolvedPaths(values) {
+  return [...new Set(values
+    .map((value) => normalizeEnvironmentPath(value))
+    .filter(Boolean)
+    .map((value) => path.resolve(value)))];
+}
+
+/**
+ * Besides the configured folder, keep compatibility with locations used by
+ * previous ZebraHub deployments. This recovers media that is already present
+ * on the Railway volume even when MEDIA_STORAGE_DIR was pasted with quotes or
+ * changed after the first migration.
+ */
+function getMediaSearchDirectories() {
+  const persistentRoots = [
+    process.env.PERSISTENT_DATA_DIR,
+    process.env.RENDER_DISK_MOUNT_PATH,
+    process.env.RAILWAY_VOLUME_MOUNT_PATH,
+  ];
+
+  return uniqueResolvedPaths([
+    mediaStorageDirectory,
+    path.join(path.dirname(databasePath), 'media'),
+    ...persistentRoots.map((root) => {
+      const normalized = normalizeEnvironmentPath(root);
+      return normalized ? path.join(normalized, 'media') : '';
+    }),
+    '/data/media',
+  ]);
+}
+
 function extensionForMime(mime) {
   return MIME_EXTENSIONS[String(mime || '').toLowerCase()] || 'bin';
 }
 
 function isManagedMediaUrl(value) {
-  return typeof value === 'string' && value.startsWith('/api/media/');
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return trimmed.startsWith('/api/media/') || trimmed.includes('/api/media/');
 }
 
 function decodeData(value, fallbackMime = 'application/octet-stream') {
@@ -75,6 +108,7 @@ function persistMedia(value, fallbackMime = 'application/octet-stream') {
   const extension = extensionForMime(decoded.mime);
   const filename = `${hash}.${extension}`;
   const destination = path.join(mediaStorageDirectory, filename);
+  fs.mkdirSync(mediaStorageDirectory, { recursive: true });
   if (!fs.existsSync(destination)) {
     const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(temporary, decoded.buffer, { flag: 'wx' });
@@ -134,13 +168,11 @@ function mediaStem(filename) {
   return extension ? filename.slice(0, -extension.length) : filename;
 }
 
-function candidateMediaNames(requestedName) {
+function candidateMediaNames(requestedName, directory = mediaStorageDirectory) {
   const safe = safeMediaName(requestedName);
 
-  // A primeira migração gerou identificadores legados com comprimentos
-  // diferentes e, em alguns casos, sem extensão. O navegador de volume do
-  // Railway também encurta visualmente nomes longos para caber no terminal.
-  // Aceitamos somente prefixos hexadecimais longos para manter a rota segura.
+  // Managed files use a SHA-256 hash. Keep compatibility with old links that
+  // had a shortened hash, no extension or a different extension.
   if (!/^[a-f0-9]{32,128}(?:\.[a-z0-9]{1,12})?$/i.test(safe)) return [];
 
   const safeLower = safe.toLowerCase();
@@ -149,7 +181,7 @@ function candidateMediaNames(requestedName) {
   const prefixMatches = [];
 
   try {
-    for (const entry of fs.readdirSync(mediaStorageDirectory)) {
+    for (const entry of fs.readdirSync(directory)) {
       const normalized = String(entry).toLowerCase();
       const entryStem = mediaStem(normalized);
 
@@ -162,10 +194,6 @@ function candidateMediaNames(requestedName) {
         continue;
       }
 
-      // Resolve URLs antigas ou nomes copiados da interface do Railway que
-      // contenham apenas o começo do hash. Com 32+ caracteres, uma colisão é
-      // extremamente improvável; ainda assim, só aceitamos quando há um único
-      // arquivo correspondente.
       if (requestedStem.length >= 32 && entryStem.startsWith(requestedStem)) {
         prefixMatches.push(entry);
       }
@@ -177,14 +205,35 @@ function candidateMediaNames(requestedName) {
   return [...new Set(uniqueExact)];
 }
 
-function mediaFileFromName(filename) {
-  for (const candidate of candidateMediaNames(filename)) {
-    const fullPath = path.join(mediaStorageDirectory, candidate);
-    try {
-      if (fs.statSync(fullPath).isFile()) return fullPath;
-    } catch {}
+function locateMediaFile(filename) {
+  for (const directory of getMediaSearchDirectories()) {
+    for (const candidate of candidateMediaNames(filename, directory)) {
+      const fullPath = path.join(directory, candidate);
+      try {
+        if (!fs.statSync(fullPath).isFile()) continue;
+
+        // If the file was found in a legacy folder, copy it to the current
+        // configured directory so the repair is permanent for future requests.
+        if (path.resolve(directory) !== path.resolve(mediaStorageDirectory)) {
+          try {
+            fs.mkdirSync(mediaStorageDirectory, { recursive: true });
+            const repairedPath = path.join(mediaStorageDirectory, path.basename(fullPath));
+            if (!fs.existsSync(repairedPath)) fs.copyFileSync(fullPath, repairedPath);
+            return { filePath: repairedPath, sourceDirectory: directory, repaired: true };
+          } catch {
+            return { filePath: fullPath, sourceDirectory: directory, repaired: false };
+          }
+        }
+
+        return { filePath: fullPath, sourceDirectory: directory, repaired: false };
+      } catch {}
+    }
   }
   return null;
+}
+
+function mediaFileFromName(filename) {
+  return locateMediaFile(filename)?.filePath || null;
 }
 
 function detectMimeFromFile(filePath) {
@@ -225,11 +274,39 @@ function directorySize(directory) {
   }, 0);
 }
 
+function directoryFileCount(directory) {
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isFile()).length;
+  } catch {
+    return 0;
+  }
+}
+
+function getMediaStorageStatus() {
+  const directories = getMediaSearchDirectories().map((directory) => ({
+    directory,
+    primary: path.resolve(directory) === path.resolve(mediaStorageDirectory),
+    exists: fs.existsSync(directory),
+    file_count: directoryFileCount(directory),
+    size_bytes: directorySize(directory),
+  }));
+
+  return {
+    configured: Boolean(configuredMediaDirectory),
+    primary_directory: mediaStorageDirectory,
+    directories,
+    total_files: directories.reduce((total, item) => total + item.file_count, 0),
+  };
+}
+
 module.exports = {
   mediaStorageDirectory,
+  getMediaSearchDirectories,
+  getMediaStorageStatus,
   persistMedia,
   externalizeGallery,
   isManagedMediaUrl,
+  locateMediaFile,
   mediaFileFromName,
   detectMimeFromFile,
   directorySize,
