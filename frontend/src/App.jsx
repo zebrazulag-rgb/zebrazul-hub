@@ -4,6 +4,8 @@ import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Approval from './pages/Approval.jsx';
+import VideoApprovals from './pages/VideoApprovals.jsx';
+import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Reports from './pages/Reports.jsx';
 import Tasks from './pages/Tasks.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
@@ -43,6 +45,8 @@ export default function App() {
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
       <Route path="/" element={<ProtectedRoute commercialTeamAllowed><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
+      <Route path="/aprovacao/videos" element={<ProtectedRoute><VideoApprovals /></ProtectedRoute>} />
+      <Route path="/aprovacao/videos/:id" element={<ProtectedRoute><VideoReviewWorkspace /></ProtectedRoute>} />
       <Route path="/calendario" element={<Navigate to="/feed?view=calendar" replace />} />
       <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
       <Route

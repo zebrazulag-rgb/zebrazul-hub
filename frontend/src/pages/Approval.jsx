@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   ThumbsUp,
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   XCircle,
   Files,
+  Video,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -68,6 +70,7 @@ function normalizeGallery(value, fallbackData = null, fallbackMime = null) {
 
 export default function Approval() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { selectedClient } = useClientFilter();
   const [posts, setPosts] = useState([]);
   const [clients, setClients] = useState([]);
@@ -229,7 +232,12 @@ export default function Approval() {
         </div>
       </PageHero>
 
-      <div className="toolbar-panel flex flex-wrap gap-2">
+      <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="segmented-control">
+          <button className="segmented-control-button segmented-control-button-active">Conteúdos</button>
+          <button onClick={() => navigate('/aprovacao/videos')} className="segmented-control-button inline-flex items-center gap-2"><Video size={15} /> Vídeos</button>
+        </div>
+        <div className="flex flex-wrap gap-2">
         {FILTERS.map((item) => (
           <button
             key={item.key}
@@ -243,6 +251,7 @@ export default function Approval() {
             {item.label}
           </button>
         ))}
+        </div>
       </div>
 
       <div className="grid gap-3 min-w-0 max-w-full">
