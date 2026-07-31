@@ -22,6 +22,20 @@ const MIME_EXTENSIONS = {
   'video/quicktime': 'mov',
 };
 
+const EXTENSION_MIMES = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  bin: 'application/octet-stream',
+};
+
 function extensionForMime(mime) {
   return MIME_EXTENSIONS[String(mime || '').toLowerCase()] || 'bin';
 }
@@ -43,7 +57,6 @@ function decodeData(value, fallbackMime = 'application/octet-stream') {
     return { buffer, mime };
   }
 
-  // Raw base64 is supported only when it is clearly not a URL/path.
   if (!/^https?:\/\//i.test(trimmed) && !trimmed.startsWith('/') && /^[A-Za-z0-9+/=\r\n]+$/.test(trimmed)) {
     try {
       const buffer = Buffer.from(trimmed, 'base64');
@@ -106,11 +119,66 @@ function externalizeGallery(value, fallbackData = null, fallbackMime = null) {
   return gallery;
 }
 
+function safeMediaName(filename) {
+  const decoded = decodeURIComponent(String(filename || ''));
+  return path.basename(decoded).trim();
+}
+
+function candidateMediaNames(requestedName) {
+  const safe = safeMediaName(requestedName);
+  if (!/^[a-f0-9]{64}(?:\.[a-z0-9]+)?$/i.test(safe)) return [];
+
+  const hash = safe.slice(0, 64).toLowerCase();
+  const candidates = [safe];
+
+  // Compatibilidade com a primeira migração, que gravou alguns arquivos apenas
+  // com o hash, sem extensão, enquanto o banco podia conter hash.extensão.
+  candidates.push(hash);
+
+  try {
+    for (const entry of fs.readdirSync(mediaStorageDirectory)) {
+      const normalized = String(entry).toLowerCase();
+      if (normalized === hash || normalized.startsWith(`${hash}.`)) candidates.push(entry);
+    }
+  } catch {}
+
+  return [...new Set(candidates.map((value) => path.basename(value)))];
+}
+
 function mediaFileFromName(filename) {
-  const safe = path.basename(String(filename || ''));
-  if (!/^[a-f0-9]{64}\.[a-z0-9]+$/i.test(safe)) return null;
-  const fullPath = path.join(mediaStorageDirectory, safe);
-  return fs.existsSync(fullPath) ? fullPath : null;
+  for (const candidate of candidateMediaNames(filename)) {
+    const fullPath = path.join(mediaStorageDirectory, candidate);
+    try {
+      if (fs.statSync(fullPath).isFile()) return fullPath;
+    } catch {}
+  }
+  return null;
+}
+
+function detectMimeFromFile(filePath) {
+  const extension = path.extname(filePath).slice(1).toLowerCase();
+  if (extension && EXTENSION_MIMES[extension]) return EXTENSION_MIMES[extension];
+
+  let header;
+  try {
+    const descriptor = fs.openSync(filePath, 'r');
+    header = Buffer.alloc(32);
+    fs.readSync(descriptor, header, 0, header.length, 0);
+    fs.closeSync(descriptor);
+  } catch {
+    return 'application/octet-stream';
+  }
+
+  if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return 'image/jpeg';
+  if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (header.subarray(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
+  if (header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (header.subarray(0, 4).toString('ascii') === '%PDF') return 'application/pdf';
+  if (header.subarray(4, 8).toString('ascii') === 'ftyp') return 'video/mp4';
+  if (header.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return 'video/webm';
+  const text = header.toString('utf8').trimStart().toLowerCase();
+  if (text.startsWith('<svg') || text.startsWith('<?xml')) return 'image/svg+xml';
+  return 'application/octet-stream';
 }
 
 function directorySize(directory) {
@@ -128,5 +196,6 @@ module.exports = {
   externalizeGallery,
   isManagedMediaUrl,
   mediaFileFromName,
+  detectMimeFromFile,
   directorySize,
 };
