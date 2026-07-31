@@ -35,6 +35,13 @@ const backupDirectory = process.env.BACKUP_DIR
   ? path.resolve(process.env.BACKUP_DIR)
   : path.join(path.dirname(configuredDatabasePath), 'backups');
 
+// Os vídeos ficam fora do SQLite e, por padrão, usam o mesmo volume persistente
+// do banco. VIDEO_STORAGE_DIR pode apontar para outro disco/volume quando a
+// biblioteca crescer.
+const videoStorageDirectory = process.env.VIDEO_STORAGE_DIR
+  ? path.resolve(process.env.VIDEO_STORAGE_DIR)
+  : path.join(path.dirname(configuredDatabasePath), 'video-reviews');
+
 function isInside(childPath, parentPath) {
   const relative = path.relative(parentPath, childPath);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
@@ -68,6 +75,7 @@ module.exports = {
   legacyDatabasePath,
   databasePath: configuredDatabasePath,
   backupDirectory,
+  videoStorageDirectory,
   persistenceConfigured,
   databaseInsideCode,
   databaseInsideTemp,

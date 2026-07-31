@@ -628,6 +628,90 @@ CREATE TABLE IF NOT EXISTS materials (
 
 
 
+CREATE TABLE IF NOT EXISTS video_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  task_id INTEGER,
+  post_id INTEGER,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending_approval' CHECK(status IN ('draft','pending_approval','changes_requested','approved','rejected','archived')),
+  due_date TEXT,
+  current_version_id INTEGER,
+  approved_version_id INTEGER,
+  drive_file_id TEXT,
+  drive_file_name TEXT,
+  drive_web_view_link TEXT,
+  drive_web_content_link TEXT,
+  drive_upload_status TEXT DEFAULT 'not_sent' CHECK(drive_upload_status IN ('not_sent','sending','sent','error')),
+  drive_last_error TEXT,
+  created_by INTEGER,
+  approved_by INTEGER,
+  approved_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS video_review_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL,
+  version_number INTEGER NOT NULL,
+  original_name TEXT NOT NULL,
+  stored_name TEXT NOT NULL UNIQUE,
+  mime_type TEXT NOT NULL,
+  file_size INTEGER NOT NULL DEFAULT 0,
+  stream_token TEXT NOT NULL UNIQUE,
+  notes TEXT,
+  decision_status TEXT DEFAULT 'pending' CHECK(decision_status IN ('pending','approved','changes_requested','rejected','superseded')),
+  uploaded_by INTEGER,
+  submitted_at TEXT DEFAULT (datetime('now')),
+  decision_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(review_id, version_number),
+  FOREIGN KEY (review_id) REFERENCES video_reviews(id) ON DELETE CASCADE,
+  FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS video_review_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL,
+  version_id INTEGER NOT NULL,
+  user_id INTEGER,
+  timestamp_seconds REAL,
+  message TEXT NOT NULL,
+  status TEXT DEFAULT 'open' CHECK(status IN ('open','resolved')),
+  resolved_by INTEGER,
+  resolved_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (review_id) REFERENCES video_reviews(id) ON DELETE CASCADE,
+  FOREIGN KEY (version_id) REFERENCES video_review_versions(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS video_review_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL,
+  version_id INTEGER,
+  user_id INTEGER,
+  event_type TEXT NOT NULL,
+  message TEXT,
+  metadata_json TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (review_id) REFERENCES video_reviews(id) ON DELETE CASCADE,
+  FOREIGN KEY (version_id) REFERENCES video_review_versions(id) ON DELETE SET NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+
 CREATE TABLE IF NOT EXISTS meta_oauth_connections (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
@@ -665,6 +749,11 @@ CREATE TABLE IF NOT EXISTS meta_oauth_states (
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_video_reviews_scope ON video_reviews(agency_id, client_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_video_versions_review ON video_review_versions(review_id, version_number DESC);
+CREATE INDEX IF NOT EXISTS idx_video_comments_review ON video_review_comments(review_id, version_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_video_events_review ON video_review_events(review_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_client ON meta_oauth_connections(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_state_expiry ON meta_oauth_states(expires_at, used_at);
@@ -991,7 +1080,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '27', datetime('now'))
+   VALUES ('schema_version', '28', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

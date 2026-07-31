@@ -26,6 +26,8 @@ const aiRoutes = require('./routes/ai');
 const materialRoutes = require('./routes/materials');
 const materialBoardRoutes = require('./routes/materialBoards');
 const publicMaterialRoutes = require('./routes/publicMaterials');
+const videoReviewRoutes = require('./routes/videoReviews');
+const publicVideoReviewRoutes = require('./routes/publicVideoReviews');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
@@ -85,6 +87,7 @@ app.use('/api/agencies', agencyRoutes);
 app.use('/api/diagnostics', diagnosticRoutes);
 app.use('/api/public/diagnostics', publicDiagnosticRoutes);
 app.use('/api/public/materials', publicMaterialRoutes);
+app.use('/api/public/video-reviews', publicVideoReviewRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/posts', postRoutes);
@@ -101,6 +104,7 @@ app.use('/api/commercial', commercialRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/material-boards', materialBoardRoutes);
+app.use('/api/video-reviews', videoReviewRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);
