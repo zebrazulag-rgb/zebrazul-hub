@@ -107,7 +107,7 @@ export default function VideoApprovals() {
       <div className="surface-card overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-white/[0.08] p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="segmented-control overflow-x-auto">
-            <button onClick={() => navigate('/aprovacao')} className="segmented-control-button whitespace-nowrap">Conteúdos</button>
+            <button onClick={() => navigate('/feed')} className="segmented-control-button whitespace-nowrap">Voltar ao Feed</button>
             <button className="segmented-control-button segmented-control-button-active whitespace-nowrap">Vídeos</button>
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row lg:max-w-2xl lg:justify-end">

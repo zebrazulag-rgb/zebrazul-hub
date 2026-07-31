@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, Video } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -17,6 +17,7 @@ export default function Feed() {
   const { user } = useAuth();
 
   const { selectedClient } = useClientFilter();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeView = searchParams.get('view') === 'calendar' ? 'calendar' : 'grid';
   const [clients, setClients] = useState([]);
@@ -402,6 +403,12 @@ export default function Feed() {
           }`}
         >
           <CalendarDays size={17} /> Calendário
+        </button>
+        <button
+          onClick={() => navigate('/aprovacao/videos')}
+          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+        >
+          <Video size={17} /> Aprovação de vídeos
         </button>
       </div>
 
