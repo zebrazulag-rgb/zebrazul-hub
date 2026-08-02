@@ -15,9 +15,6 @@ import Finance from './pages/Finance.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
 import CompassPage from './pages/Compass.jsx';
-import AnnualActionPlan from './pages/AnnualActionPlan.jsx';
-import Cycle90Plan from './pages/Cycle90Plan.jsx';
-import MonthlyPlanning from './pages/MonthlyPlanning.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
 import CommercialFunnel from './pages/CommercialFunnel.jsx';
@@ -60,15 +57,15 @@ export default function App() {
       <Route path="/bussola" element={<ProtectedRoute><CompassPage /></ProtectedRoute>} />
       <Route path="/bussola/dme" element={<ProtectedRoute roles={['admin', 'team']}><Diagnostics /></ProtectedRoute>} />
       <Route path="/bussola/diagnostico" element={<ProtectedRoute><StrategicDiagnosis /></ProtectedRoute>} />
-      <Route path="/bussola/plano-anual" element={<ProtectedRoute><AnnualActionPlan /></ProtectedRoute>} />
-      <Route path="/bussola/ciclo-90-dias" element={<ProtectedRoute><Cycle90Plan /></ProtectedRoute>} />
-      <Route path="/bussola/planejamento-mensal" element={<ProtectedRoute><MonthlyPlanning /></ProtectedRoute>} />
+      <Route path="/bussola/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
+      <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
+      <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/plano-de-acao" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/diagnostico-estrategico" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/diagnosticos" element={<Navigate to="/bussola/dme" replace />} />
-      <Route path="/plano-anual" element={<Navigate to="/bussola/plano-anual" replace />} />
-      <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/ciclo-90-dias" replace />} />
-      <Route path="/planejamento-mensal" element={<Navigate to="/bussola/planejamento-mensal" replace />} />
+      <Route path="/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
+      <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
+      <Route path="/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><Sales /></ProtectedRoute>} />
       <Route path="/comercial/funil" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><CommercialFunnel /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
