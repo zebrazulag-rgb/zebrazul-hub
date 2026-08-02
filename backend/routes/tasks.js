@@ -7,6 +7,8 @@ const router = express.Router();
 router.use(authRequired);
 router.use(requireRole('admin', 'team', 'client'));
 
+const TASK_STATUSES = new Set(['pending', 'in_progress', 'done', 'posted']);
+
 function canAccessTask(user, task) {
   if (!task || Number(task.agency_id) !== Number(user.agency_id)) return false;
   if (user.role === 'admin' || user.is_operations_head) return true;
@@ -208,7 +210,8 @@ function taskSummaryQuery(whereClause) {
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'pending') AS subtask_pending,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'in_progress') AS subtask_in_progress,
-      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'done') AS subtask_done
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status IN ('done', 'posted')) AS subtask_done,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'posted') AS subtask_posted
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
@@ -306,9 +309,9 @@ router.get('/dashboard-stats', (req, res) => {
   let query = `
     SELECT
       COUNT(*) AS total,
-      SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done,
-      SUM(CASE WHEN t.status != 'done' AND substr(t.due_date, 1, 10) < ? THEN 1 ELSE 0 END) AS overdue,
-      SUM(CASE WHEN t.status != 'done' AND substr(t.due_date, 1, 10) >= ? THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN t.status IN ('done', 'posted') THEN 1 ELSE 0 END) AS done,
+      SUM(CASE WHEN t.status NOT IN ('done', 'posted') AND substr(t.due_date, 1, 10) < ? THEN 1 ELSE 0 END) AS overdue,
+      SUM(CASE WHEN t.status NOT IN ('done', 'posted') AND substr(t.due_date, 1, 10) >= ? THEN 1 ELSE 0 END) AS pending,
       SUM(CASE WHEN t.parent_task_id IS NULL THEN 1 ELSE 0 END) AS task_total,
       SUM(CASE WHEN t.parent_task_id IS NOT NULL THEN 1 ELSE 0 END) AS subtask_total
     FROM tasks t
@@ -369,8 +372,11 @@ router.get('/calendar', (req, res) => {
         (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id)
       ELSE 0 END AS subtask_total,
       CASE WHEN t.parent_task_id IS NULL THEN
-        (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'done')
-      ELSE 0 END AS subtask_done
+        (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status IN ('done', 'posted'))
+      ELSE 0 END AS subtask_done,
+      CASE WHEN t.parent_task_id IS NULL THEN
+        (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'posted')
+      ELSE 0 END AS subtask_posted
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
@@ -420,7 +426,7 @@ router.get('/featured/all', (req, res) => {
   }
 
   query += ` ORDER BY
-    CASE WHEN t.status = 'done' THEN 1 ELSE 0 END,
+    CASE t.status WHEN 'posted' THEN 2 WHEN 'done' THEN 1 ELSE 0 END,
     CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END,
     t.due_date ASC,
     t.updated_at DESC`;
@@ -541,6 +547,9 @@ router.post('/', (req, res) => {
     attachment_data, attachment_mime, attachment_filename, parent_task_id
   } = req.body;
   if (!String(title || '').trim()) return res.status(400).json({ error: 'Titulo e obrigatorio' });
+  if (req.user.role !== 'client' && status && !TASK_STATUSES.has(String(status))) {
+    return res.status(400).json({ error: 'Status de tarefa inválido' });
+  }
 
   let finalClientId = req.user.role === 'client' ? Number(req.user.client_id) : (client_id ? Number(client_id) : null);
   if (parent_task_id) {
@@ -582,6 +591,9 @@ router.put('/:id', (req, res) => {
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'title') && !String(req.body.title || '').trim()) {
     return res.status(400).json({ error: 'Titulo e obrigatorio' });
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'status') && !TASK_STATUSES.has(String(req.body.status))) {
+    return res.status(400).json({ error: 'Status de tarefa inválido' });
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'is_featured') && existing.parent_task_id) {
     return res.status(400).json({ error: 'Somente tarefas principais podem aparecer em destaque no painel' });

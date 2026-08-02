@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   video_link TEXT,
   media_gallery TEXT,
   due_date TEXT,
-  status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done')),
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
   is_featured INTEGER DEFAULT 0,
   attachment_data TEXT,
   attachment_mime TEXT,
@@ -862,6 +862,92 @@ function tableHasColumn(table, column) {
   return tableColumns(table).includes(column);
 }
 
+// A primeira versão do módulo de tarefas limitava o status a três etapas.
+// Como o SQLite não permite editar uma CHECK constraint existente, a tabela
+// é reconstruída uma única vez para incluir a etapa final "posted" sem perder
+// tarefas, subtarefas, responsáveis, anexos ou vínculos com o Feed.
+function migrateTaskStatuses() {
+  const tableInfo = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'"
+  ).get();
+  if (!tableInfo) return;
+
+  const originalSql = String(tableInfo.sql || '');
+  if (originalSql.includes("'posted'")) return;
+
+  const foreignKeysWereEnabled = Number(db.pragma('foreign_keys', { simple: true })) === 1;
+  db.pragma('foreign_keys = OFF');
+
+  try {
+    const migrate = db.transaction(() => {
+      db.exec('DROP TABLE IF EXISTS tasks_migrated');
+      db.exec(`
+        CREATE TABLE tasks_migrated (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          agency_id INTEGER NOT NULL DEFAULT 1,
+          client_id INTEGER,
+          created_by INTEGER NOT NULL,
+          assignee_id INTEGER,
+          parent_task_id INTEGER,
+          task_type TEXT DEFAULT 'basic' CHECK(task_type IN ('basic','post','video')),
+          title TEXT NOT NULL,
+          description TEXT,
+          content_type TEXT,
+          caption TEXT,
+          video_link TEXT,
+          media_gallery TEXT,
+          due_date TEXT,
+          status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
+          is_featured INTEGER DEFAULT 0,
+          attachment_data TEXT,
+          attachment_mime TEXT,
+          attachment_filename TEXT,
+          feed_post_id INTEGER,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+          FOREIGN KEY (feed_post_id) REFERENCES posts(id) ON DELETE SET NULL,
+          FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+        );
+      `);
+
+      db.exec(`
+        INSERT INTO tasks_migrated (
+          id, COALESCE(agency_id, (SELECT id FROM agencies ORDER BY id LIMIT 1), 1), client_id, created_by, assignee_id, parent_task_id,
+          task_type, title, description, content_type, caption, video_link,
+          media_gallery, due_date, status, is_featured, attachment_data,
+          attachment_mime, attachment_filename, feed_post_id, created_at, updated_at
+        )
+        SELECT
+          id, agency_id, client_id, created_by, assignee_id, parent_task_id,
+          COALESCE(task_type, 'basic'), title, description, content_type, caption,
+          video_link, media_gallery, due_date, status, COALESCE(is_featured, 0),
+          attachment_data, attachment_mime, attachment_filename, feed_post_id,
+          created_at, updated_at
+        FROM tasks;
+      `);
+
+      db.exec('DROP TABLE tasks');
+      db.exec('ALTER TABLE tasks_migrated RENAME TO tasks');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_parent_status ON tasks(parent_task_id, status)');
+    });
+
+    migrate();
+    console.log('[DB] Status "posted" adicionado às tarefas.');
+  } finally {
+    db.pragma(`foreign_keys = ${foreignKeysWereEnabled ? 'ON' : 'OFF'}`);
+  }
+
+  const violations = db.pragma('foreign_key_check');
+  if (violations.length) {
+    console.warn('[DB] A migração de tarefas concluiu com avisos de integridade:', violations);
+  }
+}
+
 function migrateFinancialEntries() {
   const tableInfo = db.prepare(
     "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'financial_entries'"
@@ -957,6 +1043,7 @@ function migrateFinancialEntries() {
   }
 }
 
+migrateTaskStatuses();
 migrateFinancialEntries();
 
 // Posts antigos devem continuar visíveis na grade após a criação da coluna.
