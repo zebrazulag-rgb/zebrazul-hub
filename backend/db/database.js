@@ -916,13 +916,14 @@ function migrateTaskStatuses() {
 
       db.exec(`
         INSERT INTO tasks_migrated (
-          id, COALESCE(agency_id, (SELECT id FROM agencies ORDER BY id LIMIT 1), 1), client_id, created_by, assignee_id, parent_task_id,
+          id, agency_id, client_id, created_by, assignee_id, parent_task_id,
           task_type, title, description, content_type, caption, video_link,
           media_gallery, due_date, status, is_featured, attachment_data,
           attachment_mime, attachment_filename, feed_post_id, created_at, updated_at
         )
         SELECT
-          id, agency_id, client_id, created_by, assignee_id, parent_task_id,
+          id, COALESCE(agency_id, (SELECT id FROM agencies ORDER BY id LIMIT 1), 1),
+          client_id, created_by, assignee_id, parent_task_id,
           COALESCE(task_type, 'basic'), title, description, content_type, caption,
           video_link, media_gallery, due_date, status, COALESCE(is_featured, 0),
           attachment_data, attachment_mime, attachment_filename, feed_post_id,
