@@ -62,6 +62,7 @@ const TASK_STATUS = {
   pending: { label: 'Pendente', className: 'bg-slate-100 text-slate-600' },
   in_progress: { label: 'Em andamento', className: 'bg-amber-100 text-amber-700' },
   done: { label: 'Concluída', className: 'bg-emerald-100 text-emerald-700' },
+  posted: { label: 'Postado', className: 'bg-indigo-100 text-indigo-700' },
 };
 
 export default function Dashboard() {

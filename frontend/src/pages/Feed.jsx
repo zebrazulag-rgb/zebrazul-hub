@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, Video } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -404,12 +404,6 @@ export default function Feed() {
         >
           <CalendarDays size={17} /> Calendário
         </button>
-        <button
-          onClick={() => navigate('/aprovacao/videos')}
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          <Video size={17} /> Aprovação de vídeos
-        </button>
       </div>
 
       {!clientId && (
@@ -575,52 +569,52 @@ export default function Feed() {
             </div>
 
             {user?.role !== 'client' && !reorderingPost && (
-              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Gerenciar post</p>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="mb-4 flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={startGalleryReorder}
                     disabled={galleryFromPost(openPost).length < 2 || Boolean(postActionLoading)}
                     title={galleryFromPost(openPost).length < 2 ? 'Disponível para posts com duas ou mais imagens' : 'Alterar a ordem das imagens do carrossel'}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-zebrazul-300 hover:text-zebrazul-700 disabled:cursor-not-allowed disabled:opacity-45"
+                    aria-label="Editar ordem das imagens"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-zebrazul-300 hover:bg-zebrazul-50 hover:text-zebrazul-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <ListOrdered size={16} /> Editar ordem
+                    <ListOrdered size={17} />
                   </button>
                   <button
                     type="button"
                     onClick={() => startEditPost(openPost)}
                     disabled={Boolean(postActionLoading)}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-zebrazul-300 hover:text-zebrazul-700 disabled:opacity-50"
+                    title="Editar post"
+                    aria-label="Editar post"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-zebrazul-300 hover:bg-zebrazul-50 hover:text-zebrazul-700 disabled:opacity-50"
                   >
-                    <Pencil size={16} /> Editar post
+                    <Pencil size={17} />
                   </button>
                   <button
                     type="button"
                     onClick={() => updatePostVisibility(openPost, false)}
                     disabled={Boolean(postActionLoading)}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                    title="Tirar da grade"
+                    aria-label="Tirar da grade"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100 disabled:opacity-50"
                   >
                     {postActionLoading === `visibility-${openPost.id}` ? <Loader2 size={16} className="animate-spin" /> : <EyeOff size={16} />}
-                    Tirar da grade
                   </button>
                   <button
                     type="button"
                     onClick={() => deletePost(openPost)}
                     disabled={Boolean(postActionLoading)}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                    title="Excluir post"
+                    aria-label="Excluir post"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100 disabled:opacity-50"
                   >
                     {postActionLoading === `delete-${openPost.id}` ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                    Excluir post
                   </button>
-                </div>
-                {galleryFromPost(openPost).length < 2 && (
-                  <p className="mt-2 text-[11px] text-slate-400">“Editar ordem” é liberado quando o post possui duas ou mais imagens.</p>
-                )}
-                {postActionError && (
-                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{postActionError}</p>
-                )}
               </div>
+            )}
+
+            {postActionError && !reorderingPost && (
+              <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{postActionError}</p>
             )}
 
             {reorderingPost && (

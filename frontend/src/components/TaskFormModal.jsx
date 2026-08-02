@@ -331,6 +331,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
                 <option value="pending">Pendente</option>
                 <option value="in_progress">Em andamento</option>
                 <option value="done">Concluída</option>
+                <option value="posted">Postado</option>
               </select>
             </div>
           </div>

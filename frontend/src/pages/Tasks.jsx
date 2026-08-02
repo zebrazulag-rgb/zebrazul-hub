@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -11,7 +11,8 @@ import PageHero from '../components/PageHero.jsx';
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
   { key: 'in_progress', label: 'Em andamento', badge: 'bg-amber-100 text-amber-700' },
-  { key: 'done', label: 'Concluída', badge: 'bg-emerald-100 text-emerald-700' }
+  { key: 'done', label: 'Concluída', badge: 'bg-emerald-100 text-emerald-700' },
+  { key: 'posted', label: 'Postado', badge: 'bg-indigo-100 text-indigo-700' }
 ];
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
@@ -551,6 +552,7 @@ export default function Tasks() {
   function nextStatus(status) {
     if (status === 'pending') return 'in_progress';
     if (status === 'in_progress') return 'done';
+    if (status === 'done') return 'posted';
     return 'pending';
   }
 
@@ -564,13 +566,15 @@ export default function Tasks() {
     pending: summary.pending + Number(task.subtask_pending || 0),
     inProgress: summary.inProgress + Number(task.subtask_in_progress || 0),
     done: summary.done + Number(task.subtask_done || 0),
-  }), { total: 0, pending: 0, inProgress: 0, done: 0 });
+    posted: summary.posted + Number(task.subtask_posted || 0),
+  }), { total: 0, pending: 0, inProgress: 0, done: 0, posted: 0 });
 
   const taskOverview = {
     total: tasks.length + subtaskOverview.total,
     pending: tasks.filter((task) => task.status === 'pending').length + subtaskOverview.pending,
     inProgress: tasks.filter((task) => task.status === 'in_progress').length + subtaskOverview.inProgress,
-    done: tasks.filter((task) => task.status === 'done').length + subtaskOverview.done,
+    done: tasks.filter((task) => task.status === 'done').length + (subtaskOverview.done - subtaskOverview.posted),
+    posted: tasks.filter((task) => task.status === 'posted').length + subtaskOverview.posted,
   };
 
   const year = cursor.getFullYear();
@@ -609,12 +613,13 @@ export default function Tasks() {
           </button>
         }
       >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[
             { label: 'Total geral', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
             { label: 'Pendentes', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
             { label: 'Em andamento', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
             { label: 'Concluídas', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
+            { label: 'Postadas', value: taskOverview.posted, icon: Send, color: 'text-indigo-300' },
           ].map((item) => (
             <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
               <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
@@ -638,7 +643,7 @@ export default function Tasks() {
       {taskError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{taskError}</p>}
 
       {view === 'kanban' && (
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {STATUS_COLUMNS.map((col) => (
             <div
               key={col.key}
@@ -927,12 +932,12 @@ export default function Tasks() {
 
             {user?.role !== 'client' && <>
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
-            <div className="flex gap-2 mb-4">
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {STATUS_COLUMNS.map((col) => (
                 <button
                   key={col.key}
                   onClick={() => { updateStatus(selectedTask.id, col.key); setSelectedTask({ ...selectedTask, status: col.key }); }}
-                  className={'flex-1 text-xs font-medium py-2 rounded-lg border transition-colors ' + (selectedTask.status === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300')}
+                  className={'rounded-lg border py-2 text-xs font-medium transition-colors ' + (selectedTask.status === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300')}
                 >
                   {col.label}
                 </button>
@@ -1014,7 +1019,7 @@ export default function Tasks() {
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-slate-700">
-                  Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => s.status === 'done').length}/{subtasks.length})</span>}
+                  Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => ['done', 'posted'].includes(s.status)).length}/{subtasks.length})</span>}
                 </p>
                 {user?.role !== 'client' && (
                   <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
@@ -1028,13 +1033,13 @@ export default function Tasks() {
                   <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
                     <button
                       onClick={() => user?.role !== 'client' && updateSubtaskStatus(s.id, nextStatus(s.status))}
-                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
+                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (s.status === 'posted' ? 'bg-indigo-500 border-indigo-500' : s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
                       title="Clique para avançar o status"
                     >
-                      {s.status === 'done' && <span className="text-white text-[10px]">✓</span>}
+                      {['done', 'posted'].includes(s.status) && <span className="text-white text-[10px]">✓</span>}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className={'text-sm truncate ' + (s.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
+                      <p className={'text-sm truncate ' + (['done', 'posted'].includes(s.status) ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {s.due_date && <span className="text-[11px] text-slate-400">· {formatTaskDate(s.due_date)}</span>}

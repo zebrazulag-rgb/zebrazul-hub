@@ -539,3 +539,70 @@ html[data-zebrahub-theme="dark"] .calendar-entry-meta {
 html[data-zebrahub-theme="dark"] .calendar-entry-meta {
   opacity: 0.88;
 }
+
+/* Status da aprovação de vídeos — legíveis nos temas claro e escuro. */
+.video-status-draft,
+.video-status-archived {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.video-status-pending {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.video-status-changes {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.video-status-approved {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.video-status-rejected {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+html[data-zebrahub-theme="dark"] :is(.video-status-draft, .video-status-archived),
+body.zebrahub-all-black :is(.video-status-draft, .video-status-archived) {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(148, 163, 184, 0.10);
+  color: #cbd5e1;
+}
+
+html[data-zebrahub-theme="dark"] .video-status-pending,
+body.zebrahub-all-black .video-status-pending {
+  border-color: rgba(251, 191, 36, 0.30);
+  background: rgba(251, 191, 36, 0.10);
+  color: #fcd34d;
+}
+
+html[data-zebrahub-theme="dark"] .video-status-changes,
+body.zebrahub-all-black .video-status-changes {
+  border-color: rgba(249, 115, 22, 0.30);
+  background: rgba(249, 115, 22, 0.10);
+  color: #fdba74;
+}
+
+html[data-zebrahub-theme="dark"] .video-status-approved,
+body.zebrahub-all-black .video-status-approved {
+  border-color: rgba(16, 185, 129, 0.30);
+  background: rgba(16, 185, 129, 0.10);
+  color: #6ee7b7;
+}
+
+html[data-zebrahub-theme="dark"] .video-status-rejected,
+body.zebrahub-all-black .video-status-rejected {
+  border-color: rgba(244, 63, 94, 0.30);
+  background: rgba(244, 63, 94, 0.10);
+  color: #fda4af;
+}

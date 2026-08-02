@@ -1,12 +1,12 @@
 import api from '../api';
 
 export const VIDEO_STATUS = {
-  draft: { label: 'Rascunho', className: 'border-slate-500/30 bg-slate-500/10 text-slate-300' },
-  pending_approval: { label: 'Aguardando aprovação', className: 'border-amber-400/30 bg-amber-400/10 text-amber-300' },
-  changes_requested: { label: 'Ajustes solicitados', className: 'border-orange-400/30 bg-orange-400/10 text-orange-300' },
-  approved: { label: 'Aprovado', className: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' },
-  rejected: { label: 'Reprovado', className: 'border-rose-400/30 bg-rose-400/10 text-rose-300' },
-  archived: { label: 'Arquivado', className: 'border-slate-500/30 bg-slate-500/10 text-slate-400' },
+  draft: { label: 'Rascunho', className: 'video-status-draft' },
+  pending_approval: { label: 'Aguardando aprovação', className: 'video-status-pending' },
+  changes_requested: { label: 'Ajustes solicitados', className: 'video-status-changes' },
+  approved: { label: 'Aprovado', className: 'video-status-approved' },
+  rejected: { label: 'Reprovado', className: 'video-status-rejected' },
+  archived: { label: 'Arquivado', className: 'video-status-archived' },
 };
 
 export function videoStatus(status) {
