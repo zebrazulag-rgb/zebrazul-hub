@@ -21,6 +21,7 @@ import CommercialFunnel from './pages/CommercialFunnel.jsx';
 import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
+import StoryHub from './pages/StoryHub.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -46,6 +47,7 @@ export default function App() {
       <Route path="/aprovacao/videos/:id" element={<ProtectedRoute><VideoReviewWorkspace /></ProtectedRoute>} />
       <Route path="/calendario" element={<Navigate to="/feed?view=calendar" replace />} />
       <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
+      <Route path="/stories" element={<ProtectedRoute><StoryHub /></ProtectedRoute>} />
       <Route
         path="/tarefas"
         element={
