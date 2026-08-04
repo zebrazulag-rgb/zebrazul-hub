@@ -751,6 +751,43 @@ CREATE TABLE IF NOT EXISTS meta_oauth_states (
 );
 
 
+CREATE TABLE IF NOT EXISTS instagram_oauth_connections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL UNIQUE,
+  instagram_user_id TEXT NOT NULL,
+  username TEXT,
+  display_name TEXT,
+  profile_picture_url TEXT,
+  account_type TEXT,
+  access_token_encrypted TEXT NOT NULL,
+  token_expires_at TEXT,
+  scopes_json TEXT DEFAULT '[]',
+  status TEXT DEFAULT 'connected' CHECK(status IN ('connected','expired','error','disconnected')),
+  last_error TEXT,
+  connected_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (connected_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS instagram_oauth_states (
+  nonce TEXT PRIMARY KEY,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  frontend_origin TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS instagram_story_settings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
@@ -771,6 +808,7 @@ CREATE TABLE IF NOT EXISTS instagram_story_mentions (
   agency_id INTEGER NOT NULL,
   client_id INTEGER NOT NULL,
   oauth_connection_id INTEGER,
+  instagram_oauth_connection_id INTEGER,
   event_key TEXT NOT NULL UNIQUE,
   meta_message_id TEXT,
   source_kind TEXT DEFAULT 'media_message' CHECK(source_kind IN ('story_mention','media_message')),
@@ -797,6 +835,7 @@ CREATE TABLE IF NOT EXISTS instagram_story_mentions (
   FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
   FOREIGN KEY (oauth_connection_id) REFERENCES meta_oauth_connections(id) ON DELETE SET NULL,
+  FOREIGN KEY (instagram_oauth_connection_id) REFERENCES instagram_oauth_connections(id) ON DELETE SET NULL,
   FOREIGN KEY (ignored_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
@@ -818,6 +857,9 @@ CREATE INDEX IF NOT EXISTS idx_video_events_review ON video_review_events(review
 
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_client ON meta_oauth_connections(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_state_expiry ON meta_oauth_states(expires_at, used_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_instagram_oauth_user ON instagram_oauth_connections(instagram_user_id);
+CREATE INDEX IF NOT EXISTS idx_instagram_oauth_client ON instagram_oauth_connections(agency_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_instagram_oauth_state_expiry ON instagram_oauth_states(expires_at, used_at);
 CREATE INDEX IF NOT EXISTS idx_story_settings_client ON instagram_story_settings(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_story_mentions_scope ON instagram_story_mentions(agency_id, client_id, status, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_story_mentions_sender ON instagram_story_mentions(client_id, sender_username, received_at DESC);
@@ -908,6 +950,7 @@ tryAddColumn('meta_ad_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)')
 tryAddColumn('meta_organic_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('meta_ad_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
 tryAddColumn('meta_organic_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
+tryAddColumn('instagram_story_mentions', 'instagram_oauth_connection_id', 'INTEGER');
 tryAddColumn('action_plans', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');

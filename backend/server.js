@@ -17,6 +17,7 @@ const planningDocumentRoutes = require('./routes/planningDocuments');
 const metaRoutes = require('./routes/meta');
 const metaOrganicRoutes = require('./routes/metaOrganic');
 const metaOAuthRoutes = require('./routes/metaOAuth');
+const instagramOAuthRoutes = require('./routes/instagramOAuth');
 const tenantRoutes = require('./routes/tenant');
 const agencyRoutes = require('./routes/agencies');
 const diagnosticRoutes = require('./routes/diagnostics');
@@ -76,6 +77,7 @@ app.get('/api/health', (req, res) => {
 // O callback OAuth precisa aceitar o retorno da Meta sem o JWT do navegador.
 // As demais rotas deste modulo aplicam authRequired internamente.
 app.use('/api/meta-oauth', metaOAuthRoutes);
+app.use('/api/instagram-oauth', instagramOAuthRoutes);
 
 // A Equipe Comercial usa o mesmo papel interno da equipe para manter
 // compatibilidade com o banco, mas fica isolada das demais áreas da API.

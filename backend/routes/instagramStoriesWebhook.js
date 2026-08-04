@@ -11,7 +11,7 @@ function secureEqual(left, right) {
 }
 
 function validSignature(req) {
-  const secret = String(process.env.META_APP_SECRET || '').trim();
+  const secret = String(process.env.INSTAGRAM_APP_SECRET || process.env.STORIES_INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || '').trim();
   if (!secret) {
     const allowUnsigned = String(process.env.META_WEBHOOK_ALLOW_UNSIGNED || 'false').toLowerCase() === 'true';
     const isProduction = String(process.env.NODE_ENV || 'production').toLowerCase() === 'production';
@@ -32,10 +32,10 @@ router.get('/', (req, res) => {
   const mode = String(req.query['hub.mode'] || '');
   const token = String(req.query['hub.verify_token'] || '');
   const challenge = String(req.query['hub.challenge'] || '');
-  const configured = String(process.env.META_WEBHOOK_VERIFY_TOKEN || '').trim();
+  const configured = String(process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN || process.env.META_WEBHOOK_VERIFY_TOKEN || '').trim();
 
   if (!configured) {
-    return res.status(503).send('META_WEBHOOK_VERIFY_TOKEN não configurado');
+    return res.status(503).send('INSTAGRAM_WEBHOOK_VERIFY_TOKEN não configurado');
   }
   if (mode === 'subscribe' && secureEqual(token, configured)) {
     return res.status(200).send(challenge);
