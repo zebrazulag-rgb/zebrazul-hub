@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
-import ReportConnectionsModal from '../components/ReportConnectionsModal.jsx';
+import InstagramStoryConnectionModal from '../components/InstagramStoryConnectionModal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
@@ -55,12 +55,11 @@ function sourceLabel(story) {
 }
 
 function connectionLabel(setup) {
-  if (!setup?.connection) return 'Meta não conectada';
+  if (!setup?.connection) return 'Instagram não conectado';
   if (setup.connection.status === 'expired') return 'Conexão expirada';
-  if (!setup.connection.selected_instagram_account_id) return 'Instagram não selecionado';
-  return setup.account?.instagram_username
-    ? `@${setup.account.instagram_username}`
-    : 'Instagram conectado';
+  return setup.connection.username
+    ? `@${setup.connection.username}`
+    : setup.connection.display_name || 'Instagram conectado';
 }
 
 function ChecklistItem({ ok, children }) {
@@ -178,7 +177,7 @@ export default function StoryHub() {
     try {
       const { data } = await api.post(`/instagram-stories/subscribe/${effectiveClientId}`);
       setSetup(data.setup || setup);
-      setNotice('Página inscrita nos webhooks de mensagens do Instagram.');
+      setNotice('Conta inscrita nos webhooks de mensagens do Instagram.');
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível ativar o recebimento de Stories.');
     } finally {
@@ -301,12 +300,12 @@ export default function StoryHub() {
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400"><Instagram size={14} /> Conta</div>
                     <p className="mt-2 font-semibold text-slate-900">{connectionLabel(setup)}</p>
-                    <p className="mt-1 text-xs text-slate-500">{setup?.account?.page_name || 'Página ainda não selecionada'}</p>
+                    <p className="mt-1 text-xs text-slate-500">{setup?.account?.instagram_name || setup?.account?.account_type || 'Conta profissional'}</p>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400"><Wifi size={14} /> Webhook</div>
                     <p className="mt-2 font-semibold text-slate-900">{setup?.settings?.subscribed_at ? 'Inscrição realizada' : 'Ainda não inscrito'}</p>
-                    <p className="mt-1 text-xs text-slate-500">{setup?.settings?.subscribed_at ? formatDate(setup.settings.subscribed_at) : 'Ative depois de conectar a Meta'}</p>
+                    <p className="mt-1 text-xs text-slate-500">{setup?.settings?.subscribed_at ? formatDate(setup.settings.subscribed_at) : 'Ative depois de conectar o Instagram'}</p>
                   </div>
                 </div>
 
@@ -348,7 +347,7 @@ export default function StoryHub() {
                 <div className="flex flex-wrap gap-3">
                   {canConfigure && (
                     <button onClick={() => setShowConnections(true)} className="btn-secondary inline-flex items-center gap-2">
-                      <PlugZap size={16} /> {setup?.connection ? 'Reconectar Meta' : 'Conectar Meta'}
+                      <PlugZap size={16} /> {setup?.connection ? 'Reconectar Instagram' : 'Conectar Instagram'}
                     </button>
                   )}
                   {canConfigure && (
@@ -371,17 +370,24 @@ export default function StoryHub() {
               </div>
             </div>
             <div className="mt-5 space-y-3">
-              <ChecklistItem ok={readiness.connected}>Meta conectada ao cliente</ChecklistItem>
-              <ChecklistItem ok={readiness.instagram_selected}>Página e Instagram selecionados</ChecklistItem>
+              <ChecklistItem ok={readiness.connected}>Instagram conectado ao cliente</ChecklistItem>
+              <ChecklistItem ok={readiness.instagram_selected}>Conta profissional identificada</ChecklistItem>
+              <ChecklistItem ok={readiness.story_publish_supported !== false}>Conta Business para publicar Stories</ChecklistItem>
               <ChecklistItem ok={(readiness.missing_scopes || []).length === 0}>Permissões de mensagens e publicação</ChecklistItem>
               <ChecklistItem ok={readiness.webhook_verify_token_configured}>Token de verificação no Railway</ChecklistItem>
               <ChecklistItem ok={readiness.public_backend_url_configured}>URL pública do backend configurada</ChecklistItem>
-              <ChecklistItem ok={Boolean(setup?.settings?.subscribed_at)}>Página inscrita nos webhooks</ChecklistItem>
+              <ChecklistItem ok={Boolean(setup?.settings?.subscribed_at)}>Conta inscrita nos webhooks</ChecklistItem>
             </div>
+
+            {readiness.story_publish_supported === false && setup?.connection && (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
+                Esta conta pode receber marcações, mas a publicação de Stories pela API exige uma conta <strong>Instagram Business</strong>. Altere para Empresa e reconecte.
+              </div>
+            )}
 
             {(readiness.missing_scopes || []).length > 0 && setup?.connection && (
               <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-                Reconecte a Meta para liberar: <strong>{readiness.missing_scopes.join(', ')}</strong>.
+                Reconecte o Instagram para liberar: <strong>{readiness.missing_scopes.join(', ')}</strong>.
               </div>
             )}
 
@@ -482,10 +488,10 @@ export default function StoryHub() {
                         <button onClick={() => restoreStory(story)} disabled={isWorking} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-xs"><RotateCcw size={14} /> Restaurar</button>
                       )}
                       {story.status === 'published' && (
-                        <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><Zap size={14} /> Publicado automaticamente</div>
+                        <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><Zap size={14} /> Publicado no Instagram</div>
                       )}
                       {story.status === 'publishing' && (
-                        <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"><LoaderCircle size={14} className="animate-spin" /> Enviando para a Meta</div>
+                        <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"><LoaderCircle size={14} className="animate-spin" /> Enviando para o Instagram</div>
                       )}
                     </div>
                   </div>
@@ -497,7 +503,7 @@ export default function StoryHub() {
       </section>
 
       {showConnections && effectiveClientId && (
-        <ReportConnectionsModal
+        <InstagramStoryConnectionModal
           open
           clientId={effectiveClientId}
           clientName={currentClientName}
