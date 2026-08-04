@@ -9,8 +9,11 @@ const DEFAULT_FRONTEND_ORIGIN = 'https://app.zebrazul.com.br';
 const DEFAULT_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
+  'pages_manage_metadata',
   'instagram_basic',
   'instagram_manage_insights',
+  'instagram_manage_messages',
+  'instagram_content_publish',
   'ads_read',
 ];
 
@@ -178,6 +181,27 @@ async function graphRequest(pathOrUrl, params = {}, accessToken) {
   const proof = buildAppSecretProof(accessToken);
   if (proof && !url.searchParams.has('appsecret_proof')) url.searchParams.set('appsecret_proof', proof);
   return requestJson(url);
+}
+
+async function graphPost(path, params = {}, accessToken) {
+  if (!accessToken) throw new MetaOAuthError('A autorizacao da Meta nao esta disponivel.', { status: 401 });
+  const config = getConfig();
+  const url = new URL(`https://graph.facebook.com/${config.apiVersion}/${String(path).replace(/^\//, '')}`);
+  url.searchParams.set('access_token', accessToken);
+  const proof = buildAppSecretProof(accessToken);
+  if (proof) url.searchParams.set('appsecret_proof', proof);
+
+  const body = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    body.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+  });
+
+  return requestJson(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
 }
 
 async function graphCollection(path, params, accessToken) {
@@ -593,6 +617,8 @@ module.exports = {
   saveOAuthConnection,
   getConnectionStatus,
   getClientTokenBundle,
+  graphRequest,
+  graphPost,
   getClientAssets,
   saveClientSelections,
   disconnectOAuth,

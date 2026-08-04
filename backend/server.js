@@ -29,6 +29,8 @@ const publicMaterialRoutes = require('./routes/publicMaterials');
 const videoReviewRoutes = require('./routes/videoReviews');
 const publicVideoReviewRoutes = require('./routes/publicVideoReviews');
 const mediaRoutes = require('./routes/media');
+const instagramStoriesWebhookRoutes = require('./routes/instagramStoriesWebhook');
+const instagramStoriesRoutes = require('./routes/instagramStories');
 const { runMediaMigration } = require('./services/mediaMigration');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
@@ -54,8 +56,16 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({
+  limit: '15mb',
+  verify: (req, res, buffer) => {
+    req.rawBody = Buffer.from(buffer);
+  },
+}));
 
+// O webhook precisa ser público para a validação e as notificações da Meta.
+// A assinatura X-Hub-Signature-256 é validada dentro da própria rota.
+app.use('/api/instagram-stories/webhook', instagramStoriesWebhookRoutes);
 app.use('/api/media', mediaRoutes);
 
 app.get('/api/health', (req, res) => {
@@ -109,6 +119,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/material-boards', materialBoardRoutes);
 app.use('/api/video-reviews', videoReviewRoutes);
+app.use('/api/instagram-stories', instagramStoriesRoutes);
 
 app.use((err, req, res, next) => {
   console.error('[HTTP] Erro nao tratado:', err);

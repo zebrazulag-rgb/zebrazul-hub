@@ -99,22 +99,27 @@ function decodeData(value, fallbackMime = 'application/octet-stream') {
   return null;
 }
 
-function persistMedia(value, fallbackMime = 'application/octet-stream') {
-  if (!value || isManagedMediaUrl(value) || /^https?:\/\//i.test(String(value))) return value || null;
-  const decoded = decodeData(value, fallbackMime);
-  if (!decoded) return value;
-
-  const hash = crypto.createHash('sha256').update(decoded.buffer).digest('hex');
-  const extension = extensionForMime(decoded.mime);
+function persistMediaBuffer(buffer, mime = 'application/octet-stream') {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return null;
+  const normalizedMime = String(mime || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  const extension = extensionForMime(normalizedMime);
   const filename = `${hash}.${extension}`;
   const destination = path.join(mediaStorageDirectory, filename);
   fs.mkdirSync(mediaStorageDirectory, { recursive: true });
   if (!fs.existsSync(destination)) {
     const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(temporary, decoded.buffer, { flag: 'wx' });
+    fs.writeFileSync(temporary, buffer, { flag: 'wx' });
     fs.renameSync(temporary, destination);
   }
   return `/api/media/${filename}`;
+}
+
+function persistMedia(value, fallbackMime = 'application/octet-stream') {
+  if (!value || isManagedMediaUrl(value) || /^https?:\/\//i.test(String(value))) return value || null;
+  const decoded = decodeData(value, fallbackMime);
+  if (!decoded) return value;
+  return persistMediaBuffer(decoded.buffer, decoded.mime);
 }
 
 function normalizeGalleryItem(item) {
@@ -304,6 +309,7 @@ module.exports = {
   getMediaSearchDirectories,
   getMediaStorageStatus,
   persistMedia,
+  persistMediaBuffer,
   externalizeGallery,
   isManagedMediaUrl,
   locateMediaFile,

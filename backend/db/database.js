@@ -750,6 +750,67 @@ CREATE TABLE IF NOT EXISTS meta_oauth_states (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+
+CREATE TABLE IF NOT EXISTS instagram_story_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL UNIQUE,
+  enabled INTEGER DEFAULT 0,
+  mode TEXT DEFAULT 'manual' CHECK(mode IN ('manual','automatic')),
+  allowed_usernames_json TEXT DEFAULT '[]',
+  subscribed_at TEXT,
+  last_error TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS instagram_story_mentions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  oauth_connection_id INTEGER,
+  event_key TEXT NOT NULL UNIQUE,
+  meta_message_id TEXT,
+  source_kind TEXT DEFAULT 'media_message' CHECK(source_kind IN ('story_mention','media_message')),
+  sender_igsid TEXT,
+  sender_username TEXT,
+  sender_name TEXT,
+  sender_profile_picture_url TEXT,
+  source_media_url TEXT,
+  media_url TEXT,
+  media_mime TEXT,
+  media_type TEXT CHECK(media_type IN ('image','video')),
+  status TEXT DEFAULT 'pending' CHECK(status IN ('pending','publishing','published','ignored','failed','expired')),
+  published_container_id TEXT,
+  published_media_id TEXT,
+  error_message TEXT,
+  raw_payload_json TEXT DEFAULT '{}',
+  received_at TEXT DEFAULT (datetime('now')),
+  expires_at TEXT,
+  published_at TEXT,
+  ignored_at TEXT,
+  ignored_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (oauth_connection_id) REFERENCES meta_oauth_connections(id) ON DELETE SET NULL,
+  FOREIGN KEY (ignored_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS instagram_story_webhook_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_key TEXT NOT NULL UNIQUE,
+  object_type TEXT,
+  payload_json TEXT NOT NULL,
+  status TEXT DEFAULT 'received' CHECK(status IN ('received','processed','ignored','failed')),
+  error_message TEXT,
+  received_at TEXT DEFAULT (datetime('now')),
+  processed_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_video_reviews_scope ON video_reviews(agency_id, client_id, status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_video_versions_review ON video_review_versions(review_id, version_number DESC);
 CREATE INDEX IF NOT EXISTS idx_video_comments_review ON video_review_comments(review_id, version_id, status, created_at);
@@ -757,6 +818,10 @@ CREATE INDEX IF NOT EXISTS idx_video_events_review ON video_review_events(review
 
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_client ON meta_oauth_connections(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_state_expiry ON meta_oauth_states(expires_at, used_at);
+CREATE INDEX IF NOT EXISTS idx_story_settings_client ON instagram_story_settings(agency_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_story_mentions_scope ON instagram_story_mentions(agency_id, client_id, status, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_story_mentions_sender ON instagram_story_mentions(client_id, sender_username, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_story_webhook_status ON instagram_story_webhook_events(status, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_meta_organic_accounts_client ON meta_organic_accounts(client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_organic_daily_account_date ON meta_organic_daily_metrics(organic_account_id, platform, metric_date);
@@ -1168,7 +1233,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '28', datetime('now'))
+   VALUES ('schema_version', '29', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
