@@ -63,6 +63,18 @@ function queryScope(req, requestedClientId = null) {
 }
 
 router.get('/', (req, res) => {
+  // Recupera cards presos em "Publicando" caso o processo anterior tenha
+  // sido interrompido por restart/deploy do servidor.
+  db.prepare(`
+    UPDATE instagram_story_mentions SET
+      status = 'failed',
+      error_message = 'A publicação foi interrompida antes da confirmação. Tente novamente.',
+      updated_at = datetime('now')
+    WHERE agency_id = ?
+      AND status = 'publishing'
+      AND datetime(updated_at) < datetime('now', '-5 minutes')
+  `).run(req.user.agency_id);
+
   const clientId = Number(req.query.client_id || 0) || null;
   const ids = queryScope(req, clientId);
   if (!ids) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });

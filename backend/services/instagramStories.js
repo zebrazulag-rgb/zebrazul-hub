@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const db = require('../db/database');
 const { persistMediaBuffer } = require('./mediaStorage');
+const { createVisualCredit } = require('./storyAttribution');
 const {
   InstagramOAuthError,
   REQUIRED_SCOPES: REQUIRED_STORY_SCOPES,
@@ -212,20 +213,57 @@ async function downloadMedia(url, hintedType) {
   }
 }
 
-async function senderProfile(senderId, bundle) {
-  if (!senderId || !bundle?.accessToken) return {};
+function profileFromWebhook(rowOrMessaging) {
+  const messaging = rowOrMessaging?.messaging || rowOrMessaging || {};
+  const sender = messaging?.sender || {};
+  const from = messaging?.message?.from || {};
+  const username = normalizeUsername(
+    sender.username
+    || sender.user_name
+    || from.username
+    || from.user_name
+  );
+  return {
+    username: username || null,
+    name: sender.name || from.name || null,
+    profilePictureUrl: sender.profile_pic || sender.profile_picture_url || from.profile_pic || null,
+  };
+}
+
+async function messageSenderProfile(messageId, bundle) {
+  if (!messageId || !bundle?.accessToken) return {};
   try {
-    const profile = await instagramGraphRequest(String(senderId), {
-      fields: 'name,username,profile_pic,profile_picture_url',
+    const message = await instagramGraphRequest(String(messageId), {
+      fields: 'from',
     }, bundle.accessToken);
+    const from = message?.from || {};
     return {
-      username: profile.username || null,
-      name: profile.name || null,
-      profilePictureUrl: profile.profile_pic || profile.profile_picture_url || null,
+      username: normalizeUsername(from.username) || null,
+      name: from.name || null,
+      profilePictureUrl: from.profile_pic || null,
     };
   } catch {
     return {};
   }
+}
+
+async function senderProfile(senderId, bundle, messageId = null) {
+  if (!bundle?.accessToken) return {};
+  if (senderId) {
+    try {
+      // profile_pic is the official field for the Instagram User Profile API.
+      // Requesting profile_picture_url here makes the whole request fail.
+      const profile = await instagramGraphRequest(String(senderId), {
+        fields: 'name,username,profile_pic',
+      }, bundle.accessToken);
+      return {
+        username: normalizeUsername(profile.username) || null,
+        name: profile.name || null,
+        profilePictureUrl: profile.profile_pic || null,
+      };
+    } catch {}
+  }
+  return messageSenderProfile(messageId, bundle);
 }
 
 async function ensureMentionSenderProfile(row, bundle) {
@@ -236,28 +274,37 @@ async function ensureMentionSenderProfile(row, bundle) {
       profilePictureUrl: row.sender_profile_picture_url || null,
     };
   }
-  if (!row?.sender_igsid) return {};
-  const profile = await senderProfile(row.sender_igsid, bundle);
-  if (profile.username) {
+
+  const raw = safeJson(row?.raw_payload_json, {}) || {};
+  const messaging = raw?.messaging || {};
+  const webhookProfile = profileFromWebhook(messaging);
+  const messageId = String(
+    row?.meta_message_id
+    || messaging?.message?.mid
+    || messaging?.mid
+    || ''
+  ).trim();
+  const apiProfile = await senderProfile(row?.sender_igsid, bundle, messageId);
+  const profile = {
+    username: apiProfile.username || webhookProfile.username || null,
+    name: apiProfile.name || webhookProfile.name || null,
+    profilePictureUrl: apiProfile.profilePictureUrl || webhookProfile.profilePictureUrl || null,
+  };
+
+  if (profile.username || profile.name || profile.profilePictureUrl) {
     db.prepare(`
       UPDATE instagram_story_mentions SET
         sender_username = ?, sender_name = ?, sender_profile_picture_url = ?,
         updated_at = datetime('now')
       WHERE id = ?
     `).run(
-      normalizeUsername(profile.username),
+      normalizeUsername(profile.username) || null,
       profile.name || null,
       profile.profilePictureUrl || null,
       row.id
     );
   }
   return profile;
-}
-
-function storyUserTags(username) {
-  const normalized = normalizeUsername(username);
-  if (!normalized) return null;
-  return [{ username: normalized, x: 0.5, y: 0.9 }];
 }
 
 function senderAllowed(settings, username) {
@@ -380,10 +427,16 @@ async function processMessagingAttachment({ entry, messaging, attachment, index,
 
   try {
     const bundle = getClientTokenBundle(connection.client_id, connection.agency_id);
-    const [profile, media] = await Promise.all([
-      senderProfile(senderId, bundle),
+    const webhookProfile = profileFromWebhook(messaging);
+    const [apiProfile, media] = await Promise.all([
+      senderProfile(senderId, bundle, messageId),
       downloadMedia(sourceUrl, hintedType),
     ]);
+    const profile = {
+      username: apiProfile.username || webhookProfile.username || null,
+      name: apiProfile.name || webhookProfile.name || null,
+      profilePictureUrl: apiProfile.profilePictureUrl || webhookProfile.profilePictureUrl || null,
+    };
 
     db.prepare(`
       UPDATE instagram_story_mentions SET
@@ -505,7 +558,7 @@ async function waitForVideoContainer(containerId, token) {
 }
 
 async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) {
-  const row = agencyId
+  let row = agencyId
     ? db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ? AND agency_id = ?').get(id, agencyId)
     : db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ?').get(id);
   if (!row) throw new InstagramStoryError('Story não encontrado.', { status: 404 });
@@ -513,43 +566,72 @@ async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) 
   if (row.status === 'ignored') throw new InstagramStoryError('Restaure este Story antes de publicá-lo.', { status: 409 });
   if (!row.media_url) throw new InstagramStoryError('A mídia deste Story ainda não está disponível.', { status: 409 });
 
+  if (row.status === 'publishing') {
+    const updatedAt = Date.parse(row.updated_at || '');
+    const stale = Number.isFinite(updatedAt) && updatedAt < Date.now() - 5 * 60 * 1000;
+    if (!stale) {
+      throw new InstagramStoryError('Este Story já está sendo publicado. Aguarde a conclusão.', { status: 409 });
+    }
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        status = 'failed', error_message = 'A tentativa anterior foi interrompida. Tente novamente.',
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+    row = { ...row, status: 'failed' };
+  }
+
   const expiresAt = Date.parse(row.expires_at || '');
   if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
     db.prepare("UPDATE instagram_story_mentions SET status = 'expired', updated_at = datetime('now') WHERE id = ?").run(id);
     throw new InstagramStoryError('A janela de 24 horas desta mídia já expirou.', { status: 409 });
   }
 
-  const bundle = getClientTokenBundle(row.client_id, row.agency_id);
-  if (!bundle?.instagramUserId) {
-    throw new InstagramStoryError('Conecte a conta profissional do Instagram deste cliente.', { status: 409 });
-  }
-  const token = bundle.accessToken;
-  if (!token) throw new InstagramStoryError('Reconecte o Instagram para renovar o token de publicação.', { status: 401 });
-  if (!supportsStoryPublishing(bundle.accountType)) {
-    throw new InstagramStoryError('A publicação de Stories pela API exige uma conta Instagram Business. Altere a conta para Empresa e reconecte.', { status: 409 });
-  }
-
-  const sender = await ensureMentionSenderProfile(row, bundle);
-  const senderUsername = normalizeUsername(sender.username || row.sender_username);
-  if (row.source_kind === 'story_mention' && !senderUsername) {
-    throw new InstagramStoryError(
-      'Não foi possível identificar quem marcou a conta. Reconecte o Instagram e tente novamente para publicar com o crédito correto.',
-      { status: 409 }
-    );
-  }
-
-  const hostedUrl = absoluteMediaUrl(row.media_url, publicBaseUrl);
-  db.prepare(`
+  // Trava atômica: apenas uma tentativa pode assumir o card. Isso evita
+  // publicações duplicadas mesmo que o usuário clique várias vezes rapidamente.
+  const claimed = db.prepare(`
     UPDATE instagram_story_mentions SET
       status = 'publishing', error_message = NULL, updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND status IN ('pending', 'failed')
   `).run(id);
+  if (!claimed.changes) {
+    const current = db.prepare('SELECT status FROM instagram_story_mentions WHERE id = ?').get(id);
+    if (current?.status === 'published') return getMentionById(id, row.agency_id);
+    throw new InstagramStoryError('Este Story já está sendo processado. Aguarde alguns instantes.', { status: 409 });
+  }
 
   try {
+    const bundle = getClientTokenBundle(row.client_id, row.agency_id);
+    if (!bundle?.instagramUserId) {
+      throw new InstagramStoryError('Conecte a conta profissional do Instagram deste cliente.', { status: 409 });
+    }
+    const token = bundle.accessToken;
+    if (!token) throw new InstagramStoryError('Reconecte o Instagram para renovar o token de publicação.', { status: 401 });
+    if (!supportsStoryPublishing(bundle.accountType)) {
+      throw new InstagramStoryError('A publicação de Stories pela API exige uma conta Instagram Business. Altere a conta para Empresa e reconecte.', { status: 409 });
+    }
+
+    const sender = await ensureMentionSenderProfile(row, bundle);
+    const senderUsername = normalizeUsername(sender.username || row.sender_username);
+    if (row.source_kind === 'story_mention' && !senderUsername) {
+      throw new InstagramStoryError(
+        'Não foi possível identificar quem marcou a conta. O ZebraHub não publicou para evitar repost sem crédito.',
+        { status: 409 }
+      );
+    }
+
+    // A API com Instagram Login não oferece tagging em Stories. Para preservar
+    // o crédito, o ZebraHub grava visualmente o @username na própria mídia.
+    const attributed = await createVisualCredit({
+      mediaUrl: row.media_url,
+      mediaType: row.media_type,
+      mediaMime: row.media_mime,
+      username: senderUsername,
+    });
+    const hostedUrl = absoluteMediaUrl(attributed.mediaUrl, publicBaseUrl);
+
     const createParams = { media_type: 'STORIES' };
-    const userTags = storyUserTags(senderUsername);
-    if (userTags) createParams.user_tags = userTags;
-    if (row.media_type === 'video' || String(row.media_mime || '').startsWith('video/')) {
+    if (attributed.mediaType === 'video' || row.media_type === 'video' || String(row.media_mime || '').startsWith('video/')) {
       createParams.video_url = hostedUrl;
     } else {
       createParams.image_url = hostedUrl;
@@ -577,10 +659,7 @@ async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) 
     `).run(String(published.id), id);
     return getMentionById(id, row.agency_id);
   } catch (error) {
-    let message = error?.message || 'Não foi possível publicar o Story.';
-    if (/user_tags|user tags|invalid parameter/i.test(message)) {
-      message = `O Instagram recusou a marcação de @${senderUsername || 'autor'} neste formato de Story: ${message}`;
-    }
+    const message = error?.message || 'Não foi possível publicar o Story.';
     markMentionFailure(id, message);
     if (error instanceof InstagramStoryError) throw error;
     if (error instanceof InstagramOAuthError) {
