@@ -544,17 +544,86 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForVideoContainer(containerId, token) {
-  for (let attempt = 0; attempt < 15; attempt += 1) {
-    const state = await instagramGraphRequest(String(containerId), { fields: 'status_code,status' }, token);
-    const code = String(state.status_code || '').toUpperCase();
-    if (!code || code === 'FINISHED' || code === 'PUBLISHED') return state;
-    if (code === 'ERROR' || code === 'EXPIRED') {
-      throw new InstagramStoryError(state.status || `O Instagram rejeitou o vídeo (${code}).`, { status: 400 });
+function containerStatusCode(state) {
+  return String(state?.status_code || '').trim().toUpperCase();
+}
+
+function containerStatusMessage(state) {
+  const code = containerStatusCode(state);
+  return String(state?.status || state?.error_message || code || 'IN_PROGRESS').trim();
+}
+
+async function waitForMediaContainer(containerId, token, {
+  attempts = 20,
+  intervalMs = 3000,
+} = {}) {
+  let lastState = null;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      lastState = await instagramGraphRequest(String(containerId), {
+        fields: 'status_code,status',
+      }, token);
+      const code = containerStatusCode(lastState);
+
+      if (code === 'FINISHED' || code === 'PUBLISHED') return lastState;
+      if (code === 'ERROR' || code === 'EXPIRED') {
+        throw new InstagramStoryError(
+          `O Instagram rejeitou a mídia durante o processamento: ${containerStatusMessage(lastState)}`,
+          { status: 400 }
+        );
+      }
+    } catch (error) {
+      if (error instanceof InstagramStoryError) throw error;
+      lastError = error;
     }
-    await sleep(2000);
+
+    if (attempt < attempts - 1) await sleep(intervalMs);
   }
-  throw new InstagramStoryError('O vídeo ainda está sendo processado pelo Instagram. Tente publicar novamente em alguns instantes.', { status: 409 });
+
+  if (lastError) throw lastError;
+  throw new InstagramStoryError(
+    `O Instagram ainda não liberou a mídia para publicação (${containerStatusMessage(lastState)}). Tente novamente em alguns instantes.`,
+    { status: 409 }
+  );
+}
+
+function isMediaNotReadyError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('media id is not available')
+    || message.includes('media id is not ready')
+    || message.includes('media is not available')
+    || message.includes('container is not ready')
+    || message.includes('not ready for publishing');
+}
+
+async function publishContainerWithRetry({ instagramUserId, containerId, token }) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    await waitForMediaContainer(containerId, token, {
+      attempts: attempt === 0 ? 8 : 4,
+      intervalMs: 2500,
+    });
+
+    try {
+      return await instagramGraphPost(`${instagramUserId}/media_publish`, {
+        creation_id: containerId,
+      }, token);
+    } catch (error) {
+      lastError = error;
+      if (!isMediaNotReadyError(error) || attempt === 5) throw error;
+      console.warn('[INSTAGRAM STORIES] Contêiner ainda indisponível; nova tentativa de publicação:', {
+        containerId: String(containerId),
+        attempt: attempt + 1,
+        message: error.message,
+      });
+      await sleep(3000 + attempt * 2000);
+    }
+  }
+
+  throw lastError || new InstagramStoryError('O Instagram não liberou a mídia para publicação.', { status: 409 });
 }
 
 async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) {
@@ -645,10 +714,15 @@ async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) 
       WHERE id = ?
     `).run(String(container.id), id);
 
-    if (createParams.video_url) await waitForVideoContainer(container.id, token);
-    const published = await instagramGraphPost(`${bundle.instagramUserId}/media_publish`, {
-      creation_id: container.id,
-    }, token);
+    // Imagens e vídeos podem levar alguns segundos para ficarem elegíveis.
+    // Publicar imediatamente causa o erro da Meta “Media ID is not available”.
+    // Aguarde o status FINISHED e repita apenas quando a própria Meta disser
+    // que o contêiner ainda não está disponível.
+    const published = await publishContainerWithRetry({
+      instagramUserId: bundle.instagramUserId,
+      containerId: container.id,
+      token,
+    });
     if (!published?.id) throw new InstagramStoryError('O Instagram não confirmou a publicação do Story.', { status: 502 });
 
     db.prepare(`
