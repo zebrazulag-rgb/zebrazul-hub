@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -87,6 +87,8 @@ export default function StoryHub() {
   const [saving, setSaving] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [workingId, setWorkingId] = useState(null);
+  const [cardErrors, setCardErrors] = useState({});
+  const workingRef = useRef(new Set());
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [mode, setMode] = useState('manual');
@@ -94,9 +96,9 @@ export default function StoryHub() {
   const [allowedUsernames, setAllowedUsernames] = useState('');
   const [showConnections, setShowConnections] = useState(false);
 
-  const loadStories = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadStories = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError('');
     try {
       const params = new URLSearchParams();
       if (effectiveClientId) params.set('client_id', effectiveClientId);
@@ -107,10 +109,12 @@ export default function StoryHub() {
       setStories(data.stories || []);
       setStats(data.stats || {});
     } catch (requestError) {
-      setStories([]);
-      setError(requestError.response?.data?.error || 'Não foi possível carregar os Stories.');
+      if (!silent) {
+        setStories([]);
+        setError(requestError.response?.data?.error || 'Não foi possível carregar os Stories.');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [effectiveClientId, filter, search]);
 
@@ -142,6 +146,12 @@ export default function StoryHub() {
   useEffect(() => {
     loadSetup();
   }, [loadSetup]);
+
+  useEffect(() => {
+    if (!stories.some((story) => story.status === 'publishing')) return undefined;
+    const timer = setInterval(() => loadStories({ silent: true }), 3000);
+    return () => clearInterval(timer);
+  }, [stories, loadStories]);
 
   async function saveSettings() {
     if (!effectiveClientId) return;
@@ -186,18 +196,36 @@ export default function StoryHub() {
   }
 
   async function publishStory(story) {
+    if (workingRef.current.has(story.id) || story.status === 'publishing') return;
+    workingRef.current.add(story.id);
     setWorkingId(story.id);
     setError('');
     setNotice('');
+    setCardErrors((current) => ({ ...current, [story.id]: '' }));
+    setStories((current) => current.map((item) => (
+      item.id === story.id
+        ? { ...item, status: 'publishing', error_message: null }
+        : item
+    )));
+
     try {
-      await api.post(`/instagram-stories/${story.id}/publish`);
-      setNotice(`Story de ${story.sender_username ? `@${story.sender_username}` : 'perfil recebido'} publicado.`);
-      await loadStories();
+      const { data } = await api.post(`/instagram-stories/${story.id}/publish`);
+      if (data?.story) {
+        setStories((current) => current.map((item) => item.id === story.id ? data.story : item));
+      }
+      setNotice(`Story de ${data?.story?.sender_username ? `@${data.story.sender_username}` : story.sender_username ? `@${story.sender_username}` : 'perfil recebido'} publicado.`);
     } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível publicar este Story.');
-      await loadStories();
+      const message = requestError.response?.data?.error || 'Não foi possível publicar este Story.';
+      setCardErrors((current) => ({ ...current, [story.id]: message }));
+      setStories((current) => current.map((item) => (
+        item.id === story.id
+          ? { ...item, status: 'failed', error_message: message }
+          : item
+      )));
     } finally {
-      setWorkingId(null);
+      workingRef.current.delete(story.id);
+      setWorkingId((current) => current === story.id ? null : current);
+      await loadStories({ silent: true });
     }
   }
 
@@ -433,7 +461,8 @@ export default function StoryHub() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {stories.map((story) => {
               const status = STATUS_META[story.status] || STATUS_META.pending;
-              const isWorking = workingId === story.id;
+              const isWorking = workingId === story.id || story.status === 'publishing';
+              const cardError = cardErrors[story.id] || story.error_message;
               return (
                 <article key={story.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="relative aspect-[9/16] overflow-hidden bg-slate-950">
@@ -452,8 +481,18 @@ export default function StoryHub() {
                     <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/55 to-transparent" />
                     <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-2">
                       <span className="rounded-lg border border-white/15 bg-black/45 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">{sourceLabel(story)}</span>
-                      <span className={`rounded-lg border px-2 py-1 text-[10px] font-semibold ${status.className}`}>{status.label}</span>
+                      <span className={`rounded-lg border px-2 py-1 text-[10px] font-semibold ${status.className}`}>{isWorking ? 'Publicando...' : status.label}</span>
                     </div>
+                    {isWorking && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/80 px-6 text-center text-white backdrop-blur-[2px]">
+                        <LoaderCircle size={34} className="animate-spin" />
+                        <p className="mt-4 text-sm font-bold">Publicando Story...</p>
+                        <p className="mt-1 text-xs leading-5 text-white/70">Identificando o autor, preparando o crédito e enviando para o Instagram. Não clique novamente.</p>
+                        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/15">
+                          <div className="h-full w-1/2 animate-pulse rounded-full bg-blue-400" />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-4">
@@ -469,16 +508,21 @@ export default function StoryHub() {
                       </div>
                     </div>
 
-                    {story.error_message && <p className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">{story.error_message}</p>}
+                    {cardError && <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium leading-5 text-rose-700">{cardError}</p>}
+                    {story.sender_username ? (
+                      <p className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-700">Crédito visual preparado para <strong>@{story.sender_username}</strong>.</p>
+                    ) : story.status !== 'published' && (
+                      <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">O ZebraHub tentará identificar o perfil novamente antes de publicar.</p>
+                    )}
                     {story.source_kind !== 'story_mention' && story.status === 'pending' && (
                       <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">O webhook não confirmou que esta mídia é uma menção. Revise antes de publicar.</p>
                     )}
 
                     <div className="mt-4 flex gap-2">
                       {['pending', 'failed'].includes(story.status) && (
-                        <button onClick={() => publishStory(story)} disabled={isWorking || !story.media_url} className="btn-primary flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-xs">
+                        <button onClick={() => publishStory(story)} disabled={isWorking || !story.media_url} className="btn-primary flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60">
                           {isWorking ? <LoaderCircle size={14} className="animate-spin" /> : <Send size={14} />}
-                          Repostar
+                          {isWorking ? 'Publicando...' : story.status === 'failed' ? 'Tentar novamente' : 'Repostar'}
                         </button>
                       )}
                       {story.status === 'pending' && (
