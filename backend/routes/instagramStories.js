@@ -6,6 +6,7 @@ const {
   requestPublicBaseUrl,
   updateSettings,
   publishMention,
+  publishFacebookTagTest,
   subscribeClient,
   setupStatus,
   getMentionById,
@@ -159,6 +160,29 @@ router.post('/subscribe/:clientId', requireRole('admin', 'team'), async (req, re
   try {
     const settings = await subscribeClient(client.id, req.user.agency_id);
     res.json({ settings, setup: setupStatus(client.id, req.user.agency_id, req) });
+  } catch (error) {
+    apiError(res, error);
+  }
+});
+
+
+router.post('/:id/publish-facebook-tag-test', requireRole('admin', 'team'), async (req, res) => {
+  const story = getMentionById(Number(req.params.id), req.user.agency_id);
+  if (!story) return res.status(404).json({ error: 'Story não encontrado.' });
+  if (!ensureClient(req, res, story.client_id)) return;
+  try {
+    const published = await publishFacebookTagTest(story.id, {
+      agencyId: req.user.agency_id,
+      publicBaseUrl: requestPublicBaseUrl(req),
+    });
+    res.json({
+      story: published,
+      test: {
+        channel: 'facebook_tag_test',
+        username: published.tagging_username || published.sender_username || null,
+        message: 'A Meta aceitou e publicou o contêiner com user_tags. Confirme no Instagram se a conta recebeu a marcação.',
+      },
+    });
   } catch (error) {
     apiError(res, error);
   }

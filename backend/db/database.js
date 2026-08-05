@@ -823,6 +823,10 @@ CREATE TABLE IF NOT EXISTS instagram_story_mentions (
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending','publishing','published','ignored','failed','expired')),
   published_container_id TEXT,
   published_media_id TEXT,
+  publish_channel TEXT DEFAULT 'instagram_login',
+  tagging_username TEXT,
+  tagging_payload_json TEXT,
+  tagging_meta_response_json TEXT,
   error_message TEXT,
   raw_payload_json TEXT DEFAULT '{}',
   received_at TEXT DEFAULT (datetime('now')),
@@ -951,6 +955,10 @@ tryAddColumn('meta_organic_accounts', 'agency_id', 'INTEGER REFERENCES agencies(
 tryAddColumn('meta_ad_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
 tryAddColumn('meta_organic_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
 tryAddColumn('instagram_story_mentions', 'instagram_oauth_connection_id', 'INTEGER');
+tryAddColumn('instagram_story_mentions', 'publish_channel', "TEXT DEFAULT 'instagram_login'");
+tryAddColumn('instagram_story_mentions', 'tagging_username', 'TEXT');
+tryAddColumn('instagram_story_mentions', 'tagging_payload_json', 'TEXT');
+tryAddColumn('instagram_story_mentions', 'tagging_meta_response_json', 'TEXT');
 tryAddColumn('action_plans', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');

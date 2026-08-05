@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const { persistMediaBuffer } = require('./mediaStorage');
 const { createVisualCredit } = require('./storyAttribution');
+const metaOAuth = require('./metaOAuth');
+
 const {
   InstagramOAuthError,
   REQUIRED_SCOPES: REQUIRED_STORY_SCOPES,
@@ -349,6 +351,10 @@ function serializeMention(row) {
     status: row.status,
     published_container_id: row.published_container_id,
     published_media_id: row.published_media_id,
+    publish_channel: row.publish_channel || 'instagram_login',
+    tagging_username: row.tagging_username || null,
+    tagging_payload: safeJson(row.tagging_payload_json, null),
+    tagging_meta_response: safeJson(row.tagging_meta_response_json, null),
     error_message: row.error_message,
     received_at: row.received_at,
     expires_at: row.expires_at,
@@ -626,6 +632,215 @@ async function publishContainerWithRetry({ instagramUserId, containerId, token }
   throw lastError || new InstagramStoryError('O Instagram não liberou a mídia para publicação.', { status: 409 });
 }
 
+
+function facebookTaggingReadiness(clientId, agencyId) {
+  try {
+    const connection = metaOAuth.getConnectionStatus(clientId, agencyId);
+    const scopes = new Set(connection?.scopes || []);
+    const requiredScopes = ['pages_show_list', 'instagram_basic', 'instagram_content_publish'];
+    const missingScopes = requiredScopes.filter((scope) => !scopes.has(scope));
+    const bundle = connection?.status === 'connected'
+      ? metaOAuth.getClientTokenBundle(clientId, agencyId)
+      : null;
+    return {
+      ready: Boolean(
+        connection
+        && connection.status === 'connected'
+        && bundle?.pageAccessToken
+        && bundle?.selectedPageId
+        && bundle?.selectedInstagramId
+        && missingScopes.length === 0
+      ),
+      connected: Boolean(connection && connection.status === 'connected'),
+      page_selected: Boolean(bundle?.selectedPageId),
+      instagram_selected: Boolean(bundle?.selectedInstagramId),
+      page_token_available: Boolean(bundle?.pageAccessToken),
+      selected_page_id: bundle?.selectedPageId || null,
+      selected_instagram_id: bundle?.selectedInstagramId || null,
+      missing_scopes: missingScopes,
+      required_scopes: requiredScopes,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      ready: false,
+      connected: false,
+      page_selected: false,
+      instagram_selected: false,
+      page_token_available: false,
+      selected_page_id: null,
+      selected_instagram_id: null,
+      missing_scopes: [],
+      required_scopes: ['pages_show_list', 'instagram_basic', 'instagram_content_publish'],
+      error: error.message || 'Não foi possível verificar a conexão via Facebook.',
+    };
+  }
+}
+
+async function waitForFacebookMediaContainer(containerId, token, {
+  attempts = 20,
+  intervalMs = 3000,
+} = {}) {
+  let lastState = null;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      lastState = await metaOAuth.graphRequest(String(containerId), {
+        fields: 'status_code,status',
+      }, token);
+      const code = containerStatusCode(lastState);
+      if (code === 'FINISHED' || code === 'PUBLISHED') return lastState;
+      if (code === 'ERROR' || code === 'EXPIRED') {
+        throw new InstagramStoryError(
+          `A Meta rejeitou a mídia durante o teste de marcação: ${containerStatusMessage(lastState)}`,
+          { status: 400 }
+        );
+      }
+    } catch (error) {
+      if (error instanceof InstagramStoryError) throw error;
+      lastError = error;
+    }
+    if (attempt < attempts - 1) await sleep(intervalMs);
+  }
+  if (lastError) throw lastError;
+  throw new InstagramStoryError(
+    `A Meta ainda não liberou a mídia do teste (${containerStatusMessage(lastState)}). Tente novamente em alguns instantes.`,
+    { status: 409 }
+  );
+}
+
+async function publishFacebookTagTest(id, { agencyId = null, publicBaseUrl = '' } = {}) {
+  let row = agencyId
+    ? db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ? AND agency_id = ?').get(id, agencyId)
+    : db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ?').get(id);
+  if (!row) throw new InstagramStoryError('Story não encontrado.', { status: 404 });
+  if (row.status === 'published') return getMentionById(id, row.agency_id);
+  if (row.status === 'ignored') throw new InstagramStoryError('Restaure este Story antes de testar a marcação.', { status: 409 });
+  if (!row.media_url) throw new InstagramStoryError('A mídia deste Story ainda não está disponível.', { status: 409 });
+
+  if (row.status === 'publishing') {
+    const updatedAt = Date.parse(row.updated_at || '');
+    const stale = Number.isFinite(updatedAt) && updatedAt < Date.now() - 5 * 60 * 1000;
+    if (!stale) throw new InstagramStoryError('Este Story já está sendo processado. Aguarde a conclusão.', { status: 409 });
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        status = 'failed', error_message = 'O teste anterior foi interrompido. Tente novamente.',
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+    row = { ...row, status: 'failed' };
+  }
+
+  const claimed = db.prepare(`
+    UPDATE instagram_story_mentions SET
+      status = 'publishing', error_message = NULL,
+      publish_channel = 'facebook_tag_test', updated_at = datetime('now')
+    WHERE id = ? AND status IN ('pending', 'failed')
+  `).run(id);
+  if (!claimed.changes) {
+    throw new InstagramStoryError('Este Story já está sendo processado. Aguarde alguns instantes.', { status: 409 });
+  }
+
+  try {
+    // A conexão direta continua sendo usada para identificar com precisão quem
+    // fez a menção. A publicação experimental usa a conexão via Facebook.
+    const instagramBundle = getClientTokenBundle(row.client_id, row.agency_id);
+    const sender = await ensureMentionSenderProfile(row, instagramBundle);
+    const senderUsername = normalizeUsername(sender.username || row.sender_username);
+    if (!senderUsername) {
+      throw new InstagramStoryError('Não foi possível identificar o perfil que deve ser marcado.', { status: 409 });
+    }
+
+    const readiness = facebookTaggingReadiness(row.client_id, row.agency_id);
+    if (!readiness.ready) {
+      const missing = readiness.missing_scopes?.length
+        ? ` Permissões ausentes: ${readiness.missing_scopes.join(', ')}.`
+        : '';
+      throw new InstagramStoryError(
+        `A conexão via Facebook ainda não está pronta. Selecione a Página vinculada ao Instagram e reconecte a Meta.${missing}`,
+        { status: 409 }
+      );
+    }
+
+    const facebookBundle = metaOAuth.getClientTokenBundle(row.client_id, row.agency_id);
+    const token = facebookBundle.pageAccessToken;
+    const instagramUserId = facebookBundle.selectedInstagramId;
+    const hostedUrl = absoluteMediaUrl(row.media_url, publicBaseUrl);
+    const userTags = [{ username: senderUsername, x: 0.5, y: 0.9 }];
+    const createParams = {
+      media_type: 'STORIES',
+      user_tags: userTags,
+    };
+    if (row.media_type === 'video' || String(row.media_mime || '').startsWith('video/')) {
+      createParams.video_url = hostedUrl;
+    } else {
+      createParams.image_url = hostedUrl;
+    }
+
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        tagging_username = ?, tagging_payload_json = ?, tagging_meta_response_json = NULL,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(senderUsername, JSON.stringify({ user_tags: userTags, media_type: 'STORIES' }), id);
+
+    const container = await metaOAuth.graphPost(`${instagramUserId}/media`, createParams, token);
+    if (!container?.id) throw new InstagramStoryError('A Meta não retornou o contêiner do teste de marcação.', { status: 502 });
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        published_container_id = ?, tagging_meta_response_json = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(String(container.id), JSON.stringify({ container }), id);
+
+    await waitForFacebookMediaContainer(container.id, token, { attempts: 24, intervalMs: 2500 });
+    const published = await metaOAuth.graphPost(`${instagramUserId}/media_publish`, {
+      creation_id: container.id,
+    }, token);
+    if (!published?.id) throw new InstagramStoryError('A Meta não confirmou a publicação do teste.', { status: 502 });
+
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        status = 'published', published_media_id = ?, published_at = datetime('now'),
+        publish_channel = 'facebook_tag_test', tagging_username = ?,
+        tagging_meta_response_json = ?, error_message = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      String(published.id),
+      senderUsername,
+      JSON.stringify({ container, published, user_tags: userTags }),
+      id
+    );
+    return getMentionById(id, row.agency_id);
+  } catch (error) {
+    const message = error?.message || 'Não foi possível executar o teste de marcação pela Meta.';
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        status = 'failed', error_message = ?, publish_channel = 'facebook_tag_test',
+        tagging_meta_response_json = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      message,
+      JSON.stringify({
+        error: message,
+        meta_code: error?.metaCode || null,
+        meta_subcode: error?.metaSubcode || null,
+        trace_id: error?.traceId || null,
+      }),
+      id
+    );
+    if (error instanceof InstagramStoryError) throw error;
+    if (error instanceof metaOAuth.MetaOAuthError || error instanceof InstagramOAuthError) {
+      throw new InstagramStoryError(message, {
+        status: error.status,
+        metaCode: error.metaCode,
+        metaSubcode: error.metaSubcode,
+        traceId: error.traceId,
+      });
+    }
+    throw new InstagramStoryError(message, { status: 502 });
+  }
+}
+
 async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) {
   let row = agencyId
     ? db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ? AND agency_id = ?').get(id, agencyId)
@@ -827,6 +1042,7 @@ function setupStatus(clientId, agencyId, req = null) {
     },
     webhook_url: publicBaseUrl ? `${publicBaseUrl}/api/instagram-stories/webhook` : null,
     required_scopes: REQUIRED_STORY_SCOPES,
+    facebook_tagging_test: facebookTaggingReadiness(clientId, agencyId),
   };
 }
 
@@ -861,6 +1077,7 @@ module.exports = {
   updateSettings,
   processWebhookPayload,
   publishMention,
+  publishFacebookTagTest,
   subscribeClient,
   setupStatus,
   getMentionById,
