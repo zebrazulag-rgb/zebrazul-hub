@@ -22,6 +22,9 @@ import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
 import StoryHub from './pages/StoryHub.jsx';
+import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
+import TermsOfUse from './pages/TermsOfUse.jsx';
+import DataDeletion from './pages/DataDeletion.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -41,6 +44,9 @@ export default function App() {
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
+      <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
+      <Route path="/termos-de-uso" element={<TermsOfUse />} />
+      <Route path="/exclusao-de-dados" element={<DataDeletion />} />
       <Route path="/" element={<ProtectedRoute commercialTeamAllowed><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<ProtectedRoute><VideoApprovals /></ProtectedRoute>} />
