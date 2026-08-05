@@ -228,6 +228,38 @@ async function senderProfile(senderId, bundle) {
   }
 }
 
+async function ensureMentionSenderProfile(row, bundle) {
+  if (row?.sender_username) {
+    return {
+      username: normalizeUsername(row.sender_username),
+      name: row.sender_name || null,
+      profilePictureUrl: row.sender_profile_picture_url || null,
+    };
+  }
+  if (!row?.sender_igsid) return {};
+  const profile = await senderProfile(row.sender_igsid, bundle);
+  if (profile.username) {
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        sender_username = ?, sender_name = ?, sender_profile_picture_url = ?,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      normalizeUsername(profile.username),
+      profile.name || null,
+      profile.profilePictureUrl || null,
+      row.id
+    );
+  }
+  return profile;
+}
+
+function storyUserTags(username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+  return [{ username: normalized, x: 0.5, y: 0.9 }];
+}
+
 function senderAllowed(settings, username) {
   const allowed = parseAllowedUsernames(settings.allowed_usernames_json);
   if (!allowed.length) return true;
@@ -497,6 +529,15 @@ async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) 
     throw new InstagramStoryError('A publicação de Stories pela API exige uma conta Instagram Business. Altere a conta para Empresa e reconecte.', { status: 409 });
   }
 
+  const sender = await ensureMentionSenderProfile(row, bundle);
+  const senderUsername = normalizeUsername(sender.username || row.sender_username);
+  if (row.source_kind === 'story_mention' && !senderUsername) {
+    throw new InstagramStoryError(
+      'Não foi possível identificar quem marcou a conta. Reconecte o Instagram e tente novamente para publicar com o crédito correto.',
+      { status: 409 }
+    );
+  }
+
   const hostedUrl = absoluteMediaUrl(row.media_url, publicBaseUrl);
   db.prepare(`
     UPDATE instagram_story_mentions SET
@@ -506,6 +547,8 @@ async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) 
 
   try {
     const createParams = { media_type: 'STORIES' };
+    const userTags = storyUserTags(senderUsername);
+    if (userTags) createParams.user_tags = userTags;
     if (row.media_type === 'video' || String(row.media_mime || '').startsWith('video/')) {
       createParams.video_url = hostedUrl;
     } else {
@@ -534,7 +577,10 @@ async function publishMention(id, { agencyId = null, publicBaseUrl = '' } = {}) 
     `).run(String(published.id), id);
     return getMentionById(id, row.agency_id);
   } catch (error) {
-    const message = error?.message || 'Não foi possível publicar o Story.';
+    let message = error?.message || 'Não foi possível publicar o Story.';
+    if (/user_tags|user tags|invalid parameter/i.test(message)) {
+      message = `O Instagram recusou a marcação de @${senderUsername || 'autor'} neste formato de Story: ${message}`;
+    }
     markMentionFailure(id, message);
     if (error instanceof InstagramStoryError) throw error;
     if (error instanceof InstagramOAuthError) {
