@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  AtSign,
   CheckCircle2,
   Clock3,
   Copy,
@@ -87,6 +88,7 @@ export default function StoryHub() {
   const [saving, setSaving] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [workingId, setWorkingId] = useState(null);
+  const [workingKind, setWorkingKind] = useState({});
   const [cardErrors, setCardErrors] = useState({});
   const workingRef = useRef(new Set());
   const [error, setError] = useState('');
@@ -229,6 +231,48 @@ export default function StoryHub() {
     }
   }
 
+  async function testFacebookMention(story) {
+    if (workingRef.current.has(story.id) || story.status === 'publishing') return;
+    workingRef.current.add(story.id);
+    setWorkingId(story.id);
+    setWorkingKind((current) => ({ ...current, [story.id]: 'facebook_tag_test' }));
+    setError('');
+    setNotice('');
+    setCardErrors((current) => ({ ...current, [story.id]: '' }));
+    setStories((current) => current.map((item) => (
+      item.id === story.id
+        ? { ...item, status: 'publishing', error_message: null, publish_channel: 'facebook_tag_test' }
+        : item
+    )));
+
+    try {
+      const { data } = await api.post(`/instagram-stories/${story.id}/publish-facebook-tag-test`);
+      if (data?.story) {
+        setStories((current) => current.map((item) => item.id === story.id ? data.story : item));
+      }
+      setNotice(data?.test?.message || `Teste publicado com marcação para @${story.sender_username}. Confira a notificação no perfil marcado.`);
+    } catch (requestError) {
+      const response = requestError.response?.data || {};
+      const trace = response.trace_id ? ` · Trace: ${response.trace_id}` : '';
+      const message = `${response.error || 'A Meta recusou o teste de marcação.'}${trace}`;
+      setCardErrors((current) => ({ ...current, [story.id]: message }));
+      setStories((current) => current.map((item) => (
+        item.id === story.id
+          ? { ...item, status: 'failed', error_message: message, publish_channel: 'facebook_tag_test' }
+          : item
+      )));
+    } finally {
+      workingRef.current.delete(story.id);
+      setWorkingId((current) => current === story.id ? null : current);
+      setWorkingKind((current) => {
+        const next = { ...current };
+        delete next[story.id];
+        return next;
+      });
+      await loadStories({ silent: true });
+    }
+  }
+
   async function ignoreStory(story) {
     setWorkingId(story.id);
     setError('');
@@ -264,6 +308,9 @@ export default function StoryHub() {
       setError('Não foi possível copiar a URL automaticamente.');
     }
   }
+
+  const facebookTagTest = setup?.facebook_tagging_test || null;
+  const canRunFacebookTagTest = ['admin', 'team'].includes(user?.role) && Boolean(facebookTagTest?.ready);
 
   const metrics = useMemo(() => [
     { label: 'Recebidos', value: stats.total || 0, icon: Instagram, color: 'text-fuchsia-500' },
@@ -419,6 +466,23 @@ export default function StoryHub() {
               </div>
             )}
 
+            <div className={`mt-5 rounded-2xl border p-4 ${facebookTagTest?.ready ? 'border-emerald-100 bg-emerald-50/70' : 'border-amber-100 bg-amber-50/70'}`}>
+              <div className="flex items-start gap-3">
+                <AtSign size={18} className={facebookTagTest?.ready ? 'mt-0.5 text-emerald-600' : 'mt-0.5 text-amber-600'} />
+                <div>
+                  <p className={`text-sm font-bold ${facebookTagTest?.ready ? 'text-emerald-800' : 'text-amber-800'}`}>Teste de marcação real via Facebook</p>
+                  <p className={`mt-1 text-xs leading-5 ${facebookTagTest?.ready ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {facebookTagTest?.ready
+                      ? 'Página, Instagram e token da Meta prontos para o teste com user_tags.'
+                      : 'Conecte a Meta pelo Facebook, selecione a Página vinculada ao Instagram e autorize instagram_content_publish.'}
+                  </p>
+                  {!facebookTagTest?.ready && facebookTagTest?.missing_scopes?.length > 0 && (
+                    <p className="mt-2 text-[11px] font-semibold text-amber-800">Faltando: {facebookTagTest.missing_scopes.join(', ')}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {setup?.webhook_url && (
               <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Callback URL</p>
@@ -486,8 +550,8 @@ export default function StoryHub() {
                     {isWorking && (
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/80 px-6 text-center text-white backdrop-blur-[2px]">
                         <LoaderCircle size={34} className="animate-spin" />
-                        <p className="mt-4 text-sm font-bold">Publicando Story...</p>
-                        <p className="mt-1 text-xs leading-5 text-white/70">Identificando o autor, preparando o crédito e enviando para o Instagram. Não clique novamente.</p>
+                        <p className="mt-4 text-sm font-bold">{workingKind[story.id] === 'facebook_tag_test' ? 'Testando marcação real...' : 'Publicando Story...'}</p>
+                        <p className="mt-1 text-xs leading-5 text-white/70">{workingKind[story.id] === 'facebook_tag_test' ? 'Enviando user_tags pela integração com Facebook e aguardando a resposta oficial da Meta.' : 'Identificando o autor, preparando o crédito e enviando para o Instagram. Não clique novamente.'}</p>
                         <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/15">
                           <div className="h-full w-1/2 animate-pulse rounded-full bg-blue-400" />
                         </div>
@@ -509,8 +573,10 @@ export default function StoryHub() {
                     </div>
 
                     {cardError && <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium leading-5 text-rose-700">{cardError}</p>}
-                    {story.sender_username ? (
-                      <p className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-700">Crédito visual preparado para <strong>@{story.sender_username}</strong>.</p>
+                    {story.publish_channel === 'facebook_tag_test' && story.status === 'published' ? (
+                      <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">A Meta publicou o teste com <strong>user_tags para @{story.tagging_username || story.sender_username}</strong>. Confirme se o perfil recebeu a marcação.</p>
+                    ) : story.sender_username ? (
+                      <p className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-700">Perfil identificado: <strong>@{story.sender_username}</strong>.</p>
                     ) : story.status !== 'published' && (
                       <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">O ZebraHub tentará identificar o perfil novamente antes de publicar.</p>
                     )}
@@ -519,10 +585,21 @@ export default function StoryHub() {
                     )}
 
                     <div className="mt-4 flex gap-2">
+                      {['pending', 'failed'].includes(story.status) && story.sender_username && (
+                        <button
+                          onClick={() => testFacebookMention(story)}
+                          disabled={isWorking || !story.media_url || !canRunFacebookTagTest}
+                          title={canRunFacebookTagTest ? 'Publica um teste limpo enviando user_tags pela API com Facebook Login.' : 'Conecte a Meta pelo Facebook e selecione a Página vinculada ao Instagram.'}
+                          className="btn-primary flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isWorking && workingKind[story.id] === 'facebook_tag_test' ? <LoaderCircle size={14} className="animate-spin" /> : <AtSign size={14} />}
+                          {isWorking && workingKind[story.id] === 'facebook_tag_test' ? 'Testando...' : 'Testar marcação Meta'}
+                        </button>
+                      )}
                       {['pending', 'failed'].includes(story.status) && (
-                        <button onClick={() => publishStory(story)} disabled={isWorking || !story.media_url} className="btn-primary flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60">
+                        <button onClick={() => publishStory(story)} disabled={isWorking || !story.media_url} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60">
                           {isWorking ? <LoaderCircle size={14} className="animate-spin" /> : <Send size={14} />}
-                          {isWorking ? 'Publicando...' : story.status === 'failed' ? 'Tentar novamente' : 'Repostar'}
+                          {isWorking && workingKind[story.id] !== 'facebook_tag_test' ? 'Publicando...' : 'Publicar visual'}
                         </button>
                       )}
                       {story.status === 'pending' && (
@@ -532,7 +609,7 @@ export default function StoryHub() {
                         <button onClick={() => restoreStory(story)} disabled={isWorking} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-xs"><RotateCcw size={14} /> Restaurar</button>
                       )}
                       {story.status === 'published' && (
-                        <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><Zap size={14} /> Publicado no Instagram</div>
+                        <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><Zap size={14} /> {story.publish_channel === 'facebook_tag_test' ? 'Teste Meta publicado' : 'Publicado no Instagram'}</div>
                       )}
                       {story.status === 'publishing' && (
                         <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"><LoaderCircle size={14} className="animate-spin" /> Enviando para o Instagram</div>
