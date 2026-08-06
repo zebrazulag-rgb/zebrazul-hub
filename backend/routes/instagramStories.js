@@ -7,6 +7,7 @@ const {
   updateSettings,
   publishMention,
   publishFacebookTagTest,
+  getFacebookTagTestStatus,
   subscribeClient,
   setupStatus,
   getMentionById,
@@ -171,17 +172,43 @@ router.post('/:id/publish-facebook-tag-test', requireRole('admin', 'team'), asyn
   if (!story) return res.status(404).json({ error: 'Story não encontrado.' });
   if (!ensureClient(req, res, story.client_id)) return;
   try {
-    const published = await publishFacebookTagTest(story.id, {
+    const result = await publishFacebookTagTest(story.id, {
       agencyId: req.user.agency_id,
       publicBaseUrl: requestPublicBaseUrl(req),
     });
-    res.json({
-      story: published,
+    const publishedStory = result.story;
+    const payload = {
+      story: publishedStory,
+      processing: Boolean(result.processing),
+      container_status: result.container_status || null,
+      next_check_seconds: result.next_check_seconds || 30,
       test: {
         channel: 'facebook_tag_test',
-        username: published.tagging_username || published.sender_username || null,
-        message: 'A Meta aceitou e publicou o contêiner com user_tags. Confirme no Instagram se a conta recebeu a marcação.',
+        username: publishedStory.tagging_username || publishedStory.sender_username || null,
+        message: result.processing
+          ? 'A Meta recebeu o Story e está processando a mídia. O ZebraHub vai concluir automaticamente.'
+          : 'A Meta aceitou e publicou o contêiner com user_tags. Confirme no Instagram se a conta recebeu a marcação.',
       },
+    };
+    return res.status(result.processing ? 202 : 200).json(payload);
+  } catch (error) {
+    apiError(res, error);
+  }
+});
+
+router.get('/:id/facebook-tag-test-status', requireRole('admin', 'team'), async (req, res) => {
+  const story = getMentionById(Number(req.params.id), req.user.agency_id);
+  if (!story) return res.status(404).json({ error: 'Story não encontrado.' });
+  if (!ensureClient(req, res, story.client_id)) return;
+  try {
+    const result = await getFacebookTagTestStatus(story.id, {
+      agencyId: req.user.agency_id,
+    });
+    return res.json({
+      story: result.story,
+      processing: Boolean(result.processing),
+      container_status: result.container_status || null,
+      next_check_seconds: result.next_check_seconds || 30,
     });
   } catch (error) {
     apiError(res, error);

@@ -677,36 +677,177 @@ function facebookTaggingReadiness(clientId, agencyId) {
   }
 }
 
-async function waitForFacebookMediaContainer(containerId, token, {
-  attempts = 20,
-  intervalMs = 3000,
-} = {}) {
-  let lastState = null;
-  let lastError = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      lastState = await metaOAuth.graphRequest(String(containerId), {
-        fields: 'status_code,status',
-      }, token);
-      const code = containerStatusCode(lastState);
-      if (code === 'FINISHED' || code === 'PUBLISHED') return lastState;
-      if (code === 'ERROR' || code === 'EXPIRED') {
-        throw new InstagramStoryError(
-          `A Meta rejeitou a mídia durante o teste de marcação: ${containerStatusMessage(lastState)}`,
-          { status: 400 }
-        );
-      }
-    } catch (error) {
-      if (error instanceof InstagramStoryError) throw error;
-      lastError = error;
-    }
-    if (attempt < attempts - 1) await sleep(intervalMs);
+async function inspectFacebookMediaContainer(containerId, token) {
+  const state = await metaOAuth.graphRequest(String(containerId), {
+    fields: 'status_code,status',
+  }, token);
+  return {
+    state,
+    code: containerStatusCode(state) || 'IN_PROGRESS',
+    message: containerStatusMessage(state),
+  };
+}
+
+function saveFacebookTagProgress(id, payload = {}) {
+  db.prepare(`
+    UPDATE instagram_story_mentions SET
+      status = 'publishing', error_message = NULL,
+      publish_channel = 'facebook_tag_test', tagging_meta_response_json = ?,
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(JSON.stringify(payload), id);
+}
+
+async function advanceFacebookTagTest(row, facebookBundle) {
+  const token = facebookBundle.pageAccessToken;
+  const instagramUserId = facebookBundle.selectedInstagramId;
+  const containerId = String(row.published_container_id || '').trim();
+  if (!containerId) {
+    throw new InstagramStoryError('O contêiner do teste de marcação não foi encontrado.', { status: 409 });
   }
-  if (lastError) throw lastError;
-  throw new InstagramStoryError(
-    `A Meta ainda não liberou a mídia do teste (${containerStatusMessage(lastState)}). Tente novamente em alguns instantes.`,
-    { status: 409 }
+
+  const inspected = await inspectFacebookMediaContainer(containerId, token);
+  const previous = safeJson(row.tagging_meta_response_json, {}) || {};
+
+  if (inspected.code === 'ERROR' || inspected.code === 'EXPIRED') {
+    throw new InstagramStoryError(
+      `A Meta rejeitou a mídia durante o teste de marcação: ${inspected.message}`,
+      { status: 400 }
+    );
+  }
+
+  if (inspected.code !== 'FINISHED' && inspected.code !== 'PUBLISHED') {
+    saveFacebookTagProgress(row.id, {
+      ...previous,
+      container: previous.container || { id: containerId },
+      container_status: inspected.state,
+      phase: 'processing',
+      next_check_seconds: 30,
+    });
+    return {
+      story: getMentionById(row.id, row.agency_id),
+      processing: true,
+      container_status: inspected.code,
+      next_check_seconds: 30,
+    };
+  }
+
+  if (inspected.code === 'PUBLISHED') {
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        status = 'published', published_media_id = COALESCE(published_media_id, ?),
+        published_at = COALESCE(published_at, datetime('now')),
+        publish_channel = 'facebook_tag_test', error_message = NULL,
+        tagging_meta_response_json = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      containerId,
+      JSON.stringify({
+        ...previous,
+        container_status: inspected.state,
+        phase: 'published',
+      }),
+      row.id
+    );
+    return {
+      story: getMentionById(row.id, row.agency_id),
+      processing: false,
+      container_status: inspected.code,
+    };
+  }
+
+  let published;
+  try {
+    published = await metaOAuth.graphPost(`${instagramUserId}/media_publish`, {
+      creation_id: containerId,
+    }, token);
+  } catch (error) {
+    if (isMediaNotReadyError(error)) {
+      saveFacebookTagProgress(row.id, {
+        ...previous,
+        container_status: inspected.state,
+        phase: 'processing',
+        publish_retry_reason: error.message,
+        next_check_seconds: 30,
+      });
+      return {
+        story: getMentionById(row.id, row.agency_id),
+        processing: true,
+        container_status: 'IN_PROGRESS',
+        next_check_seconds: 30,
+      };
+    }
+    throw error;
+  }
+
+  if (!published?.id) {
+    throw new InstagramStoryError('A Meta não confirmou a publicação do teste.', { status: 502 });
+  }
+
+  const senderUsername = normalizeUsername(row.tagging_username || row.sender_username);
+  db.prepare(`
+    UPDATE instagram_story_mentions SET
+      status = 'published', published_media_id = ?, published_at = datetime('now'),
+      publish_channel = 'facebook_tag_test', tagging_username = ?,
+      tagging_meta_response_json = ?, error_message = NULL, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    String(published.id),
+    senderUsername || null,
+    JSON.stringify({
+      ...previous,
+      container_status: inspected.state,
+      published,
+      phase: 'published',
+    }),
+    row.id
   );
+
+  return {
+    story: getMentionById(row.id, row.agency_id),
+    processing: false,
+    container_status: 'PUBLISHED',
+  };
+}
+
+async function getFacebookTagTestStatus(id, { agencyId = null } = {}) {
+  const row = agencyId
+    ? db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ? AND agency_id = ?').get(id, agencyId)
+    : db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ?').get(id);
+  if (!row) throw new InstagramStoryError('Story não encontrado.', { status: 404 });
+  if (row.status === 'published') {
+    return { story: getMentionById(id, row.agency_id), processing: false, container_status: 'PUBLISHED' };
+  }
+  if (row.publish_channel !== 'facebook_tag_test' || !row.published_container_id) {
+    return { story: getMentionById(id, row.agency_id), processing: false, container_status: null };
+  }
+
+  try {
+    const readiness = facebookTaggingReadiness(row.client_id, row.agency_id);
+    if (!readiness.ready) {
+      throw new InstagramStoryError('A conexão via Facebook não está pronta para concluir o teste.', { status: 409 });
+    }
+    const facebookBundle = metaOAuth.getClientTokenBundle(row.client_id, row.agency_id);
+    return await advanceFacebookTagTest(row, facebookBundle);
+  } catch (error) {
+    const message = error?.message || 'Não foi possível acompanhar o processamento da Meta.';
+    db.prepare(`
+      UPDATE instagram_story_mentions SET
+        status = 'failed', error_message = ?, publish_channel = 'facebook_tag_test',
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(message, id);
+    if (error instanceof InstagramStoryError) throw error;
+    if (error instanceof metaOAuth.MetaOAuthError || error instanceof InstagramOAuthError) {
+      throw new InstagramStoryError(message, {
+        status: error.status,
+        metaCode: error.metaCode,
+        metaSubcode: error.metaSubcode,
+        traceId: error.traceId,
+      });
+    }
+    throw new InstagramStoryError(message, { status: 502 });
+  }
 }
 
 async function publishFacebookTagTest(id, { agencyId = null, publicBaseUrl = '' } = {}) {
@@ -714,36 +855,44 @@ async function publishFacebookTagTest(id, { agencyId = null, publicBaseUrl = '' 
     ? db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ? AND agency_id = ?').get(id, agencyId)
     : db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ?').get(id);
   if (!row) throw new InstagramStoryError('Story não encontrado.', { status: 404 });
-  if (row.status === 'published') return getMentionById(id, row.agency_id);
+  if (row.status === 'published') {
+    return { story: getMentionById(id, row.agency_id), processing: false, container_status: 'PUBLISHED' };
+  }
   if (row.status === 'ignored') throw new InstagramStoryError('Restaure este Story antes de testar a marcação.', { status: 409 });
   if (!row.media_url) throw new InstagramStoryError('A mídia deste Story ainda não está disponível.', { status: 409 });
 
-  if (row.status === 'publishing') {
-    const updatedAt = Date.parse(row.updated_at || '');
-    const stale = Number.isFinite(updatedAt) && updatedAt < Date.now() - 5 * 60 * 1000;
-    if (!stale) throw new InstagramStoryError('Este Story já está sendo processado. Aguarde a conclusão.', { status: 409 });
-    db.prepare(`
-      UPDATE instagram_story_mentions SET
-        status = 'failed', error_message = 'O teste anterior foi interrompido. Tente novamente.',
-        updated_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
-    row = { ...row, status: 'failed' };
-  }
-
-  const claimed = db.prepare(`
-    UPDATE instagram_story_mentions SET
-      status = 'publishing', error_message = NULL,
-      publish_channel = 'facebook_tag_test', updated_at = datetime('now')
-    WHERE id = ? AND status IN ('pending', 'failed')
-  `).run(id);
-  if (!claimed.changes) {
-    throw new InstagramStoryError('Este Story já está sendo processado. Aguarde alguns instantes.', { status: 409 });
-  }
-
   try {
-    // A conexão direta continua sendo usada para identificar com precisão quem
-    // fez a menção. A publicação experimental usa a conexão via Facebook.
+    // Se o contêiner já foi criado em uma tentativa anterior, não crie outro.
+    // Apenas consulte o status e conclua a publicação quando a Meta disser FINISHED.
+    if (row.publish_channel === 'facebook_tag_test' && row.published_container_id) {
+      const readiness = facebookTaggingReadiness(row.client_id, row.agency_id);
+      if (!readiness.ready) {
+        throw new InstagramStoryError('A conexão via Facebook não está pronta para concluir o teste.', { status: 409 });
+      }
+      db.prepare(`
+        UPDATE instagram_story_mentions SET
+          status = 'publishing', error_message = NULL, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(id);
+      const facebookBundle = metaOAuth.getClientTokenBundle(row.client_id, row.agency_id);
+      row = db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ?').get(id);
+      return await advanceFacebookTagTest(row, facebookBundle);
+    }
+
+    if (row.status === 'publishing') {
+      throw new InstagramStoryError('Este Story já está sendo processado. Aguarde a conclusão.', { status: 409 });
+    }
+
+    const claimed = db.prepare(`
+      UPDATE instagram_story_mentions SET
+        status = 'publishing', error_message = NULL,
+        publish_channel = 'facebook_tag_test', updated_at = datetime('now')
+      WHERE id = ? AND status IN ('pending', 'failed')
+    `).run(id);
+    if (!claimed.changes) {
+      throw new InstagramStoryError('Este Story já está sendo processado. Aguarde alguns instantes.', { status: 409 });
+    }
+
     const instagramBundle = getClientTokenBundle(row.client_id, row.agency_id);
     const sender = await ensureMentionSenderProfile(row, instagramBundle);
     const senderUsername = normalizeUsername(sender.username || row.sender_username);
@@ -788,46 +937,25 @@ async function publishFacebookTagTest(id, { agencyId = null, publicBaseUrl = '' 
     if (!container?.id) throw new InstagramStoryError('A Meta não retornou o contêiner do teste de marcação.', { status: 502 });
     db.prepare(`
       UPDATE instagram_story_mentions SET
-        published_container_id = ?, tagging_meta_response_json = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(String(container.id), JSON.stringify({ container }), id);
-
-    await waitForFacebookMediaContainer(container.id, token, { attempts: 24, intervalMs: 2500 });
-    const published = await metaOAuth.graphPost(`${instagramUserId}/media_publish`, {
-      creation_id: container.id,
-    }, token);
-    if (!published?.id) throw new InstagramStoryError('A Meta não confirmou a publicação do teste.', { status: 502 });
-
-    db.prepare(`
-      UPDATE instagram_story_mentions SET
-        status = 'published', published_media_id = ?, published_at = datetime('now'),
-        publish_channel = 'facebook_tag_test', tagging_username = ?,
-        tagging_meta_response_json = ?, error_message = NULL, updated_at = datetime('now')
+        published_container_id = ?, tagging_meta_response_json = ?,
+        status = 'publishing', error_message = NULL, updated_at = datetime('now')
       WHERE id = ?
     `).run(
-      String(published.id),
-      senderUsername,
-      JSON.stringify({ container, published, user_tags: userTags }),
+      String(container.id),
+      JSON.stringify({ container, user_tags: userTags, phase: 'processing', next_check_seconds: 30 }),
       id
     );
-    return getMentionById(id, row.agency_id);
+
+    row = db.prepare('SELECT * FROM instagram_story_mentions WHERE id = ?').get(id);
+    return await advanceFacebookTagTest(row, facebookBundle);
   } catch (error) {
     const message = error?.message || 'Não foi possível executar o teste de marcação pela Meta.';
     db.prepare(`
       UPDATE instagram_story_mentions SET
         status = 'failed', error_message = ?, publish_channel = 'facebook_tag_test',
-        tagging_meta_response_json = ?, updated_at = datetime('now')
+        updated_at = datetime('now')
       WHERE id = ?
-    `).run(
-      message,
-      JSON.stringify({
-        error: message,
-        meta_code: error?.metaCode || null,
-        meta_subcode: error?.metaSubcode || null,
-        trace_id: error?.traceId || null,
-      }),
-      id
-    );
+    `).run(message, id);
     if (error instanceof InstagramStoryError) throw error;
     if (error instanceof metaOAuth.MetaOAuthError || error instanceof InstagramOAuthError) {
       throw new InstagramStoryError(message, {
@@ -1078,6 +1206,7 @@ module.exports = {
   processWebhookPayload,
   publishMention,
   publishFacebookTagTest,
+  getFacebookTagTestStatus,
   subscribeClient,
   setupStatus,
   getMentionById,
