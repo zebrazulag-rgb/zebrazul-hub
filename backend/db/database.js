@@ -250,6 +250,37 @@ CREATE TABLE IF NOT EXISTS commercial_activities (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS commercial_lead_diagnostics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  lead_id INTEGER NOT NULL UNIQUE,
+  submission_id TEXT,
+  objective TEXT,
+  role TEXT,
+  segment TEXT,
+  experience TEXT,
+  team_size TEXT,
+  city TEXT,
+  score INTEGER,
+  classification TEXT,
+  primary_gap TEXT,
+  pain_statement TEXT,
+  reason_now TEXT,
+  timeframe TEXT,
+  investment_intent TEXT,
+  fit_score INTEGER,
+  priority TEXT,
+  answers_json TEXT DEFAULT '{}',
+  raw_payload_json TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_id) REFERENCES commercial_leads(id) ON DELETE CASCADE,
+  UNIQUE(agency_id, client_id, submission_id)
+);
+
 CREATE TABLE IF NOT EXISTS financial_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL DEFAULT 1,
@@ -1252,6 +1283,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_client_stage ON commercial_leads(agency_id, client_id, stage, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_next_action ON commercial_leads(agency_id, next_action_date);
   CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_client ON commercial_lead_diagnostics(agency_id, client_id, fit_score, created_at);
+  CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_submission ON commercial_lead_diagnostics(agency_id, client_id, submission_id);
   CREATE INDEX IF NOT EXISTS idx_posts_agency ON posts(agency_id, status, scheduled_at);
   CREATE INDEX IF NOT EXISTS idx_financial_agency ON financial_entries(agency_id, due_date);
   CREATE INDEX IF NOT EXISTS idx_ai_dme_consolidations_client ON ai_dme_consolidations(agency_id, client_id, created_at DESC);

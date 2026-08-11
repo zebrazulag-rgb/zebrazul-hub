@@ -180,6 +180,23 @@ function leadQuery(whereClause = '') {
       creator.name AS created_by_name,
       cs.name AS stage_name, cs.stage_type, cs.color_key AS stage_color_key,
       cs.position AS stage_position,
+      d.submission_id AS diagnostic_submission_id,
+      d.objective AS diagnostic_objective,
+      d.role AS diagnostic_role,
+      d.segment AS diagnostic_segment,
+      d.experience AS diagnostic_experience,
+      d.team_size AS diagnostic_team_size,
+      d.city AS diagnostic_city,
+      d.score AS diagnostic_score,
+      d.classification AS diagnostic_classification,
+      d.primary_gap AS diagnostic_primary_gap,
+      d.pain_statement AS diagnostic_pain_statement,
+      d.reason_now AS diagnostic_reason_now,
+      d.timeframe AS diagnostic_timeframe,
+      d.investment_intent AS diagnostic_investment_intent,
+      d.fit_score AS diagnostic_fit_score,
+      d.priority AS diagnostic_priority,
+      d.answers_json AS diagnostic_answers_json,
       (SELECT COUNT(*) FROM commercial_activities a WHERE a.lead_id = l.id AND a.agency_id = l.agency_id) AS activity_count
     FROM commercial_leads l
     JOIN clients c ON c.id = l.client_id AND c.agency_id = l.agency_id
@@ -187,6 +204,10 @@ function leadQuery(whereClause = '') {
       ON cs.agency_id = l.agency_id
      AND cs.client_id = l.client_id
      AND cs.stage_key = COALESCE(NULLIF(l.stage_key, ''), l.stage)
+    LEFT JOIN commercial_lead_diagnostics d
+      ON d.lead_id = l.id
+     AND d.agency_id = l.agency_id
+     AND d.client_id = l.client_id
     LEFT JOIN users u ON u.id = l.owner_user_id AND u.agency_id = l.agency_id
     LEFT JOIN users creator ON creator.id = l.created_by AND creator.agency_id = l.agency_id
     ${whereClause}

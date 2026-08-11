@@ -23,6 +23,7 @@ const agencyRoutes = require('./routes/agencies');
 const diagnosticRoutes = require('./routes/diagnostics');
 const publicDiagnosticRoutes = require('./routes/publicDiagnostics');
 const commercialRoutes = require('./routes/commercial');
+const apogeuDiagnosticIntegrationRoutes = require('./routes/apogeuDiagnosticIntegration');
 const aiRoutes = require('./routes/ai');
 const materialRoutes = require('./routes/materials');
 const materialBoardRoutes = require('./routes/materialBoards');
@@ -68,6 +69,8 @@ app.use(express.json({
 // A assinatura X-Hub-Signature-256 é validada dentro da própria rota.
 app.use('/api/instagram-stories/webhook', instagramStoriesWebhookRoutes);
 app.use('/api/media', mediaRoutes);
+// Integração servidor-a-servidor do Diagnóstico APOGEU. Protegida por chave própria.
+app.use('/api/integrations/apogeu-diagnostico', apogeuDiagnosticIntegrationRoutes);
 
 app.get('/api/health', (req, res) => {
   const health = getHealthStatus();
