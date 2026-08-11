@@ -12,6 +12,7 @@ import PublicApproval from './pages/PublicApproval.jsx';
 import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import Finance from './pages/Finance.jsx';
+import PasswordVault from './pages/PasswordVault.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
 import CompassPage from './pages/Compass.jsx';
@@ -79,6 +80,7 @@ export default function App() {
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/materiais" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
       <Route path="/materiais/:id" element={<ProtectedRoute><MaterialViewer /></ProtectedRoute>} />
+      <Route path="/senhas" element={<ProtectedRoute roles={['admin']}><PasswordVault /></ProtectedRoute>} />
       <Route
         path="/financeiro"
         element={

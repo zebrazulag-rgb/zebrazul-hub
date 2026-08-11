@@ -22,6 +22,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   FolderOpen,
+  KeyRound,
   Instagram,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -151,6 +152,7 @@ export default function Layout({ children }) {
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'] },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
+    { to: '/senhas', label: 'Senhas', icon: KeyRound, roles: ['admin'] },
   ];
 
   const visibleWorkspaceItems = workspaceItems.filter((item) => {
