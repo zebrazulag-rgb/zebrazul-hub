@@ -924,6 +924,42 @@ CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id, ta
 CREATE INDEX IF NOT EXISTS idx_user_client_access_client ON user_client_access(client_id, user_id);
 `);
 
+// Cofre de senhas: os segredos ficam criptografados no banco e o acesso e exclusivo de administradores.
+db.exec(`
+CREATE TABLE IF NOT EXISTS client_credentials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER,
+  created_by INTEGER,
+  service TEXT NOT NULL,
+  login_encrypted TEXT,
+  password_encrypted TEXT NOT NULL,
+  url_encrypted TEXT,
+  notes_encrypted TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS credential_access_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  credential_id INTEGER,
+  user_id INTEGER,
+  action TEXT NOT NULL CHECK(action IN ('create','view_details','reveal_password','update','delete')),
+  ip_address TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (credential_id) REFERENCES client_credentials(id) ON DELETE SET NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_client_credentials_agency_client ON client_credentials(agency_id, client_id, service);
+CREATE INDEX IF NOT EXISTS idx_credential_access_logs_credential ON credential_access_logs(agency_id, credential_id, created_at DESC);
+`);
+
 // Migração leve: adiciona colunas novas em bancos já existentes (não falha se já existirem)
 function tryAddColumn(table, column, definition) {
   try {
