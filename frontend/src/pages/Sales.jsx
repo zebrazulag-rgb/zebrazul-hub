@@ -30,7 +30,31 @@ import {
   firstOpenCommercialStage,
 } from '../utils/commercialStages.js';
 
-const ORIGINS = ['Indicação', 'Instagram', 'Site', 'Evento', 'Prospecção ativa', 'Parceria', 'Outro'];
+const ORIGINS = ['Diagnóstico APOGEU', 'Indicação', 'Instagram', 'Site', 'Evento', 'Prospecção ativa', 'Parceria', 'Outro'];
+
+function diagnosticPriorityClass(priority) {
+  const value = String(priority || '').toUpperCase();
+  if (value.includes('ALTA')) return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (value.includes('MÉDIA') || value.includes('MEDIA')) return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
+function DiagnosticLeadSummary({ lead, compact = false }) {
+  if (lead?.diagnostic_score == null && lead?.diagnostic_fit_score == null) return null;
+  return (
+    <div className={compact ? 'mt-3 flex flex-wrap gap-1.5' : 'grid gap-3 sm:grid-cols-3'}>
+      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold ${diagnosticPriorityClass(lead.diagnostic_priority)}`}>
+        {lead.diagnostic_priority || 'Diagnóstico APOGEU'}
+      </span>
+      <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
+        Fit {lead.diagnostic_fit_score ?? '—'}/100
+      </span>
+      <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-bold text-violet-700">
+        Diagnóstico {lead.diagnostic_score ?? '—'}/40
+      </span>
+    </div>
+  );
+}
 
 function todayISO() {
   const date = new Date();
@@ -104,6 +128,9 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900">{lead.company_name}</p>
               <p className="mt-0.5 truncate text-xs text-slate-500">{lead.contact_name || 'Contato não informado'}</p>
+              {lead.source === 'Diagnóstico APOGEU' && (
+                <span className="mt-2 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-700">APOGEU · Diagnóstico</span>
+              )}
             </div>
             <OwnerAvatar lead={lead} />
           </div>
@@ -112,6 +139,7 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
             <span className="text-sm font-bold text-slate-800">{formatCurrency(lead.estimated_value)}</span>
             <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${safeStage.soft}`}>{lead.probability}%</span>
           </div>
+          <DiagnosticLeadSummary lead={lead} compact />
 
           {(lead.next_action || lead.next_action_date) && (
             <div className={`mt-3 rounded-xl px-3 py-2 ${overdue ? 'bg-rose-50 text-rose-700' : 'bg-slate-50 text-slate-600'}`}>
@@ -525,6 +553,51 @@ export default function Sales() {
             </div>
 
             <div className="space-y-5 p-6">
+              {editingLead?.diagnostic_score != null && (
+                <section className="rounded-2xl border border-orange-200/80 bg-gradient-to-br from-orange-50 to-white p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600">Diagnóstico APOGEU</p>
+                      <h3 className="mt-1 text-lg font-bold text-slate-900">{editingLead.diagnostic_classification || 'Leitura comercial'}</h3>
+                      <p className="mt-1 text-xs text-slate-500">Lead recebido automaticamente pelo diagnóstico online.</p>
+                    </div>
+                    <DiagnosticLeadSummary lead={editingLead} />
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {[
+                      ['Principal área de treino', editingLead.diagnostic_primary_gap],
+                      ['Posição', editingLead.diagnostic_role],
+                      ['Segmento', editingLead.diagnostic_segment],
+                      ['Experiência', editingLead.diagnostic_experience],
+                      ['Equipe', editingLead.diagnostic_team_size],
+                      ['Prazo', editingLead.diagnostic_timeframe],
+                      ['Intenção', editingLead.diagnostic_investment_intent],
+                      ['Objetivo', editingLead.diagnostic_objective],
+                      ['Cidade', editingLead.diagnostic_city],
+                    ].filter(([, value]) => value).map(([label, value]) => (
+                      <div key={label} className="rounded-xl border border-orange-100 bg-white/80 p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {editingLead.diagnostic_pain_statement && (
+                    <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/70 p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-rose-500">Dor declarada</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">{editingLead.diagnostic_pain_statement}</p>
+                    </div>
+                  )}
+                  {editingLead.diagnostic_reason_now && (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Por que agora?</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editingLead.diagnostic_reason_now}</p>
+                    </div>
+                  )}
+                </section>
+              )}
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">Empresa ou oportunidade</label>
