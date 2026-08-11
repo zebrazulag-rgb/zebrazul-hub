@@ -61,23 +61,41 @@ function resolveAgency() {
 function resolveClient(agencyId) {
   const clientId = Number(process.env.APOGEU_DIAGNOSTIC_CLIENT_ID || 0);
   if (clientId) {
-    return db.prepare("SELECT id, name FROM clients WHERE id = ? AND agency_id = ? AND status != 'archived'")
+    return db.prepare("SELECT id, name, responsible_user_id FROM clients WHERE id = ? AND agency_id = ? AND status != 'archived'")
       .get(clientId, agencyId);
   }
   const name = String(process.env.APOGEU_DIAGNOSTIC_CLIENT_NAME || 'APOGEU').trim();
-  return db.prepare("SELECT id, name FROM clients WHERE agency_id = ? AND lower(name) = lower(?) AND status != 'archived' ORDER BY id LIMIT 1")
+  return db.prepare("SELECT id, name, responsible_user_id FROM clients WHERE agency_id = ? AND lower(name) = lower(?) AND status != 'archived' ORDER BY id LIMIT 1")
     .get(agencyId, name);
 }
 
-function resolveUser(agencyId) {
+function resolveUser(agencyId, client) {
   const configuredUserId = Number(process.env.APOGEU_DIAGNOSTIC_OWNER_USER_ID || 0);
   if (configuredUserId) {
     const configured = db.prepare(`
       SELECT id, name FROM users
-      WHERE id = ? AND agency_id = ? AND role IN ('admin','team')
+      WHERE id = ? AND agency_id = ? AND role IN ('admin','team','client')
     `).get(configuredUserId, agencyId);
     if (configured) return configured;
   }
+
+  if (Number(client?.responsible_user_id || 0)) {
+    const responsible = db.prepare(`
+      SELECT id, name FROM users
+      WHERE id = ? AND agency_id = ?
+    `).get(Number(client.responsible_user_id), agencyId);
+    if (responsible) return responsible;
+  }
+
+  const commercial = db.prepare(`
+    SELECT DISTINCT u.id, u.name
+    FROM users u
+    JOIN user_client_access uca ON uca.user_id = u.id AND uca.client_id = ?
+    WHERE u.agency_id = ? AND u.role = 'team' AND u.is_commercial_team = 1
+    ORDER BY u.id ASC
+    LIMIT 1
+  `).get(Number(client?.id || 0), agencyId);
+  if (commercial) return commercial;
 
   return db.prepare(`
     SELECT id, name FROM users
@@ -138,7 +156,7 @@ function nextActionFor(priority) {
 router.get('/health', integrationAuth, (req, res) => {
   const agency = resolveAgency();
   const client = agency ? resolveClient(agency.id) : null;
-  const user = agency ? resolveUser(agency.id) : null;
+  const user = agency && client ? resolveUser(agency.id, client) : null;
   res.json({
     ok: Boolean(agency && client && user),
     agency: agency ? { id: agency.id, name: agency.name, slug: agency.slug } : null,
@@ -170,7 +188,7 @@ router.post('/', integrationAuth, (req, res) => {
     });
   }
 
-  const owner = resolveUser(agency.id);
+  const owner = resolveUser(agency.id, client);
   if (!owner) return res.status(409).json({ error: 'Nenhum administrador disponível para receber o lead APOGEU' });
 
   ensureDefaultStages(agency.id, client.id);
