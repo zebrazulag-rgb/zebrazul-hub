@@ -56,6 +56,69 @@ function DiagnosticLeadSummary({ lead, compact = false }) {
   );
 }
 
+
+const DIAGNOSTIC_QUESTIONS = [
+  { key: 'q1', label: 'Prospecção', question: 'A prospecção acontece com uma rotina definida?' },
+  { key: 'q2', label: 'Processo comercial', question: 'O processo comercial é claro?' },
+  { key: 'q3', label: 'Diagnóstico', question: 'Como acontece o diagnóstico do cliente antes da solução?' },
+  { key: 'q4', label: 'Objeções', question: 'Como a equipe lida com objeções?' },
+  { key: 'q5', label: 'Follow-up', question: 'Como acontece o follow-up?' },
+  { key: 'q6', label: 'Indicadores', question: 'Os números do comercial orientam decisões?' },
+  { key: 'q7', label: 'Construção de valor', question: 'O cliente entende claramente o valor daquilo que é vendido?' },
+  { key: 'q8', label: 'Performance', question: 'A performance se mantém quando a pressão aumenta?' },
+];
+
+function parseDiagnosticAnswers(lead) {
+  if (!lead?.diagnostic_answers_json) return {};
+  try {
+    const parsed = JSON.parse(lead.diagnostic_answers_json);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function scoreTone(value) {
+  const score = Number(value || 0);
+  if (score >= 4) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (score === 3) return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-rose-200 bg-rose-50 text-rose-700';
+}
+
+function DiagnosticMuscleGrid({ lead }) {
+  const answers = parseDiagnosticAnswers(lead);
+  const hasAnswers = DIAGNOSTIC_QUESTIONS.some(({ key }) => answers[key] != null && answers[key] !== '');
+  if (!hasAnswers) return null;
+
+  return (
+    <div className="mt-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Musculatura comercial</p>
+          <p className="mt-1 text-xs text-slate-500">Notas respondidas pelo lead no diagnóstico.</p>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-bold text-slate-500">1 a 5</span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {DIAGNOSTIC_QUESTIONS.map(({ key, label, question }, index) => {
+          const value = answers[key];
+          return (
+            <div key={key} className="rounded-xl border border-slate-200/80 bg-white p-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{String(index + 1).padStart(2, '0')} · {label}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{question}</p>
+                </div>
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-black ${scoreTone(value)}`}>{value ?? '—'}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function todayISO() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -136,8 +199,12 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="text-sm font-bold text-slate-800">{formatCurrency(lead.estimated_value)}</span>
-            <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${safeStage.soft}`}>{lead.probability}%</span>
+            {lead.source === 'Diagnóstico APOGEU' ? (
+              <span className="min-w-0 truncate text-xs font-semibold text-slate-700">{lead.diagnostic_primary_gap || lead.diagnostic_classification || 'Diagnóstico recebido'}</span>
+            ) : (
+              <span className="text-sm font-bold text-slate-800">{formatCurrency(lead.estimated_value)}</span>
+            )}
+            <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${safeStage.soft}`}>{lead.probability}%</span>
           </div>
           <DiagnosticLeadSummary lead={lead} compact />
 
@@ -164,6 +231,9 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [ownerFilter, setOwnerFilter] = useState('all');
+  const [originFilter, setOriginFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [fitFilter, setFitFilter] = useState('all');
   const [dragOverStage, setDragOverStage] = useState(null);
   const [editingLead, setEditingLead] = useState(null);
   const [form, setForm] = useState(null);
@@ -219,6 +289,9 @@ export default function Sales() {
     setForm(null);
     setEditingLead(null);
     setOwnerFilter('all');
+    setOriginFilter('all');
+    setPriorityFilter('all');
+    setFitFilter('all');
     loadData();
   }, [clientId]);
 
@@ -226,11 +299,27 @@ export default function Sales() {
     const term = search.trim().toLowerCase();
     return leads.filter((lead) => {
       if (ownerFilter !== 'all' && String(lead.owner_user_id || '') !== ownerFilter) return false;
+      if (originFilter === 'apogeu' && lead.source !== 'Diagnóstico APOGEU') return false;
+      if (originFilter === 'other' && lead.source === 'Diagnóstico APOGEU') return false;
+
+      const priority = String(lead.diagnostic_priority || '').toUpperCase();
+      if (priorityFilter === 'high' && !priority.includes('ALTA')) return false;
+      if (priorityFilter === 'medium' && !(priority.includes('MÉDIA') || priority.includes('MEDIA'))) return false;
+      if (priorityFilter === 'low' && !priority.includes('BAIXA')) return false;
+
+      const fit = Number(lead.diagnostic_fit_score);
+      if (fitFilter === '80' && !(Number.isFinite(fit) && fit >= 80)) return false;
+      if (fitFilter === '60' && !(Number.isFinite(fit) && fit >= 60 && fit < 80)) return false;
+      if (fitFilter === 'below60' && !(Number.isFinite(fit) && fit < 60)) return false;
+
       if (!term) return true;
-      return [lead.company_name, lead.contact_name, lead.email, lead.phone, lead.source]
-        .some((value) => String(value || '').toLowerCase().includes(term));
+      return [
+        lead.company_name, lead.contact_name, lead.email, lead.phone, lead.source,
+        lead.diagnostic_primary_gap, lead.diagnostic_classification, lead.diagnostic_segment,
+        lead.diagnostic_role, lead.diagnostic_priority,
+      ].some((value) => String(value || '').toLowerCase().includes(term));
     });
-  }, [leads, ownerFilter, search]);
+  }, [leads, ownerFilter, originFilter, priorityFilter, fitFilter, search]);
 
   const openLeads = leads.filter((lead) => stageMap[lead.stage]?.stage_type === 'open');
   const pipelineValue = openLeads.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
@@ -417,6 +506,23 @@ export default function Sales() {
           <input value={search} onChange={(event) => setSearch(event.target.value)} className="input-field pl-10" placeholder="Buscar empresa, contato, telefone..." />
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select value={originFilter} onChange={(event) => setOriginFilter(event.target.value)} className="input-field min-w-[170px]">
+            <option value="all">Todas as origens</option>
+            <option value="apogeu">Diagnóstico APOGEU</option>
+            <option value="other">Outras origens</option>
+          </select>
+          <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="input-field min-w-[160px]">
+            <option value="all">Toda prioridade</option>
+            <option value="high">Prioridade alta</option>
+            <option value="medium">Prioridade média</option>
+            <option value="low">Prioridade baixa</option>
+          </select>
+          <select value={fitFilter} onChange={(event) => setFitFilter(event.target.value)} className="input-field min-w-[135px]">
+            <option value="all">Todo Fit</option>
+            <option value="80">Fit 80+</option>
+            <option value="60">Fit 60–79</option>
+            <option value="below60">Fit &lt; 60</option>
+          </select>
           <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="input-field min-w-[190px]">
             <option value="all">Todos os responsáveis</option>
             {teamUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
@@ -595,6 +701,8 @@ export default function Sales() {
                       <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editingLead.diagnostic_reason_now}</p>
                     </div>
                   )}
+
+                  <DiagnosticMuscleGrid lead={editingLead} />
                 </section>
               )}
 
