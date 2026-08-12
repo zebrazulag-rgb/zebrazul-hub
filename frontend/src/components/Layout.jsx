@@ -142,12 +142,12 @@ export default function Layout({ children }) {
   }
 
   const workspaceItems = [
-    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team', 'client'], commercialTeam: true },
+    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team'], commercialTeam: true },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true },
-    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team', 'client'] },
+    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team'] },
     { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
-    { to: '/stories', label: 'Stories', icon: Instagram, roles: ['admin', 'team', 'client'] },
+    { to: '/stories', label: 'Stories', icon: Instagram, roles: ['admin', 'team'] },
     { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'] },

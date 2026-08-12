@@ -31,7 +31,7 @@ function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamA
   const { user, checkingSession } = useAuth();
   if (checkingSession) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando Zebrahub...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={user.role === 'client' ? '/aprovacao' : '/'} replace />;
   if (user.is_commercial_team && !commercialTeamAllowed) return <Navigate to="/" replace />;
   if (commercialAccess && !(user.role === 'admin' || user.role === 'client' || user.is_commercial_team)) return <Navigate to="/" replace />;
   if (platformOnly && !user.is_platform_owner) return <Navigate to="/" replace />;
@@ -48,13 +48,13 @@ export default function App() {
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
-      <Route path="/" element={<ProtectedRoute commercialTeamAllowed><Dashboard /></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute roles={['admin', 'team']} commercialTeamAllowed><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<ProtectedRoute><VideoApprovals /></ProtectedRoute>} />
       <Route path="/aprovacao/videos/:id" element={<ProtectedRoute><VideoReviewWorkspace /></ProtectedRoute>} />
       <Route path="/calendario" element={<Navigate to="/feed?view=calendar" replace />} />
       <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
-      <Route path="/stories" element={<ProtectedRoute><StoryHub /></ProtectedRoute>} />
+      <Route path="/stories" element={<ProtectedRoute roles={['admin', 'team']}><StoryHub /></ProtectedRoute>} />
       <Route
         path="/tarefas"
         element={
@@ -63,9 +63,9 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="/bussola" element={<ProtectedRoute><CompassPage /></ProtectedRoute>} />
+      <Route path="/bussola" element={<ProtectedRoute roles={['admin', 'team']}><CompassPage /></ProtectedRoute>} />
       <Route path="/bussola/dme" element={<ProtectedRoute roles={['admin', 'team']}><Diagnostics /></ProtectedRoute>} />
-      <Route path="/bussola/diagnostico" element={<ProtectedRoute><StrategicDiagnosis /></ProtectedRoute>} />
+      <Route path="/bussola/diagnostico" element={<ProtectedRoute roles={['admin', 'team']}><StrategicDiagnosis /></ProtectedRoute>} />
       <Route path="/bussola/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
