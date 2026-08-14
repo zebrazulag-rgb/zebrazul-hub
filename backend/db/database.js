@@ -1308,6 +1308,101 @@ if (tableHasColumn('commercial_leads', 'stage_key')) {
   `);
 }
 
+// CRM operacional de rematrículas da Bee. Mantemos as tabelas separadas do
+// Comercial geral para que famílias/alunos não se misturem com leads de vendas.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS reenrollment_campaigns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    campaign_year INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    target_rate REAL DEFAULT 92,
+    target_classified_rate REAL DEFAULT 100,
+    target_unexplained_losses INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active' CHECK(status IN ('planning','active','closed')),
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+    UNIQUE(agency_id, client_id, campaign_year)
+  );
+
+  CREATE TABLE IF NOT EXISTS reenrollment_families (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    campaign_id INTEGER NOT NULL,
+    created_by INTEGER NOT NULL,
+    owner_user_id INTEGER,
+    family_name TEXT NOT NULL,
+    responsible_name TEXT,
+    phone TEXT,
+    email TEXT,
+    unit TEXT,
+    current_class TEXT,
+    future_class TEXT,
+    student_names_json TEXT DEFAULT '[]',
+    students_count INTEGER DEFAULT 1,
+    financial_profile TEXT DEFAULT 'paying',
+    scholarship_percent REAL DEFAULT 0,
+    monthly_value REAL DEFAULT 0,
+    financial_notes TEXT,
+    pendencies TEXT,
+    stage_key TEXT DEFAULT 'base_validated',
+    intention TEXT,
+    objection_type TEXT,
+    objection_notes TEXT,
+    signals_json TEXT DEFAULT '[]',
+    score_experience INTEGER,
+    score_intention INTEGER,
+    score_financial INTEGER,
+    score_behavior INTEGER,
+    risk_score INTEGER,
+    risk_band TEXT DEFAULT 'unclassified',
+    next_action TEXT,
+    next_action_date TEXT,
+    decision_deadline TEXT,
+    proposal_amount REAL DEFAULT 0,
+    proposal_sent_at TEXT,
+    last_contact_at TEXT,
+    exit_reason TEXT,
+    exit_destination TEXT,
+    vacancy_confirmed INTEGER DEFAULT 0,
+    financial_clearance INTEGER DEFAULT 0,
+    policy_clearance INTEGER DEFAULT 0,
+    contract_confirmed INTEGER DEFAULT 0,
+    documents_confirmed INTEGER DEFAULT 0,
+    finance_confirmed INTEGER DEFAULT 0,
+    notes TEXT,
+    concluded_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id) REFERENCES reenrollment_campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS reenrollment_activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    campaign_id INTEGER NOT NULL,
+    family_id INTEGER NOT NULL,
+    created_by INTEGER NOT NULL,
+    activity_type TEXT DEFAULT 'note' CHECK(activity_type IN ('note','call','whatsapp','meeting','email','stage_change','system')),
+    description TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id) REFERENCES reenrollment_campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (family_id) REFERENCES reenrollment_families(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+  );
+`);
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
@@ -1326,6 +1421,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ai_dme_consolidations_client ON ai_dme_consolidations(agency_id, client_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_material_boards_agency_client ON material_boards(agency_id, client_id, is_active, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_materials_agency_client ON materials(agency_id, client_id, is_active, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_reenrollment_campaign_client ON reenrollment_campaigns(agency_id, client_id, campaign_year);
+  CREATE INDEX IF NOT EXISTS idx_reenrollment_family_stage ON reenrollment_families(agency_id, campaign_id, stage_key, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_reenrollment_family_risk ON reenrollment_families(agency_id, campaign_id, risk_score, next_action_date);
+  CREATE INDEX IF NOT EXISTS idx_reenrollment_activity_family ON reenrollment_activities(agency_id, family_id, created_at DESC);
 `);
 
 const installationId = db.prepare("SELECT value FROM system_meta WHERE key = 'installation_id'").get();
@@ -1353,7 +1452,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '29', datetime('now'))
+   VALUES ('schema_version', '30', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

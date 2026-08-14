@@ -24,6 +24,7 @@ const agencyRoutes = require('./routes/agencies');
 const diagnosticRoutes = require('./routes/diagnostics');
 const publicDiagnosticRoutes = require('./routes/publicDiagnostics');
 const commercialRoutes = require('./routes/commercial');
+const reenrollmentRoutes = require('./routes/reenrollments');
 const apogeuDiagnosticIntegrationRoutes = require('./routes/apogeuDiagnosticIntegration');
 const aiRoutes = require('./routes/ai');
 const materialRoutes = require('./routes/materials');
@@ -95,10 +96,11 @@ app.use('/api', (req, res, next) => {
 
     const taskAccess = req.path === '/tasks' || req.path.startsWith('/tasks/');
     const commercialAccess = req.path === '/commercial' || req.path.startsWith('/commercial/');
+    const reenrollmentAccess = req.path === '/reenrollments' || req.path.startsWith('/reenrollments/');
     const clientsReadAccess = req.path === '/clients' && req.method === 'GET';
-    if (taskAccess || commercialAccess || clientsReadAccess) return next();
+    if (taskAccess || commercialAccess || reenrollmentAccess || clientsReadAccess) return next();
 
-    return res.status(403).json({ error: 'A Equipe Comercial acessa somente Painel, Tarefas e Comercial' });
+    return res.status(403).json({ error: 'A Equipe Comercial acessa somente Painel, Tarefas, Comercial e Rematrículas da Bee' });
   });
 });
 
@@ -122,6 +124,7 @@ app.use('/api/planning-documents', planningDocumentRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
 app.use('/api/commercial', commercialRoutes);
+app.use('/api/reenrollments', reenrollmentRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/material-boards', materialBoardRoutes);
