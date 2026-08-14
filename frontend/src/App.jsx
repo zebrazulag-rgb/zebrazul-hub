@@ -26,6 +26,7 @@ import StoryHub from './pages/StoryHub.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import DataDeletion from './pages/DataDeletion.jsx';
+import BeeRematriculas from './pages/BeeRematriculas.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -77,6 +78,7 @@ export default function App() {
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><Sales /></ProtectedRoute>} />
       <Route path="/comercial/funil" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><CommercialFunnel /></ProtectedRoute>} />
+      <Route path="/rematriculas" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed><BeeRematriculas /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/materiais" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
       <Route path="/materiais/:id" element={<ProtectedRoute><MaterialViewer /></ProtectedRoute>} />

@@ -24,6 +24,7 @@ import {
   FolderOpen,
   KeyRound,
   Instagram,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -33,6 +34,7 @@ import ModalBackdrop from './ModalBackdrop.jsx';
 import api from '../api';
 import { formChanged } from '../utils/formState.js';
 import zebraHubLogo from '../assets/logo-hub-white.png';
+import { isBeeClient } from '../utils/beeClientAccess.js';
 
 export default function Layout({ children }) {
   const { user, logout, refreshUser } = useAuth();
@@ -41,6 +43,7 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [clients, setClients] = useState([]);
+  const [roleClientRecord, setRoleClientRecord] = useState(null);
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const clientPickerRef = useRef(null);
@@ -80,6 +83,26 @@ export default function Layout({ children }) {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+
+  useEffect(() => {
+    if (user?.role !== 'client') {
+      setRoleClientRecord(null);
+      return undefined;
+    }
+
+    let active = true;
+    api.get('/clients?summary=1').then((res) => {
+      if (!active) return;
+      const nextClients = Array.isArray(res.data?.clients) ? res.data.clients : [];
+      const ownClient = nextClients.find((client) => Number(client.id) === Number(user.client_id)) || nextClients[0] || null;
+      setRoleClientRecord(ownClient);
+    }).catch(() => {
+      if (active) setRoleClientRecord(null);
+    });
+
+    return () => { active = false; };
+  }, [user?.id, user?.role, user?.client_id]);
 
   useEffect(() => {
     if (user?.role === 'client') return;
@@ -149,13 +172,18 @@ export default function Layout({ children }) {
     { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
     { to: '/stories', label: 'Stories', icon: Instagram, roles: ['admin', 'team'] },
     { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true },
+    { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, roles: ['admin', 'team', 'client'], commercialTeam: true, beeOnly: true },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
     { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'] },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
     { to: '/senhas', label: 'Senhas', icon: KeyRound, roles: ['admin'] },
   ];
 
+  const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
+  const beeWorkspaceActive = isBeeClient(workspaceClient);
+
   const visibleWorkspaceItems = workspaceItems.filter((item) => {
+    if (item.beeOnly && !beeWorkspaceActive) return false;
     if (user?.is_commercial_team) return item.commercialTeam === true;
     return item.roles.includes(user?.role);
   });
