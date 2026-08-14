@@ -241,22 +241,6 @@ function mediaFileFromName(filename) {
   return locateMediaFile(filename)?.filePath || null;
 }
 
-
-function managedMediaExists(value) {
-  if (!value || typeof value !== 'string') return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (!isManagedMediaUrl(trimmed)) return true;
-
-  let filename = trimmed;
-  const token = '/api/media/';
-  const tokenIndex = filename.indexOf(token);
-  if (tokenIndex >= 0) filename = filename.slice(tokenIndex + token.length);
-  else filename = filename.replace(/^\/?api\/media\//, '');
-
-  return Boolean(locateMediaFile(filename));
-}
-
 function detectMimeFromFile(filePath) {
   const extension = path.extname(filePath).slice(1).toLowerCase();
   if (extension && EXTENSION_MIMES[extension]) return EXTENSION_MIMES[extension];
@@ -330,7 +314,6 @@ module.exports = {
   isManagedMediaUrl,
   locateMediaFile,
   mediaFileFromName,
-  managedMediaExists,
   detectMimeFromFile,
   directorySize,
 };

@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
-const { persistMedia, externalizeGallery, managedMediaExists } = require('../services/mediaStorage');
+const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
@@ -160,90 +160,10 @@ function serializeExternalGallery(value, fallbackData = null, fallbackMime = nul
   return gallery.length ? JSON.stringify(gallery) : null;
 }
 
-
-function buildTaskFeedMedia(task) {
-  const parsedGallery = externalizeGallery(task?.media_gallery);
-  let gallery = parsedGallery.filter((item) => {
-    const source = item?.data || item?.url || item?.src || item?.media_data;
-    return source && managedMediaExists(source);
-  });
-
-  // Em versões antigas, a galeria podia continuar apontando para artes removidas
-  // mesmo depois de uma nova arte ser salva no anexo principal da tarefa.
-  if (!gallery.length && task?.attachment_data) {
-    gallery = externalizeGallery([], task.attachment_data, task.attachment_mime).filter((item) => {
-      const source = item?.data || item?.url || item?.src || item?.media_data;
-      return source && managedMediaExists(source);
-    });
-  }
-
-  const first = gallery[0] || null;
-  return {
-    gallery,
-    mediaData: first?.data || null,
-    mediaMime: first?.mime || task?.attachment_mime || null,
-  };
-}
-
-function syncLinkedFeedPostFromTask(task, agencyId, { includeContent = true } = {}) {
-  if (!task?.feed_post_id) return false;
-  const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(task.feed_post_id, agencyId);
-  if (!existingPost) return false;
-
-  const media = buildTaskFeedMedia(task);
-  if (!media.gallery.length && !media.mediaData) return false;
-
-  if (includeContent) {
-    db.prepare(`
-      UPDATE posts SET
-        client_id = COALESCE(?, client_id),
-        title = COALESCE(?, title),
-        caption = COALESCE(?, caption),
-        content_type = COALESCE(?, content_type),
-        media_data = ?,
-        media_mime = ?,
-        media_gallery = ?,
-        scheduled_at = COALESCE(?, scheduled_at),
-        updated_at = datetime('now')
-      WHERE id = ? AND agency_id = ?
-    `).run(
-      task.client_id || null,
-      task.title || null,
-      task.caption ?? null,
-      task.content_type || null,
-      media.mediaData,
-      media.mediaMime,
-      media.gallery.length ? JSON.stringify(media.gallery) : null,
-      task.due_date || null,
-      task.feed_post_id,
-      agencyId
-    );
-  } else {
-    db.prepare(`
-      UPDATE posts SET
-        media_data = ?,
-        media_mime = ?,
-        media_gallery = ?,
-        updated_at = datetime('now')
-      WHERE id = ? AND agency_id = ?
-    `).run(
-      media.mediaData,
-      media.mediaMime,
-      media.gallery.length ? JSON.stringify(media.gallery) : null,
-      task.feed_post_id,
-      agencyId
-    );
-  }
-  return true;
-}
-
 function addTaskRecordToFeed(task, userId, agencyId) {
   if (task.feed_post_id) {
     const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(task.feed_post_id, agencyId);
     if (existingPost) {
-      // Ao recolocar uma tarefa no Feed, sincroniza a mídia atual da tarefa.
-      // Isso evita que o post continue apontando para uma arte antiga já apagada.
-      syncLinkedFeedPostFromTask(task, agencyId);
       db.prepare(`UPDATE posts SET feed_visible = 1, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
         .run(existingPost.id, agencyId);
       return { postId: Number(existingPost.id), action: 'reactivated' };
@@ -729,11 +649,6 @@ router.put('/:id', (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')) {
       setAssignees(req.params.id, req.body.assignee_ids);
     }
-
-    // Se essa tarefa já gerou um post, mantenha o Feed sincronizado.
-    // Assim, trocar a arte na tarefa troca a arte do post vinculado também.
-    const updatedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
-    if (updatedTask?.feed_post_id) syncLinkedFeedPostFromTask(updatedTask, req.user.agency_id);
   });
   updateTask();
 

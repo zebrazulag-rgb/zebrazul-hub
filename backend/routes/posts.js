@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
-const { persistMedia, externalizeGallery, managedMediaExists } = require('../services/mediaStorage');
+const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
@@ -50,81 +50,12 @@ function serializeGallery(value, fallbackData = null, fallbackMime = null) {
   return gallery.length ? JSON.stringify(gallery) : null;
 }
 
-
-function galleryHasUsableMedia(gallery) {
-  return Array.isArray(gallery) && gallery.some((item) => {
-    const source = typeof item === 'string'
-      ? item
-      : item?.data || item?.url || item?.src || item?.media_data;
-    return source && managedMediaExists(source);
-  });
-}
-
-function repairBrokenPostMediaFromLinkedTask(post) {
-  if (!post?.id) return post;
-
-  const currentGallery = parseGallery(post.media_gallery, post.media_data, post.media_mime);
-  const currentHealthy = galleryHasUsableMedia(currentGallery)
-    || (post.media_data && managedMediaExists(post.media_data));
-  if (currentHealthy) return post;
-
-  const linkedTask = db.prepare(`
-    SELECT id, client_id, media_gallery, attachment_data, attachment_mime
-    FROM tasks
-    WHERE agency_id = ? AND feed_post_id = ?
-    ORDER BY updated_at DESC, id DESC
-    LIMIT 1
-  `).get(post.agency_id, post.id);
-
-  if (!linkedTask) return post;
-
-  let taskGallery = externalizeGallery(linkedTask.media_gallery).filter((item) => {
-    const source = item?.data || item?.url || item?.src || item?.media_data;
-    return source && managedMediaExists(source);
-  });
-
-  // Se a galeria antiga ficou apontando para arquivos apagados, tenta a arte
-  // principal atual da tarefa como fonte de recuperação.
-  if (!taskGallery.length && linkedTask.attachment_data) {
-    taskGallery = externalizeGallery([], linkedTask.attachment_data, linkedTask.attachment_mime).filter((item) => {
-      const source = item?.data || item?.url || item?.src || item?.media_data;
-      return source && managedMediaExists(source);
-    });
-  }
-  if (!galleryHasUsableMedia(taskGallery)) return post;
-
-  const first = taskGallery[0] || null;
-  db.prepare(`
-    UPDATE posts SET
-      media_data = ?,
-      media_mime = ?,
-      media_gallery = ?,
-      updated_at = datetime('now')
-    WHERE id = ? AND agency_id = ?
-  `).run(
-    first?.data || null,
-    first?.mime || linkedTask.attachment_mime || null,
-    taskGallery.length ? JSON.stringify(taskGallery) : null,
-    post.id,
-    post.agency_id
-  );
-
-  return {
-    ...post,
-    media_data: first?.data || null,
-    media_mime: first?.mime || linkedTask.attachment_mime || null,
-    media_gallery: taskGallery,
-    media_repaired: true,
-  };
-}
-
 function normalizePost(post) {
   if (!post) return post;
-  const repaired = repairBrokenPostMediaFromLinkedTask(post);
   return {
-    ...repaired,
-    media_gallery: parseGallery(repaired.media_gallery, repaired.media_data, repaired.media_mime),
-    feed_visible: repaired.feed_visible == null ? 1 : Number(repaired.feed_visible),
+    ...post,
+    media_gallery: parseGallery(post.media_gallery, post.media_data, post.media_mime),
+    feed_visible: post.feed_visible == null ? 1 : Number(post.feed_visible),
   };
 }
 
@@ -195,14 +126,13 @@ router.get('/:id', (req, res) => {
 // prévia do Feed dependa apenas da imagem de capa quando o conteúdo é carrossel.
 router.get('/:id/gallery', (req, res) => {
   const post = db.prepare(
-    'SELECT id, agency_id, client_id, media_data, media_mime, media_gallery FROM posts WHERE id = ? AND agency_id = ?'
+    'SELECT id, client_id, media_data, media_mime, media_gallery FROM posts WHERE id = ? AND agency_id = ?'
   ).get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
 
-  const repairedPost = normalizePost(post);
-  const gallery = parseGallery(repairedPost.media_gallery, repairedPost.media_data, repairedPost.media_mime);
-  res.json({ gallery, count: gallery.length, repaired: Boolean(repairedPost.media_repaired) });
+  const gallery = parseGallery(post.media_gallery, post.media_data, post.media_mime);
+  res.json({ gallery, count: gallery.length });
 });
 
 router.post('/', requireRole('admin', 'team'), (req, res) => {
