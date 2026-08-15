@@ -151,11 +151,16 @@ CREATE TABLE IF NOT EXISTS tasks (
   task_type TEXT DEFAULT 'basic' CHECK(task_type IN ('basic','post','video')),
   title TEXT NOT NULL,
   description TEXT,
+  project_name TEXT,
+  front_name TEXT,
+  priority TEXT DEFAULT 'medium',
+  goal TEXT,
   content_type TEXT,
   caption TEXT,
   video_link TEXT,
   media_gallery TEXT,
   due_date TEXT,
+  deadline_label TEXT,
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
   is_featured INTEGER DEFAULT 0,
   attachment_data TEXT,
@@ -1020,6 +1025,11 @@ tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('posts', 'feed_visible', 'INTEGER DEFAULT 1');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
+tryAddColumn('tasks', 'project_name', 'TEXT');
+tryAddColumn('tasks', 'front_name', 'TEXT');
+tryAddColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
+tryAddColumn('tasks', 'goal', 'TEXT');
+tryAddColumn('tasks', 'deadline_label', 'TEXT');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
 
 // Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
@@ -1096,11 +1106,16 @@ function migrateTaskStatuses() {
           task_type TEXT DEFAULT 'basic' CHECK(task_type IN ('basic','post','video')),
           title TEXT NOT NULL,
           description TEXT,
+          project_name TEXT,
+          front_name TEXT,
+          priority TEXT DEFAULT 'medium',
+          goal TEXT,
           content_type TEXT,
           caption TEXT,
           video_link TEXT,
           media_gallery TEXT,
           due_date TEXT,
+          deadline_label TEXT,
           status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
           is_featured INTEGER DEFAULT 0,
           attachment_data TEXT,
@@ -1121,15 +1136,15 @@ function migrateTaskStatuses() {
       db.exec(`
         INSERT INTO tasks_migrated (
           id, agency_id, client_id, created_by, assignee_id, parent_task_id,
-          task_type, title, description, content_type, caption, video_link,
-          media_gallery, due_date, status, is_featured, attachment_data,
+          task_type, title, description, project_name, front_name, priority, goal, content_type, caption, video_link,
+          media_gallery, due_date, deadline_label, status, is_featured, attachment_data,
           attachment_mime, attachment_filename, feed_post_id, created_at, updated_at
         )
         SELECT
           id, COALESCE(agency_id, (SELECT id FROM agencies ORDER BY id LIMIT 1), 1),
           client_id, created_by, assignee_id, parent_task_id,
-          COALESCE(task_type, 'basic'), title, description, content_type, caption,
-          video_link, media_gallery, due_date, status, COALESCE(is_featured, 0),
+          COALESCE(task_type, 'basic'), title, description, project_name, front_name, COALESCE(priority, 'medium'), goal, content_type, caption,
+          video_link, media_gallery, due_date, deadline_label, status, COALESCE(is_featured, 0),
           attachment_data, attachment_mime, attachment_filename, feed_post_id,
           created_at, updated_at
         FROM tasks;
@@ -1249,6 +1264,12 @@ function migrateFinancialEntries() {
 }
 
 migrateTaskStatuses();
+// Reaplica as colunas operacionais depois da possível reconstrução da tabela de tarefas.
+tryAddColumn('tasks', 'project_name', 'TEXT');
+tryAddColumn('tasks', 'front_name', 'TEXT');
+tryAddColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
+tryAddColumn('tasks', 'goal', 'TEXT');
+tryAddColumn('tasks', 'deadline_label', 'TEXT');
 migrateFinancialEntries();
 
 // Posts antigos devem continuar visíveis na grade após a criação da coluna.
@@ -1475,7 +1496,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '31', datetime('now'))
+   VALUES ('schema_version', '32', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
