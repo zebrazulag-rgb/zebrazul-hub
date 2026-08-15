@@ -28,7 +28,11 @@ export default function CompassPage() {
 
   const clientId = user?.role === 'client' ? Number(user.client_id) : Number(selectedClient?.id) || null;
   const clientName = user?.role === 'client' ? user?.client_name || 'Seu negócio' : selectedClient?.name || '';
-  const beeActive = user?.role !== 'client' && isBeeClient(selectedClient);
+
+  // A mesma identificação usada no menu de Rematrículas precisa valer aqui.
+  // O fallback pelo nome evita perder a etapa quando o objeto do cliente vem
+  // resumido do contexto/localStorage, mas o nome exibido continua disponível.
+  const beeActive = isBeeClient(selectedClient) || isBeeClient({ name: clientName });
 
   useEffect(() => {
     let active = true;
