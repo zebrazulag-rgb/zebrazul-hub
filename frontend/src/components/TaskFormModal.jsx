@@ -31,6 +31,10 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
     task_type: taskToEdit?.task_type || 'basic',
     title: taskToEdit?.title || '',
     description: taskToEdit?.description || '',
+    project_name: taskToEdit?.project_name || '',
+    front_name: taskToEdit?.front_name || '',
+    priority: taskToEdit?.priority || 'medium',
+    goal: taskToEdit?.goal || '',
     content_type: taskToEdit?.content_type || '',
     caption: taskToEdit?.caption || '',
     video_link: taskToEdit?.video_link || '',
@@ -120,6 +124,10 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
         task_type: form.task_type,
         title: form.title.trim(),
         description: form.description,
+        project_name: form.project_name,
+        front_name: form.front_name,
+        priority: form.priority,
+        goal: form.goal,
         content_type: form.content_type,
         caption: form.caption,
         video_link: form.video_link,
@@ -226,6 +234,47 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               placeholder="Detalhe o que precisa ser feito..."
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Projeto</label>
+              <input
+                className="input-field"
+                value={form.project_name}
+                onChange={(e) => setForm({ ...form, project_name: e.target.value })}
+                placeholder="Ex: Plano Estratégico 2026"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Frente</label>
+              <input
+                className="input-field"
+                value={form.front_name}
+                onChange={(e) => setForm({ ...form, front_name: e.target.value })}
+                placeholder="Ex: Comercial"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Prioridade</label>
+              <select className="input-field" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                <option value="low">Baixa</option>
+                <option value="medium">Média</option>
+                <option value="high">Alta</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Meta</label>
+              <input
+                className="input-field"
+                value={form.goal}
+                onChange={(e) => setForm({ ...form, goal: e.target.value })}
+                placeholder="Meta ou resultado esperado"
+              />
+            </div>
           </div>
 
           {isPost && (

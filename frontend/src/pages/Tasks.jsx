@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
+import TaskCsvModal, { downloadTaskCsvModel } from '../components/TaskCsvModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PageHero from '../components/PageHero.jsx';
 
@@ -29,6 +30,24 @@ function formatTaskDate(value) {
   const parts = dateParts(value);
   if (!parts.year || !parts.month || !parts.day) return '';
   return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`;
+}
+
+function priorityLabel(value) {
+  if (value === 'high') return 'Alta';
+  if (value === 'low') return 'Baixa';
+  return 'Média';
+}
+
+function taskMatchesFilters(task, filters) {
+  if (filters.status && task.status !== filters.status) return false;
+  if (filters.priority && (task.priority || 'medium') !== filters.priority) return false;
+  if (filters.project && String(task.project_name || '') !== filters.project) return false;
+  if (filters.front && String(task.front_name || '') !== filters.front) return false;
+  if (filters.assignee_id && !(task.assignees || []).some((item) => String(item.id) === String(filters.assignee_id))) return false;
+  const due = String(task.due_date || '').slice(0, 10);
+  if (filters.due_from && (!due || due < filters.due_from)) return false;
+  if (filters.due_to && (!due || due > filters.due_to)) return false;
+  return true;
 }
 
 function sortTasks(items) {
@@ -105,6 +124,13 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
             ) : null}
           </div>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
+          {(t.project_name || t.front_name || t.priority) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {t.project_name && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600">{t.project_name}</span>}
+              {t.front_name && <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700">{t.front_name}</span>}
+              {t.priority && <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${t.priority === 'high' ? 'bg-rose-50 text-rose-700' : t.priority === 'low' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{priorityLabel(t.priority)}</span>}
+            </div>
+          )}
           {t.parent_task_id && (
             <p className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600" title={t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}>
               <ListTree size={10} className="shrink-0" />
@@ -123,9 +149,9 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
       )}
       <div className="flex items-center justify-between mt-3">
         <AssigneeStack assignees={t.assignees} />
-        {t.due_date && (
+        {(t.due_date || t.deadline_label) && (
           <span className="text-xs text-slate-400 flex items-center gap-1">
-            <Calendar size={11} /> {formatTaskDate(t.due_date)}
+            <Calendar size={11} /> {t.due_date ? formatTaskDate(t.due_date) : t.deadline_label}
           </span>
         )}
       </div>
@@ -168,6 +194,18 @@ export default function Tasks() {
   const [loadingParentOptions, setLoadingParentOptions] = useState(false);
   const [convertingTask, setConvertingTask] = useState(false);
   const [convertError, setConvertError] = useState('');
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvNotice, setCsvNotice] = useState('');
+  const [filters, setFilters] = useState({
+    status: '',
+    priority: '',
+    project: '',
+    front: '',
+    assignee_id: '',
+    due_from: '',
+    due_to: '',
+  });
 
   const effectiveClientId = user?.role === 'client'
     ? (user.client_id ? String(user.client_id) : null)
@@ -186,6 +224,50 @@ export default function Tasks() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  async function exportCsv() {
+    setCsvBusy(true);
+    setCsvNotice('');
+    setTaskError('');
+    try {
+      const params = {
+        ...(effectiveClientId ? { client_id: effectiveClientId } : {}),
+        ...(selectedClient?.name ? { client_name: selectedClient.name } : {}),
+        ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value)),
+      };
+      const response = await api.get('/tasks/csv/export', { params, responseType: 'blob' });
+      const clientPart = String(selectedClient?.name || 'todos').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'todos';
+      const projectPart = String(filters.project || 'tarefas').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'tarefas';
+      const filename = `tarefas_${clientPart}_${projectPart}_${new Date().toISOString().slice(0, 10)}.csv`;
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 500);
+      setCsvNotice('Arquivo CSV gerado com sucesso.');
+    } catch (error) {
+      setTaskError(error.response?.data?.error || 'Não foi possível exportar as tarefas.');
+    } finally {
+      setCsvBusy(false);
+    }
+  }
+
+  async function downloadCsvModel() {
+    setCsvBusy(true);
+    setCsvNotice('');
+    setTaskError('');
+    try {
+      await downloadTaskCsvModel();
+      setCsvNotice('Modelo CSV baixado com sucesso.');
+    } catch (error) {
+      setTaskError(error.response?.data?.error || 'Não foi possível baixar o modelo CSV.');
+    } finally {
+      setCsvBusy(false);
+    }
+  }
 
   useEffect(() => {
     const requestedTaskId = Number(searchParams.get('task_id'));
@@ -556,6 +638,11 @@ export default function Tasks() {
     return 'pending';
   }
 
+  const filteredTasks = tasks.filter((task) => taskMatchesFilters(task, filters));
+  const projectOptions = [...new Set(tasks.map((task) => task.project_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const frontOptions = [...new Set(tasks.map((task) => task.front_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const hasActiveFilters = Object.values(filters).some(Boolean);
+
   const canModifySelectedTask = selectedTask && (
     ['admin', 'team'].includes(user?.role) ||
     (user?.role === 'client' && Number(selectedTask.created_by) === Number(user.id) && selectedTask.status === 'pending')
@@ -584,7 +671,7 @@ export default function Tasks() {
   function tasksForDay(day) {
     if (!day) return [];
     return calendarTasks.filter((t) => {
-      if (!t.due_date) return false;
+      if (!t.due_date || !taskMatchesFilters(t, filters)) return false;
       const parts = dateParts(t.due_date);
       return parts.year === year && parts.month === month + 1 && parts.day === day;
     });
@@ -608,9 +695,20 @@ export default function Tasks() {
           ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe cada etapa.'
           : 'Organize prioridades, responsáveis e prazos em uma visão clara da operação.'}
         actions={
-          <button onClick={() => { setDefaultTaskDate(''); setShowForm(true); }} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
-            <Plus size={17} /> Nova tarefa
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button onClick={() => { setDefaultTaskDate(''); setShowForm(true); }} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+              <Plus size={17} /> Nova tarefa
+            </button>
+            <button onClick={() => setShowCsvImport(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15">
+              <Upload size={16} /> Importar CSV
+            </button>
+            <button disabled={csvBusy} onClick={exportCsv} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
+              <Download size={16} /> Exportar CSV
+            </button>
+            <button disabled={csvBusy} onClick={downloadCsvModel} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
+              <FileSpreadsheet size={16} /> Modelo CSV
+            </button>
+          </div>
         }
       >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -629,18 +727,65 @@ export default function Tasks() {
         </div>
       </PageHero>
 
-      <div className="toolbar-panel flex items-center justify-end">
-        <div className="segmented-control">
-          <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
-            <LayoutGrid size={14} /> Kanban
-          </button>
-          <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
-            <Calendar size={14} /> Calendário
-          </button>
+      <div className="toolbar-panel space-y-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[150px] flex-1">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Projeto</label>
+            <select className="input-field py-2 text-xs" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))}>
+              <option value="">Todos</option>
+              {projectOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Frente</label>
+            <select className="input-field py-2 text-xs" value={filters.front} onChange={(e) => setFilters((current) => ({ ...current, front: e.target.value }))}>
+              <option value="">Todas</option>
+              {frontOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+          <div className="min-w-[130px]">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Prioridade</label>
+            <select className="input-field py-2 text-xs" value={filters.priority} onChange={(e) => setFilters((current) => ({ ...current, priority: e.target.value }))}>
+              <option value="">Todas</option><option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option>
+            </select>
+          </div>
+          <div className="min-w-[145px]">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
+            <select className="input-field py-2 text-xs" value={filters.status} onChange={(e) => setFilters((current) => ({ ...current, status: e.target.value }))}>
+              <option value="">Todos</option>{STATUS_COLUMNS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+            </select>
+          </div>
+          <div className="min-w-[150px]">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Responsável</label>
+            <select className="input-field py-2 text-xs" value={filters.assignee_id} onChange={(e) => setFilters((current) => ({ ...current, assignee_id: e.target.value }))}>
+              <option value="">Todos</option>{teamUsers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Prazo de</label>
+            <input type="date" className="input-field py-2 text-xs" value={filters.due_from} onChange={(e) => setFilters((current) => ({ ...current, due_from: e.target.value }))} />
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Até</label>
+            <input type="date" className="input-field py-2 text-xs" value={filters.due_to} onChange={(e) => setFilters((current) => ({ ...current, due_to: e.target.value }))} />
+          </div>
+          {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', priority: '', project: '', front: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-400">{filteredTasks.length} tarefa(s) principal(is) exibida(s){hasActiveFilters ? ' com os filtros atuais' : ''}.</p>
+          <div className="segmented-control">
+            <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
+              <LayoutGrid size={14} /> Kanban
+            </button>
+            <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
+              <Calendar size={14} /> Calendário
+            </button>
+          </div>
         </div>
       </div>
 
       {taskError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{taskError}</p>}
+      {csvNotice && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">{csvNotice}</p>}
 
       {view === 'kanban' && (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -654,13 +799,13 @@ export default function Tasks() {
             >
               <div className="mb-3 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{tasks.filter((t) => t.status === col.key).length}</span>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{filteredTasks.filter((t) => t.status === col.key).length}</span>
               </div>
               <div className="space-y-3 min-h-[60px]">
-                {tasks.filter((t) => t.status === col.key).map((t) => (
+                {filteredTasks.filter((t) => t.status === col.key).map((t) => (
                   <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
                 ))}
-                {tasks.filter((t) => t.status === col.key).length === 0 && (
+                {filteredTasks.filter((t) => t.status === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
                 )}
               </div>
@@ -776,6 +921,17 @@ export default function Tasks() {
             </div>
           </div>
         </ModalBackdrop>
+      )}
+
+      {showCsvImport && (
+        <TaskCsvModal
+          onClose={() => setShowCsvImport(false)}
+          onImported={async (data) => {
+            await loadTasks();
+            const created = Number(data?.counts?.created || 0) + Number(data?.counts?.subtasks_created || 0);
+            setCsvNotice(`Importação concluída com sucesso. ${created} tarefa(s) foram criadas.`);
+          }}
+        />
       )}
 
       {showForm && (
@@ -898,6 +1054,14 @@ export default function Tasks() {
                 <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
               </div>
             ) : selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
+            {!selectedTask.details_loading && (selectedTask.project_name || selectedTask.front_name || selectedTask.goal || selectedTask.priority) && (
+              <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                {selectedTask.project_name && <p><span className="font-semibold text-slate-700">Projeto:</span> {selectedTask.project_name}</p>}
+                {selectedTask.front_name && <p><span className="font-semibold text-slate-700">Frente:</span> {selectedTask.front_name}</p>}
+                {selectedTask.priority && <p><span className="font-semibold text-slate-700">Prioridade:</span> {priorityLabel(selectedTask.priority)}</p>}
+                {selectedTask.goal && <p><span className="font-semibold text-slate-700">Meta:</span> {selectedTask.goal}</p>}
+              </div>
+            )}
 
             {selectedTask.media_loading && selectedTask.has_attachment && (
               <div className="h-24 rounded-lg bg-slate-100 animate-pulse mb-3 flex items-center justify-center text-xs text-slate-400">Carregando mídia...</div>
@@ -925,7 +1089,7 @@ export default function Tasks() {
             )}
             <div className="text-xs text-slate-500 space-y-1 mb-4">
               {selectedTask.content_type && <p>Tipo de conteúdo: {selectedTask.content_type}</p>}
-              {selectedTask.due_date && <p>Data: {formatTaskDate(selectedTask.due_date)}</p>}
+              {(selectedTask.due_date || selectedTask.deadline_label) && <p>Prazo: {selectedTask.due_date ? formatTaskDate(selectedTask.due_date) : selectedTask.deadline_label}</p>}
               {selectedTask.client_name && <p>Cliente: {selectedTask.client_name}</p>}
               {selectedTask.assignees && selectedTask.assignees.length > 0 && <p>Responsáveis: {selectedTask.assignees.map((a) => a.name).join(', ')}</p>}
             </div>
@@ -1042,7 +1206,7 @@ export default function Tasks() {
                       <p className={'text-sm truncate ' + (['done', 'posted'].includes(s.status) ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
-                        {s.due_date && <span className="text-[11px] text-slate-400">· {formatTaskDate(s.due_date)}</span>}
+                        {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}
                       </div>
                       {user?.role !== 'client' && !user?.is_commercial_team && s.task_type === 'post' && s.client_id && (
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
