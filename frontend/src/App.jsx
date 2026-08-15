@@ -27,6 +27,8 @@ import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import DataDeletion from './pages/DataDeletion.jsx';
 import BeeRematriculas from './pages/BeeRematriculas.jsx';
+import BeeCampaignBriefing from './pages/BeeCampaignBriefing.jsx';
+import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -46,6 +48,7 @@ export default function App() {
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
+      <Route path="/briefing-bee-2027/:token" element={<PublicBeeCampaignBriefing />} />
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
@@ -67,6 +70,7 @@ export default function App() {
       <Route path="/bussola" element={<ProtectedRoute roles={['admin', 'team']}><CompassPage /></ProtectedRoute>} />
       <Route path="/bussola/dme" element={<ProtectedRoute roles={['admin', 'team']}><Diagnostics /></ProtectedRoute>} />
       <Route path="/bussola/diagnostico" element={<ProtectedRoute roles={['admin', 'team']}><StrategicDiagnosis /></ProtectedRoute>} />
+      <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute roles={['admin', 'team']}><BeeCampaignBriefing /></ProtectedRoute>} />
       <Route path="/bussola/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />

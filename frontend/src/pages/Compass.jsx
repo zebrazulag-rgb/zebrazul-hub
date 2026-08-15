@@ -4,16 +4,19 @@ import {
   BrainCircuit,
   ClipboardCheck,
   Compass,
+  FileText,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import { isBeeClient } from '../utils/beeClientAccess.js';
 
 const EMPTY_STATUS = {
   dme: null,
   diagnosis: 0,
+  briefing: { count: 0, submitted: 0, progress: 0 },
 };
 
 export default function CompassPage() {
@@ -25,6 +28,7 @@ export default function CompassPage() {
 
   const clientId = user?.role === 'client' ? Number(user.client_id) : Number(selectedClient?.id) || null;
   const clientName = user?.role === 'client' ? user?.client_name || 'Seu negócio' : selectedClient?.name || '';
+  const beeActive = user?.role !== 'client' && isBeeClient(selectedClient);
 
   useEffect(() => {
     let active = true;
@@ -41,18 +45,32 @@ export default function CompassPage() {
           ? api.get('/diagnostics', { params: { client_id: clientId } })
           : Promise.resolve({ data: { diagnostics: [] } });
 
-        const [planResponse, diagnosticResponse] = await Promise.all([
+        const briefingRequest = beeActive
+          ? api.get('/bee-campaign-briefing', { params: { client_id: clientId, year: 2027 } })
+          : Promise.resolve({ data: { responses: [] } });
+
+        const [planResponse, diagnosticResponse, briefingResponse] = await Promise.all([
           api.get('/action-plans', { params: { client_id: clientId } }),
           diagnosticRequest,
+          briefingRequest,
         ]);
 
         if (!active) return;
         const plan = planResponse.data.plan || {};
         const latestDme = diagnosticResponse?.data?.diagnostics?.[0] || null;
+        const briefingResponses = Array.isArray(briefingResponse?.data?.responses) ? briefingResponse.data.responses : [];
+        const briefingProgress = briefingResponses.length
+          ? Math.round(briefingResponses.reduce((sum, item) => sum + Number(item.progress || 0), 0) / briefingResponses.length)
+          : 0;
 
         setStatus({
           dme: latestDme,
           diagnosis: Number(plan.progress || 0),
+          briefing: {
+            count: briefingResponses.length,
+            submitted: briefingResponses.filter((item) => item.status === 'submitted').length,
+            progress: briefingProgress,
+          },
         });
       } catch {
         if (active) setStatus(EMPTY_STATUS);
@@ -63,7 +81,7 @@ export default function CompassPage() {
 
     load();
     return () => { active = false; };
-  }, [clientId, user?.role]);
+  }, [clientId, user?.role, beeActive]);
 
   const steps = useMemo(() => [
     {
@@ -88,7 +106,18 @@ export default function CompassPage() {
       progress: status.diagnosis,
       statusLabel: progressStatus(status.diagnosis),
     },
-  ], [status, user?.role]);
+    ...(beeActive ? [{
+      number: '03',
+      title: 'Briefing Campanha 2027',
+      subtitle: 'Coletar a visão da direção',
+      description: 'Crie links individuais para a direção da Bee, receba as respostas em um só lugar e compare as visões antes de consolidar o conceito da campanha de matrículas.',
+      icon: FileText,
+      available: true,
+      path: '/bussola/briefing-bee-2027',
+      progress: status.briefing?.progress || 0,
+      statusLabel: briefingStatus(status.briefing),
+    }] : []),
+  ], [status, user?.role, beeActive]);
 
   return (
     <div className="space-y-6">
@@ -99,7 +128,7 @@ export default function CompassPage() {
         description="Um fluxo enxuto para compreender o momento atual e transformar evidências em direção estratégica."
       >
         <div className="grid gap-3 sm:grid-cols-3">
-          <HeroMetric value="2" label="etapas conectadas" />
+          <HeroMetric value={steps.length} label="etapas conectadas" />
           <HeroMetric value={clientName || '—'} label="cliente selecionado" small />
           <HeroMetric value={loading ? '...' : overallProgress(steps)} label="progresso da bússola" />
         </div>
@@ -119,7 +148,7 @@ export default function CompassPage() {
               <h2 className="section-title mt-1">Da leitura à direção</h2>
               <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-500">O DME organiza a percepção inicial do negócio. O Diagnóstico Estratégico aprofunda essa leitura, define prioridades e concentra o direcionamento necessário para a execução.</p>
             </div>
-            <div className="grid gap-4 p-6 md:grid-cols-2">
+            <div className={`grid gap-4 p-6 ${steps.length > 2 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
               {steps.map((step) => (
                 <CompassCard key={step.title} step={step} onOpen={() => step.available && navigate(step.path)} />
               ))}
@@ -176,6 +205,13 @@ function dmeStatus(item) {
 
 function progressStatus(progress) {
   return progress > 0 ? `${progress}% preenchido` : 'Aguardando início';
+}
+
+function briefingStatus(item) {
+  const count = Number(item?.count || 0);
+  const submitted = Number(item?.submitted || 0);
+  if (!count) return 'Aguardando primeira resposta';
+  return `${submitted}/${count} resposta${count === 1 ? '' : 's'} enviada${submitted === 1 ? '' : 's'}`;
 }
 
 function overallProgress(steps) {
