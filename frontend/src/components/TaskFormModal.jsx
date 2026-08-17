@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, ImagePlus, FileText, Grid3x3, Video, Trash2, Star } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from './ModalBackdrop.jsx';
@@ -29,6 +29,28 @@ function fileToBase64(file) {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function AutoGrowTextarea({ value, onChange, minHeight = 110, className = '', ...props }) {
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+
+    element.style.height = 'auto';
+    element.style.height = `${Math.max(element.scrollHeight, minHeight)}px`;
+  }, [value, minHeight]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      className={`input-field resize-none overflow-hidden ${className}`.trim()}
+      value={value}
+      onChange={onChange}
+      {...props}
+    />
+  );
 }
 
 export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
@@ -193,14 +215,14 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
 
   return (
     <ModalBackdrop onClose={handleRequestClose} disabled={saving} className="z-[60]">
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
+      <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[94vh] overflow-hidden shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl">
           <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
           <button onClick={handleRequestClose} className="text-slate-400 hover:text-slate-600">
             <X size={20} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="max-h-[calc(94vh-65px)] overflow-y-auto p-6 md:p-7 space-y-5">
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-2">Tipo de tarefa</label>
             <div className="grid grid-cols-3 gap-2">
@@ -234,15 +256,15 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
             <label className="text-sm font-medium text-slate-700 block mb-1">
               {isPost ? 'Ideia do conteúdo' : isVideo ? 'Roteiro / briefing' : 'Descrição'}
             </label>
-            <textarea
-              className="input-field min-h-[70px]"
+            <AutoGrowTextarea
+              minHeight={120}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               placeholder="Detalhe o que precisa ser feito..."
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Projeto</label>
               <input
@@ -263,7 +285,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Prioridade</label>
               <select className="input-field" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
@@ -285,7 +307,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
 
           {isPost && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-slate-700 block mb-1">Tipo de conteúdo</label>
                   <select className="input-field" value={form.content_type} onChange={(e) => setForm({ ...form, content_type: e.target.value })}>
@@ -300,7 +322,12 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1">Legenda</label>
-                <textarea className="input-field min-h-[70px]" value={form.caption} onChange={(e) => setForm({ ...form, caption: e.target.value })} placeholder="Legenda com CTA e hashtags..." />
+                <AutoGrowTextarea
+                  minHeight={140}
+                  value={form.caption}
+                  onChange={(e) => setForm({ ...form, caption: e.target.value })}
+                  placeholder="Legenda com CTA e hashtags..."
+                />
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1">Mídia (pode anexar mais de uma)</label>
@@ -372,7 +399,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Cliente relacionado</label>
               <select className="input-field" value={form.client_id} onChange={(e) => changeClient(e.target.value)} disabled={!!parentTaskId || userRole === 'client'}>
