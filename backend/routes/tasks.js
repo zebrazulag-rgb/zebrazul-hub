@@ -305,6 +305,35 @@ function normalizeCsvRows(user, rawRows) {
 }
 
 
+function teamVisibilityClause(alias = 't') {
+  return ` AND (
+    ${alias}.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)
+    OR EXISTS (
+      SELECT 1
+      FROM client_task_requests ctr
+      JOIN user_client_access uca ON uca.client_id = ctr.client_id
+      WHERE ctr.agency_id = ${alias}.agency_id
+        AND (ctr.task_id = ${alias}.id OR ctr.task_id = ${alias}.parent_task_id)
+        AND uca.user_id = ?
+    )
+  )`;
+}
+
+function pushTeamVisibilityParams(params, user) {
+  params.push(Number(user.id), Number(user.id));
+}
+
+function taskRequestForTask(taskId, agencyId) {
+  return db.prepare(`
+    SELECT ctr.id, ctr.client_id
+    FROM client_task_requests ctr
+    LEFT JOIN tasks child ON child.id = ? AND child.agency_id = ctr.agency_id
+    WHERE ctr.agency_id = ?
+      AND (ctr.task_id = ? OR ctr.task_id = child.parent_task_id)
+    LIMIT 1
+  `).get(Number(taskId), Number(agencyId), Number(taskId));
+}
+
 function canAccessTask(user, task) {
   if (!task || Number(task.agency_id) !== Number(user.agency_id)) return false;
   if (user.role === 'admin' || user.is_operations_head) return true;
@@ -315,7 +344,10 @@ function canAccessTask(user, task) {
     const assigned = db.prepare(
       'SELECT 1 FROM task_assignees WHERE task_id = ? AND user_id = ?'
     ).get(task.id, user.id);
-    return Boolean(assigned);
+    if (assigned) return true;
+
+    const request = taskRequestForTask(task.id, user.agency_id);
+    return Boolean(request && canAccessClient(user, task.client_id || request.client_id));
   }
   return false;
 }
@@ -431,8 +463,8 @@ function getAccessibleParentOptions(user, task) {
   }
 
   if (user.role === 'team' && !user.is_operations_head) {
-    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
-    params.push(Number(user.id));
+    query += teamVisibilityClause('t');
+    pushTeamVisibilityParams(params, user);
   } else if (user.role === 'client') {
     query += ' AND 1 = 0';
   }
@@ -504,6 +536,12 @@ function taskSummaryQuery(whereClause) {
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
+      ctr.id AS client_request_id,
+      ctr.protocol AS request_protocol,
+      ctr.requester_name,
+      ctr.request_type,
+      ctr.requested_due_date,
+      ctr.urgency AS request_urgency,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'pending') AS subtask_pending,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'in_progress') AS subtask_in_progress,
@@ -512,6 +550,7 @@ function taskSummaryQuery(whereClause) {
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
+    LEFT JOIN client_task_requests ctr ON ctr.task_id = t.id AND ctr.agency_id = t.agency_id
     ${whereClause}
   `;
 }
@@ -536,8 +575,8 @@ router.get('/', (req, res) => {
     const compactParams = [req.user.agency_id];
 
     if (req.user.role === 'team' && !req.user.is_operations_head) {
-      compactQuery += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
-      compactParams.push(Number(req.user.id));
+      compactQuery += teamVisibilityClause('t');
+      pushTeamVisibilityParams(compactParams, req.user);
     } else if (req.user.role === 'client') {
       compactQuery += ' AND t.client_id = ?';
       compactParams.push(Number(req.user.client_id));
@@ -565,8 +604,8 @@ router.get('/', (req, res) => {
   const params = [req.user.agency_id];
 
   if (req.user.role === 'team' && !req.user.is_operations_head) {
-    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
-    params.push(Number(req.user.id));
+    query += teamVisibilityClause('t');
+    pushTeamVisibilityParams(params, req.user);
   } else if (req.user.role === 'client') {
     query += ' AND t.client_id = ?';
     params.push(Number(req.user.client_id));
@@ -625,9 +664,17 @@ router.get('/dashboard-stats', (req, res) => {
       AND (
         t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)
         OR t.parent_task_id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)
+        OR EXISTS (
+          SELECT 1
+          FROM client_task_requests ctr
+          JOIN user_client_access uca ON uca.client_id = ctr.client_id
+          WHERE ctr.agency_id = t.agency_id
+            AND (ctr.task_id = t.id OR ctr.task_id = t.parent_task_id)
+            AND uca.user_id = ?
+        )
       )
     `;
-    params.push(Number(req.user.id), Number(req.user.id));
+    params.push(Number(req.user.id), Number(req.user.id), Number(req.user.id));
   } else if (req.user.role === 'client') {
     query += ' AND t.client_id = ?';
     params.push(Number(req.user.client_id));
@@ -664,6 +711,12 @@ router.get('/calendar', (req, res) => {
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
+      ctr.id AS client_request_id,
+      ctr.protocol AS request_protocol,
+      ctr.requester_name,
+      ctr.request_type,
+      ctr.requested_due_date,
+      ctr.urgency AS request_urgency,
       parent.title AS parent_title,
       CASE WHEN t.parent_task_id IS NULL THEN 0 ELSE 1 END AS is_subtask,
       CASE WHEN t.parent_task_id IS NULL THEN
@@ -679,13 +732,14 @@ router.get('/calendar', (req, res) => {
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
     LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
+    LEFT JOIN client_task_requests ctr ON ctr.task_id = t.id AND ctr.agency_id = t.agency_id
     WHERE t.agency_id = ? AND t.due_date IS NOT NULL
   `;
   const params = [req.user.agency_id];
 
   if (req.user.role === 'team' && !req.user.is_operations_head) {
-    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
-    params.push(Number(req.user.id));
+    query += teamVisibilityClause('t');
+    pushTeamVisibilityParams(params, req.user);
   } else if (req.user.role === 'client') {
     query += ' AND t.client_id = ?';
     params.push(Number(req.user.client_id));
@@ -716,8 +770,8 @@ router.get('/featured/all', (req, res) => {
   const params = [req.user.agency_id];
 
   if (req.user.role === 'team' && !req.user.is_operations_head) {
-    query += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
-    params.push(Number(req.user.id));
+    query += teamVisibilityClause('t');
+    pushTeamVisibilityParams(params, req.user);
   } else if (req.user.role === 'client') {
     query += ' AND t.client_id = ?';
     params.push(Number(req.user.client_id));
@@ -754,8 +808,8 @@ function buildTaskExportRows(req) {
   const params = [Number(req.user.agency_id)];
 
   if (req.user.role === 'team' && !req.user.is_operations_head) {
-    parentQuery += ' AND t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
-    params.push(Number(req.user.id));
+    parentQuery += teamVisibilityClause('t');
+    pushTeamVisibilityParams(params, req.user);
   } else if (req.user.role === 'client') {
     parentQuery += ' AND t.client_id = ?';
     params.push(Number(req.user.client_id));
@@ -814,11 +868,7 @@ function buildTaskExportRows(req) {
   `).all(Number(req.user.agency_id), ...parentIds);
 
   if (req.user.role === 'team' && !req.user.is_operations_head) {
-    children = children.filter((child) => {
-      const assigned = db.prepare('SELECT 1 FROM task_assignees WHERE task_id = ? AND user_id = ?')
-        .get(child.id, req.user.id);
-      return Boolean(assigned);
-    });
+    children = children.filter((child) => canAccessTask(req.user, child));
   }
 
   const all = [...parents, ...children];
@@ -1136,12 +1186,18 @@ router.get('/:id', (req, res) => {
       t.content_type, t.caption, t.video_link,
       t.due_date, t.deadline_label, t.status, t.is_featured, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, COALESCE(p.feed_visible, 0) AS feed_post_visible, t.created_at, t.updated_at,
+      ctr.id AS client_request_id,
+      ctr.protocol AS request_protocol,
+      ctr.requester_name, ctr.requester_email, ctr.requester_phone,
+      ctr.request_type, ctr.requested_due_date, ctr.urgency AS request_urgency,
+      ctr.references_text AS request_references, ctr.notes AS request_notes,
       CASE WHEN t.attachment_data IS NOT NULL AND length(t.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
       c.name AS client_name, c.logo_color AS client_color
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
+    LEFT JOIN client_task_requests ctr ON ctr.task_id = t.id AND ctr.agency_id = t.agency_id
     WHERE t.id = ? AND t.agency_id = ?
   `).get(req.params.id, req.user.agency_id);
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
@@ -1161,14 +1217,32 @@ router.get('/:id', (req, res) => {
   `;
   const subtaskParams = [req.params.id, req.user.agency_id];
   if (req.user.role === 'team' && !req.user.is_operations_head) {
-    subtaskQuery += ' AND st.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)';
-    subtaskParams.push(Number(req.user.id));
+    subtaskQuery += teamVisibilityClause('st');
+    pushTeamVisibilityParams(subtaskParams, req.user);
   }
   subtaskQuery += ' ORDER BY COALESCE(st.due_date, st.created_at) ASC';
   const subtaskRows = db.prepare(subtaskQuery).all(...subtaskParams);
   const subtasks = attachAssignees(subtaskRows, req.user.agency_id);
 
-  res.json({ task, subtasks });
+  let requestFiles = [];
+  let requestEvents = [];
+  if (task.client_request_id) {
+    requestFiles = db.prepare(`
+      SELECT id, file_url, mime, filename, created_at
+      FROM client_task_request_files
+      WHERE request_id = ?
+      ORDER BY id ASC
+    `).all(Number(task.client_request_id));
+    requestEvents = db.prepare(`
+      SELECT e.id, e.event_type, e.message, e.created_at, u.name AS user_name
+      FROM client_task_request_events e
+      LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.request_id = ? AND e.agency_id = ?
+      ORDER BY e.created_at ASC, e.id ASC
+    `).all(Number(task.client_request_id), Number(req.user.agency_id));
+  }
+
+  res.json({ task, subtasks, request_files: requestFiles, request_events: requestEvents });
 });
 
 router.post('/', (req, res) => {
@@ -1297,6 +1371,36 @@ router.put('/:id', (req, res) => {
     }
   });
   updateTask();
+
+  const clientRequest = db.prepare(`
+    SELECT id FROM client_task_requests
+    WHERE task_id = ? AND agency_id = ?
+  `).get(Number(req.params.id), Number(req.user.agency_id));
+  if (clientRequest) {
+    const eventMessages = [];
+    const statusNames = { pending: 'A fazer', in_progress: 'Em andamento', done: 'Concluída', posted: 'Postado' };
+    const priorityNames = { low: 'Baixa', medium: 'Média', high: 'Alta' };
+    if (Object.prototype.hasOwnProperty.call(req.body, 'status') && req.body.status !== existing.status) {
+      eventMessages.push(`Status: ${statusNames[existing.status] || existing.status} → ${statusNames[req.body.status] || req.body.status}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'priority') && req.body.priority && req.body.priority !== existing.priority) {
+      eventMessages.push(`Prioridade: ${priorityNames[existing.priority] || existing.priority} → ${priorityNames[req.body.priority] || req.body.priority}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'due_date') && (req.body.due_date || null) !== (existing.due_date || null)) {
+      eventMessages.push(`Prazo interno atualizado para ${req.body.due_date || 'sem prazo'}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')) {
+      const names = attachAssignees([{ id: Number(req.params.id) }], req.user.agency_id)[0].assignees.map((item) => item.name);
+      eventMessages.push(names.length ? `Responsável(is): ${names.join(', ')}` : 'Responsáveis removidos');
+    }
+    if (eventMessages.length) {
+      const insertEvent = db.prepare(`
+        INSERT INTO client_task_request_events (agency_id, request_id, user_id, event_type, message)
+        VALUES (?, ?, ?, 'task_updated', ?)
+      `);
+      eventMessages.forEach((message) => insertEvent.run(req.user.agency_id, clientRequest.id, req.user.id, message));
+    }
+  }
 
   res.json({ ok: true, task: getTaskSummary(req.params.id, req.user.agency_id) });
 });

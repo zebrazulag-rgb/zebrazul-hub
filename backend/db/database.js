@@ -185,6 +185,82 @@ CREATE TABLE IF NOT EXISTS task_assignees (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS client_task_request_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  active INTEGER DEFAULT 1,
+  created_by INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  UNIQUE(agency_id, client_id)
+);
+
+CREATE TABLE IF NOT EXISTS client_task_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  task_id INTEGER NOT NULL UNIQUE,
+  request_link_id INTEGER,
+  protocol TEXT NOT NULL UNIQUE,
+  requester_name TEXT NOT NULL,
+  requester_email TEXT,
+  requester_phone TEXT,
+  request_type TEXT,
+  requested_due_date TEXT,
+  urgency TEXT DEFAULT 'normal' CHECK(urgency IN ('normal','urgent')),
+  references_text TEXT,
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (request_link_id) REFERENCES client_task_request_links(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS client_task_request_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id INTEGER NOT NULL,
+  file_url TEXT NOT NULL,
+  mime TEXT,
+  filename TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (request_id) REFERENCES client_task_requests(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS client_task_request_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  request_id INTEGER NOT NULL,
+  user_id INTEGER,
+  event_type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (request_id) REFERENCES client_task_requests(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  type TEXT NOT NULL DEFAULT 'info',
+  title TEXT NOT NULL,
+  message TEXT,
+  entity_type TEXT,
+  entity_id INTEGER,
+  link TEXT,
+  read_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS post_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   post_id INTEGER NOT NULL,
@@ -1450,6 +1526,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_tasks_featured ON tasks(agency_id, is_featured, status, due_date);
+  CREATE INDEX IF NOT EXISTS idx_task_request_links_client ON client_task_request_links(agency_id, client_id, active);
+  CREATE INDEX IF NOT EXISTS idx_task_requests_client ON client_task_requests(agency_id, client_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_task_request_events_request ON client_task_request_events(agency_id, request_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(agency_id, user_id, read_at, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage ON commercial_leads(agency_id, stage, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage_key ON commercial_leads(agency_id, client_id, stage_key, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_stages_client_position ON commercial_stages(agency_id, client_id, position);
@@ -1496,7 +1576,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '32', datetime('now'))
+   VALUES ('schema_version', '33', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
