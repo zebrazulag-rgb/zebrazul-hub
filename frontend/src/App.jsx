@@ -29,6 +29,7 @@ import DataDeletion from './pages/DataDeletion.jsx';
 import BeeRematriculas from './pages/BeeRematriculas.jsx';
 import BeeCampaignBriefing from './pages/BeeCampaignBriefing.jsx';
 import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
+import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -49,6 +50,7 @@ export default function App() {
       <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
       <Route path="/briefing-bee-2027/:token" element={<PublicBeeCampaignBriefing />} />
+      <Route path="/solicitar/:token" element={<PublicTaskRequest />} />
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />

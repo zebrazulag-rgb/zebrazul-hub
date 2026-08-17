@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
 import TaskCsvModal, { downloadTaskCsvModel } from '../components/TaskCsvModal.jsx';
+import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PageHero from '../components/PageHero.jsx';
 
@@ -124,6 +125,16 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
             ) : null}
           </div>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
+          {t.client_request_id && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">
+                <MessageSquareText size={10} /> Solicitação do cliente
+              </span>
+              {t.request_urgency === 'urgent' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700"><AlertTriangle size={10} /> Cliente marcou urgente</span>
+              )}
+            </div>
+          )}
           {(t.project_name || t.front_name || t.priority) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {t.project_name && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600">{t.project_name}</span>}
@@ -146,6 +157,9 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
           </div>
           <span className="text-[10px] text-slate-400 shrink-0">{t.subtask_done}/{t.subtask_total}</span>
         </div>
+      )}
+      {t.client_request_id && t.requested_due_date && (
+        <p className="mt-3 flex items-center gap-1 text-[11px] text-violet-600"><Calendar size={11} /> Desejado pelo cliente: {formatTaskDate(t.requested_due_date)}</p>
       )}
       <div className="flex items-center justify-between mt-3">
         <AssigneeStack assignees={t.assignees} />
@@ -195,6 +209,7 @@ export default function Tasks() {
   const [convertingTask, setConvertingTask] = useState(false);
   const [convertError, setConvertError] = useState('');
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [showRequestLink, setShowRequestLink] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvNotice, setCsvNotice] = useState('');
   const [filters, setFilters] = useState({
@@ -223,6 +238,11 @@ export default function Tasks() {
 
   useEffect(() => {
     loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => loadTasks().catch(() => {}), 30000);
+    return () => window.clearInterval(interval);
   }, [loadTasks]);
 
   async function exportCsv() {
@@ -333,7 +353,7 @@ export default function Tasks() {
     try {
       const { data } = await api.get('/tasks/' + taskId);
       setSelectedTask((previous) => previous?.id === taskId
-        ? { ...previous, ...data.task, details_loading: false }
+        ? { ...previous, ...data.task, request_files: data.request_files || [], request_events: data.request_events || [], details_loading: false }
         : previous);
       setSubtasks(data.subtasks || []);
       loadTaskMedia(taskId);
@@ -708,6 +728,17 @@ export default function Tasks() {
             <button disabled={csvBusy} onClick={downloadCsvModel} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
               <FileSpreadsheet size={16} /> Modelo CSV
             </button>
+            {user?.role !== 'client' && (
+              <button
+                type="button"
+                disabled={!selectedClient}
+                onClick={() => selectedClient && setShowRequestLink(true)}
+                title={selectedClient ? `Gerenciar link de solicitações de ${selectedClient.name}` : 'Selecione um cliente para gerar o link'}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Link2 size={16} /> Link de solicitações
+              </button>
+            )}
           </div>
         }
       >
@@ -923,6 +954,10 @@ export default function Tasks() {
         </ModalBackdrop>
       )}
 
+      {showRequestLink && selectedClient && (
+        <TaskRequestLinkModal client={selectedClient} onClose={() => setShowRequestLink(false)} />
+      )}
+
       {showCsvImport && (
         <TaskCsvModal
           onClose={() => setShowCsvImport(false)}
@@ -1054,6 +1089,42 @@ export default function Tasks() {
                 <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
               </div>
             ) : selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
+            {!selectedTask.details_loading && selectedTask.client_request_id && (
+              <div className="mb-4 overflow-hidden rounded-2xl border border-violet-200 bg-violet-50/55">
+                <div className="flex items-center justify-between gap-3 border-b border-violet-100 px-4 py-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-violet-800"><MessageSquareText size={15} /> Solicitação do cliente</div>
+                  {selectedTask.request_protocol && <span className="font-mono text-[10px] text-violet-500">{selectedTask.request_protocol}</span>}
+                </div>
+                <div className="grid gap-3 p-4 text-xs text-slate-600 sm:grid-cols-2">
+                  <p className="flex items-start gap-2"><UserRound size={13} className="mt-0.5 shrink-0 text-violet-500" /><span><strong className="block text-slate-700">Solicitado por</strong>{selectedTask.requester_name}{selectedTask.requester_email ? ` · ${selectedTask.requester_email}` : ''}{selectedTask.requester_phone ? ` · ${selectedTask.requester_phone}` : ''}</span></p>
+                  <p><strong className="block text-slate-700">Tipo</strong>{selectedTask.request_type || 'Outro'}</p>
+                  <p><strong className="block text-slate-700">Data desejada pelo cliente</strong>{selectedTask.requested_due_date ? formatTaskDate(selectedTask.requested_due_date) : 'Não informada'}</p>
+                  <p><strong className="block text-slate-700">Urgência percebida</strong><span className={selectedTask.request_urgency === 'urgent' ? 'font-semibold text-rose-600' : ''}>{selectedTask.request_urgency === 'urgent' ? 'Urgente' : 'Normal'}</span></p>
+                  {selectedTask.request_references && <p className="sm:col-span-2"><strong className="block text-slate-700">Links / referências</strong><span className="whitespace-pre-wrap break-words">{selectedTask.request_references}</span></p>}
+                  {selectedTask.request_notes && <p className="sm:col-span-2"><strong className="block text-slate-700">Observações</strong><span className="whitespace-pre-wrap">{selectedTask.request_notes}</span></p>}
+                </div>
+                {selectedTask.request_files?.length > 0 && (
+                  <div className="border-t border-violet-100 px-4 py-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-violet-600">Anexos</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedTask.request_files.map((file) => (
+                        <a key={file.id} href={file.file_url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-2 text-xs font-medium text-violet-700 hover:bg-violet-50"><Paperclip size={12} /><span className="truncate">{file.filename || 'Anexo'}</span></a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {selectedTask.request_events?.length > 0 && (
+                  <div className="border-t border-violet-100 px-4 py-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-violet-600">Histórico da solicitação</p>
+                    <div className="space-y-2">
+                      {selectedTask.request_events.map((event) => (
+                        <div key={event.id} className="flex gap-2 text-[11px] text-slate-500"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" /><span><strong className="font-medium text-slate-700">{event.user_name || 'Cliente'}</strong> · {event.message}</span></div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {!selectedTask.details_loading && (selectedTask.project_name || selectedTask.front_name || selectedTask.goal || selectedTask.priority) && (
               <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                 {selectedTask.project_name && <p><span className="font-semibold text-slate-700">Projeto:</span> {selectedTask.project_name}</p>}

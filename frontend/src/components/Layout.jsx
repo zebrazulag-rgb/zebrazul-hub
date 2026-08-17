@@ -35,6 +35,7 @@ import api from '../api';
 import { formChanged } from '../utils/formState.js';
 import zebraHubLogo from '../assets/logo-hub-white.png';
 import { isBeeClient } from '../utils/beeClientAccess.js';
+import NotificationBell from './NotificationBell.jsx';
 
 export default function Layout({ children }) {
   const { user, logout, refreshUser } = useAuth();
@@ -395,6 +396,7 @@ export default function Layout({ children }) {
       </aside>
 
       <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <NotificationBell />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
         <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-8 py-8 xl:px-10">{children}</div>
       </main>
