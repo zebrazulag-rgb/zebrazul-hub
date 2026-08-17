@@ -18,12 +18,22 @@ const HEADER_MAP = {
   id_da_tarefa_pai: 'parent_csv_id',
   id_tarefa_pai: 'parent_csv_id',
   tarefa_pai: 'parent_csv_id',
+  tipo_de_tarefa: 'task_type',
+  tipo_tarefa: 'task_type',
   cliente: 'client',
   projeto: 'project',
   frente: 'front',
   categoria: 'front',
   titulo: 'title',
   descricao: 'description',
+  ideia_do_conteudo: 'content_idea',
+  ideia_de_conteudo: 'content_idea',
+  tipo_de_conteudo: 'content_type',
+  data_de_postagem: 'post_date',
+  legenda: 'caption',
+  roteiro_briefing: 'script_briefing',
+  roteiro: 'script_briefing',
+  link_do_video: 'video_link',
   responsavel: 'responsible',
   prioridade: 'priority',
   status: 'status',
@@ -249,15 +259,17 @@ export default function TaskCsvModal({ onClose, onImported }) {
 
               <div className="overflow-hidden rounded-2xl border border-slate-200">
                 <div className="max-h-[360px] overflow-auto">
-                  <table className="w-full min-w-[980px] text-left text-xs">
+                  <table className="w-full min-w-[1120px] text-left text-xs">
                     <thead className="sticky top-0 bg-slate-50 text-slate-500">
-                      <tr>{['Linha', 'Tipo', 'Título', 'Cliente', 'Projeto', 'Tarefa pai', 'Status'].map((label) => <th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr>
+                      <tr>{['Linha', 'Hierarquia', 'Tipo de tarefa', 'Conteúdo', 'Título', 'Cliente', 'Projeto', 'Tarefa pai', 'Status'].map((label) => <th key={label} className="px-3 py-2.5 font-semibold">{label}</th>)}</tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {preview.rows.map((row) => (
                         <tr key={`${row.line}-${row.csv_id}`} className={row.errors?.length ? 'bg-red-50/60' : row.duplicate ? 'bg-amber-50/50' : ''}>
                           <td className="px-3 py-2.5 text-slate-400">{row.line}</td>
                           <td className="px-3 py-2.5"><span className={`rounded-full px-2 py-1 font-semibold ${row.type === 'subtask' ? 'bg-indigo-50 text-indigo-700' : 'bg-blue-50 text-blue-700'}`}>{row.type === 'subtask' ? 'Subtarefa' : 'Tarefa'}</span></td>
+                          <td className="px-3 py-2.5 text-slate-600">{row.task_type_label || 'Tarefa básica'}</td>
+                          <td className="px-3 py-2.5 text-slate-600">{row.content_type_label || '—'}</td>
                           <td className="px-3 py-2.5 font-medium text-slate-800">{row.title || '—'}{row.duplicate && <span className="ml-2 text-[10px] font-semibold text-amber-700">DUPLICADA</span>}</td>
                           <td className="px-3 py-2.5 text-slate-600">{row.client_name || '—'}</td>
                           <td className="px-3 py-2.5 text-slate-600">{row.project_name || '—'}</td>

@@ -4,7 +4,13 @@ import api from '../api';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import { formChanged } from '../utils/formState.js';
 
-const CONTENT_TYPES = ['feed', 'reels', 'story', 'carrossel', 'artigo'];
+const CONTENT_TYPES = [
+  { value: 'feed', label: 'Estático' },
+  { value: 'carrossel', label: 'Carrossel' },
+  { value: 'reels', label: 'Reels' },
+  { value: 'story', label: 'Story' },
+  { value: 'artigo', label: 'Artigo' },
+];
 
 const TASK_TYPES = [
   { value: 'basic', label: 'Tarefa básica', icon: FileText },
@@ -284,7 +290,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
                   <label className="text-sm font-medium text-slate-700 block mb-1">Tipo de conteúdo</label>
                   <select className="input-field" value={form.content_type} onChange={(e) => setForm({ ...form, content_type: e.target.value })}>
                     <option value="">Não definido</option>
-                    {CONTENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    {CONTENT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                   </select>
                 </div>
                 <div>
