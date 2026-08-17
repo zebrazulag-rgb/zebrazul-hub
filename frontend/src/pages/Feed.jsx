@@ -35,6 +35,7 @@ export default function Feed() {
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [postLinkCopiedId, setPostLinkCopiedId] = useState(null);
   const [reorderingPost, setReorderingPost] = useState(false);
   const [galleryDraft, setGalleryDraft] = useState([]);
   const [savingGalleryOrder, setSavingGalleryOrder] = useState(false);
@@ -65,6 +66,7 @@ export default function Feed() {
       setPosts([]);
       setHiddenPosts([]);
       setOpenPost(null);
+      setPostLinkCopiedId(null);
       setEditingPost(null);
       setShowHiddenPosts(false);
       setCreatingPost(false);
@@ -234,6 +236,25 @@ export default function Feed() {
     await navigator.clipboard.writeText(url);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2500);
+  }
+
+  async function shareSinglePost(post) {
+    if (!post?.id) return;
+    setPostActionLoading(`share-${post.id}`);
+    setPostActionError('');
+    try {
+      const { data } = await api.post(`/posts/${post.id}/view-share`);
+      const url = `${window.location.origin}/post/${data.token}`;
+      await navigator.clipboard.writeText(url);
+      setPostLinkCopiedId(post.id);
+      setTimeout(() => {
+        setPostLinkCopiedId((current) => (String(current) === String(post.id) ? null : current));
+      }, 2500);
+    } catch (err) {
+      setPostActionError(err.response?.data?.error || 'Não foi possível gerar o link deste post.');
+    } finally {
+      setPostActionLoading(null);
+    }
   }
 
   function moveGalleryItem(items, fromIndex, toIndex) {
@@ -579,6 +600,24 @@ export default function Feed() {
                     className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-zebrazul-300 hover:bg-zebrazul-50 hover:text-zebrazul-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <ListOrdered size={17} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => shareSinglePost(openPost)}
+                    disabled={Boolean(postActionLoading)}
+                    title={String(postLinkCopiedId) === String(openPost.id) ? 'Link copiado!' : 'Copiar link deste post'}
+                    aria-label={String(postLinkCopiedId) === String(openPost.id) ? 'Link copiado' : 'Copiar link deste post'}
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition disabled:opacity-50 ${
+                      String(postLinkCopiedId) === String(openPost.id)
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-zebrazul-300 hover:bg-zebrazul-50 hover:text-zebrazul-700'
+                    }`}
+                  >
+                    {postActionLoading === `share-${openPost.id}`
+                      ? <Loader2 size={16} className="animate-spin" />
+                      : String(postLinkCopiedId) === String(openPost.id)
+                        ? <Check size={17} />
+                        : <Link2 size={17} />}
                   </button>
                   <button
                     type="button"
