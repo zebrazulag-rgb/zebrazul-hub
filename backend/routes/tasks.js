@@ -9,6 +9,8 @@ router.use(requireRole('admin', 'team', 'client'));
 
 const TASK_STATUSES = new Set(['pending', 'in_progress', 'done', 'posted']);
 const TASK_PRIORITIES = new Set(['low', 'medium', 'high']);
+const TASK_TYPES = new Set(['basic', 'post', 'video']);
+const CONTENT_TYPES = new Set(['feed', 'reels', 'story', 'carrossel', 'artigo']);
 
 function normalizeText(value) {
   return String(value ?? '').trim();
@@ -57,6 +59,57 @@ function normalizeCsvPriority(value) {
     'high': 'high',
   };
   return map[key] || null;
+}
+
+function normalizeCsvTaskType(value) {
+  const key = normalizeKey(value);
+  if (!key) return 'basic';
+  const map = {
+    'tarefa basica': 'basic',
+    'tarefa': 'basic',
+    'basic': 'basic',
+    'post': 'post',
+    'publicacao': 'post',
+    'gravacao e edicao de video': 'video',
+    'gravacao de video': 'video',
+    'edicao de video': 'video',
+    'video': 'video',
+  };
+  return map[key] || (TASK_TYPES.has(key) ? key : null);
+}
+
+function taskTypeLabel(value) {
+  return value === 'post' ? 'Post'
+    : value === 'video' ? 'Gravação e Edição de Vídeo'
+    : 'Tarefa básica';
+}
+
+function normalizeCsvContentType(value) {
+  const key = normalizeKey(value);
+  if (!key) return null;
+  const map = {
+    'estatico': 'feed',
+    'estatica': 'feed',
+    'post estatico': 'feed',
+    'feed': 'feed',
+    'reel': 'reels',
+    'reels': 'reels',
+    'story': 'story',
+    'stories': 'story',
+    'carrossel': 'carrossel',
+    'carousel': 'carrossel',
+    'artigo': 'artigo',
+  };
+  return map[key] || (CONTENT_TYPES.has(key) ? key : null);
+}
+
+function contentTypeLabel(value) {
+  return value === 'feed' ? 'Estático'
+    : value === 'reels' ? 'Reels'
+    : value === 'story' ? 'Story'
+    : value === 'carrossel' ? 'Carrossel'
+    : value === 'artigo' ? 'Artigo'
+    : '';
 }
 
 function priorityLabel(value) {
@@ -159,9 +212,24 @@ function normalizeCsvRows(user, rawRows) {
       : context.clientByName.get(normalizeKey(clientName));
     const statusProvided = normalizeText(source.status) !== '';
     const priorityProvided = normalizeText(source.priority) !== '';
+    const taskTypeRaw = normalizeText(source.task_type || source.tipo_de_tarefa || source.tipo_tarefa);
+    const taskType = normalizeCsvTaskType(taskTypeRaw);
+    const contentTypeRaw = normalizeText(source.content_type || source.tipo_de_conteudo || source.tipo_conteudo);
+    const contentType = normalizeCsvContentType(contentTypeRaw);
+    const genericDescription = normalizeText(source.description || source.descricao);
+    const contentIdea = normalizeText(source.content_idea || source.ideia_do_conteudo || source.ideia_conteudo);
+    const scriptBriefing = normalizeText(source.script_briefing || source.roteiro_briefing || source.roteiro);
+    const description = taskType === 'post'
+      ? (contentIdea || genericDescription)
+      : taskType === 'video'
+        ? (scriptBriefing || genericDescription)
+        : genericDescription;
+    const postDateRaw = normalizeText(source.post_date || source.data_de_postagem || source.data_postagem);
     const status = normalizeCsvStatus(source.status);
     const priority = normalizeCsvPriority(source.priority);
-    const dueRaw = normalizeText(source.due_date || source.deadline || source.prazo);
+    const dueRaw = taskType === 'post' && postDateRaw
+      ? postDateRaw
+      : normalizeText(source.due_date || source.deadline || source.prazo);
     const dueDate = parseCsvDate(dueRaw);
     const assigneeNames = splitAssignees(source.responsible || source.assignee || source.responsavel);
     const assigneeIds = [];
@@ -181,7 +249,13 @@ function normalizeCsvRows(user, rawRows) {
       project_name: normalizeText(source.project || source.projeto),
       front_name: normalizeText(source.front || source.frente),
       title: normalizeText(source.title || source.titulo),
-      description: normalizeText(source.description || source.descricao),
+      task_type: taskType,
+      task_type_label: taskTypeLabel(taskType),
+      description,
+      content_type: taskType === 'post' ? contentType : null,
+      content_type_label: taskType === 'post' ? contentTypeLabel(contentType) : '',
+      caption: taskType === 'post' ? normalizeText(source.caption || source.legenda) : '',
+      video_link: taskType === 'video' ? normalizeText(source.video_link || source.link_do_video || source.link_video) : '',
       responsible: assigneeNames.join('; '),
       assignee_ids: [...new Set(assigneeIds)],
       unknown_assignees: unknownAssignees,
@@ -195,7 +269,11 @@ function normalizeCsvRows(user, rawRows) {
         project_name: normalizeText(source.project || source.projeto) !== '',
         front_name: normalizeText(source.front || source.frente) !== '',
         title: normalizeText(source.title || source.titulo) !== '',
-        description: normalizeText(source.description || source.descricao) !== '',
+        task_type: taskTypeRaw !== '',
+        description: genericDescription !== '' || contentIdea !== '' || scriptBriefing !== '',
+        content_type: contentTypeRaw !== '',
+        caption: normalizeText(source.caption || source.legenda) !== '',
+        video_link: normalizeText(source.video_link || source.link_do_video || source.link_video) !== '',
         responsible: assigneeNames.length > 0,
         priority: priorityProvided,
         status: statusProvided,
@@ -216,6 +294,10 @@ function normalizeCsvRows(user, rawRows) {
   normalized.forEach((row) => {
     if (!row.client_id) row.errors.push('Cliente não encontrado ou sem acesso.');
     if (!row.title) row.errors.push('Título é obrigatório.');
+    if (!row.task_type) row.errors.push('Tipo de tarefa inválido. Use Tarefa básica, Post ou Gravação e Edição de Vídeo.');
+    if (row.task_type === 'post' && row.provided.content_type && !row.content_type) {
+      row.errors.push('Tipo de conteúdo inválido. Use Estático, Carrossel, Reels, Story ou Artigo.');
+    }
     if (!row.status) row.errors.push('Status inválido.');
     if (!row.priority) row.errors.push('Prioridade inválida.');
     if (row.unknown_assignees.length) row.errors.push(`Responsável não encontrado: ${row.unknown_assignees.join(', ')}.`);
@@ -887,37 +969,50 @@ function buildTaskExportRows(req) {
     (childrenByParent.get(Number(parent.id)) || []).forEach((child) => ordered.push(child));
   });
 
-  return ordered.map((task) => ({
-    task_id: `ZH-${Number(task.id)}`,
-    parent_task_id: task.parent_task_id ? `ZH-${Number(task.parent_task_id)}` : '',
-    client: task.client_name || '',
-    project: task.project_name || '',
-    front: task.front_name || '',
-    title: task.title || '',
-    description: task.description || '',
-    responsible: (assigneeMap.get(Number(task.id)) || []).map((item) => item.name).join('; '),
-    priority: priorityLabel(task.priority || 'medium'),
-    status: statusLabel(task.status),
-    due_date: task.due_date ? String(task.due_date).slice(0, 10) : (task.deadline_label || ''),
-    goal: task.goal || '',
-    created_at: task.created_at || '',
-    updated_at: task.updated_at || '',
-  }));
+  return ordered.map((task) => {
+    const taskType = TASK_TYPES.has(task.task_type) ? task.task_type : 'basic';
+    const taskDate = task.due_date ? String(task.due_date).slice(0, 10) : (task.deadline_label || '');
+    return {
+      task_id: `ZH-${Number(task.id)}`,
+      parent_task_id: task.parent_task_id ? `ZH-${Number(task.parent_task_id)}` : '',
+      task_type: taskTypeLabel(taskType),
+      client: task.client_name || '',
+      project: task.project_name || '',
+      front: task.front_name || '',
+      title: task.title || '',
+      description: taskType === 'basic' ? (task.description || '') : '',
+      content_idea: taskType === 'post' ? (task.description || '') : '',
+      content_type: taskType === 'post' ? contentTypeLabel(task.content_type) : '',
+      post_date: taskType === 'post' ? taskDate : '',
+      caption: taskType === 'post' ? (task.caption || '') : '',
+      script_briefing: taskType === 'video' ? (task.description || '') : '',
+      video_link: taskType === 'video' ? (task.video_link || '') : '',
+      responsible: (assigneeMap.get(Number(task.id)) || []).map((item) => item.name).join('; '),
+      priority: priorityLabel(task.priority || 'medium'),
+      status: statusLabel(task.status),
+      due_date: taskType === 'post' ? '' : taskDate,
+      goal: task.goal || '',
+      created_at: task.created_at || '',
+      updated_at: task.updated_at || '',
+    };
+  });
 }
 
 router.get('/csv/export', (req, res) => {
   try {
     const rows = buildTaskExportRows(req);
     const headers = [
-      'ID da tarefa', 'ID da tarefa pai', 'Cliente', 'Projeto', 'Frente', 'Título',
-      'Descrição', 'Responsável', 'Prioridade', 'Status', 'Prazo', 'Meta',
+      'ID da tarefa', 'ID da tarefa pai', 'Tipo de tarefa', 'Cliente', 'Projeto', 'Frente', 'Título',
+      'Descrição', 'Ideia do conteúdo', 'Tipo de conteúdo', 'Data de postagem', 'Legenda',
+      'Roteiro / briefing', 'Link do vídeo', 'Responsável', 'Prioridade', 'Status', 'Prazo', 'Meta',
       'Data de criação', 'Data de atualização'
     ];
     const lines = [headers.map(csvEscape).join(',')];
     rows.forEach((row) => {
       lines.push([
-        row.task_id, row.parent_task_id, row.client, row.project, row.front, row.title,
-        row.description, row.responsible, row.priority, row.status, row.due_date, row.goal,
+        row.task_id, row.parent_task_id, row.task_type, row.client, row.project, row.front, row.title,
+        row.description, row.content_idea, row.content_type, row.post_date, row.caption,
+        row.script_briefing, row.video_link, row.responsible, row.priority, row.status, row.due_date, row.goal,
         row.created_at, row.updated_at
       ].map(csvEscape).join(','));
     });
@@ -936,20 +1031,35 @@ router.get('/csv/export', (req, res) => {
 
 router.get('/csv/model', (req, res) => {
   const headers = [
-    'ID da tarefa', 'ID da tarefa pai', 'Cliente', 'Projeto', 'Frente', 'Título',
-    'Descrição', 'Responsável', 'Prioridade', 'Status', 'Prazo', 'Meta'
+    'ID da tarefa', 'ID da tarefa pai', 'Tipo de tarefa', 'Cliente', 'Projeto', 'Frente', 'Título',
+    'Descrição', 'Ideia do conteúdo', 'Tipo de conteúdo', 'Data de postagem', 'Legenda',
+    'Roteiro / briefing', 'Link do vídeo', 'Responsável', 'Prioridade', 'Status', 'Prazo', 'Meta'
   ];
-  const sample = [
-    '1', '', 'Basalto', 'Plano de Ação Estratégico Basalto 2026', 'Comercial',
-    'Estruturar processo comercial', 'Reestruturar toda a operação comercial',
-    'Arthur', 'Alta', 'A fazer', '2026-08-30', ''
+  const basicTask = [
+    '1', '', 'Tarefa básica', 'Basalto', 'Plano de Ação Estratégico Basalto 2026', 'Marketing',
+    'CRONOGRAMA DE AGOSTO', 'Planejamento principal do mês', '', '', '', '', '', '',
+    'Arthur', 'Média', 'A fazer', '2026-08-31', ''
   ];
-  const subtask = [
-    '2', '1', 'Basalto', 'Plano de Ação Estratégico Basalto 2026', 'Comercial',
-    'Criar funil comercial', 'Definir as etapas do funil',
-    'Arthur', 'Média', 'A fazer', '2026-08-20', ''
+  const staticPost = [
+    '2', '1', 'Post', 'Basalto', 'Plano de Ação Estratégico Basalto 2026', 'Conteúdo',
+    'Post institucional', '', 'Título na arte: Segurança para crescer.\nDireção visual: usar a identidade da marca.',
+    'Estático', '2026-08-10', 'Legenda do post com CTA e hashtags.', '', '',
+    'Arthur', 'Média', 'A fazer', '', ''
   ];
-  const csv = '\uFEFF' + [headers, sample, subtask].map((row) => row.map(csvEscape).join(',')).join('\r\n');
+  const carouselPost = [
+    '3', '1', 'Post', 'Basalto', 'Plano de Ação Estratégico Basalto 2026', 'Conteúdo',
+    'Carrossel educativo', '', 'SLIDE 1 — Capa\nSLIDE 2 — Desenvolvimento\nSLIDE 3 — CTA',
+    'Carrossel', '2026-08-12', 'Legenda do carrossel com CTA e hashtags.', '', '',
+    'Arthur', 'Média', 'A fazer', '', ''
+  ];
+  const videoTask = [
+    '4', '1', 'Gravação e Edição de Vídeo', 'Basalto', 'Plano de Ação Estratégico Basalto 2026', 'Conteúdo',
+    'Vídeo de autoridade', '', '', '', '', '',
+    'CENA 1 — Gancho\nFALA: Comece com uma pergunta.\nCENA 2 — Desenvolvimento\nCENA 3 — CTA', '',
+    'Arthur', 'Média', 'A fazer', '2026-08-14', ''
+  ];
+  const csv = '\uFEFF' + [headers, basicTask, staticPost, carouselPost, videoTask]
+    .map((row) => row.map(csvEscape).join(',')).join('\r\n');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="modelo_importacao_tarefas_zebrahub.csv"');
   res.send(csv);
@@ -999,12 +1109,14 @@ router.post('/csv/import', (req, res) => {
     const info = db.prepare(`
       INSERT INTO tasks (
         agency_id, client_id, created_by, parent_task_id, task_type, title, description,
-        project_name, front_name, priority, goal, due_date, deadline_label, status, is_featured
-      ) VALUES (?, ?, ?, ?, 'basic', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        project_name, front_name, priority, goal, content_type, caption, video_link,
+        due_date, deadline_label, status, is_featured
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       Number(req.user.agency_id), Number(row.client_id), Number(req.user.id), parentTaskId || null,
-      row.title, row.description || '', row.project_name || null, row.front_name || null,
-      row.priority || 'medium', row.goal || null, row.due_date || null, row.deadline_label || null, status
+      row.task_type || 'basic', row.title, row.description || '', row.project_name || null, row.front_name || null,
+      row.priority || 'medium', row.goal || null, row.content_type || null, row.caption || null, row.video_link || null,
+      row.due_date || null, row.deadline_label || null, status
     );
     setAssignees(info.lastInsertRowid, row.assignee_ids);
     return Number(info.lastInsertRowid);
@@ -1022,7 +1134,11 @@ router.post('/csv/import', (req, res) => {
       ['project_name', row.project_name],
       ['front_name', row.front_name],
       ['title', row.title],
+      ['task_type', row.task_type],
       ['description', row.description],
+      ['content_type', row.content_type],
+      ['caption', row.caption],
+      ['video_link', row.video_link],
       ['priority', row.priority],
       ['status', req.user.role === 'client' ? 'pending' : row.status],
       ['due_date', row.due_date],
