@@ -18,6 +18,24 @@ function normalizePost(post) {
   return { ...post, media_gallery: parseGallery(post.media_gallery, post.media_data, post.media_mime) };
 }
 
+// Consulta pública somente para visualização de um post.
+// O token é separado do fluxo de aprovação.
+router.get('/view-posts/:token', (req, res) => {
+  const post = db.prepare(`
+    SELECT p.id, p.title, p.caption, p.content_type, p.platforms, p.media_url, p.media_data, p.media_mime, p.media_gallery,
+           p.scheduled_at, p.created_at, p.updated_at,
+           c.name as client_name, c.logo_color as client_color,
+           c.instagram_username as client_username, c.instagram_display_name as client_display_name,
+           c.avatar_data as client_avatar
+    FROM posts p
+    JOIN clients c ON c.id = p.client_id
+    WHERE p.public_view_token = ?
+  `).get(req.params.token);
+
+  if (!post) return res.status(404).json({ error: 'Link inválido ou expirado' });
+  res.json({ post: normalizePost(post) });
+});
+
 // Consulta um post pelo token de compartilhamento - sem autenticação
 router.get('/posts/:token', (req, res) => {
   const post = db.prepare(`

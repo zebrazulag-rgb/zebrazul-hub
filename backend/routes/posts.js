@@ -204,6 +204,37 @@ router.post('/:id/share', (req, res) => {
   res.json({ token });
 });
 
+// Link público somente para visualização de um único post.
+// Usa um token separado do link de aprovação para que quem receber o link
+// não consiga aprovar/reprovar o conteúdo alterando apenas a URL.
+router.post('/:id/view-share', requireRole('admin', 'team'), (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!post) return res.status(404).json({ error: 'Post não encontrado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
+
+  let token = post.public_view_token;
+  if (!token) {
+    token = crypto.randomBytes(24).toString('hex');
+    db.prepare(
+      "UPDATE posts SET public_view_token = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?"
+    ).run(token, req.params.id, req.user.agency_id);
+  }
+
+  res.json({ token });
+});
+
+router.delete('/:id/view-share', requireRole('admin', 'team'), (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!post) return res.status(404).json({ error: 'Post não encontrado' });
+  if (!ensureClientAccess(req, res, post.client_id)) return;
+
+  db.prepare(
+    "UPDATE posts SET public_view_token = NULL, updated_at = datetime('now') WHERE id = ? AND agency_id = ?"
+  ).run(req.params.id, req.user.agency_id);
+
+  res.json({ ok: true });
+});
+
 router.put('/:id', (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!post) return res.status(404).json({ error: 'Post nao encontrado' });

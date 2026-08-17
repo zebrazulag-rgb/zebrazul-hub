@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS posts (
   client_feedback TEXT,
   feed_visible INTEGER DEFAULT 1,
   share_token TEXT UNIQUE,
+  public_view_token TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
@@ -1073,6 +1074,12 @@ function tryAddColumn(table, column, definition) {
 tryAddColumn('posts', 'media_data', 'TEXT');
 tryAddColumn('posts', 'media_mime', 'TEXT');
 tryAddColumn('posts', 'share_token', 'TEXT');
+tryAddColumn('posts', 'public_view_token', 'TEXT');
+try {
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_public_view_token ON posts(public_view_token) WHERE public_view_token IS NOT NULL");
+} catch (err) {
+  // índice já existe ou o banco ainda está sendo migrado — ignora
+}
 tryAddColumn('users', 'avatar_data', 'TEXT');
 tryAddColumn('users', 'avatar_mime', 'TEXT');
 tryAddColumn('clients', 'avatar_data', 'TEXT');
