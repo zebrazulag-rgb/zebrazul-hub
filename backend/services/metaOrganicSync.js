@@ -8,14 +8,20 @@ const {
   buildDailyRows,
   toNumber,
   withOrganicAccessToken,
+  withOrganicRequestContext,
 } = require('./metaOrganic');
-const { getClientTokenBundle, MetaOAuthError } = require('./metaOAuth');
+const { getClientTokenBundle: getMetaTokenBundle, MetaOAuthError } = require('./metaOAuth');
+const {
+  getClientTokenBundle: getInstagramTokenBundle,
+  getConfig: getInstagramConfig,
+  InstagramOAuthError,
+} = require('./instagramOAuth');
 
 function getOrganicConnectionByClient(clientId) {
   return db.prepare(`
     SELECT id, client_id, asset_key, page_id, page_name, page_username, page_picture_url,
            instagram_account_id, instagram_username, instagram_name, instagram_picture_url,
-           last_synced_at, last_sync_status, last_sync_error, created_at, updated_at, oauth_connection_id
+           last_synced_at, last_sync_status, last_sync_error, created_at, updated_at, oauth_connection_id, instagram_oauth_connection_id
     FROM meta_organic_accounts
     WHERE client_id = ?
   `).get(clientId) || null;
@@ -147,28 +153,45 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
   setSyncState(connection.id, 'syncing');
 
   try {
-    let oauthBundle = null;
+    let metaBundle = null;
     if (connection.oauth_connection_id) {
-      oauthBundle = getClientTokenBundle(clientId);
+      metaBundle = getMetaTokenBundle(clientId);
     }
-    const [[facebookOverview, facebookContent], [instagramOverview, instagramContent]] = await withOrganicAccessToken(
-      oauthBundle?.pageAccessToken || oauthBundle?.userAccessToken,
-      () => {
-        const facebookPromise = connection.page_id
-          ? Promise.all([
-            getFacebookOverview(connection.page_id, dateFrom, dateTo),
-            getFacebookContent(connection.page_id, dateFrom, dateTo),
-          ])
-          : Promise.resolve([null, []]);
-        const instagramPromise = connection.instagram_account_id
-          ? Promise.all([
-            getInstagramOverview(connection.instagram_account_id, dateFrom, dateTo),
-            getInstagramContent(connection.instagram_account_id, dateFrom, dateTo),
-          ])
-          : Promise.resolve([null, []]);
-        return Promise.all([facebookPromise, instagramPromise]);
-      }
-    );
+
+    let instagramBundle = null;
+    if (connection.instagram_oauth_connection_id) {
+      instagramBundle = getInstagramTokenBundle(clientId);
+    }
+
+    const metaAccessToken = metaBundle?.pageAccessToken || metaBundle?.userAccessToken || null;
+    const facebookPromise = connection.page_id
+      ? withOrganicAccessToken(metaAccessToken, () => Promise.all([
+        getFacebookOverview(connection.page_id, dateFrom, dateTo),
+        getFacebookContent(connection.page_id, dateFrom, dateTo),
+      ]))
+      : Promise.resolve([null, []]);
+
+    const instagramPromise = connection.instagram_account_id
+      ? (instagramBundle
+        ? withOrganicRequestContext({
+          accessToken: instagramBundle.accessToken,
+          appSecret: getInstagramConfig().appSecret,
+          apiVersion: getInstagramConfig().apiVersion,
+          graphBase: 'https://graph.instagram.com',
+        }, () => Promise.all([
+          getInstagramOverview(connection.instagram_account_id, dateFrom, dateTo),
+          getInstagramContent(connection.instagram_account_id, dateFrom, dateTo),
+        ]))
+        : withOrganicAccessToken(metaAccessToken, () => Promise.all([
+          getInstagramOverview(connection.instagram_account_id, dateFrom, dateTo),
+          getInstagramContent(connection.instagram_account_id, dateFrom, dateTo),
+        ])))
+      : Promise.resolve([null, []]);
+
+    const [[facebookOverview, facebookContent], [instagramOverview, instagramContent]] = await Promise.all([
+      facebookPromise,
+      instagramPromise,
+    ]);
 
     const facebookDaily = buildDailyRows('facebook', facebookOverview, facebookContent);
     const instagramDaily = buildDailyRows('instagram', instagramOverview, instagramContent);
@@ -218,7 +241,7 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
       date_to: dateTo,
     };
   } catch (error) {
-    const message = (error instanceof MetaOrganicApiError || error instanceof MetaOAuthError) ? error.message : 'Falha inesperada na sincronizacao organica';
+    const message = (error instanceof MetaOrganicApiError || error instanceof MetaOAuthError || error instanceof InstagramOAuthError) ? error.message : 'Falha inesperada na sincronizacao organica';
     setSyncState(connection.id, 'error', message);
     throw error;
   }
@@ -243,7 +266,7 @@ async function syncAllOrganicAccounts(range = currentMonthRange()) {
   const hasGlobalToken = Boolean(String(process.env.META_ORGANIC_ACCESS_TOKEN || '').trim());
   const connections = hasGlobalToken
     ? db.prepare('SELECT client_id FROM meta_organic_accounts ORDER BY client_id').all()
-    : db.prepare('SELECT client_id FROM meta_organic_accounts WHERE oauth_connection_id IS NOT NULL ORDER BY client_id').all();
+    : db.prepare('SELECT client_id FROM meta_organic_accounts WHERE oauth_connection_id IS NOT NULL OR instagram_oauth_connection_id IS NOT NULL ORDER BY client_id').all();
   const result = { total: connections.length, success: 0, failed: 0, details: [] };
   for (const row of connections) {
     try {
@@ -255,7 +278,7 @@ async function syncAllOrganicAccounts(range = currentMonthRange()) {
       result.details.push({
         client_id: Number(row.client_id),
         ok: false,
-        error: (error instanceof MetaOrganicApiError || error instanceof MetaOAuthError) ? error.message : 'Falha inesperada',
+        error: (error instanceof MetaOrganicApiError || error instanceof MetaOAuthError || error instanceof InstagramOAuthError) ? error.message : 'Falha inesperada',
       });
     }
   }

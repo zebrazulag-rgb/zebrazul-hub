@@ -10,6 +10,7 @@ const REQUIRED_SCOPES = [
   'instagram_business_basic',
   'instagram_business_manage_messages',
   'instagram_business_content_publish',
+  'instagram_business_manage_insights',
 ];
 
 class InstagramOAuthError extends Error {
@@ -335,59 +336,108 @@ async function fetchInstagramProfile(accessToken, tokenUserId = null) {
 async function saveOAuthConnection({ stateRow, token }) {
   const profile = await fetchInstagramProfile(token.access_token, token.user_id);
   if (!profile.id) throw new InstagramOAuthError('O Instagram não retornou o ID da conta profissional.', { status: 502 });
+
+  const conflictingClient = db.prepare(`
+    SELECT c.id, c.name
+    FROM meta_organic_accounts moa
+    JOIN clients c ON c.id = moa.client_id
+    WHERE moa.agency_id = ? AND moa.client_id <> ? AND moa.instagram_account_id = ?
+    LIMIT 1
+  `).get(stateRow.agency_id, stateRow.client_id, profile.id);
+  if (conflictingClient) {
+    throw new InstagramOAuthError(`Este Instagram já está vinculado ao cliente ${conflictingClient.name}.`, { status: 409 });
+  }
+
   const grantedScopes = Array.isArray(token.permissions) && token.permissions.length
     ? token.permissions
     : REQUIRED_SCOPES;
 
-  db.prepare(`
-    INSERT INTO instagram_oauth_connections (
-      agency_id, client_id, instagram_user_id, username, display_name,
-      profile_picture_url, account_type, access_token_encrypted,
-      token_expires_at, scopes_json, status, last_error, connected_by, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connected', NULL, ?, datetime('now'))
-    ON CONFLICT(client_id) DO UPDATE SET
-      agency_id = excluded.agency_id,
-      instagram_user_id = excluded.instagram_user_id,
-      username = excluded.username,
-      display_name = excluded.display_name,
-      profile_picture_url = excluded.profile_picture_url,
-      account_type = excluded.account_type,
-      access_token_encrypted = excluded.access_token_encrypted,
-      token_expires_at = excluded.token_expires_at,
-      scopes_json = excluded.scopes_json,
-      status = 'connected',
-      last_error = NULL,
-      connected_by = excluded.connected_by,
-      updated_at = datetime('now')
-  `).run(
-    stateRow.agency_id,
-    stateRow.client_id,
-    profile.id,
-    profile.username,
-    profile.name,
-    profile.profilePictureUrl,
-    profile.accountType,
-    encryptToken(token.access_token),
-    tokenExpiresAt(token.expires_in),
-    JSON.stringify(grantedScopes),
-    stateRow.user_id
-  );
+  const save = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO instagram_oauth_connections (
+        agency_id, client_id, instagram_user_id, username, display_name,
+        profile_picture_url, account_type, access_token_encrypted,
+        token_expires_at, scopes_json, status, last_error, connected_by, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'connected', NULL, ?, datetime('now'))
+      ON CONFLICT(client_id) DO UPDATE SET
+        agency_id = excluded.agency_id,
+        instagram_user_id = excluded.instagram_user_id,
+        username = excluded.username,
+        display_name = excluded.display_name,
+        profile_picture_url = excluded.profile_picture_url,
+        account_type = excluded.account_type,
+        access_token_encrypted = excluded.access_token_encrypted,
+        token_expires_at = excluded.token_expires_at,
+        scopes_json = excluded.scopes_json,
+        status = 'connected',
+        last_error = NULL,
+        connected_by = excluded.connected_by,
+        updated_at = datetime('now')
+    `).run(
+      stateRow.agency_id,
+      stateRow.client_id,
+      profile.id,
+      profile.username,
+      profile.name,
+      profile.profilePictureUrl,
+      profile.accountType,
+      encryptToken(token.access_token),
+      tokenExpiresAt(token.expires_in),
+      JSON.stringify(grantedScopes),
+      stateRow.user_id
+    );
 
-  db.prepare(`
-    UPDATE clients SET
-      instagram_username = COALESCE(?, instagram_username),
-      instagram_display_name = COALESCE(?, instagram_display_name)
-    WHERE id = ? AND agency_id = ?
-  `).run(profile.username, profile.name, stateRow.client_id, stateRow.agency_id);
+    const instagramConnection = getConnectionRow(stateRow.client_id, stateRow.agency_id);
+    const currentOrganic = db.prepare(`
+      SELECT id, asset_key
+      FROM meta_organic_accounts
+      WHERE client_id = ? AND agency_id = ?
+    `).get(stateRow.client_id, stateRow.agency_id);
+    const assetKey = currentOrganic?.asset_key || `instagram:${profile.id}`;
 
-  db.prepare(`
-    INSERT INTO instagram_story_settings (agency_id, client_id, subscribed_at, last_error)
-    VALUES (?, ?, NULL, NULL)
-    ON CONFLICT(client_id) DO UPDATE SET
-      subscribed_at = NULL,
-      last_error = NULL,
-      updated_at = datetime('now')
-  `).run(stateRow.agency_id, stateRow.client_id);
+    db.prepare(`
+      INSERT INTO meta_organic_accounts (
+        agency_id, client_id, asset_key,
+        instagram_account_id, instagram_username, instagram_name, instagram_picture_url,
+        instagram_oauth_connection_id, last_sync_status, last_sync_error, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'never', NULL, datetime('now'))
+      ON CONFLICT(client_id) DO UPDATE SET
+        instagram_account_id = excluded.instagram_account_id,
+        instagram_username = excluded.instagram_username,
+        instagram_name = excluded.instagram_name,
+        instagram_picture_url = excluded.instagram_picture_url,
+        instagram_oauth_connection_id = excluded.instagram_oauth_connection_id,
+        last_sync_status = 'never',
+        last_sync_error = NULL,
+        updated_at = datetime('now')
+    `).run(
+      stateRow.agency_id,
+      stateRow.client_id,
+      assetKey,
+      profile.id,
+      profile.username,
+      profile.name,
+      profile.profilePictureUrl,
+      instagramConnection.id
+    );
+
+    db.prepare(`
+      UPDATE clients SET
+        instagram_username = COALESCE(?, instagram_username),
+        instagram_display_name = COALESCE(?, instagram_display_name)
+      WHERE id = ? AND agency_id = ?
+    `).run(profile.username, profile.name, stateRow.client_id, stateRow.agency_id);
+
+    db.prepare(`
+      INSERT INTO instagram_story_settings (agency_id, client_id, subscribed_at, last_error)
+      VALUES (?, ?, NULL, NULL)
+      ON CONFLICT(client_id) DO UPDATE SET
+        subscribed_at = NULL,
+        last_error = NULL,
+        updated_at = datetime('now')
+    `).run(stateRow.agency_id, stateRow.client_id);
+  });
+  save();
 
   return getConnectionStatus(stateRow.client_id, stateRow.agency_id);
 }
@@ -462,14 +512,26 @@ function findConnectionByInstagramUserId(instagramUserId) {
 function disconnectOAuth(clientId, agencyId) {
   const row = getConnectionRow(clientId, agencyId);
   if (!row) return false;
-  db.prepare('DELETE FROM instagram_oauth_connections WHERE id = ?').run(row.id);
-  db.prepare(`
-    UPDATE instagram_story_settings SET
-      subscribed_at = NULL,
-      last_error = 'Instagram desconectado',
-      updated_at = datetime('now')
-    WHERE client_id = ? AND agency_id = ?
-  `).run(clientId, agencyId);
+  const disconnect = db.transaction(() => {
+    db.prepare(`
+      UPDATE meta_organic_accounts SET
+        instagram_oauth_connection_id = NULL,
+        last_sync_status = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_status ELSE 'error' END,
+        last_sync_error = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_error ELSE 'Instagram direto desconectado' END,
+        updated_at = datetime('now')
+      WHERE client_id = ? AND agency_id = ? AND instagram_oauth_connection_id = ?
+    `).run(clientId, agencyId, row.id);
+
+    db.prepare('DELETE FROM instagram_oauth_connections WHERE id = ?').run(row.id);
+    db.prepare(`
+      UPDATE instagram_story_settings SET
+        subscribed_at = NULL,
+        last_error = 'Instagram desconectado',
+        updated_at = datetime('now')
+      WHERE client_id = ? AND agency_id = ?
+    `).run(clientId, agencyId);
+  });
+  disconnect();
   return true;
 }
 

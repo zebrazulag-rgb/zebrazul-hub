@@ -28,7 +28,8 @@ function getConnection(clientId, agencyId) {
   return db.prepare(`
     SELECT id, client_id, asset_key, page_id, page_name, page_username, page_picture_url,
            instagram_account_id, instagram_username, instagram_name, instagram_picture_url,
-           last_synced_at, last_sync_status, last_sync_error, created_at, updated_at
+           last_synced_at, last_sync_status, last_sync_error, created_at, updated_at,
+           oauth_connection_id, instagram_oauth_connection_id
     FROM meta_organic_accounts
     WHERE client_id = ? AND agency_id = ?
   `).get(clientId, agencyId) || null;

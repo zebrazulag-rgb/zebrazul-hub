@@ -480,10 +480,6 @@ async function saveClientSelections({ clientId, agencyId, pageId, adAccountId })
 
   const save = db.transaction(() => {
     if (page) {
-      const current = db.prepare('SELECT id, page_id FROM meta_organic_accounts WHERE client_id = ? AND agency_id = ?').get(clientId, agencyId);
-      if (current && String(current.page_id || '') !== String(page.id)) {
-        db.prepare('DELETE FROM meta_organic_accounts WHERE id = ?').run(current.id);
-      }
       db.prepare(`
         INSERT INTO meta_organic_accounts (
           agency_id, client_id, asset_key, page_id, page_name, page_username, page_picture_url,
@@ -496,10 +492,22 @@ async function saveClientSelections({ clientId, agencyId, pageId, adAccountId })
           page_name = excluded.page_name,
           page_username = excluded.page_username,
           page_picture_url = excluded.page_picture_url,
-          instagram_account_id = excluded.instagram_account_id,
-          instagram_username = excluded.instagram_username,
-          instagram_name = excluded.instagram_name,
-          instagram_picture_url = excluded.instagram_picture_url,
+          instagram_account_id = CASE
+            WHEN meta_organic_accounts.instagram_oauth_connection_id IS NOT NULL THEN meta_organic_accounts.instagram_account_id
+            ELSE excluded.instagram_account_id
+          END,
+          instagram_username = CASE
+            WHEN meta_organic_accounts.instagram_oauth_connection_id IS NOT NULL THEN meta_organic_accounts.instagram_username
+            ELSE excluded.instagram_username
+          END,
+          instagram_name = CASE
+            WHEN meta_organic_accounts.instagram_oauth_connection_id IS NOT NULL THEN meta_organic_accounts.instagram_name
+            ELSE excluded.instagram_name
+          END,
+          instagram_picture_url = CASE
+            WHEN meta_organic_accounts.instagram_oauth_connection_id IS NOT NULL THEN meta_organic_accounts.instagram_picture_url
+            ELSE excluded.instagram_picture_url
+          END,
           oauth_connection_id = excluded.oauth_connection_id,
           last_sync_error = NULL,
           updated_at = datetime('now')
@@ -582,8 +590,10 @@ function disconnectOAuth(clientId, agencyId) {
     `).run(clientId, agencyId);
     db.prepare(`
       UPDATE meta_organic_accounts
-      SET oauth_connection_id = NULL, last_sync_status = 'error',
-          last_sync_error = 'Autorizacao da Meta desconectada', updated_at = datetime('now')
+      SET oauth_connection_id = NULL,
+          last_sync_status = CASE WHEN instagram_oauth_connection_id IS NOT NULL THEN last_sync_status ELSE 'error' END,
+          last_sync_error = CASE WHEN instagram_oauth_connection_id IS NOT NULL THEN last_sync_error ELSE 'Autorizacao da Meta desconectada' END,
+          updated_at = datetime('now')
       WHERE client_id = ? AND agency_id = ?
     `).run(clientId, agencyId);
     db.prepare('DELETE FROM meta_oauth_connections WHERE id = ?').run(row.id);

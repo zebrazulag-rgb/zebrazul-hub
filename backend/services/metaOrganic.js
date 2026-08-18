@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 
 const tokenContext = new AsyncLocalStorage();
+const DEFAULT_GRAPH_BASE = 'https://graph.facebook.com';
 
 const DEFAULT_API_VERSION = 'v25.0';
 const REQUEST_TIMEOUT_MS = Number(process.env.META_REQUEST_TIMEOUT_MS || 30000);
@@ -19,28 +20,42 @@ class MetaOrganicApiError extends Error {
 }
 
 function getOrganicConfig() {
-  const contextualToken = tokenContext.getStore()?.accessToken;
+  const context = tokenContext.getStore() || {};
   return {
-    accessToken: String(contextualToken || process.env.META_ORGANIC_ACCESS_TOKEN || '').trim(),
-    appSecret: String(process.env.META_APP_SECRET || '').trim(),
-    apiVersion: String(process.env.META_API_VERSION || DEFAULT_API_VERSION).trim(),
+    accessToken: String(context.accessToken || process.env.META_ORGANIC_ACCESS_TOKEN || '').trim(),
+    appSecret: String(context.appSecret !== undefined ? context.appSecret : (process.env.META_APP_SECRET || '')).trim(),
+    apiVersion: String(context.apiVersion || process.env.META_API_VERSION || DEFAULT_API_VERSION).trim(),
     businessId: String(process.env.META_BUSINESS_ID || '').trim(),
+    graphBase: String(context.graphBase || DEFAULT_GRAPH_BASE).trim().replace(/\/$/, ''),
   };
 }
 
+function withOrganicRequestContext(context, callback) {
+  if (!context?.accessToken) return callback();
+  return tokenContext.run({
+    accessToken: String(context.accessToken),
+    appSecret: context.appSecret,
+    apiVersion: context.apiVersion,
+    graphBase: context.graphBase,
+  }, callback);
+}
 
 function withOrganicAccessToken(accessToken, callback) {
-  if (!accessToken) return callback();
-  return tokenContext.run({ accessToken: String(accessToken) }, callback);
+  return withOrganicRequestContext({ accessToken }, callback);
 }
 
 function getOrganicStatus() {
   const config = getOrganicConfig();
   const oauthConfigured = Boolean(String(process.env.META_APP_ID || '').trim() && String(process.env.META_APP_SECRET || '').trim());
+  const instagramOauthConfigured = Boolean(
+    String(process.env.INSTAGRAM_APP_ID || process.env.STORIES_INSTAGRAM_APP_ID || '').trim()
+    && String(process.env.INSTAGRAM_APP_SECRET || process.env.STORIES_INSTAGRAM_APP_SECRET || '').trim()
+  );
   return {
-    configured: Boolean(config.accessToken || oauthConfigured),
+    configured: Boolean(config.accessToken || oauthConfigured || instagramOauthConfigured),
     global_token_configured: Boolean(config.accessToken),
     oauth_configured: oauthConfigured,
+    instagram_oauth_configured: instagramOauthConfigured,
     api_version: config.apiVersion,
     business_id_configured: Boolean(config.businessId),
   };
@@ -100,7 +115,7 @@ async function organicGraphRequest(pathOrUrl, params = {}) {
   const url = new URL(
     isAbsolute
       ? pathOrUrl
-      : `https://graph.facebook.com/${config.apiVersion}/${String(pathOrUrl).replace(/^\//, '')}`
+      : `${config.graphBase}/${config.apiVersion}/${String(pathOrUrl).replace(/^\//, '')}`
   );
 
   if (!isAbsolute) {
@@ -563,4 +578,5 @@ module.exports = {
   buildDailyRows,
   toNumber,
   withOrganicAccessToken,
+  withOrganicRequestContext,
 };

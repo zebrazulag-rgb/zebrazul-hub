@@ -1135,6 +1135,7 @@ tryAddColumn('meta_ad_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)')
 tryAddColumn('meta_organic_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('meta_ad_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
 tryAddColumn('meta_organic_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
+tryAddColumn('meta_organic_accounts', 'instagram_oauth_connection_id', 'INTEGER REFERENCES instagram_oauth_connections(id)');
 tryAddColumn('instagram_story_mentions', 'instagram_oauth_connection_id', 'INTEGER');
 tryAddColumn('instagram_story_mentions', 'publish_channel', "TEXT DEFAULT 'instagram_login'");
 tryAddColumn('instagram_story_mentions', 'tagging_username', 'TEXT');
