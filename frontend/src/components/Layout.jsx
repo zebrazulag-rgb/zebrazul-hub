@@ -25,6 +25,7 @@ import {
   KeyRound,
   Instagram,
   RefreshCw,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -57,6 +58,7 @@ export default function Layout({ children }) {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
   });
+  const [secondaryNavOpen, setSecondaryNavOpen] = useState(false);
 
   const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
 
@@ -166,18 +168,18 @@ export default function Layout({ children }) {
   }
 
   const workspaceItems = [
-    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team'], commercialTeam: true },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true },
-    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team'] },
-    { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'] },
-    { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'] },
-    { to: '/stories', label: 'Stories', icon: Instagram, roles: ['admin', 'team'] },
-    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true },
-    { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, roles: ['admin', 'team', 'client'], commercialTeam: true, beeOnly: true },
-    { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'] },
-    { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'] },
-    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
-    { to: '/senhas', label: 'Senhas', icon: KeyRound, roles: ['admin'] },
+    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team'], commercialTeam: true, navGroup: 'primary' },
+    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true, navGroup: 'primary' },
+    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team'], navGroup: 'secondary' },
+    { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'], navGroup: 'primary' },
+    { to: '/feed', label: 'Feed', icon: Grid3x3, roles: ['admin', 'team', 'client'], navGroup: 'primary' },
+    { to: '/stories', label: 'Stories', icon: Instagram, roles: ['admin', 'team'], navGroup: 'secondary' },
+    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true, navGroup: 'primary' },
+    { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, roles: ['admin', 'team', 'client'], commercialTeam: true, beeOnly: true, navGroup: 'secondary' },
+    { to: '/relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'team', 'client'], navGroup: 'secondary' },
+    { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'], navGroup: 'secondary' },
+    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'], navGroup: 'secondary' },
+    { to: '/senhas', label: 'Senhas', icon: KeyRound, roles: ['admin'], navGroup: 'secondary' },
   ];
 
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
@@ -188,6 +190,16 @@ export default function Layout({ children }) {
     if (user?.is_commercial_team) return item.commercialTeam === true;
     return item.roles.includes(user?.role);
   });
+
+  const primaryWorkspaceItems = visibleWorkspaceItems.filter((item) => item.navGroup === 'primary');
+  const secondaryWorkspaceItems = visibleWorkspaceItems.filter((item) => item.navGroup !== 'primary');
+  const secondaryRouteActive = secondaryWorkspaceItems.some((item) => (
+    item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+  ));
+
+  useEffect(() => {
+    if (secondaryRouteActive) setSecondaryNavOpen(true);
+  }, [secondaryRouteActive]);
 
   const canSeeSettings = !user?.is_commercial_team;
 
@@ -211,14 +223,14 @@ export default function Layout({ children }) {
   return (
     <div className="app-shell flex h-screen min-h-0 overflow-hidden bg-[#f5f7fb] text-slate-900">
       <aside
-        className={`app-sidebar sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[88px]' : 'w-[276px]'}`}
+        className={`app-sidebar sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[76px]' : 'w-[244px]'}`}
         style={{ backgroundColor: agencySidebar }}
       >
-        <div className={`relative flex min-h-[84px] items-center ${sidebarCollapsed ? 'justify-center px-3' : 'px-5'} py-4`}>
+        <div className={`relative flex min-h-[76px] items-center ${sidebarCollapsed ? 'justify-center px-2.5' : 'px-4'} py-3`}>
           <img
             src={agencyLogo}
             alt={agency?.name || 'Agência'}
-            className={`w-auto object-contain transition-all duration-300 ${sidebarCollapsed ? 'max-h-11 max-w-[48px]' : 'max-h-16 max-w-[190px]'}`}
+            className={`w-auto object-contain transition-all duration-300 ${sidebarCollapsed ? 'max-h-10 max-w-[42px]' : 'max-h-14 max-w-[166px]'}`}
           />
           <button
             type="button"
@@ -319,19 +331,46 @@ export default function Layout({ children }) {
           </div>
         )}
 
-        {!sidebarCollapsed ? (
-          <div className="px-5 pb-2">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">Workspace</span>
-          </div>
-        ) : (
-          <div className="mx-4 mb-2 border-t border-white/[0.07]" />
-        )}
+        <div className={`${sidebarCollapsed ? 'mx-3' : 'mx-4'} mb-2 border-t border-white/[0.06]`} />
 
         <nav className={`flex-1 overflow-y-auto pb-4 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
           <div className="space-y-1">
-            {visibleWorkspaceItems.map((item) => (
-                <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} />
-              ))}
+            {primaryWorkspaceItems.map((item) => (
+              <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} />
+            ))}
+
+            {secondaryWorkspaceItems.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSecondaryNavOpen((open) => !open)}
+                  title={sidebarCollapsed ? 'Mais áreas' : undefined}
+                  className={`group relative flex w-full items-center rounded-xl py-2 text-sm font-medium transition-all duration-200 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
+                    secondaryRouteActive
+                      ? 'bg-white/[0.08] text-white'
+                      : 'text-white/55 hover:bg-white/[0.06] hover:text-white'
+                  }`}
+                >
+                  <span className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${secondaryRouteActive ? 'bg-white/10 text-white' : 'bg-white/[0.035] text-white/45 group-hover:bg-white/10 group-hover:text-white'}`}>
+                    <MoreHorizontal size={17} strokeWidth={2} />
+                  </span>
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="min-w-0 flex-1 text-left">Mais</span>
+                      <ChevronDown size={14} className={`text-white/35 transition-transform ${secondaryNavOpen ? 'rotate-180' : ''}`} />
+                    </>
+                  )}
+                </button>
+
+                {secondaryNavOpen && (
+                  <div className={`${sidebarCollapsed ? 'mt-1 space-y-1' : 'ml-3 mt-1 space-y-1 border-l border-white/[0.07] pl-2'}`}>
+                    {secondaryWorkspaceItems.map((item) => (
+                      <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} compact />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {canSeeSettings && (
@@ -470,7 +509,7 @@ function ClientAvatar({ client = null, allClientsColor = '#0969ff', sizeClass = 
   );
 }
 
-function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = null }) {
+function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = null, compact = false }) {
   return (
     <NavLink
       to={item.to}
@@ -478,7 +517,7 @@ function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = 
       title={collapsed ? item.label : undefined}
       className={({ isActive }) => {
         const active = activeOverride == null ? isActive : activeOverride;
-        return `group relative flex items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
+        return `group relative flex items-center rounded-xl ${compact ? 'py-1.5 text-[13px]' : 'py-2 text-sm'} font-medium transition-all duration-200 ${collapsed ? 'justify-center px-2' : compact ? 'gap-2.5 px-2.5' : 'gap-3 px-3'} ${
           active
             ? 'bg-white text-[#121620] shadow-[0_10px_28px_rgba(0,0,0,0.18)]'
             : 'text-white/62 hover:bg-white/[0.06] hover:text-white'
@@ -490,12 +529,12 @@ function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = 
         return (
         <>
           <span
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+            className={`flex ${compact ? 'h-7 w-7' : 'h-8 w-8'} items-center justify-center rounded-lg transition-colors ${
               active ? 'text-white' : 'bg-white/[0.045] text-white/55 group-hover:bg-white/10 group-hover:text-white'
             }`}
             style={active ? { backgroundColor: agencyPrimary } : undefined}
           >
-            <item.icon size={17} strokeWidth={2} />
+            <item.icon size={compact ? 15 : 17} strokeWidth={2} />
           </span>
           {!collapsed && <span className="truncate">{item.label}</span>}
         </>

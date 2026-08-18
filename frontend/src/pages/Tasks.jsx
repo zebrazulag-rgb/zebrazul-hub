@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -210,6 +210,8 @@ export default function Tasks() {
   const [convertError, setConvertError] = useState('');
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [showRequestLink, setShowRequestLink] = useState(false);
+  const [showTaskActions, setShowTaskActions] = useState(false);
+  const taskActionsRef = useRef(null);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvNotice, setCsvNotice] = useState('');
   const [filters, setFilters] = useState({
@@ -221,6 +223,27 @@ export default function Tasks() {
     due_from: '',
     due_to: '',
   });
+
+  useEffect(() => {
+    if (!showTaskActions) return undefined;
+
+    function closeActions(event) {
+      if (taskActionsRef.current && !taskActionsRef.current.contains(event.target)) {
+        setShowTaskActions(false);
+      }
+    }
+
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setShowTaskActions(false);
+    }
+
+    document.addEventListener('mousedown', closeActions);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeActions);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showTaskActions]);
 
   const effectiveClientId = user?.role === 'client'
     ? (user.client_id ? String(user.client_id) : null)
@@ -715,31 +738,81 @@ export default function Tasks() {
           ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe cada etapa.'
           : 'Organize prioridades, responsáveis e prazos em uma visão clara da operação.'}
         actions={
-          <div className="flex flex-wrap justify-end gap-2">
-            <button onClick={() => { setDefaultTaskDate(''); setShowForm(true); }} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+          <>
+            <button
+              onClick={() => { setDefaultTaskDate(''); setShowForm(true); }}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(9,105,255,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(9,105,255,0.24)]"
+              style={{ backgroundColor: 'var(--agency-primary, #0969ff)' }}
+            >
               <Plus size={17} /> Nova tarefa
             </button>
-            <button onClick={() => setShowCsvImport(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15">
-              <Upload size={16} /> Importar CSV
-            </button>
-            <button disabled={csvBusy} onClick={exportCsv} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
-              <Download size={16} /> Exportar CSV
-            </button>
-            <button disabled={csvBusy} onClick={downloadCsvModel} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
-              <FileSpreadsheet size={16} /> Modelo CSV
-            </button>
-            {user?.role !== 'client' && (
+
+            <div ref={taskActionsRef} className="relative">
               <button
                 type="button"
-                disabled={!selectedClient}
-                onClick={() => selectedClient && setShowRequestLink(true)}
-                title={selectedClient ? `Gerenciar link de solicitações de ${selectedClient.name}` : 'Selecione um cliente para gerar o link'}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => setShowTaskActions((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={showTaskActions}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-white"
               >
-                <Link2 size={16} /> Link de solicitações
+                <MoreHorizontal size={17} /> Mais ações
+                <ChevronDown size={14} className={`transition-transform ${showTaskActions ? 'rotate-180' : ''}`} />
               </button>
-            )}
-          </div>
+
+              {showTaskActions && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-[245px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_22px_55px_rgba(15,23,42,0.16)]"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setShowTaskActions(false); setShowCsvImport(true); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Upload size={16} className="text-slate-400" /> Importar CSV
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={csvBusy}
+                    onClick={() => { setShowTaskActions(false); exportCsv(); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <Download size={16} className="text-slate-400" /> Exportar CSV
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={csvBusy}
+                    onClick={() => { setShowTaskActions(false); downloadCsvModel(); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <FileSpreadsheet size={16} className="text-slate-400" /> Baixar modelo CSV
+                  </button>
+                  {user?.role !== 'client' && (
+                    <>
+                      <div className="my-1 border-t border-slate-100" />
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={!selectedClient}
+                        onClick={() => {
+                          if (!selectedClient) return;
+                          setShowTaskActions(false);
+                          setShowRequestLink(true);
+                        }}
+                        title={selectedClient ? `Gerenciar link de solicitações de ${selectedClient.name}` : 'Selecione um cliente para gerar o link'}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Link2 size={16} className="text-slate-400" /> Link de solicitações
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
         }
       >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
