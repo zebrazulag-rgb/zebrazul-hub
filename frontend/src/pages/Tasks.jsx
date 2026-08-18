@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, CalendarCheck2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -9,6 +9,8 @@ import TaskCsvModal, { downloadTaskCsvModel } from '../components/TaskCsvModal.j
 import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PageHero from '../components/PageHero.jsx';
+import Approval from './Approval.jsx';
+import VideoApprovals from './VideoApprovals.jsx';
 
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
@@ -173,6 +175,38 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
   );
 }
 
+function InlineAssigneePicker({ task, teamUsers, updating, onChange }) {
+  const currentAssignees = task.assignees || [];
+  const selectedValue = currentAssignees.length === 1
+    ? String(currentAssignees[0].id)
+    : currentAssignees.length > 1
+      ? '__multiple'
+      : '';
+  const clientId = Number(task.client_id) || null;
+  const selectedIds = new Set(currentAssignees.map((item) => Number(item.id)));
+  const availableUsers = teamUsers.filter((member) => {
+    if (member.role === 'admin' || member.is_operations_head || !clientId) return true;
+    if ((member.client_ids || []).map(Number).includes(clientId)) return true;
+    return selectedIds.has(Number(member.id));
+  });
+
+  return (
+    <div className="shrink-0" onClick={(event) => event.stopPropagation()}>
+      <select
+        value={selectedValue}
+        disabled={updating}
+        onChange={(event) => onChange(task, event.target.value)}
+        className="max-w-[190px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 outline-none transition focus:border-[#0969ff] focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
+        title={currentAssignees.length ? currentAssignees.map((item) => item.name).join(', ') : 'Selecionar responsável'}
+      >
+        {currentAssignees.length > 1 && <option value="__multiple" disabled>{currentAssignees.length} responsáveis atuais</option>}
+        <option value="">Sem responsável</option>
+        {availableUsers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export default function Tasks() {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
@@ -212,6 +246,11 @@ export default function Tasks() {
   const [showRequestLink, setShowRequestLink] = useState(false);
   const [showTaskActions, setShowTaskActions] = useState(false);
   const taskActionsRef = useRef(null);
+  const [hidePosted, setHidePosted] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('zebrahub.tasks.hidePosted') === '1';
+  });
+  const [subtaskAssigneeUpdatingId, setSubtaskAssigneeUpdatingId] = useState(null);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvNotice, setCsvNotice] = useState('');
   const [filters, setFilters] = useState({
@@ -244,6 +283,23 @@ export default function Tasks() {
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [showTaskActions]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('zebrahub.tasks.hidePosted', hidePosted ? '1' : '0');
+    }
+  }, [hidePosted]);
+
+  const operationalArea = searchParams.get('area') === 'aprovacao' ? 'approval' : 'tasks';
+  const approvalView = searchParams.get('approval_view') === 'videos' ? 'videos' : 'posts';
+
+  function setOperationalArea(nextArea) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('task_id');
+    if (nextArea === 'approval') nextParams.set('area', 'aprovacao');
+    else nextParams.delete('area');
+    setSearchParams(nextParams);
+  }
 
   const effectiveClientId = user?.role === 'client'
     ? (user.client_id ? String(user.client_id) : null)
@@ -439,6 +495,28 @@ export default function Tasks() {
     setCalendarTasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
     await api.put('/tasks/' + subtaskId, { status });
     loadTasks();
+  }
+
+  async function setSubtaskAssignee(subtask, userId) {
+    if (!subtask || subtaskAssigneeUpdatingId || userId === '__multiple') return;
+    const previousAssignees = subtask.assignees || [];
+    const nextIds = userId ? [Number(userId)] : [];
+    const nextAssignees = teamUsers.filter((member) => nextIds.includes(Number(member.id)));
+
+    setSubtaskAssigneeUpdatingId(subtask.id);
+    setTaskError('');
+    setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: nextAssignees } : item));
+    setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: nextAssignees } : item));
+
+    try {
+      await api.put('/tasks/' + subtask.id, { assignee_ids: nextIds });
+    } catch (error) {
+      setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: previousAssignees } : item));
+      setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: previousAssignees } : item));
+      setTaskError(error.response?.data?.error || 'Não foi possível atualizar o responsável da subtarefa.');
+    } finally {
+      setSubtaskAssigneeUpdatingId(null);
+    }
   }
 
   async function deleteSubtask(subtaskId) {
@@ -682,6 +760,8 @@ export default function Tasks() {
   }
 
   const filteredTasks = tasks.filter((task) => taskMatchesFilters(task, filters));
+  const visibleFilteredTasks = hidePosted ? filteredTasks.filter((task) => task.status !== 'posted') : filteredTasks;
+  const visibleStatusColumns = hidePosted ? STATUS_COLUMNS.filter((column) => column.key !== 'posted') : STATUS_COLUMNS;
   const projectOptions = [...new Set(tasks.map((task) => task.project_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const frontOptions = [...new Set(tasks.map((task) => task.front_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const hasActiveFilters = Object.values(filters).some(Boolean);
@@ -715,6 +795,7 @@ export default function Tasks() {
     if (!day) return [];
     return calendarTasks.filter((t) => {
       if (!t.due_date || !taskMatchesFilters(t, filters)) return false;
+      if (hidePosted && t.status === 'posted') return false;
       const parts = dateParts(t.due_date);
       return parts.year === year && parts.month === month + 1 && parts.day === day;
     });
@@ -728,8 +809,60 @@ export default function Tasks() {
     setShowForm(true);
   }
 
+  function togglePostedVisibility() {
+    setHidePosted((current) => {
+      const next = !current;
+      if (next && filters.status === 'posted') {
+        setFilters((currentFilters) => ({ ...currentFilters, status: '' }));
+      }
+      return next;
+    });
+  }
+
+  const areaSwitcher = (
+    <div className="segmented-control">
+      <button
+        type="button"
+        onClick={() => setOperationalArea('tasks')}
+        className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'tasks' ? 'segmented-control-button-active' : '')}
+      >
+        <ListChecks size={15} /> Tarefas
+      </button>
+      <button
+        type="button"
+        onClick={() => setOperationalArea('approval')}
+        className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'approval' ? 'segmented-control-button-active' : '')}
+      >
+        <CalendarCheck2 size={15} /> Aprovação
+      </button>
+    </div>
+  );
+
+  if (operationalArea === 'approval') {
+    return (
+      <div className="space-y-5">
+        <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Área de trabalho</p>
+            <p className="mt-1 text-sm font-medium text-slate-700">Tarefas e aprovações no mesmo fluxo operacional.</p>
+          </div>
+          {areaSwitcher}
+        </div>
+        {approvalView === 'videos' ? <VideoApprovals /> : <Approval />}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Área de trabalho</p>
+          <p className="mt-1 text-sm font-medium text-slate-700">Gerencie a operação e a aprovação sem sair de Tarefas.</p>
+        </div>
+        {areaSwitcher}
+      </div>
+
       <PageHero
         icon={ListChecks}
         eyebrow={user?.role === 'client' ? 'Solicitações para a equipe' : 'Operação e entregas'}
@@ -856,7 +989,7 @@ export default function Tasks() {
           <div className="min-w-[145px]">
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
             <select className="input-field py-2 text-xs" value={filters.status} onChange={(e) => setFilters((current) => ({ ...current, status: e.target.value }))}>
-              <option value="">Todos</option>{STATUS_COLUMNS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+              <option value="">Todos</option>{visibleStatusColumns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
             </select>
           </div>
           <div className="min-w-[150px]">
@@ -875,15 +1008,30 @@ export default function Tasks() {
           </div>
           {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', priority: '', project: '', front: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-slate-400">{filteredTasks.length} tarefa(s) principal(is) exibida(s){hasActiveFilters ? ' com os filtros atuais' : ''}.</p>
-          <div className="segmented-control">
-            <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
-              <LayoutGrid size={14} /> Kanban
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-400">{visibleFilteredTasks.length} tarefa(s) principal(is) exibida(s){hasActiveFilters ? ' com os filtros atuais' : ''}{hidePosted ? ' · postadas ocultas' : ''}.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={togglePostedVisibility}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                hidePosted
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+              title={hidePosted ? 'Exibir novamente as tarefas postadas' : 'Ocultar tarefas postadas para reduzir a poluição visual'}
+            >
+              {hidePosted ? <Eye size={14} /> : <EyeOff size={14} />}
+              {hidePosted ? `Mostrar postados (${taskOverview.posted})` : `Ocultar postados (${taskOverview.posted})`}
             </button>
-            <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
-              <Calendar size={14} /> Calendário
-            </button>
+            <div className="segmented-control">
+              <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
+                <LayoutGrid size={14} /> Kanban
+              </button>
+              <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
+                <Calendar size={14} /> Calendário
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -892,8 +1040,8 @@ export default function Tasks() {
       {csvNotice && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">{csvNotice}</p>}
 
       {view === 'kanban' && (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {STATUS_COLUMNS.map((col) => (
+        <div className={`grid gap-5 md:grid-cols-2 ${hidePosted ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}`}>
+          {visibleStatusColumns.map((col) => (
             <div
               key={col.key}
               onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
@@ -903,13 +1051,13 @@ export default function Tasks() {
             >
               <div className="mb-3 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{filteredTasks.filter((t) => t.status === col.key).length}</span>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{visibleFilteredTasks.filter((t) => t.status === col.key).length}</span>
               </div>
               <div className="space-y-3 min-h-[60px]">
-                {filteredTasks.filter((t) => t.status === col.key).map((t) => (
+                {visibleFilteredTasks.filter((t) => t.status === col.key).map((t) => (
                   <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
                 ))}
-                {filteredTasks.filter((t) => t.status === col.key).length === 0 && (
+                {visibleFilteredTasks.filter((t) => t.status === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
                 )}
               </div>
@@ -1381,6 +1529,14 @@ export default function Tasks() {
                         </div>
                       )}
                     </div>
+                    {user?.role !== 'client' && (
+                      <InlineAssigneePicker
+                        task={s}
+                        teamUsers={teamUsers}
+                        updating={subtaskAssigneeUpdatingId === s.id}
+                        onChange={setSubtaskAssignee}
+                      />
+                    )}
                     {(['admin', 'team'].includes(user?.role) || (user?.role === 'client' && Number(s.created_by) === Number(user.id) && s.status === 'pending')) && (
                       <>
                         <button

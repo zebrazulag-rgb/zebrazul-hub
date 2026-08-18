@@ -124,12 +124,17 @@ export default function TaskCsvModal({ onClose, onImported }) {
   const [error, setError] = useState('');
   const [duplicateStrategy, setDuplicateStrategy] = useState('ignore');
   const [result, setResult] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
 
   const invalidRows = useMemo(() => preview?.rows?.filter((row) => row.errors?.length) || [], [preview]);
   const validRows = useMemo(() => preview?.rows?.filter((row) => !row.errors?.length) || [], [preview]);
 
   async function handleFile(file) {
     if (!file) return;
+    if (!String(file.name || '').toLowerCase().endsWith('.csv')) {
+      setError('Arraste ou selecione um arquivo CSV válido.');
+      return;
+    }
     setError('');
     setPreview(null);
     setResult(null);
@@ -145,6 +150,27 @@ export default function TaskCsvModal({ onClose, onImported }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!loading) setDragActive(true);
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.currentTarget.contains(event.relatedTarget)) setDragActive(false);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(false);
+    if (loading) return;
+    const file = event.dataTransfer?.files?.[0];
+    if (file) handleFile(file);
   }
 
   async function importRows() {
@@ -198,11 +224,19 @@ export default function TaskCsvModal({ onClose, onImported }) {
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
-                className="flex min-h-44 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 text-center transition hover:border-[#0969ff]/50 hover:bg-blue-50/40"
+                onDragEnter={handleDragOver}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`flex min-h-44 flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 text-center transition ${
+                  dragActive
+                    ? 'scale-[1.01] border-[#0969ff] bg-blue-50 ring-4 ring-blue-100'
+                    : 'border-slate-300 bg-slate-50 hover:border-[#0969ff]/50 hover:bg-blue-50/40'
+                }`}
               >
-                <Upload size={26} className="text-[#0969ff]" />
-                <span className="mt-3 font-semibold text-slate-800">Selecionar arquivo CSV</span>
-                <span className="mt-1 text-xs text-slate-500">Tarefas principais e subtarefas podem vir no mesmo arquivo.</span>
+                <Upload size={26} className={dragActive ? 'text-[#0969ff]' : 'text-[#0969ff]'} />
+                <span className="mt-3 font-semibold text-slate-800">{dragActive ? 'Solte o CSV aqui' : 'Arraste o CSV aqui'}</span>
+                <span className="mt-1 text-xs text-slate-500">ou clique para selecionar · tarefas e subtarefas podem vir no mesmo arquivo.</span>
                 {fileName && <span className="mt-2 rounded-full bg-white px-3 py-1 text-xs text-slate-600">{fileName}</span>}
               </button>
               <button

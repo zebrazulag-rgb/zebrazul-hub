@@ -211,7 +211,7 @@ export default function VideoReviewWorkspace() {
     setBusy('archive');
     try {
       await api.delete(`/video-reviews/${review.id}`);
-      navigate('/aprovacao/videos');
+      navigate('/tarefas?area=aprovacao&approval_view=videos');
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível arquivar a revisão.');
       setBusy('');
@@ -227,7 +227,7 @@ export default function VideoReviewWorkspace() {
       <div className="surface-card p-8 text-center">
         <AlertTriangle size={28} className="mx-auto text-amber-500" />
         <p className="mt-3 text-slate-900">{error || 'Revisão não encontrada.'}</p>
-        <Link to="/aprovacao/videos" className="btn-secondary mt-5 inline-flex">Voltar aos vídeos</Link>
+        <Link to="/tarefas?area=aprovacao&approval_view=videos" className="btn-secondary mt-5 inline-flex">Voltar aos vídeos</Link>
       </div>
     );
   }
@@ -236,7 +236,7 @@ export default function VideoReviewWorkspace() {
     <div className="min-w-0 space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
-          <Link to="/aprovacao/videos" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"><ArrowLeft size={16} /> Voltar aos vídeos</Link>
+          <Link to="/tarefas?area=aprovacao&approval_view=videos" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"><ArrowLeft size={16} /> Voltar aos vídeos</Link>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <span className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${status.className}`}>{status.label}</span>
             <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500">{review.client_name}</span>

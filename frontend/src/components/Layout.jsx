@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
-  CalendarCheck2,
   BarChart3,
   Users,
   UserCog,
@@ -171,7 +170,6 @@ export default function Layout({ children }) {
     { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team'], commercialTeam: true, navGroup: 'primary' },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true, navGroup: 'primary' },
     { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team'], navGroup: 'secondary' },
-    { to: '/aprovacao', label: 'Aprovação', icon: CalendarCheck2, roles: ['admin', 'team', 'client'], navGroup: 'primary' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, roles: ['admin', 'team', 'client'], navGroup: 'primary' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true, navGroup: 'primary' },
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, roles: ['admin', 'team', 'client'], commercialTeam: true, beeOnly: true, navGroup: 'secondary' },

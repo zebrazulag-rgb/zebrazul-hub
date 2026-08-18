@@ -235,7 +235,7 @@ export default function Approval() {
       <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="segmented-control">
           <button className="segmented-control-button segmented-control-button-active">Publicações</button>
-          <button onClick={() => navigate('/aprovacao/videos')} className="segmented-control-button inline-flex items-center gap-2"><Video size={15} /> Vídeos</button>
+          <button onClick={() => navigate('/tarefas?area=aprovacao&approval_view=videos')} className="segmented-control-button inline-flex items-center gap-2"><Video size={15} /> Vídeos</button>
         </div>
         <div className="flex flex-wrap gap-2">
         {FILTERS.map((item) => (

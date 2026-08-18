@@ -126,7 +126,7 @@ export default function VideoApprovals() {
 
       <div className="toolbar-panel flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="segmented-control overflow-x-auto">
-          <button onClick={() => navigate('/aprovacao')} className="segmented-control-button whitespace-nowrap">Publicações</button>
+          <button onClick={() => navigate('/tarefas?area=aprovacao')} className="segmented-control-button whitespace-nowrap">Publicações</button>
           <button className="segmented-control-button segmented-control-button-active whitespace-nowrap">Vídeos</button>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row lg:max-w-2xl lg:justify-end">

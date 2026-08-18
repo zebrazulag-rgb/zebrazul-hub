@@ -3,8 +3,6 @@ import { useAuth } from './context/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import Approval from './pages/Approval.jsx';
-import VideoApprovals from './pages/VideoApprovals.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
@@ -40,7 +38,7 @@ function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamA
   const { user, checkingSession } = useAuth();
   if (checkingSession) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando Zebrahub...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to={user.role === 'client' ? '/aprovacao' : '/'} replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={user.role === 'client' ? '/tarefas?area=aprovacao' : '/'} replace />;
   if (user.is_commercial_team && !commercialTeamAllowed) return <Navigate to="/" replace />;
   if (commercialAccess && !(user.role === 'admin' || user.role === 'client' || user.is_commercial_team)) return <Navigate to="/" replace />;
   if (platformOnly && !user.is_platform_owner) return <Navigate to="/" replace />;
@@ -61,8 +59,8 @@ export default function App() {
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
       <Route path="/" element={<ProtectedRoute roles={['admin', 'team']} commercialTeamAllowed><Dashboard /></ProtectedRoute>} />
-      <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
-      <Route path="/aprovacao/videos" element={<ProtectedRoute><VideoApprovals /></ProtectedRoute>} />
+      <Route path="/aprovacao" element={<ProtectedRoute><Navigate to="/tarefas?area=aprovacao" replace /></ProtectedRoute>} />
+      <Route path="/aprovacao/videos" element={<ProtectedRoute><Navigate to="/tarefas?area=aprovacao&approval_view=videos" replace /></ProtectedRoute>} />
       <Route path="/aprovacao/videos/:id" element={<ProtectedRoute><VideoReviewWorkspace /></ProtectedRoute>} />
       <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />
       <Route path="/social-media" element={<Navigate to="/social-media/feed" replace />} />
