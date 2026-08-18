@@ -348,6 +348,31 @@ async function saveOAuthConnection({ stateRow, token }) {
     throw new InstagramOAuthError(`Este Instagram já está vinculado ao cliente ${conflictingClient.name}.`, { status: 409 });
   }
 
+  // Antes de gravar, detecta se a mesma conta profissional ja esta associada
+  // diretamente a outro cliente da mesma agencia. Sem esta verificacao, o SQLite
+  // devolvia apenas "UNIQUE constraint failed", sem indicar onde estava o vinculo.
+  const directConflict = db.prepare(`
+    SELECT ioc.client_id, ioc.status, ioc.username, c.name AS client_name
+    FROM instagram_oauth_connections ioc
+    JOIN clients c ON c.id = ioc.client_id
+    WHERE ioc.agency_id = ?
+      AND ioc.client_id <> ?
+      AND ioc.instagram_user_id = ?
+    LIMIT 1
+  `).get(stateRow.agency_id, stateRow.client_id, String(profile.id));
+
+  if (directConflict) {
+    const accountLabel = profile.username || directConflict.username
+      ? `@${profile.username || directConflict.username}`
+      : 'esta conta do Instagram';
+    throw new InstagramOAuthError(
+      `${accountLabel} ja esta conectado ao cliente ${directConflict.client_name}. ` +
+      'Se essa e a conta correta para este cliente, desconecte-a do cliente anterior primeiro. ' +
+      'Se nao for, volte ao login e entre com o Instagram correto.',
+      { status: 409 }
+    );
+  }
+
   const grantedScopes = Array.isArray(token.permissions) && token.permissions.length
     ? token.permissions
     : REQUIRED_SCOPES;

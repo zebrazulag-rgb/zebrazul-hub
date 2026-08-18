@@ -995,7 +995,6 @@ CREATE INDEX IF NOT EXISTS idx_video_events_review ON video_review_events(review
 
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_client ON meta_oauth_connections(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_state_expiry ON meta_oauth_states(expires_at, used_at);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_instagram_oauth_user ON instagram_oauth_connections(instagram_user_id);
 CREATE INDEX IF NOT EXISTS idx_instagram_oauth_client ON instagram_oauth_connections(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_instagram_oauth_state_expiry ON instagram_oauth_states(expires_at, used_at);
 CREATE INDEX IF NOT EXISTS idx_story_settings_client ON instagram_story_settings(agency_id, client_id);
@@ -1529,6 +1528,19 @@ db.exec(`
   );
 `);
 
+// A mesma conta do Instagram pode existir em agencias diferentes, mas dentro da
+// mesma agencia ela deve pertencer a apenas um cliente. A versao anterior criava
+// um indice global por instagram_user_id, o que podia bloquear conexoes validas.
+try {
+  db.exec(`
+    DROP INDEX IF EXISTS idx_instagram_oauth_user;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_instagram_oauth_user_agency
+      ON instagram_oauth_connections(agency_id, instagram_user_id);
+  `);
+} catch (error) {
+  console.warn('[DB] Nao foi possivel ajustar o indice do Instagram OAuth:', error.message);
+}
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
@@ -1584,7 +1596,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '33', datetime('now'))
+   VALUES ('schema_version', '34', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
