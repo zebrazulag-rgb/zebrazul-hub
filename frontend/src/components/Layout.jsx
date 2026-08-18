@@ -24,7 +24,6 @@ import {
   KeyRound,
   Instagram,
   RefreshCw,
-  MoreHorizontal,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -57,7 +56,6 @@ export default function Layout({ children }) {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
   });
-  const [secondaryNavOpen, setSecondaryNavOpen] = useState(false);
 
   const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
 
@@ -167,15 +165,15 @@ export default function Layout({ children }) {
   }
 
   const workspaceItems = [
-    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team'], commercialTeam: true, navGroup: 'primary' },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true, navGroup: 'primary' },
-    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team'], navGroup: 'secondary' },
-    { to: '/social-media', label: 'Social Media', icon: Instagram, roles: ['admin', 'team', 'client'], navGroup: 'primary' },
-    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true, navGroup: 'primary' },
-    { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, roles: ['admin', 'team', 'client'], commercialTeam: true, beeOnly: true, navGroup: 'secondary' },
-    { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'], navGroup: 'secondary' },
-    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'], navGroup: 'secondary' },
-    { to: '/senhas', label: 'Senhas', icon: KeyRound, roles: ['admin'], navGroup: 'secondary' },
+    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team'], commercialTeam: true },
+    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true },
+    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team'] },
+    { to: '/social-media', label: 'Social Media', icon: Instagram, roles: ['admin', 'team', 'client'] },
+    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true },
+    { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, roles: ['admin', 'team', 'client'], commercialTeam: true, beeOnly: true },
+    { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'] },
+    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
+    { to: '/senhas', label: 'Senhas', icon: KeyRound, roles: ['admin'] },
   ];
 
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
@@ -186,16 +184,6 @@ export default function Layout({ children }) {
     if (user?.is_commercial_team) return item.commercialTeam === true;
     return item.roles.includes(user?.role);
   });
-
-  const primaryWorkspaceItems = visibleWorkspaceItems.filter((item) => item.navGroup === 'primary');
-  const secondaryWorkspaceItems = visibleWorkspaceItems.filter((item) => item.navGroup !== 'primary');
-  const secondaryRouteActive = secondaryWorkspaceItems.some((item) => (
-    item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
-  ));
-
-  useEffect(() => {
-    if (secondaryRouteActive) setSecondaryNavOpen(true);
-  }, [secondaryRouteActive]);
 
   const canSeeSettings = !user?.is_commercial_team;
 
@@ -255,134 +243,13 @@ export default function Layout({ children }) {
           </button>
         </div>
 
-        {user?.role !== 'client' && (
-          <div className={`${sidebarCollapsed ? 'px-2' : 'px-4'} pb-4`} ref={clientPickerRef}>
-            <div className={`relative rounded-2xl border border-white/10 bg-white/[0.055] ${sidebarCollapsed ? 'p-1.5' : 'p-2'}`}>
-              <button
-                type="button"
-                aria-label="Selecionar cliente"
-                aria-haspopup="listbox"
-                aria-expanded={clientPickerOpen}
-                onClick={() => setClientPickerOpen((open) => !open)}
-                className={`flex w-full items-center rounded-xl border border-white/10 bg-[#0d1119] py-2 text-left text-sm font-medium text-white outline-none transition hover:border-white/20 focus:border-[#3f7cff]/60 ${sidebarCollapsed ? 'justify-center px-1.5' : 'gap-2.5 px-2.5'}`}
-                title={sidebarCollapsed ? (selectedClient?.name || 'Todos os clientes') : undefined}
-              >
-                <ClientAvatar client={selectedClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
-                {!sidebarCollapsed && (
-                  <>
-                    <span className="min-w-0 flex-1 truncate">{selectedClient?.name || 'Todos os clientes'}</span>
-                    <ChevronDown size={16} className={`shrink-0 text-white/45 transition-transform ${clientPickerOpen ? 'rotate-180' : ''}`} />
-                  </>
-                )}
-              </button>
-
-              {clientPickerOpen && (
-                <div className={`absolute z-50 overflow-hidden rounded-2xl border border-white/10 bg-[#111722] shadow-[0_24px_60px_rgba(0,0,0,0.45)] ${sidebarCollapsed ? 'left-[calc(100%+10px)] top-0 w-[320px]' : 'left-0 right-0 top-[calc(100%+8px)]'}`}>
-                  <div className="border-b border-white/[0.08] p-2.5">
-                    <div className="relative">
-                      <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
-                      <input
-                        autoFocus
-                        value={clientSearch}
-                        onChange={(event) => setClientSearch(event.target.value)}
-                        placeholder="Buscar cliente..."
-                        className="w-full rounded-xl border border-white/10 bg-white/[0.055] py-2.5 pl-9 pr-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#3f7cff]/60"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="max-h-[min(420px,55vh)] overflow-y-auto p-1.5" role="listbox">
-                    {!normalizedClientSearch && (
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={!selectedClient}
-                        onClick={() => chooseClient(null)}
-                        className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${!selectedClient ? 'bg-white/[0.10]' : 'hover:bg-white/[0.06]'}`}
-                      >
-                        <ClientAvatar allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-white">Todos os clientes</p>
-                          <p className="truncate text-[11px] text-white/35">Visão consolidada da operação</p>
-                        </div>
-                        {!selectedClient && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
-                      </button>
-                    )}
-
-                    {filteredClients.map((client) => {
-                      const isSelected = selectedClient?.id === client.id;
-                      return (
-                        <button
-                          key={client.id}
-                          type="button"
-                          role="option"
-                          aria-selected={isSelected}
-                          onClick={() => chooseClient(client)}
-                          className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${isSelected ? 'bg-white/[0.10]' : 'hover:bg-white/[0.06]'}`}
-                        >
-                          <ClientAvatar client={client} allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-white">{client.name}</p>
-                            {client.segment && <p className="truncate text-[11px] text-white/35">{client.segment}</p>}
-                          </div>
-                          {isSelected && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
-                        </button>
-                      );
-                    })}
-
-                    {filteredClients.length === 0 && (
-                      <div className="px-3 py-8 text-center">
-                        <p className="text-sm font-medium text-white/60">Nenhum cliente encontrado</p>
-                        <p className="mt-1 text-xs text-white/30">Tente buscar por outro nome.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         <div className={`${sidebarCollapsed ? 'mx-3' : 'mx-4'} mb-2 border-t border-white/[0.06]`} />
 
         <nav className={`flex-1 overflow-y-auto pb-4 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
           <div className="space-y-1">
-            {primaryWorkspaceItems.map((item) => (
+            {visibleWorkspaceItems.map((item) => (
               <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} />
             ))}
-
-            {secondaryWorkspaceItems.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setSecondaryNavOpen((open) => !open)}
-                  title={sidebarCollapsed ? 'Mais áreas' : undefined}
-                  className={`group relative flex w-full items-center rounded-xl py-2 text-sm font-medium transition-all duration-200 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
-                    secondaryRouteActive
-                      ? 'bg-white/[0.08] text-white'
-                      : 'text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`}
-                >
-                  <span className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${secondaryRouteActive ? 'bg-white/10 text-white' : 'bg-white/[0.035] text-white/45 group-hover:bg-white/10 group-hover:text-white'}`}>
-                    <MoreHorizontal size={17} strokeWidth={2} />
-                  </span>
-                  {!sidebarCollapsed && (
-                    <>
-                      <span className="min-w-0 flex-1 text-left">Mais</span>
-                      <ChevronDown size={14} className={`text-white/35 transition-transform ${secondaryNavOpen ? 'rotate-180' : ''}`} />
-                    </>
-                  )}
-                </button>
-
-                {secondaryNavOpen && (
-                  <div className={`${sidebarCollapsed ? 'mt-1 space-y-1' : 'ml-3 mt-1 space-y-1 border-l border-white/[0.07] pl-2'}`}>
-                    {secondaryWorkspaceItems.map((item) => (
-                      <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} compact />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
           </div>
 
           {canSeeSettings && (
@@ -453,10 +320,97 @@ export default function Layout({ children }) {
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
             <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
           </div>
-          <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
-            <p className="max-w-[260px] truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
-          </div>
+          {user?.role === 'client' ? (
+            <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <ClientAvatar client={workspaceClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
+              <div className="min-w-0 text-left">
+                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
+                <p className="max-w-[260px] truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="relative min-w-0" ref={clientPickerRef}>
+              <button
+                type="button"
+                aria-label="Selecionar cliente"
+                aria-haspopup="listbox"
+                aria-expanded={clientPickerOpen}
+                onClick={() => setClientPickerOpen((open) => !open)}
+                className="flex min-w-[230px] max-w-[330px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
+              >
+                <ClientAvatar client={selectedClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
+                  <p className="truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
+                </div>
+                <ChevronDown size={15} className={`shrink-0 text-slate-400 transition-transform ${clientPickerOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {clientPickerOpen && (
+                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[340px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+                  <div className="border-b border-slate-100 p-3">
+                    <div className="relative">
+                      <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        autoFocus
+                        value={clientSearch}
+                        onChange={(event) => setClientSearch(event.target.value)}
+                        placeholder="Buscar cliente..."
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="max-h-[min(440px,60vh)] overflow-y-auto p-2" role="listbox">
+                    {!normalizedClientSearch && (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={!selectedClient}
+                        onClick={() => chooseClient(null)}
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${!selectedClient ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                      >
+                        <ClientAvatar allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-800">Todos os clientes</p>
+                          <p className="truncate text-[11px] text-slate-400">Visão consolidada da operação</p>
+                        </div>
+                        {!selectedClient && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
+                      </button>
+                    )}
+
+                    {filteredClients.map((client) => {
+                      const isSelected = selectedClient?.id === client.id;
+                      return (
+                        <button
+                          key={client.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => chooseClient(client)}
+                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                        >
+                          <ClientAvatar client={client} allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-slate-800">{client.name}</p>
+                            {client.segment && <p className="truncate text-[11px] text-slate-400">{client.segment}</p>}
+                          </div>
+                          {isSelected && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
+                        </button>
+                      );
+                    })}
+
+                    {filteredClients.length === 0 && (
+                      <div className="px-3 py-8 text-center">
+                        <p className="text-sm font-medium text-slate-600">Nenhum cliente encontrado</p>
+                        <p className="mt-1 text-xs text-slate-400">Tente buscar por outro nome.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
         <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-8 py-8 xl:px-10">{children}</div>
