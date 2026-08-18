@@ -351,7 +351,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
 
                 <section className="rounded-3xl border border-pink-200 bg-pink-50/40 p-5">
                   <div className="flex items-start gap-3">
-                    <span className={`icon-tile ${instagramConnection && instagramConnection.status !== 'expired' ? 'bg-emerald-50 text-emerald-600' : 'bg-white text-pink-600'}`}>
+                    <span className={`icon-tile ${instagramConnection?.status === 'connected' ? 'bg-emerald-50 text-emerald-600' : instagramConnection?.status === 'error' ? 'bg-red-50 text-red-600' : 'bg-white text-pink-600'}`}>
                       <Instagram size={20} />
                     </span>
                     <div className="min-w-0">
@@ -397,6 +397,12 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                       {instagramConnection && missingInstagramScopes.length > 0 && (
                         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
                           Para gerar relatórios, reconecte concedendo: <strong>{missingInstagramScopes.join(', ')}</strong>.
+                        </div>
+                      )}
+
+                      {instagramConnection?.last_error && (
+                        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+                          <strong>A conexão foi autorizada, mas a API ainda não liberou a leitura:</strong> {instagramConnection.last_error}
                         </div>
                       )}
 
