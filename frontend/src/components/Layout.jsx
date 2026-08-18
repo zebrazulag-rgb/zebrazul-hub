@@ -203,6 +203,22 @@ export default function Layout({ children }) {
   const agencyPrimary = agency?.primary_color || '#0969ff';
   const agencySidebar = agency?.sidebar_color || '#121620';
   const agencyLogo = agency?.logo_data || zebraHubLogo;
+  const topbarLabel = (() => {
+    const path = location.pathname;
+    if (path === '/') return 'Painel';
+    if (path.startsWith('/tarefas')) return 'Tarefas';
+    if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories') || path.startsWith('/relatorios')) return 'Social Media';
+    if (path.startsWith('/comercial')) return 'Comercial';
+    if (path.startsWith('/bussola')) return 'Bússola';
+    if (path.startsWith('/rematriculas')) return 'Rematrículas';
+    if (path.startsWith('/materiais')) return 'Materiais';
+    if (path.startsWith('/financeiro')) return 'Financeiro';
+    if (path.startsWith('/senhas')) return 'Senhas';
+    if (path.startsWith('/configuracoes')) return 'Configurações';
+    return 'ZebraHub';
+  })();
+  const topbarClient = workspaceClient?.name || (user?.role === 'client' ? 'Meu espaço' : 'Todos os clientes');
+
   const normalizedClientSearch = clientSearch.trim().toLocaleLowerCase('pt-BR');
   const filteredClients = normalizedClientSearch
     ? clients.filter((client) => [client.name, client.segment]
@@ -432,7 +448,17 @@ export default function Layout({ children }) {
 
       <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <NotificationBell />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
+        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-8 pr-24 backdrop-blur-xl xl:px-10 xl:pr-24">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
+            <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
+          </div>
+          <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
+            <p className="max-w-[260px] truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
         <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-8 py-8 xl:px-10">{children}</div>
       </main>
 

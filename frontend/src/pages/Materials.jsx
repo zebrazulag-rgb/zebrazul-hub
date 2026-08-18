@@ -7,6 +7,7 @@ import {
   FileCode2,
   FolderOpen,
   Globe2,
+  Link2,
   MoreHorizontal,
   Pencil,
   PencilRuler,
@@ -20,6 +21,7 @@ import api from '../api';
 import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import MaterialsDrafts from '../components/MaterialsDrafts.jsx';
+import MaterialLinks from '../components/MaterialLinks.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
@@ -272,7 +274,7 @@ export default function Materials() {
         icon={FolderOpen}
         eyebrow="Biblioteca e criação"
         title="Materiais"
-        description="Reúna materiais prontos e crie rascunhos visuais por cliente, sem sair do ZebraHub."
+        description="Centralize arquivos, links e rascunhos do cliente em um único espaço de trabalho."
         actions={activeSection === 'library' && user?.role === 'admin' ? (
           <button onClick={() => setFormState({ mode: 'create' })} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-[#121620] shadow-lg transition hover:-translate-y-0.5">
             <Plus size={18} /> Novo material
@@ -290,32 +292,52 @@ export default function Materials() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
             <p className="text-xs text-white/45">Formato</p>
-            <p className="mt-1 text-sm font-semibold">{activeSection === 'drafts' ? 'Canvas visual' : 'HTML interativo'}</p>
+            <p className="mt-1 text-sm font-semibold">{activeSection === 'drafts' ? 'Canvas visual' : activeSection === 'links' ? 'Links rápidos' : 'HTML interativo'}</p>
           </div>
         </div>
       </PageHero>
 
-      <section className="rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_12px_35px_rgba(15,23,42,0.04)]">
-        <div className="grid grid-cols-2 gap-2 sm:inline-grid sm:min-w-[420px]">
-          <button
-            onClick={() => setActiveSection('library')}
-            className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition ${activeSection === 'library' ? 'bg-[#121620] text-white shadow' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
-          >
-            <FolderOpen size={18} /> Biblioteca
-          </button>
-          <button
-            onClick={() => setActiveSection('drafts')}
-            className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition ${activeSection === 'drafts' ? 'bg-[#121620] text-white shadow' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
-          >
-            <PencilRuler size={18} /> Rascunhos
-          </button>
-        </div>
-      </section>
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="self-start rounded-[24px] border border-slate-200/80 bg-white p-3 shadow-[0_12px_35px_rgba(15,23,42,0.04)] lg:sticky lg:top-6">
+          <div className="px-3 pb-2 pt-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Materiais</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Biblioteca operacional do cliente.</p>
+          </div>
+          <div className="mt-2 space-y-1">
+            {[
+              { key: 'library', label: 'Biblioteca', icon: FolderOpen, hint: 'Arquivos HTML' },
+              { key: 'links', label: 'Links', icon: Link2, hint: 'Atalhos e acessos' },
+              { key: 'drafts', label: 'Rascunhos', icon: PencilRuler, hint: 'Canvas visual' },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveSection(item.key)}
+                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition ${activeSection === item.key ? 'bg-[#121620] text-white shadow' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+              >
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${activeSection === item.key ? 'bg-white/10 text-blue-300' : 'bg-slate-100 text-slate-500'}`}>
+                  <item.icon size={17} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold">{item.label}</span>
+                  <span className={`block truncate text-[11px] ${activeSection === item.key ? 'text-white/45' : 'text-slate-400'}`}>{item.hint}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 rounded-2xl bg-blue-50 px-3 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#0969ff]">Acesso rápido</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Use Links para guardar Drive, plataformas, páginas e referências que você abre sempre.</p>
+          </div>
+        </aside>
 
-      {activeSection === 'drafts' ? (
-        <MaterialsDrafts clients={clients} />
-      ) : (
-        <>
+        <div className="min-w-0 space-y-5">
+          {activeSection === 'drafts' ? (
+            <MaterialsDrafts clients={clients} />
+          ) : activeSection === 'links' ? (
+            <MaterialLinks clients={clients} selectedClient={selectedClient} user={user} />
+          ) : (
+            <>
       <section className="rounded-[26px] border border-slate-200/80 bg-white p-4 shadow-[0_14px_45px_rgba(15,23,42,0.05)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:max-w-md">
@@ -382,8 +404,11 @@ export default function Materials() {
           ))}
         </div>
       )}
-        </>
-      )}
+
+            </>
+          )}
+        </div>
+      </div>
 
       {formState && activeSection === 'library' && (
         <MaterialFormModal
