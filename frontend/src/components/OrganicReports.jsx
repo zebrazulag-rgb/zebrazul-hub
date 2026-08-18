@@ -228,6 +228,9 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
   const facebook = report?.facebook || {};
   const instagram = report?.instagram || {};
   const hasConnection = Boolean(report?.connection);
+  const organicSource = report?.connection?.instagram_oauth_connection_id
+    ? (report?.connection?.oauth_connection_id ? 'Meta + Instagram direto' : 'Instagram API')
+    : 'Meta Graph API';
   const hasData = Boolean(rawContent.length || Number(facebook.reach) || Number(instagram.reach));
   const followers = sumPlatforms(report, 'followers');
   const followersDelta = sumPlatforms(report, 'followers_delta');
@@ -315,7 +318,7 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 lg:min-w-52">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Última atualização</p>
               <p className="mt-2 text-sm font-semibold text-slate-800">{formatDateTime(report.connection.last_synced_at)}</p>
-              <p className="mt-1 text-xs text-slate-400">Fonte: Meta Graph API</p>
+              <p className="mt-1 text-xs text-slate-400">Fonte: {organicSource}</p>
             </div>
             {report.connection.last_sync_error && (
               <p className="lg:col-span-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{report.connection.last_sync_error}</p>
@@ -328,9 +331,9 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
               <span className="icon-tile bg-blue-50 text-blue-500"><Facebook size={18} /></span>
             </div>
             <p className="mt-3 font-semibold text-slate-700">Conexão orgânica pendente</p>
-            <p className="mt-1 max-w-lg text-sm leading-6 text-slate-500">Configure uma única vez. Depois, toda vez que este cliente for selecionado, o relatório abrirá automaticamente com os perfis corretos.</p>
+            <p className="mt-1 max-w-lg text-sm leading-6 text-slate-500">Você pode usar a conexão pela Meta ou conectar somente o Instagram profissional quando ele não aparecer pela Página do Facebook.</p>
             <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={onOpenConnections}>
-              <Settings2 size={16} /> Conectar Meta
+              <Settings2 size={16} /> Conectar Instagram ou Meta
             </button>
           </div>
         )}
@@ -600,7 +603,7 @@ function PlatformBadge({ platform }) {
 }
 
 function OrganicConnectionBadge({ configured, connected, status }) {
-  if (!configured) return <span className="badge bg-amber-100 text-amber-700">Token orgânico ausente</span>;
+  if (!configured) return <span className="badge bg-amber-100 text-amber-700">Integração orgânica não configurada</span>;
   if (!connected) return <span className="badge bg-slate-100 text-slate-600">Aguardando conexão</span>;
   if (status === 'error') return <span className="badge bg-red-100 text-red-700">Erro na sincronização</span>;
   if (status === 'syncing') return <span className="badge bg-blue-100 text-blue-700">Sincronizando</span>;
