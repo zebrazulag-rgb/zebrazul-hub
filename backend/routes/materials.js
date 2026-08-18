@@ -77,6 +77,43 @@ function buildAccessWhere(user, values) {
   return `(m.client_id IS NULL OR m.client_id IN (${clientIds.map(() => '?').join(',')}))`;
 }
 
+function buildLinkAccessWhere(user, values) {
+  if (user.role === 'admin' || user.is_operations_head) return '1 = 1';
+  if (user.role === 'client') {
+    values.push(Number(user.client_id || 0));
+    return '(l.client_id IS NULL OR l.client_id = ?)';
+  }
+  const clientIds = Array.isArray(user.client_ids) ? user.client_ids.map(Number).filter(Boolean) : [];
+  if (!clientIds.length) return 'l.client_id IS NULL';
+  values.push(...clientIds);
+  return `(l.client_id IS NULL OR l.client_id IN (${clientIds.map(() => '?').join(',')}))`;
+}
+
+function normalizeExternalUrl(value) {
+  let raw = String(value || '').trim();
+  if (!raw) throw new Error('Informe o link.');
+  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error('Informe um link válido.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Use um link http ou https.');
+  return parsed.toString();
+}
+
+function fetchMaterialLink(id, agencyId) {
+  return db.prepare(`
+    SELECT l.*, c.name AS client_name, c.avatar_data AS client_avatar, c.logo_color AS client_color,
+           u.name AS created_by_name
+    FROM material_links l
+    LEFT JOIN clients c ON c.id = l.client_id
+    LEFT JOIN users u ON u.id = l.created_by
+    WHERE l.id = ? AND l.agency_id = ?
+  `).get(id, agencyId);
+}
+
 router.get('/', (req, res) => {
   const values = [req.user.agency_id];
   const accessWhere = buildAccessWhere(req.user, values);
@@ -106,6 +143,122 @@ router.get('/', (req, res) => {
   `).all(...values);
 
   res.json({ materials });
+});
+
+
+router.get('/links', (req, res) => {
+  const values = [req.user.agency_id];
+  const accessWhere = buildLinkAccessWhere(req.user, values);
+  const requestedClientId = normalizeOptionalClientId(req.query.client_id);
+  if (Number.isNaN(requestedClientId)) return res.status(400).json({ error: 'Cliente inválido.' });
+
+  let clientWhere = '';
+  if (requestedClientId) {
+    if (!canAccessClient(req.user, requestedClientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+    clientWhere = 'AND (l.client_id IS NULL OR l.client_id = ?)';
+    values.push(requestedClientId);
+  }
+
+  const links = db.prepare(`
+    SELECT l.id, l.client_id, l.title, l.url, l.description, l.category, l.is_active, l.created_at, l.updated_at,
+           c.name AS client_name, c.avatar_data AS client_avatar, c.logo_color AS client_color,
+           u.name AS created_by_name
+    FROM material_links l
+    LEFT JOIN clients c ON c.id = l.client_id
+    LEFT JOIN users u ON u.id = l.created_by
+    WHERE l.agency_id = ?
+      AND l.is_active = 1
+      AND ${accessWhere}
+      ${clientWhere}
+    ORDER BY COALESCE(c.name, ''), COALESCE(l.category, ''), l.created_at DESC, l.id DESC
+  `).all(...values);
+
+  res.json({ links });
+});
+
+router.post('/links', requireRole('admin'), (req, res) => {
+  const clientId = normalizeOptionalClientId(req.body.client_id);
+  if (Number.isNaN(clientId)) return res.status(400).json({ error: 'Cliente inválido.' });
+  if (clientId && !canAccessClient(req.user, clientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+
+  const title = String(req.body.title || '').trim();
+  if (!title) return res.status(400).json({ error: 'Informe o título do link.' });
+
+  let url;
+  try {
+    url = normalizeExternalUrl(req.body.url);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  const info = db.prepare(`
+    INSERT INTO material_links (agency_id, client_id, title, url, description, category, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.user.agency_id,
+    clientId,
+    title,
+    url,
+    String(req.body.description || '').trim() || null,
+    String(req.body.category || '').trim() || 'Acesso rápido',
+    req.user.id
+  );
+
+  res.status(201).json({ link: fetchMaterialLink(Number(info.lastInsertRowid), req.user.agency_id) });
+});
+
+router.put('/links/:id', requireRole('admin'), (req, res) => {
+  const link = fetchMaterialLink(req.params.id, req.user.agency_id);
+  if (!link || Number(link.is_active) !== 1) return res.status(404).json({ error: 'Link não encontrado.' });
+
+  const updates = [];
+  const values = [];
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'title')) {
+    const title = String(req.body.title || '').trim();
+    if (!title) return res.status(400).json({ error: 'Informe o título do link.' });
+    updates.push('title = ?');
+    values.push(title);
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'url')) {
+    let url;
+    try {
+      url = normalizeExternalUrl(req.body.url);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    updates.push('url = ?');
+    values.push(url);
+  }
+  for (const field of ['description', 'category']) {
+    if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+      updates.push(`${field} = ?`);
+      values.push(String(req.body[field] || '').trim() || null);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'client_id')) {
+    const clientId = normalizeOptionalClientId(req.body.client_id);
+    if (Number.isNaN(clientId)) return res.status(400).json({ error: 'Cliente inválido.' });
+    if (clientId && !canAccessClient(req.user, clientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+    updates.push('client_id = ?');
+    values.push(clientId);
+  }
+
+  if (!updates.length) return res.json({ link });
+  updates.push("updated_at = datetime('now')");
+  db.prepare(`UPDATE material_links SET ${updates.join(', ')} WHERE id = ? AND agency_id = ?`)
+    .run(...values, link.id, req.user.agency_id);
+
+  res.json({ link: fetchMaterialLink(link.id, req.user.agency_id) });
+});
+
+router.delete('/links/:id', requireRole('admin'), (req, res) => {
+  const link = fetchMaterialLink(req.params.id, req.user.agency_id);
+  if (!link || Number(link.is_active) !== 1) return res.status(404).json({ error: 'Link não encontrado.' });
+
+  db.prepare("UPDATE material_links SET is_active = 0, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+    .run(link.id, req.user.agency_id);
+  res.json({ ok: true });
 });
 
 router.get('/:id', (req, res) => {
