@@ -158,8 +158,12 @@ async function runAutomaticBackup(label) {
 
 async function runAutomaticOrganicSync(label) {
   const oauthConnections = Number(db.prepare('SELECT COUNT(*) AS total FROM meta_oauth_connections').get()?.total || 0);
-  if (!String(process.env.META_ORGANIC_ACCESS_TOKEN || '').trim() && oauthConnections === 0) {
-    console.log(`[META ORGANIC] Sincronizacao ${label} ignorada: nenhuma autorizacao Meta configurada.`);
+  const instagramOauthConnections = Number(db.prepare(`
+    SELECT COUNT(*) AS total FROM instagram_oauth_connections
+    WHERE status IN ('connected','error')
+  `).get()?.total || 0);
+  if (!String(process.env.META_ORGANIC_ACCESS_TOKEN || '').trim() && oauthConnections === 0 && instagramOauthConnections === 0) {
+    console.log(`[META ORGANIC] Sincronizacao ${label} ignorada: nenhuma autorizacao Meta ou Instagram configurada.`);
     return;
   }
 

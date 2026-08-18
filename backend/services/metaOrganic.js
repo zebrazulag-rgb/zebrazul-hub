@@ -27,6 +27,9 @@ function getOrganicConfig() {
     apiVersion: String(context.apiVersion || process.env.META_API_VERSION || DEFAULT_API_VERSION).trim(),
     businessId: String(process.env.META_BUSINESS_ID || '').trim(),
     graphBase: String(context.graphBase || DEFAULT_GRAPH_BASE).trim().replace(/\/$/, ''),
+    useAppSecretProof: context.useAppSecretProof !== undefined
+      ? Boolean(context.useAppSecretProof)
+      : String(process.env.INSTAGRAM_USE_APPSECRET_PROOF || 'false').toLowerCase() === 'true',
   };
 }
 
@@ -37,6 +40,7 @@ function withOrganicRequestContext(context, callback) {
     appSecret: context.appSecret,
     apiVersion: context.apiVersion,
     graphBase: context.graphBase,
+    useAppSecretProof: context.useAppSecretProof,
   }, callback);
 }
 
@@ -86,7 +90,14 @@ async function requestUrl(url) {
 
     if (!response.ok || payload.error) {
       const apiError = payload.error || {};
-      throw new MetaOrganicApiError(apiError.message || 'Falha ao consultar a API organica da Meta', {
+      const rawMessage = apiError.message || 'Falha ao consultar a API organica da Meta';
+      const isBlockedInstagramGet = Number(apiError.code) === 100
+        && /unsupported request\s*-\s*method type:\s*get/i.test(rawMessage)
+        && String(url.hostname).includes('instagram.com');
+      const message = isBlockedInstagramGet
+        ? 'A Meta autorizou o login, mas bloqueou a leitura desta conta do Instagram (erro 100). Verifique se a conta profissional esta autorizada para teste no app ou se instagram_business_basic possui Advanced Access/App Review para contas de clientes.'
+        : rawMessage;
+      throw new MetaOrganicApiError(message, {
         status: response.status >= 400 && response.status < 500 ? 400 : 502,
         metaCode: apiError.code,
         metaSubcode: apiError.error_subcode,
@@ -126,8 +137,12 @@ async function organicGraphRequest(pathOrUrl, params = {}) {
   }
 
   if (!url.searchParams.has('access_token')) url.searchParams.set('access_token', config.accessToken);
-  const proof = buildAppSecretProof(config.accessToken, config.appSecret);
-  if (proof && !url.searchParams.has('appsecret_proof')) url.searchParams.set('appsecret_proof', proof);
+  const isInstagramGraph = String(url.hostname).includes('instagram.com');
+  const shouldUseProof = !isInstagramGraph || config.useAppSecretProof;
+  if (shouldUseProof) {
+    const proof = buildAppSecretProof(config.accessToken, config.appSecret);
+    if (proof && !url.searchParams.has('appsecret_proof')) url.searchParams.set('appsecret_proof', proof);
+  }
   return requestUrl(url);
 }
 
@@ -415,12 +430,29 @@ async function getFacebookContent(pageId, dateFrom, dateTo) {
   });
 }
 
+async function resolveInstagramUserId(preferredId) {
+  const config = getOrganicConfig();
+  if (!String(config.graphBase).includes('graph.instagram.com')) return String(preferredId || '');
+
+  // No Instagram Login, /me e a fonte canonica para descobrir a conta que
+  // concedeu o token. Isso evita reutilizar cegamente o user_id retornado na
+  // troca do codigo caso a leitura do perfil ainda nao tenha sido validada.
+  const me = await organicGraphRequest('me', { fields: 'id,username' });
+  return String(me.id || preferredId || '');
+}
+
 async function getInstagramOverview(instagramId, dateFrom, dateTo) {
   if (!instagramId) return null;
-  const profile = await organicGraphRequest(instagramId, {
+  const resolvedInstagramId = await resolveInstagramUserId(instagramId);
+  if (!resolvedInstagramId) throw new MetaOrganicApiError('O Instagram nao retornou o ID da conta profissional', { status: 502 });
+
+  const config = getOrganicConfig();
+  const profilePath = String(config.graphBase).includes('graph.instagram.com') ? 'me' : resolvedInstagramId;
+  const profile = await organicGraphRequest(profilePath, {
     fields: 'id,username,name,profile_picture_url,followers_count,media_count',
   });
-  const metrics = await fetchMetrics(instagramId, [
+  const canonicalId = String(profile.id || resolvedInstagramId);
+  const metrics = await fetchMetrics(canonicalId, [
     'reach',
     'views',
     'accounts_engaged',
@@ -437,7 +469,7 @@ async function getInstagramOverview(instagramId, dateFrom, dateTo) {
   const followerDelta = extractBreakdownDelta(metrics.follows_and_unfollows);
   return {
     profile: {
-      id: String(profile.id),
+      id: canonicalId,
       name: profile.name || profile.username || null,
       username: profile.username || null,
       picture_url: profile.profile_picture_url || null,
@@ -460,7 +492,9 @@ async function getInstagramOverview(instagramId, dateFrom, dateTo) {
 
 async function getInstagramContent(instagramId, dateFrom, dateTo) {
   if (!instagramId) return [];
-  const media = await safeCollection(`${instagramId}/media`, {
+  const resolvedInstagramId = await resolveInstagramUserId(instagramId);
+  if (!resolvedInstagramId) return [];
+  const media = await safeCollection(`${resolvedInstagramId}/media`, {
     fields: 'id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count',
     since: `${dateFrom}T00:00:00`,
     until: `${dateTo}T23:59:59`,

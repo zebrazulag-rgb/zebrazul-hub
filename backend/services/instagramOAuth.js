@@ -55,6 +55,10 @@ function getConfig() {
       || process.env.JWT_SECRET
       || 'zebrahub-instagram-token-dev-secret'
     ),
+    // A API com Instagram Login documenta access_token diretamente nas chamadas.
+    // appsecret_proof fica opcional para nao misturar a politica do Graph Facebook
+    // com graph.instagram.com. Ative apenas se a configuracao do app exigir.
+    useAppSecretProof: String(process.env.INSTAGRAM_USE_APPSECRET_PROOF || 'false').toLowerCase() === 'true',
   };
 }
 
@@ -157,8 +161,14 @@ async function requestJson(url, options = {}) {
     }
     if (!response.ok || payload.error) {
       const apiError = payload.error || {};
+      const rawMessage = apiError.message || payload.error_message || 'Falha ao comunicar com o Instagram.';
+      const isBlockedGet = Number(apiError.code) === 100
+        && /unsupported request\s*-\s*method type:\s*get/i.test(rawMessage);
+      const message = isBlockedGet
+        ? 'A Meta autorizou o login, mas bloqueou a leitura desta conta do Instagram (erro 100). Verifique se a conta profissional esta autorizada para teste no app ou se instagram_business_basic possui Advanced Access/App Review para contas de clientes.'
+        : rawMessage;
       throw new InstagramOAuthError(
-        apiError.message || payload.error_message || 'Falha ao comunicar com o Instagram.',
+        message,
         {
           status: response.status >= 400 && response.status < 500 ? 400 : 502,
           metaCode: apiError.code || payload.error_type,
@@ -195,8 +205,10 @@ async function instagramGraphRequest(pathOrUrl, params = {}, accessToken) {
     });
   }
   if (!url.searchParams.has('access_token')) url.searchParams.set('access_token', accessToken);
-  const proof = buildAppSecretProof(accessToken);
-  if (proof && !url.searchParams.has('appsecret_proof')) url.searchParams.set('appsecret_proof', proof);
+  if (getConfig().useAppSecretProof) {
+    const proof = buildAppSecretProof(accessToken);
+    if (proof && !url.searchParams.has('appsecret_proof')) url.searchParams.set('appsecret_proof', proof);
+  }
   return requestJson(url);
 }
 
@@ -204,8 +216,10 @@ async function instagramGraphPost(path, params = {}, accessToken) {
   if (!accessToken) throw new InstagramOAuthError('A autorização do Instagram não está disponível.', { status: 401 });
   const url = graphUrl(path);
   url.searchParams.set('access_token', accessToken);
-  const proof = buildAppSecretProof(accessToken);
-  if (proof) url.searchParams.set('appsecret_proof', proof);
+  if (getConfig().useAppSecretProof) {
+    const proof = buildAppSecretProof(accessToken);
+    if (proof) url.searchParams.set('appsecret_proof', proof);
+  }
 
   const body = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -302,16 +316,16 @@ function tokenExpiresAt(expiresIn) {
 
 async function fetchInstagramProfile(accessToken, tokenUserId = null) {
   const fieldSets = [
-    'id,user_id,username,name,account_type,profile_picture_url',
     'id,username,name,account_type,profile_picture_url',
     'id,username,name,account_type',
+    'id,username',
   ];
   let lastError = null;
   for (const fields of fieldSets) {
     try {
       const profile = await instagramGraphRequest('me', { fields }, accessToken);
       return {
-        id: String(profile.user_id || profile.id || tokenUserId || ''),
+        id: String(profile.id || tokenUserId || ''),
         username: profile.username || null,
         name: profile.name || profile.username || null,
         accountType: profile.account_type || null,
@@ -321,16 +335,11 @@ async function fetchInstagramProfile(accessToken, tokenUserId = null) {
       lastError = error;
     }
   }
-  if (tokenUserId) {
-    return {
-      id: String(tokenUserId),
-      username: null,
-      name: null,
-      accountType: null,
-      profilePictureUrl: null,
-    };
-  }
-  throw lastError || new InstagramOAuthError('Não foi possível identificar a conta do Instagram.', { status: 502 });
+  // Nao aceite apenas o user_id devolvido na troca do token como prova de que a
+  // conexao esta operacional. A versao anterior salvava a conta mesmo quando /me
+  // falhava; por isso o ZebraHub exibia "Ativo" e depois quebrava na sincronizacao.
+  if (lastError) throw lastError;
+  throw new InstagramOAuthError('Não foi possível identificar a conta profissional do Instagram.', { status: 502 });
 }
 
 async function saveOAuthConnection({ stateRow, token }) {

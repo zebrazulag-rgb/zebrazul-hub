@@ -178,6 +178,7 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
           appSecret: getInstagramConfig().appSecret,
           apiVersion: getInstagramConfig().apiVersion,
           graphBase: 'https://graph.instagram.com',
+          useAppSecretProof: String(process.env.INSTAGRAM_USE_APPSECRET_PROOF || 'false').toLowerCase() === 'true',
         }, () => Promise.all([
           getInstagramOverview(connection.instagram_account_id, dateFrom, dateTo),
           getInstagramContent(connection.instagram_account_id, dateFrom, dateTo),
@@ -213,6 +214,7 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
         SET page_name = COALESCE(?, page_name),
             page_username = COALESCE(?, page_username),
             page_picture_url = COALESCE(?, page_picture_url),
+            instagram_account_id = COALESCE(?, instagram_account_id),
             instagram_username = COALESCE(?, instagram_username),
             instagram_name = COALESCE(?, instagram_name),
             instagram_picture_url = COALESCE(?, instagram_picture_url),
@@ -223,11 +225,30 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
         facebookOverview?.profile?.name || null,
         facebookOverview?.profile?.username || null,
         facebookOverview?.profile?.picture_url || null,
+        instagramOverview?.profile?.id || null,
         instagramOverview?.profile?.username || null,
         instagramOverview?.profile?.name || null,
         instagramOverview?.profile?.picture_url || null,
         connection.id
       );
+
+      if (instagramBundle && instagramOverview?.profile?.id) {
+        db.prepare(`
+          UPDATE instagram_oauth_connections
+          SET instagram_user_id = ?,
+              username = COALESCE(?, username),
+              display_name = COALESCE(?, display_name),
+              profile_picture_url = COALESCE(?, profile_picture_url),
+              status = 'connected', last_error = NULL, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(
+          instagramOverview.profile.id,
+          instagramOverview.profile.username || null,
+          instagramOverview.profile.name || null,
+          instagramOverview.profile.picture_url || null,
+          instagramBundle.connectionId
+        );
+      }
     });
     saveSync();
 
@@ -243,6 +264,13 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
   } catch (error) {
     const message = (error instanceof MetaOrganicApiError || error instanceof MetaOAuthError || error instanceof InstagramOAuthError) ? error.message : 'Falha inesperada na sincronizacao organica';
     setSyncState(connection.id, 'error', message);
+    if (connection.instagram_oauth_connection_id) {
+      db.prepare(`
+        UPDATE instagram_oauth_connections
+        SET status = 'error', last_error = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(message, connection.instagram_oauth_connection_id);
+    }
     throw error;
   }
 }
