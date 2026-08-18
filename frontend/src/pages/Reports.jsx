@@ -296,13 +296,31 @@ export default function Reports() {
         title="Relatórios"
         description="Desempenho orgânico em primeiro plano e mídia paga logo abaixo, com conexões permanentes para cada cliente."
         actions={(
-          <div className="flex flex-wrap items-center gap-2">
-            <input className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-sm text-white outline-none [color-scheme:dark]" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-            <input className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-sm text-white outline-none [color-scheme:dark]" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+          <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+            <label className="min-w-[145px]">
+              <span className="mb-1 block px-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">De</span>
+              <input
+                className="input-field min-w-[145px] py-2 [color-scheme:light]"
+                type="date"
+                value={from}
+                aria-label="Data inicial do relatório"
+                onChange={(event) => setFrom(event.target.value)}
+              />
+            </label>
+            <label className="min-w-[145px]">
+              <span className="mb-1 block px-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Até</span>
+              <input
+                className="input-field min-w-[145px] py-2 [color-scheme:light]"
+                type="date"
+                value={to}
+                aria-label="Data final do relatório"
+                onChange={(event) => setTo(event.target.value)}
+              />
+            </label>
             <button
               type="button"
               onClick={() => setConnectionsOpen(true)}
-              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.09] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.14]"
+              className="btn-secondary flex items-center gap-2 py-2.5"
             >
               <Settings2 size={16} /> Conexões
             </button>

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
@@ -6,10 +6,8 @@ import Dashboard from './pages/Dashboard.jsx';
 import Approval from './pages/Approval.jsx';
 import VideoApprovals from './pages/VideoApprovals.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
-import Reports from './pages/Reports.jsx';
 import Tasks from './pages/Tasks.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
-import Feed from './pages/Feed.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import PublicPost from './pages/PublicPost.jsx';
 import Finance from './pages/Finance.jsx';
@@ -23,7 +21,7 @@ import CommercialFunnel from './pages/CommercialFunnel.jsx';
 import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
-import StoryHub from './pages/StoryHub.jsx';
+import SocialMedia from './pages/SocialMedia.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import DataDeletion from './pages/DataDeletion.jsx';
@@ -31,6 +29,12 @@ import BeeRematriculas from './pages/BeeRematriculas.jsx';
 import BeeCampaignBriefing from './pages/BeeCampaignBriefing.jsx';
 import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
+
+
+function SocialMediaLegacyRedirect({ section }) {
+  const location = useLocation();
+  return <Navigate to={`/social-media/${section}${location.search || ''}`} replace />;
+}
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
   const { user, checkingSession } = useAuth();
@@ -60,9 +64,13 @@ export default function App() {
       <Route path="/aprovacao" element={<ProtectedRoute><Approval /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<ProtectedRoute><VideoApprovals /></ProtectedRoute>} />
       <Route path="/aprovacao/videos/:id" element={<ProtectedRoute><VideoReviewWorkspace /></ProtectedRoute>} />
-      <Route path="/calendario" element={<Navigate to="/feed?view=calendar" replace />} />
-      <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
-      <Route path="/stories" element={<ProtectedRoute roles={['admin', 'team']}><StoryHub /></ProtectedRoute>} />
+      <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />
+      <Route path="/social-media" element={<Navigate to="/social-media/feed" replace />} />
+      <Route path="/social-media/feed" element={<ProtectedRoute><SocialMedia section="feed" /></ProtectedRoute>} />
+      <Route path="/social-media/stories" element={<ProtectedRoute roles={['admin', 'team']}><SocialMedia section="stories" /></ProtectedRoute>} />
+      <Route path="/social-media/relatorios" element={<ProtectedRoute><SocialMedia section="relatorios" /></ProtectedRoute>} />
+      <Route path="/feed" element={<ProtectedRoute><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
+      <Route path="/stories" element={<ProtectedRoute roles={['admin', 'team']}><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
       <Route
         path="/tarefas"
         element={
@@ -87,7 +95,7 @@ export default function App() {
       <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><Sales /></ProtectedRoute>} />
       <Route path="/comercial/funil" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><CommercialFunnel /></ProtectedRoute>} />
       <Route path="/rematriculas" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed><BeeRematriculas /></ProtectedRoute>} />
-      <Route path="/relatorios" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+      <Route path="/relatorios" element={<ProtectedRoute><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
       <Route path="/materiais" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
       <Route path="/materiais/:id" element={<ProtectedRoute><MaterialViewer /></ProtectedRoute>} />
       <Route path="/senhas" element={<ProtectedRoute roles={['admin']}><PasswordVault /></ProtectedRoute>} />
