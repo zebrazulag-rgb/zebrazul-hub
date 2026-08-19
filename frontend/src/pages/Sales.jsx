@@ -12,6 +12,7 @@ import {
   Plus,
   Search,
   Settings2,
+  Tag,
   Target,
   Trash2,
   TrendingUp,
@@ -219,6 +220,11 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
             <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${safeStage.soft}`}>{lead.probability}%</span>
           </div>
           <DiagnosticLeadSummary lead={lead} compact />
+          {lead.segment && (
+            <span className="mt-2 mr-1 inline-flex max-w-full items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-blue-700">
+              <Tag size={10} className="shrink-0" /> <span className="truncate">{lead.segment}</span>
+            </span>
+          )}
           {lead.priority && lead.source !== 'Diagnóstico APOGEU' && (
             <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wide ${lead.priority === 'high' ? 'bg-rose-50 text-rose-600' : lead.priority === 'low' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>
               Prioridade {lead.priority === 'high' ? 'alta' : lead.priority === 'low' ? 'baixa' : 'média'}
@@ -251,6 +257,14 @@ export default function Sales() {
   const [originFilter, setOriginFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [fitFilter, setFitFilter] = useState('all');
+  const [nicheFilter, setNicheFilter] = useState('all');
+  const [niches, setNiches] = useState([]);
+  const [unclassifiedNicheCount, setUnclassifiedNicheCount] = useState(0);
+  const [nicheModalOpen, setNicheModalOpen] = useState(false);
+  const [newNicheName, setNewNicheName] = useState('');
+  const [applyNicheToUnclassified, setApplyNicheToUnclassified] = useState(false);
+  const [savingNiche, setSavingNiche] = useState(false);
+  const [nicheNotice, setNicheNotice] = useState('');
   const [dragOverStage, setDragOverStage] = useState(null);
   const [editingLead, setEditingLead] = useState(null);
   const [form, setForm] = useState(null);
@@ -286,19 +300,24 @@ export default function Sales() {
       setLeads([]);
       setStages([]);
       setTeamUsers([]);
+      setNiches([]);
+      setUnclassifiedNicheCount(0);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const [leadResponse, usersResponse, stageResponse] = await Promise.all([
+      const [leadResponse, usersResponse, stageResponse, nicheResponse] = await Promise.all([
         api.get('/commercial/leads', { params: { client_id: clientId } }),
         api.get('/commercial/users', { params: { client_id: clientId } }),
         api.get('/commercial/stages', { params: { client_id: clientId } }),
+        api.get('/commercial/niches', { params: { client_id: clientId } }),
       ]);
       setLeads(leadResponse.data.leads || []);
       setTeamUsers(usersResponse.data.users || []);
       setStages(stageResponse.data.stages || []);
+      setNiches(nicheResponse.data.niches || []);
+      setUnclassifiedNicheCount(Number(nicheResponse.data.unclassified_count || 0));
     } finally {
       setLoading(false);
     }
@@ -311,6 +330,10 @@ export default function Sales() {
     setOriginFilter('all');
     setPriorityFilter('all');
     setFitFilter('all');
+    setNicheFilter('all');
+    setNicheModalOpen(false);
+    setNewNicheName('');
+    setNicheNotice('');
     loadData();
   }, [clientId]);
 
@@ -320,6 +343,8 @@ export default function Sales() {
       if (ownerFilter !== 'all' && String(lead.owner_user_id || '') !== ownerFilter) return false;
       if (originFilter === 'apogeu' && lead.source !== 'Diagnóstico APOGEU') return false;
       if (originFilter === 'other' && lead.source === 'Diagnóstico APOGEU') return false;
+      if (nicheFilter === '__unclassified__' && String(lead.segment || '').trim()) return false;
+      if (nicheFilter !== 'all' && nicheFilter !== '__unclassified__' && String(lead.segment || '').trim().toLowerCase() !== nicheFilter.toLowerCase()) return false;
 
       const priority = String(lead.priority || lead.diagnostic_priority || '').toUpperCase();
       if (priorityFilter === 'high' && !(priority === 'HIGH' || priority.includes('ALTA'))) return false;
@@ -339,7 +364,7 @@ export default function Sales() {
         lead.diagnostic_role, lead.diagnostic_priority,
       ].some((value) => String(value || '').toLowerCase().includes(term));
     });
-  }, [leads, ownerFilter, originFilter, priorityFilter, fitFilter, search]);
+  }, [leads, ownerFilter, originFilter, priorityFilter, fitFilter, nicheFilter, search]);
 
   const openLeads = leads.filter((lead) => stageMap[lead.stage]?.stage_type === 'open');
   const pipelineValue = openLeads.reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
@@ -352,6 +377,42 @@ export default function Sales() {
     .filter((lead) => lead.next_action_date && stageMap[lead.stage]?.stage_type === 'open')
     .sort((a, b) => String(a.next_action_date).localeCompare(String(b.next_action_date)))
     .slice(0, 8);
+
+  function openNicheModal() {
+    setNewNicheName('');
+    setApplyNicheToUnclassified(niches.length === 0 && unclassifiedNicheCount > 0 && unclassifiedNicheCount === leads.length);
+    setNicheNotice('');
+    setNicheModalOpen(true);
+  }
+
+  async function createNiche(event) {
+    event.preventDefault();
+    const name = newNicheName.trim();
+    if (!name) return;
+    setSavingNiche(true);
+    try {
+      const { data } = await api.post('/commercial/niches', {
+        client_id: clientId,
+        name,
+        apply_to_unclassified: applyNicheToUnclassified,
+      });
+      setNiches(data.niches || []);
+      if (Number(data.updated_count || 0) > 0) {
+        setNicheNotice(`${data.updated_count} lead(s) classificados como ${name}.`);
+        setNicheFilter(name);
+        await loadData();
+      } else {
+        setNicheNotice(`Nicho “${name}” criado.`);
+        setNicheFilter(name);
+      }
+      setNicheModalOpen(false);
+      setNewNicheName('');
+    } catch (err) {
+      setNicheNotice(err.response?.data?.error || 'Não foi possível criar o nicho.');
+    } finally {
+      setSavingNiche(false);
+    }
+  }
 
   function beginCreate() {
     if (!clientId) return;
@@ -426,6 +487,12 @@ export default function Sales() {
         return exists ? current.map((item) => item.id === data.lead.id ? data.lead : item) : [data.lead, ...current];
       });
       notifyCommercialUpdated(clientId);
+      api.get('/commercial/niches', { params: { client_id: clientId } })
+        .then(({ data: nicheData }) => {
+          setNiches(nicheData.niches || []);
+          setUnclassifiedNicheCount(Number(nicheData.unclassified_count || 0));
+        })
+        .catch(() => {});
       setForm(null);
       setEditingLead(null);
     } catch (err) {
@@ -545,6 +612,16 @@ export default function Sales() {
             <option value="apogeu">Diagnóstico APOGEU</option>
             <option value="other">Outras origens</option>
           </select>
+          <select value={nicheFilter} onChange={(event) => setNicheFilter(event.target.value)} className="input-field min-w-[170px]">
+            <option value="all">Todos os nichos</option>
+            {niches.map((niche) => <option key={niche.id || niche.name} value={niche.name}>{niche.name} ({niche.lead_count || 0})</option>)}
+            {unclassifiedNicheCount > 0 && <option value="__unclassified__">Sem nicho ({unclassifiedNicheCount})</option>}
+          </select>
+          {user?.role !== 'client' && (
+            <button type="button" onClick={openNicheModal} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50">
+              <Tag size={15} /> Novo nicho
+            </button>
+          )}
           <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} className="input-field min-w-[160px]">
             <option value="all">Toda prioridade</option>
             <option value="high">Prioridade alta</option>
@@ -570,6 +647,13 @@ export default function Sales() {
         <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
           <span>{importNotice}</span>
           <button type="button" onClick={() => setImportNotice('')} className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-100"><X size={15} /></button>
+        </div>
+      )}
+
+      {nicheNotice && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">
+          <span>{nicheNotice}</span>
+          <button type="button" onClick={() => setNicheNotice('')} className="rounded-lg p-1 text-blue-600 hover:bg-blue-100"><X size={15} /></button>
         </div>
       )}
 
@@ -689,6 +773,38 @@ export default function Sales() {
         }}
       />
 
+      {nicheModalOpen && (
+        <ModalBackdrop onClose={() => !savingNiche && setNicheModalOpen(false)}>
+          <form onSubmit={createNiche} className="w-[min(520px,calc(100vw-32px))] rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Organização comercial</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">Criar novo nicho</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">Use nichos como Contabilidade, Saúde, Educação, Construção, Imobiliário ou qualquer outro grupo de prospecção.</p>
+              </div>
+              <button type="button" onClick={() => setNicheModalOpen(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+            </div>
+            <label className="mt-5 block text-sm font-semibold text-slate-700">Nome do nicho</label>
+            <input autoFocus className="input-field mt-2" value={newNicheName} onChange={(event) => setNewNicheName(event.target.value)} placeholder="Ex: Contabilidade" />
+            {unclassifiedNicheCount > 0 && (
+              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                <input type="checkbox" checked={applyNicheToUnclassified} onChange={(event) => setApplyNicheToUnclassified(event.target.checked)} className="mt-1 h-4 w-4 accent-[#0969ff]" />
+                <span>
+                  <strong className="block text-sm text-slate-800">Aplicar aos {unclassifiedNicheCount} leads sem nicho</strong>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">Ideal para a sua lista atual: crie “Contabilidade” e classifique todos os leads ainda sem nicho de uma vez.</span>
+                </span>
+              </label>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setNicheModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+              <button type="submit" disabled={savingNiche || !newNicheName.trim()} className="btn-primary inline-flex items-center gap-2 disabled:opacity-50">
+                <Tag size={15} /> {savingNiche ? 'Salvando...' : 'Criar nicho'}
+              </button>
+            </div>
+          </form>
+        </ModalBackdrop>
+      )}
+
       <CommercialLeadImportModal
         open={leadImportOpen}
         onClose={() => setLeadImportOpen(false)}
@@ -696,6 +812,7 @@ export default function Sales() {
         clientName={currentClient?.name || ''}
         stages={stages}
         teamUsers={teamUsers}
+        niches={niches}
         currentUser={user}
         onImported={async (data) => {
           await loadData();
@@ -798,7 +915,7 @@ export default function Sales() {
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">CNPJ</label><input className="input-field" value={form.cnpj} onChange={(event) => setForm({ ...form, cnpj: event.target.value })} placeholder="00.000.000/0000-00" /></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Instagram</label><input className="input-field" value={form.instagram} onChange={(event) => setForm({ ...form, instagram: event.target.value })} placeholder="@empresa" /></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Site</label><input className="input-field" value={form.website} onChange={(event) => setForm({ ...form, website: event.target.value })} placeholder="https://..." /></div>
-                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Segmento</label><input className="input-field" value={form.segment} onChange={(event) => setForm({ ...form, segment: event.target.value })} placeholder="Ex: Contabilidade" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Nicho</label><input className="input-field" list="commercial-niches-list" value={form.segment} onChange={(event) => setForm({ ...form, segment: event.target.value })} placeholder="Ex: Contabilidade" /><datalist id="commercial-niches-list">{niches.map((niche) => <option key={niche.id || niche.name} value={niche.name} />)}</datalist></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Cargo</label><input className="input-field" value={form.position_title} onChange={(event) => setForm({ ...form, position_title: event.target.value })} placeholder="Ex: Sócio / Diretor" /></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Cidade</label><input className="input-field" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} placeholder="Natal" /></div>
                   <div><label className="mb-1 block text-sm font-medium text-slate-700">Estado</label><input className="input-field" value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })} placeholder="RN" /></div>

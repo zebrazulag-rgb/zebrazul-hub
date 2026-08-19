@@ -25,7 +25,7 @@ const FIELD_DEFINITIONS = [
   { key: 'cnpj', label: 'CNPJ' },
   { key: 'instagram', label: 'Instagram' },
   { key: 'website', label: 'Site' },
-  { key: 'segment', label: 'Segmento' },
+  { key: 'segment', label: 'Nicho / segmento' },
   { key: 'position_title', label: 'Cargo' },
   { key: 'city', label: 'Cidade' },
   { key: 'state', label: 'Estado / UF' },
@@ -193,6 +193,7 @@ export default function CommercialLeadImportModal({
   clientName,
   stages = [],
   teamUsers = [],
+  niches = [],
   currentUser,
   onImported,
 }) {
@@ -204,7 +205,7 @@ export default function CommercialLeadImportModal({
   const [headers, setHeaders] = useState([]);
   const [rawRows, setRawRows] = useState([]);
   const [mapping, setMapping] = useState({});
-  const [defaults, setDefaults] = useState({ default_stage_key: '', default_owner_user_id: '', default_source: 'Prospecção ativa', default_priority: 'medium' });
+  const [defaults, setDefaults] = useState({ default_stage_key: '', default_owner_user_id: '', default_source: 'Prospecção ativa', default_priority: 'medium', default_segment: '' });
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [duplicateMode, setDuplicateMode] = useState('skip');
@@ -222,6 +223,7 @@ export default function CommercialLeadImportModal({
       ...current,
       default_stage_key: firstStage?.stage_key || stages[0]?.stage_key || '',
       default_owner_user_id: ownerId,
+      default_segment: '',
     }));
     api.get('/commercial/imports', { params: { client_id: clientId } })
       .then(({ data }) => setRecentImports(data.imports || []))
@@ -266,7 +268,7 @@ export default function CommercialLeadImportModal({
   }
 
   function downloadTemplate() {
-    const columns = ['Empresa', 'Nome', 'Telefone', 'WhatsApp', 'Email', 'CNPJ', 'Instagram', 'Site', 'Segmento', 'Cargo', 'Cidade', 'Estado', 'Origem', 'Responsável', 'Etapa', 'Prioridade', 'Valor', 'Próxima ação', 'Data da próxima ação', 'Observações'];
+    const columns = ['Empresa', 'Nome', 'Telefone', 'WhatsApp', 'Email', 'CNPJ', 'Instagram', 'Site', 'Nicho', 'Cargo', 'Cidade', 'Estado', 'Origem', 'Responsável', 'Etapa', 'Prioridade', 'Valor', 'Próxima ação', 'Data da próxima ação', 'Observações'];
     const example = ['Alfa Contabilidade', 'Marina Silva', '(84) 3333-0000', '(84) 99999-0000', 'marina@alfacontabilidade.com.br', '12.345.678/0001-90', '@alfacontabilidade', 'https://alfacontabilidade.com.br', 'Contabilidade', 'Sócia', 'Natal', 'RN', 'Prospecção ativa', currentUser?.name || '', firstStage?.name || 'Novo lead', 'Média', '1500', 'Fazer primeiro contato', '25/08/2026', 'Lead importado para prospecção'];
     downloadText('modelo_importacao_leads_zebrahub.csv', `${columns.map(csvEscape).join(',')}\n${example.map(csvEscape).join(',')}\n`);
   }
@@ -468,6 +470,11 @@ export default function CommercialLeadImportModal({
                       <div>
                         <label className="mb-1 block text-xs font-semibold text-slate-600">Origem padrão</label>
                         <input className="input-field" value={defaults.default_source} onChange={(event) => setDefaults({ ...defaults, default_source: event.target.value })} placeholder="Prospecção ativa" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-600">Nicho padrão</label>
+                        <input className="input-field" list="commercial-import-niches" value={defaults.default_segment} onChange={(event) => setDefaults({ ...defaults, default_segment: event.target.value })} placeholder="Ex: Contabilidade" />
+                        <datalist id="commercial-import-niches">{niches.map((niche) => <option key={niche.id || niche.name} value={niche.name} />)}</datalist>
                       </div>
                       <div>
                         <label className="mb-1 block text-xs font-semibold text-slate-600">Prioridade padrão</label>
