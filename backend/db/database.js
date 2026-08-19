@@ -301,6 +301,15 @@ CREATE TABLE IF NOT EXISTS commercial_leads (
   contact_name TEXT,
   email TEXT,
   phone TEXT,
+  whatsapp TEXT,
+  cnpj TEXT,
+  instagram TEXT,
+  website TEXT,
+  segment TEXT,
+  position_title TEXT,
+  city TEXT,
+  state TEXT,
+  priority TEXT DEFAULT 'medium',
   source TEXT,
   stage TEXT DEFAULT 'new_lead' CHECK(stage IN ('new_lead','contacted','meeting','proposal','negotiation','won','lost')),
   stage_key TEXT,
@@ -361,6 +370,26 @@ CREATE TABLE IF NOT EXISTS commercial_lead_diagnostics (
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
   FOREIGN KEY (lead_id) REFERENCES commercial_leads(id) ON DELETE CASCADE,
   UNIQUE(agency_id, client_id, submission_id)
+);
+
+CREATE TABLE IF NOT EXISTS commercial_lead_imports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  filename TEXT,
+  total_rows INTEGER DEFAULT 0,
+  valid_rows INTEGER DEFAULT 0,
+  created_count INTEGER DEFAULT 0,
+  updated_count INTEGER DEFAULT 0,
+  skipped_count INTEGER DEFAULT 0,
+  error_count INTEGER DEFAULT 0,
+  duplicate_mode TEXT DEFAULT 'skip',
+  mapping_json TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS financial_entries (
@@ -1169,6 +1198,15 @@ tryAddColumn('users', 'is_operations_head', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_commercial_team', 'INTEGER DEFAULT 0');
 tryAddColumn('commercial_leads', 'client_id', 'INTEGER REFERENCES clients(id)');
 tryAddColumn('commercial_leads', 'stage_key', 'TEXT');
+tryAddColumn('commercial_leads', 'whatsapp', 'TEXT');
+tryAddColumn('commercial_leads', 'cnpj', 'TEXT');
+tryAddColumn('commercial_leads', 'instagram', 'TEXT');
+tryAddColumn('commercial_leads', 'website', 'TEXT');
+tryAddColumn('commercial_leads', 'segment', 'TEXT');
+tryAddColumn('commercial_leads', 'position_title', 'TEXT');
+tryAddColumn('commercial_leads', 'city', 'TEXT');
+tryAddColumn('commercial_leads', 'state', 'TEXT');
+tryAddColumn('commercial_leads', 'priority', "TEXT DEFAULT 'medium'");
 tryAddColumn('clients', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('social_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('posts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
@@ -1600,6 +1638,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_commercial_stages_client_position ON commercial_stages(agency_id, client_id, position);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_client_stage ON commercial_leads(agency_id, client_id, stage, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_next_action ON commercial_leads(agency_id, next_action_date);
+  CREATE INDEX IF NOT EXISTS idx_commercial_leads_email ON commercial_leads(agency_id, client_id, email);
+  CREATE INDEX IF NOT EXISTS idx_commercial_leads_phone ON commercial_leads(agency_id, client_id, phone);
+  CREATE INDEX IF NOT EXISTS idx_commercial_leads_cnpj ON commercial_leads(agency_id, client_id, cnpj);
+  CREATE INDEX IF NOT EXISTS idx_commercial_lead_imports_client ON commercial_lead_imports(agency_id, client_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_client ON commercial_lead_diagnostics(agency_id, client_id, fit_score, created_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_submission ON commercial_lead_diagnostics(agency_id, client_id, submission_id);

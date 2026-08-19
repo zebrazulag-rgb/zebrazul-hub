@@ -39,6 +39,232 @@ function normalizeProbability(value, fallback = 10) {
   return Math.max(0, Math.min(100, Math.round(number)));
 }
 
+function normalizeLookup(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function digitsOnly(value) {
+  return String(value || '').replace(/\D+/g, '');
+}
+
+function normalizePriority(value) {
+  const key = normalizeLookup(value);
+  if (!key) return 'medium';
+  if (['alta', 'alto', 'high', 'urgente'].includes(key)) return 'high';
+  if (['baixa', 'baixo', 'low'].includes(key)) return 'low';
+  if (['media', 'medio', 'medium', 'normal'].includes(key)) return 'medium';
+  return key.slice(0, 30);
+}
+
+function normalizeImportMoney(value) {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number') return normalizeMoney(value);
+  let text = String(value).trim().replace(/R\$\s?/gi, '').replace(/\s/g, '');
+  if (text.includes(',') && text.includes('.')) text = text.replace(/\./g, '').replace(',', '.');
+  else if (text.includes(',')) text = text.replace(',', '.');
+  const number = Number(text.replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) / 100 : 0;
+}
+
+function normalizeImportDate(value) {
+  const text = String(value || '').trim();
+  if (!text) return { value: null, valid: true };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const date = new Date(`${text}T12:00:00`);
+    return { value: Number.isNaN(date.getTime()) ? null : text, valid: !Number.isNaN(date.getTime()) };
+  }
+  const br = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (br) {
+    const iso = `${br[3]}-${String(br[2]).padStart(2, '0')}-${String(br[1]).padStart(2, '0')}`;
+    const date = new Date(`${iso}T12:00:00`);
+    return { value: Number.isNaN(date.getTime()) ? null : iso, valid: !Number.isNaN(date.getTime()) };
+  }
+  return { value: null, valid: false };
+}
+
+function meaningful(value) {
+  return value !== undefined && value !== null && String(value).trim() !== '';
+}
+
+function duplicateCandidates(row) {
+  const candidates = [];
+  const cnpj = digitsOnly(row.cnpj);
+  const email = normalizeLookup(row.email);
+  const whatsapp = digitsOnly(row.whatsapp);
+  const phone = digitsOnly(row.phone);
+  const company = normalizeLookup(row.company_name);
+  const contact = normalizeLookup(row.contact_name);
+  if (cnpj.length >= 8) candidates.push(['CNPJ', `cnpj:${cnpj}`]);
+  if (email) candidates.push(['e-mail', `email:${email}`]);
+  if (whatsapp.length >= 8) candidates.push(['WhatsApp', `phone:${whatsapp.slice(-11)}`]);
+  if (phone.length >= 8) candidates.push(['telefone', `phone:${phone.slice(-11)}`]);
+  if (company && contact) candidates.push(['empresa + contato', `company:${company}|${contact}`]);
+  return candidates;
+}
+
+function buildDuplicateIndex(leads) {
+  const index = new Map();
+  for (const lead of leads) {
+    for (const [, key] of duplicateCandidates(lead)) {
+      if (!index.has(key)) index.set(key, lead);
+    }
+  }
+  return index;
+}
+
+function resolveImportStage(stages, requested, fallbackKey) {
+  const raw = String(requested || '').trim();
+  if (raw) {
+    const key = normalizeLookup(raw);
+    const match = stages.find((stage) => normalizeLookup(stage.stage_key) === key || normalizeLookup(stage.name) === key);
+    if (match) return { stage: match, invalid: false };
+    return { stage: null, invalid: true };
+  }
+  const fallback = stages.find((stage) => stage.stage_key === fallbackKey)
+    || stages.find((stage) => stage.stage_type === 'open')
+    || stages[0];
+  return { stage: fallback || null, invalid: false };
+}
+
+function resolveImportOwner(users, requested, fallbackId, currentUserId) {
+  if (meaningful(requested)) {
+    const numeric = Number(requested);
+    let match = Number.isFinite(numeric) && numeric > 0 ? users.find((user) => Number(user.id) === numeric) : null;
+    if (!match) {
+      const key = normalizeLookup(requested);
+      match = users.find((user) => normalizeLookup(user.name) === key || normalizeLookup(user.email) === key);
+    }
+    if (match) return { ownerId: Number(match.id), ownerName: match.name, invalid: false };
+    return { ownerId: null, ownerName: null, invalid: true };
+  }
+  const fallback = users.find((user) => Number(user.id) === Number(fallbackId))
+    || users.find((user) => Number(user.id) === Number(currentUserId))
+    || users[0];
+  return { ownerId: fallback ? Number(fallback.id) : null, ownerName: fallback?.name || null, invalid: false };
+}
+
+function prepareLeadImport(req, clientId, rows, defaults = {}) {
+  ensureDefaultStages(req.user.agency_id, clientId);
+  const stages = getStages(req.user.agency_id, clientId);
+  const users = commercialUsers(clientId, req.user.agency_id);
+  const existing = db.prepare(leadQuery('WHERE l.agency_id = ? AND l.client_id = ?'))
+    .all(Number(req.user.agency_id), Number(clientId));
+  const duplicateIndex = buildDuplicateIndex(existing);
+  const seenInFile = new Map();
+  const prepared = [];
+
+  rows.forEach((sourceRow, index) => {
+    const row = sourceRow && typeof sourceRow === 'object' ? sourceRow : {};
+    const rowNumber = Number(row.__row_number || index + 2);
+    const errors = [];
+    const warnings = [];
+    const companyName = String(row.company_name || '').trim();
+    if (!companyName) errors.push('Empresa é obrigatória');
+
+    const stageResult = resolveImportStage(stages, row.stage, defaults.default_stage_key);
+    if (stageResult.invalid) errors.push(`Etapa não encontrada: ${row.stage}`);
+    if (!stageResult.stage) errors.push('Nenhuma etapa disponível no pipeline');
+
+    const ownerRequested = meaningful(row.owner_user_id) ? row.owner_user_id : row.owner;
+    const ownerResult = resolveImportOwner(users, ownerRequested, defaults.default_owner_user_id, req.user.id);
+    if (ownerResult.invalid) warnings.push(`Responsável não encontrado: ${ownerRequested}. Será usado o responsável padrão.`);
+    const fallbackOwner = ownerResult.invalid
+      ? resolveImportOwner(users, null, defaults.default_owner_user_id, req.user.id)
+      : ownerResult;
+
+    const nextActionDate = normalizeImportDate(row.next_action_date);
+    if (!nextActionDate.valid) errors.push(`Data inválida: ${row.next_action_date}`);
+
+    const email = String(row.email || '').trim().toLowerCase();
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) warnings.push('E-mail parece inválido');
+
+    const stage = stageResult.stage;
+    const payload = {
+      company_name: companyName,
+      contact_name: normalizeText(row.contact_name),
+      email: normalizeText(email),
+      phone: normalizeText(row.phone),
+      whatsapp: normalizeText(row.whatsapp),
+      cnpj: normalizeText(row.cnpj),
+      instagram: normalizeText(row.instagram),
+      website: normalizeText(row.website),
+      segment: normalizeText(row.segment),
+      position_title: normalizeText(row.position_title),
+      city: normalizeText(row.city),
+      state: normalizeText(row.state),
+      priority: normalizePriority(row.priority || defaults.default_priority),
+      source: normalizeText(row.source || defaults.default_source),
+      stage: stage?.stage_key || null,
+      stage_legacy: stage ? legacyStageFor(stage) : 'new_lead',
+      stage_name: stage?.name || null,
+      stage_type: stage?.stage_type || 'open',
+      estimated_value: normalizeImportMoney(row.estimated_value),
+      probability: normalizeProbability(row.probability, stage?.probability || 10),
+      owner_user_id: fallbackOwner.ownerId,
+      owner_name: fallbackOwner.ownerName,
+      next_action: normalizeText(row.next_action),
+      next_action_date: nextActionDate.value,
+      notes: normalizeText(row.notes),
+      lost_reason: stage?.stage_type === 'lost' ? normalizeText(row.lost_reason) : null,
+    };
+
+    let duplicateId = null;
+    let duplicateReason = null;
+    let duplicateInFile = false;
+    for (const [label, key] of duplicateCandidates(payload)) {
+      const found = duplicateIndex.get(key);
+      if (found) {
+        duplicateId = Number(found.id);
+        duplicateReason = label;
+        break;
+      }
+      if (seenInFile.has(key)) {
+        duplicateInFile = true;
+        duplicateReason = `${label} repetido no arquivo`;
+        break;
+      }
+    }
+    for (const [, key] of duplicateCandidates(payload)) {
+      if (!seenInFile.has(key)) seenInFile.set(key, rowNumber);
+    }
+
+    const providedFields = Object.entries(row)
+      .filter(([key, value]) => key !== '__row_number' && meaningful(value))
+      .map(([key]) => key);
+    if (meaningful(defaults.default_stage_key) && !providedFields.includes('stage')) providedFields.push('stage');
+    if (meaningful(defaults.default_owner_user_id) && !providedFields.includes('owner') && !providedFields.includes('owner_user_id')) providedFields.push('owner_user_id');
+    if (meaningful(defaults.default_source) && !providedFields.includes('source')) providedFields.push('source');
+    if (meaningful(defaults.default_priority) && !providedFields.includes('priority')) providedFields.push('priority');
+
+    prepared.push({
+      row_number: rowNumber,
+      valid: errors.length === 0,
+      errors,
+      warnings,
+      duplicate_id: duplicateId,
+      duplicate_reason: duplicateReason,
+      duplicate_in_file: duplicateInFile,
+      payload,
+      provided_fields: providedFields,
+    });
+  });
+
+  return {
+    rows: prepared,
+    stats: {
+      total: prepared.length,
+      valid: prepared.filter((row) => row.valid).length,
+      errors: prepared.filter((row) => !row.valid).length,
+      duplicates: prepared.filter((row) => row.valid && (row.duplicate_id || row.duplicate_in_file)).length,
+    },
+  };
+}
+
 function resolveClientId(req, requestedClientId) {
   const clientId = req.user.role === 'client'
     ? Number(req.user.client_id)
@@ -67,7 +293,7 @@ function accessibleClients(user) {
 
 function commercialUsers(clientId, agencyId) {
   return db.prepare(`
-    SELECT DISTINCT u.id, u.name, u.role, u.avatar_color, u.avatar_data,
+    SELECT DISTINCT u.id, u.name, u.email, u.role, u.avatar_color, u.avatar_data,
            u.is_commercial_team
     FROM users u
     LEFT JOIN user_client_access uca ON uca.user_id = u.id AND uca.client_id = ?
@@ -170,7 +396,8 @@ function leadQuery(whereClause = '') {
   return `
     SELECT
       l.id, l.agency_id, l.client_id, l.created_by, l.owner_user_id,
-      l.company_name, l.contact_name, l.email, l.phone, l.source,
+      l.company_name, l.contact_name, l.email, l.phone, l.whatsapp, l.cnpj,
+      l.instagram, l.website, l.segment, l.position_title, l.city, l.state, l.priority, l.source,
       COALESCE(NULLIF(l.stage_key, ''), l.stage) AS stage,
       l.estimated_value, l.probability,
       l.next_action, l.next_action_date, l.notes, l.lost_reason,
@@ -428,6 +655,24 @@ router.get('/dashboard-summary', (req, res) => {
   });
 });
 
+router.get('/imports', (req, res) => {
+  if (!(req.user?.role === 'admin' || req.user?.is_commercial_team)) {
+    return res.status(403).json({ error: 'Importação disponível para administradores e equipe comercial' });
+  }
+  const scope = resolveClientId(req, req.query.client_id);
+  if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
+  const imports = db.prepare(`
+    SELECT i.id, i.filename, i.total_rows, i.valid_rows, i.created_count, i.updated_count,
+           i.skipped_count, i.error_count, i.duplicate_mode, i.created_at, u.name AS created_by_name
+    FROM commercial_lead_imports i
+    LEFT JOIN users u ON u.id = i.created_by AND u.agency_id = i.agency_id
+    WHERE i.agency_id = ? AND i.client_id = ?
+    ORDER BY i.created_at DESC, i.id DESC
+    LIMIT 8
+  `).all(Number(req.user.agency_id), scope.clientId);
+  res.json({ imports });
+});
+
 router.get('/leads', (req, res) => {
   const scope = resolveClientId(req, req.query.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
@@ -463,6 +708,162 @@ router.get('/leads', (req, res) => {
   res.json({ leads: db.prepare(query).all(...params), client_id: scope.clientId });
 });
 
+router.post('/leads/import/preview', (req, res) => {
+  if (!(req.user?.role === 'admin' || req.user?.is_commercial_team)) {
+    return res.status(403).json({ error: 'Importação disponível para administradores e equipe comercial' });
+  }
+  const scope = resolveClientId(req, req.body.client_id);
+  if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: 'Nenhuma linha encontrada para validar' });
+  if (rows.length > 3000) return res.status(400).json({ error: 'O limite por importação é de 3.000 leads' });
+
+  const preview = prepareLeadImport(req, scope.clientId, rows, req.body.defaults || {});
+  res.json(preview);
+});
+
+router.post('/leads/import', (req, res) => {
+  if (!(req.user?.role === 'admin' || req.user?.is_commercial_team)) {
+    return res.status(403).json({ error: 'Importação disponível para administradores e equipe comercial' });
+  }
+  const scope = resolveClientId(req, req.body.client_id);
+  if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: 'Nenhuma linha encontrada para importar' });
+  if (rows.length > 3000) return res.status(400).json({ error: 'O limite por importação é de 3.000 leads' });
+
+  const duplicateMode = ['skip', 'create', 'update'].includes(String(req.body.duplicate_mode))
+    ? String(req.body.duplicate_mode)
+    : 'skip';
+  const defaults = req.body.defaults || {};
+  const preview = prepareLeadImport(req, scope.clientId, rows, defaults);
+  const results = { created: 0, updated: 0, skipped: 0, errors: preview.stats.errors, rows: [] };
+
+  const insertLead = db.prepare(`
+    INSERT INTO commercial_leads (
+      agency_id, client_id, created_by, owner_user_id, company_name, contact_name, email, phone, whatsapp, cnpj,
+      instagram, website, segment, position_title, city, state, priority, source,
+      stage, stage_key, estimated_value, probability, next_action, next_action_date, notes, lost_reason, closed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const updateColumns = [
+    'company_name', 'contact_name', 'email', 'phone', 'whatsapp', 'cnpj', 'instagram', 'website',
+    'segment', 'position_title', 'city', 'state', 'priority', 'source', 'estimated_value', 'probability',
+    'next_action', 'next_action_date', 'notes', 'lost_reason', 'owner_user_id',
+  ];
+
+  const runImport = db.transaction(() => {
+    for (const item of preview.rows) {
+      if (!item.valid) {
+        results.rows.push({ row_number: item.row_number, status: 'error', errors: item.errors });
+        continue;
+      }
+
+      if (item.duplicate_in_file && !item.duplicate_id && duplicateMode !== 'create') {
+        results.skipped += 1;
+        results.rows.push({ row_number: item.row_number, status: 'skipped', reason: item.duplicate_reason || 'Duplicado no arquivo' });
+        continue;
+      }
+
+      const p = item.payload;
+      if (item.duplicate_id && duplicateMode === 'skip') {
+        results.skipped += 1;
+        results.rows.push({ row_number: item.row_number, status: 'skipped', lead_id: item.duplicate_id, reason: `Duplicado por ${item.duplicate_reason}` });
+        continue;
+      }
+
+      if (item.duplicate_id && duplicateMode === 'update') {
+        const allowedProvided = new Set(item.provided_fields || []);
+        const updates = [];
+        const values = [];
+        const columnValue = {
+          company_name: p.company_name,
+          contact_name: p.contact_name,
+          email: p.email,
+          phone: p.phone,
+          whatsapp: p.whatsapp,
+          cnpj: p.cnpj,
+          instagram: p.instagram,
+          website: p.website,
+          segment: p.segment,
+          position_title: p.position_title,
+          city: p.city,
+          state: p.state,
+          priority: p.priority,
+          source: p.source,
+          estimated_value: p.estimated_value,
+          probability: p.probability,
+          next_action: p.next_action,
+          next_action_date: p.next_action_date,
+          notes: p.notes,
+          lost_reason: p.lost_reason,
+          owner_user_id: p.owner_user_id,
+        };
+        for (const column of updateColumns) {
+          const ownerProvided = column === 'owner_user_id' && (allowedProvided.has('owner') || allowedProvided.has('owner_user_id'));
+          if (!allowedProvided.has(column) && !ownerProvided) continue;
+          updates.push(`${column} = ?`);
+          values.push(columnValue[column] ?? null);
+        }
+        if (allowedProvided.has('stage')) {
+          updates.push('stage = ?', 'stage_key = ?', 'closed_at = ?');
+          values.push(
+            p.stage_legacy,
+            p.stage,
+            ['won', 'lost'].includes(p.stage_type) ? new Date().toISOString() : null
+          );
+        }
+        if (updates.length) {
+          updates.push("updated_at = datetime('now')");
+          db.prepare(`UPDATE commercial_leads SET ${updates.join(', ')} WHERE id = ? AND agency_id = ? AND client_id = ?`)
+            .run(...values, Number(item.duplicate_id), Number(req.user.agency_id), scope.clientId);
+          addActivity(req.user.agency_id, item.duplicate_id, req.user.id, 'note', 'Oportunidade atualizada por importação CSV.');
+        }
+        results.updated += 1;
+        results.rows.push({ row_number: item.row_number, status: 'updated', lead_id: item.duplicate_id });
+        continue;
+      }
+
+      const closedAt = ['won', 'lost'].includes(p.stage_type) ? new Date().toISOString() : null;
+      const info = insertLead.run(
+        Number(req.user.agency_id), scope.clientId, Number(req.user.id), p.owner_user_id,
+        p.company_name, p.contact_name, p.email, p.phone, p.whatsapp, p.cnpj,
+        p.instagram, p.website, p.segment, p.position_title, p.city, p.state, p.priority, p.source,
+        p.stage_legacy, p.stage, p.estimated_value, p.probability, p.next_action, p.next_action_date,
+        p.notes, p.lost_reason, closedAt
+      );
+      addActivity(req.user.agency_id, info.lastInsertRowid, req.user.id, 'note', 'Oportunidade criada por importação CSV.');
+      results.created += 1;
+      results.rows.push({ row_number: item.row_number, status: 'created', lead_id: Number(info.lastInsertRowid) });
+    }
+
+    db.prepare(`
+      INSERT INTO commercial_lead_imports (
+        agency_id, client_id, created_by, filename, total_rows, valid_rows,
+        created_count, updated_count, skipped_count, error_count, duplicate_mode, mapping_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      Number(req.user.agency_id), scope.clientId, Number(req.user.id), normalizeText(req.body.filename),
+      preview.stats.total, preview.stats.valid, results.created, results.updated, results.skipped, results.errors,
+      duplicateMode, JSON.stringify(req.body.mapping || {})
+    );
+  });
+
+  runImport();
+  res.status(201).json({
+    ok: true,
+    stats: {
+      total: preview.stats.total,
+      created: results.created,
+      updated: results.updated,
+      skipped: results.skipped,
+      errors: results.errors,
+    },
+    rows: results.rows,
+  });
+});
+
 router.get('/leads/:id', (req, res) => {
   const scope = resolveClientId(req, req.query.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
@@ -495,12 +896,16 @@ router.post('/leads', (req, res) => {
   const create = db.transaction(() => {
     const info = db.prepare(`
       INSERT INTO commercial_leads (
-        agency_id, client_id, created_by, owner_user_id, company_name, contact_name, email, phone, source,
+        agency_id, client_id, created_by, owner_user_id, company_name, contact_name, email, phone, whatsapp, cnpj,
+        instagram, website, segment, position_title, city, state, priority, source,
         stage, stage_key, estimated_value, probability, next_action, next_action_date, notes, lost_reason, closed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       Number(req.user.agency_id), scope.clientId, Number(req.user.id), ownerUserId, companyName,
-      normalizeText(req.body.contact_name), normalizeText(req.body.email), normalizeText(req.body.phone), normalizeText(req.body.source),
+      normalizeText(req.body.contact_name), normalizeText(req.body.email), normalizeText(req.body.phone),
+      normalizeText(req.body.whatsapp), normalizeText(req.body.cnpj), normalizeText(req.body.instagram), normalizeText(req.body.website),
+      normalizeText(req.body.segment), normalizeText(req.body.position_title), normalizeText(req.body.city), normalizeText(req.body.state),
+      normalizePriority(req.body.priority), normalizeText(req.body.source),
       legacyStageFor(stage), stage.stage_key, estimatedValue, probability,
       normalizeText(req.body.next_action), normalizeText(req.body.next_action_date), normalizeText(req.body.notes),
       stage.stage_type === 'lost' ? normalizeText(req.body.lost_reason) : null, closedAt
@@ -531,7 +936,8 @@ router.put('/leads/:id', (req, res) => {
   if (!requestedStage) return res.status(400).json({ error: 'Etapa comercial inválida' });
 
   const allowed = [
-    'company_name', 'contact_name', 'email', 'phone', 'source', 'estimated_value',
+    'company_name', 'contact_name', 'email', 'phone', 'whatsapp', 'cnpj', 'instagram', 'website',
+    'segment', 'position_title', 'city', 'state', 'priority', 'source', 'estimated_value',
     'probability', 'next_action', 'next_action_date', 'notes', 'lost_reason', 'owner_user_id',
   ];
   const updates = [];
@@ -544,6 +950,7 @@ router.put('/leads/:id', (req, res) => {
     else if (field === 'estimated_value') values.push(normalizeMoney(req.body.estimated_value));
     else if (field === 'probability') values.push(normalizeProbability(req.body.probability, requestedStage.probability));
     else if (field === 'owner_user_id') values.push(ensureOwner(req.body.owner_user_id, req.user.agency_id, scope.clientId));
+    else if (field === 'priority') values.push(normalizePriority(req.body.priority));
     else values.push(normalizeText(req.body[field]));
   }
 
