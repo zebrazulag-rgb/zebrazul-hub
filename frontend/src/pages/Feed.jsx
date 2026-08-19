@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -11,6 +11,7 @@ import AvatarUpload from '../components/AvatarUpload.jsx';
 import CalendarView from './CalendarView.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PostModal from '../components/PostModal.jsx';
+import FeedCoverDashboard, { coverAnalysisKey, isVideoContent } from '../components/FeedCoverDashboard.jsx';
 import { formChanged } from '../utils/formState.js';
 
 export default function Feed() {
@@ -19,7 +20,8 @@ export default function Feed() {
   const { selectedClient } = useClientFilter();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeView = searchParams.get('view') === 'calendar' ? 'calendar' : 'grid';
+  const requestedView = searchParams.get('view');
+  const activeView = ['calendar', 'published', 'compare'].includes(requestedView) ? requestedView : 'grid';
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
@@ -42,6 +44,15 @@ export default function Feed() {
   const [galleryOrderError, setGalleryOrderError] = useState('');
   const [creatingPost, setCreatingPost] = useState(false);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const [publishedPosts, setPublishedPosts] = useState([]);
+  const [publishedConnection, setPublishedConnection] = useState(null);
+  const [publishedLoading, setPublishedLoading] = useState(false);
+  const [publishedError, setPublishedError] = useState('');
+  const [syncingPublished, setSyncingPublished] = useState(false);
+  const [coverAnalyses, setCoverAnalyses] = useState({});
+  const [coverAnalyzing, setCoverAnalyzing] = useState(false);
+  const [coverError, setCoverError] = useState('');
+  const autoAnalysisSignatureRef = useRef('');
   const draggedGalleryIndexRef = useRef(null);
 
   useEffect(() => {
@@ -70,6 +81,12 @@ export default function Feed() {
       setEditingPost(null);
       setShowHiddenPosts(false);
       setCreatingPost(false);
+      setPublishedPosts([]);
+      setPublishedConnection(null);
+      setPublishedError('');
+      setCoverAnalyses({});
+      setCoverError('');
+      autoAnalysisSignatureRef.current = '';
     }
   }, [selectedClient, user]);
 
@@ -94,9 +111,109 @@ export default function Feed() {
 
   const currentClient = clients.find((client) => String(client.id) === String(clientId));
 
+  async function loadPublishedFeed(targetClientId = clientId) {
+    if (!targetClientId) {
+      setPublishedPosts([]);
+      setPublishedConnection(null);
+      return;
+    }
+    setPublishedLoading(true);
+    setPublishedError('');
+    try {
+      const { data } = await api.get(`/feed-intelligence/client/${targetClientId}/published`, { params: { limit: 30 } });
+      setPublishedPosts(data.items || []);
+      setPublishedConnection(data.connection || null);
+      if (!data.connection) setPublishedError('Conecte o Instagram deste cliente em Relatórios para visualizar o feed publicado.');
+    } catch (err) {
+      setPublishedPosts([]);
+      setPublishedConnection(null);
+      setPublishedError(err.response?.data?.error || 'Não foi possível carregar o feed publicado.');
+    } finally {
+      setPublishedLoading(false);
+    }
+  }
+
+  async function loadCoverAnalyses(targetClientId = clientId) {
+    if (!targetClientId) { setCoverAnalyses({}); return; }
+    try {
+      const { data } = await api.get(`/feed-intelligence/client/${targetClientId}/covers`);
+      setCoverAnalyses(data.analyses || {});
+    } catch {
+      setCoverAnalyses({});
+    }
+  }
+
+  async function analyzeCovers({ force = false, silent = false, includePublished = true } = {}) {
+    if (!clientId || coverAnalyzing) return;
+    const plannedIds = posts.filter((item) => isVideoContent(item.content_type)).map((item) => item.id);
+    const instagramIds = includePublished ? publishedPosts.filter((item) => isVideoContent(item.content_type)).map((item) => item.content_id) : [];
+    if (!plannedIds.length && !instagramIds.length) return;
+    setCoverAnalyzing(true);
+    if (!silent) setCoverError('');
+    try {
+      const { data } = await api.post(`/feed-intelligence/client/${clientId}/analyze-covers`, {
+        planned_ids: plannedIds,
+        instagram_ids: instagramIds,
+        force,
+      });
+      setCoverAnalyses((current) => ({ ...current, ...(data.analyses || {}) }));
+      const failures = (data.results || []).filter((item) => !item.ok);
+      if (failures.length && !silent) setCoverError(failures[0]?.error || 'Algumas capas não puderam ser analisadas.');
+    } catch (err) {
+      if (!silent) setCoverError(err.response?.data?.error || 'Não foi possível analisar as capas agora.');
+    } finally {
+      setCoverAnalyzing(false);
+    }
+  }
+
+  async function syncInstagramFeed() {
+    if (!clientId || syncingPublished) return;
+    setSyncingPublished(true);
+    setPublishedError('');
+    try {
+      const now = new Date();
+      const since = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const to = now.toISOString().slice(0, 10);
+      const from = since.toISOString().slice(0, 10);
+      await api.post(`/meta-organic/client/${clientId}/sync`, { from, to });
+      await loadPublishedFeed(clientId);
+      await loadCoverAnalyses(clientId);
+    } catch (err) {
+      setPublishedError(err.response?.data?.error || 'Não foi possível sincronizar o Instagram agora.');
+    } finally {
+      setSyncingPublished(false);
+    }
+  }
+
+  function openPublishedPost(post) {
+    if (post?.permalink) window.open(post.permalink, '_blank', 'noopener,noreferrer');
+  }
+
+  useEffect(() => {
+    if (!clientId) return;
+    loadPublishedFeed(clientId);
+    loadCoverAnalyses(clientId);
+  }, [clientId]);
+
+  useEffect(() => {
+    if (!clientId || user?.role === 'client' || coverAnalyzing) return;
+    // Analisa automaticamente apenas os vídeos planejados: é onde o alerta
+    // evita que um Reels chegue à publicação sem capa. O feed já publicado
+    // também pode ser analisado pelo botão, sem gerar custo a cada abertura.
+    const pendingKeys = posts.filter((item) => isVideoContent(item.content_type)).map((item) => ({
+      key: coverAnalysisKey('planned', item.id),
+      imageRef: item.media_data || item.media_gallery?.[0]?.data || null,
+    })).filter((item) => !coverAnalyses[item.key] || coverAnalyses[item.key]?.image_ref !== item.imageRef).map((item) => item.key);
+    if (!pendingKeys.length) return;
+    const signature = pendingKeys.sort().join('|');
+    if (!signature || autoAnalysisSignatureRef.current === signature) return;
+    autoAnalysisSignatureRef.current = signature;
+    analyzeCovers({ silent: true, includePublished: false });
+  }, [clientId, posts, publishedPosts, coverAnalyses, user?.role]);
+
   function switchView(view) {
     setOpenPost(null);
-    setSearchParams(view === 'calendar' ? { view: 'calendar' } : {}, { replace: true });
+    setSearchParams(view === 'grid' ? {} : { view }, { replace: true });
   }
 
   function startEditProfile() {
@@ -369,16 +486,26 @@ export default function Feed() {
     }
   }
 
+  const publishedClient = currentClient ? {
+    ...currentClient,
+    instagram_username: publishedConnection?.instagram_username || currentClient.instagram_username,
+    instagram_display_name: publishedConnection?.instagram_name || currentClient.instagram_display_name,
+    avatar_data: publishedConnection?.instagram_picture_url || currentClient.avatar_data,
+  } : currentClient;
+
+  const viewDescription = {
+    grid: 'Feed planejado no ZebraHub, com leitura visual das capas antes da publicação.',
+    published: 'Feed publicado no Instagram, usando a última sincronização disponível.',
+    compare: 'Compare lado a lado o que foi planejado no ZebraHub com o que está publicado.',
+    calendar: 'Visualize as datas de publicação dentro do planejamento do feed.',
+  }[activeView];
+
   return (
     <div className="feed-page space-y-6 min-w-0">
       <div className="flex items-center justify-between flex-wrap gap-4 min-w-0">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-slate-800">Feed</h1>
-          <p className="text-slate-500 mt-1">
-            {activeView === 'calendar'
-              ? 'Visualize as datas de publicação dentro do planejamento do feed.'
-              : 'Prévia do feed com as datas mais futuras no topo e as mais próximas na base.'}
-          </p>
+          <h1 className="text-2xl font-bold text-slate-800">Feed em tempo real</h1>
+          <p className="text-slate-500 mt-1">{viewDescription}</p>
         </div>
         {clientId && user?.role !== 'client' && (
           <div className="flex items-center gap-2 flex-wrap">
@@ -408,18 +535,34 @@ export default function Feed() {
         )}
       </div>
 
-      <div className="inline-flex max-w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         <button
           onClick={() => switchView('grid')}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
             activeView === 'grid' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
-          <Grid3x3 size={17} /> Prévia do feed
+          <Grid3x3 size={17} /> Planejado
+        </button>
+        <button
+          onClick={() => switchView('published')}
+          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeView === 'published' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Radio size={17} /> Publicado
+        </button>
+        <button
+          onClick={() => switchView('compare')}
+          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeView === 'compare' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Columns3 size={17} /> Comparar
         </button>
         <button
           onClick={() => switchView('calendar')}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
             activeView === 'calendar' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
@@ -429,6 +572,17 @@ export default function Feed() {
 
       {!clientId && (
         <p className="text-sm text-slate-400 py-12 text-center">Selecione um cliente para visualizar o feed.</p>
+      )}
+
+      {clientId && activeView !== 'calendar' && (
+        <FeedCoverDashboard
+          plannedPosts={posts}
+          publishedPosts={publishedPosts}
+          analyses={coverAnalyses}
+          analyzing={coverAnalyzing}
+          onAnalyze={() => analyzeCovers({ force: true })}
+          error={coverError}
+        />
       )}
 
       {clientId && activeView === 'calendar' && (
@@ -443,7 +597,70 @@ export default function Feed() {
             onPostClick={openFeedPost}
             editable={user?.role !== 'client'}
             onEdit={startEditProfile}
+            coverAnalyses={coverAnalyses}
+            sourceType="planned"
           />
+        </div>
+      )}
+
+      {clientId && activeView === 'published' && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Instagram publicado</p>
+              <p className="text-xs text-slate-500">
+                {publishedConnection?.last_synced_at ? `Última sincronização: ${new Date(`${String(publishedConnection.last_synced_at).replace(' ', 'T')}Z`).toLocaleString('pt-BR')}` : 'Ainda não sincronizado.'}
+              </p>
+            </div>
+            {user?.role !== 'client' && (
+              <button type="button" onClick={syncInstagramFeed} disabled={syncingPublished} className="btn-secondary flex items-center justify-center gap-2 disabled:opacity-50">
+                {syncingPublished ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                {syncingPublished ? 'Sincronizando...' : 'Sincronizar Instagram'}
+              </button>
+            )}
+          </div>
+          {publishedError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{publishedError}</div>}
+          {publishedLoading ? (
+            <div className="flex justify-center py-16 text-slate-400"><Loader2 className="animate-spin" /></div>
+          ) : (
+            <div className="instagram-preview-stage flex justify-center">
+              <InstagramProfileMockup
+                client={publishedClient}
+                posts={publishedPosts}
+                onPostClick={openPublishedPost}
+                coverAnalyses={coverAnalyses}
+                sourceType="instagram"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {clientId && activeView === 'compare' && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Planejado x publicado</p>
+              <p className="text-xs text-slate-500">Use esta visão para conferir composição, sequência e capas antes que o feed real se afaste do planejamento.</p>
+            </div>
+            {user?.role !== 'client' && (
+              <button type="button" onClick={syncInstagramFeed} disabled={syncingPublished} className="btn-secondary flex items-center justify-center gap-2 disabled:opacity-50">
+                {syncingPublished ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                Atualizar publicado
+              </button>
+            )}
+          </div>
+          {publishedError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{publishedError}</div>}
+          <div className="grid items-start gap-6 2xl:grid-cols-2">
+            <section className="min-w-0">
+              <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Planejado no ZebraHub</h3><span className="text-xs font-semibold text-slate-400">{posts.length} itens</span></div>
+              <InstagramProfileMockup client={currentClient} posts={posts} onPostClick={openFeedPost} coverAnalyses={coverAnalyses} sourceType="planned" />
+            </section>
+            <section className="min-w-0">
+              <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Publicado no Instagram</h3><span className="text-xs font-semibold text-slate-400">{publishedPosts.length} itens</span></div>
+              <InstagramProfileMockup client={publishedClient} posts={publishedPosts} onPostClick={openPublishedPost} coverAnalyses={coverAnalyses} sourceType="instagram" />
+            </section>
+          </div>
         </div>
       )}
 

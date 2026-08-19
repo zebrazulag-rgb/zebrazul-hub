@@ -1,11 +1,12 @@
 import { ArrowLeft, Bell, Grid3x3, Images, Link2, MoreVertical, SquareUserRound, UserPlus } from 'lucide-react';
+import { coverAnalysisKey, coverStatusMeta, isVideoContent } from './FeedCoverDashboard.jsx';
 
 function formatMetric(value) {
   const number = Number(value || 0);
   return new Intl.NumberFormat('pt-BR').format(number);
 }
 
-export default function InstagramProfileMockup({ client, posts, onPostClick, editable = false, onEdit }) {
+export default function InstagramProfileMockup({ client, posts, onPostClick, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
   const username = client?.instagram_username || client?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || 'perfil';
   const displayName = client?.instagram_display_name || client?.name || 'Nome do perfil';
   const postsCount = client?.instagram_posts_count ?? posts.length;
@@ -78,12 +79,31 @@ export default function InstagramProfileMockup({ client, posts, onPostClick, edi
         <div className="grid grid-cols-3 gap-[3px] bg-white p-[3px]">
           {posts.map((post) => {
             const galleryCount = Array.isArray(post.media_gallery) ? post.media_gallery.length : 0;
+            const sourceId = post.id ?? post.content_id;
+            const analysis = coverAnalyses[coverAnalysisKey(sourceType, sourceId)];
+            const video = isVideoContent(post.content_type);
+            const status = coverStatusMeta(analysis?.status);
+            const badgeTone = {
+              emerald: 'bg-emerald-500 text-white',
+              rose: 'bg-rose-500 text-white',
+              amber: 'bg-amber-400 text-slate-950',
+              slate: 'bg-slate-900/75 text-white',
+            }[status.tone] || 'bg-slate-900/75 text-white';
+            const mediaSrc = post.media_data || post.thumbnail_url || null;
             return (
-              <button key={post.id} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100">
-                {post.media_data ? <img src={post.media_data} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /> : <div className="h-full w-full bg-slate-100" />}
+              <button key={`${sourceType}-${sourceId}`} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100 text-left">
+                {mediaSrc ? <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /> : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
                 {galleryCount > 1 && (
                   <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white shadow">
                     <Images size={13} /> {galleryCount}
+                  </span>
+                )}
+                {showCoverBadges && video && (
+                  <span
+                    className={`absolute bottom-2 left-2 max-w-[85%] truncate rounded-full px-2 py-1 text-[9px] font-black tracking-[0.06em] shadow ${badgeTone}`}
+                    title={analysis?.summary || status.label}
+                  >
+                    {status.short || status.label}
                   </span>
                 )}
               </button>
