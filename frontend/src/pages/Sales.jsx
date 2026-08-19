@@ -15,12 +15,14 @@ import {
   Target,
   Trash2,
   TrendingUp,
+  Upload,
   X,
 } from 'lucide-react';
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import CommercialStageManager from '../components/CommercialStageManager.jsx';
+import CommercialLeadImportModal from '../components/CommercialLeadImportModal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { notifyCommercialUpdated } from '../utils/commercialRealtime.js';
@@ -149,6 +151,15 @@ function emptyForm(currentUserId, defaultStage) {
     contact_name: '',
     email: '',
     phone: '',
+    whatsapp: '',
+    cnpj: '',
+    instagram: '',
+    website: '',
+    segment: '',
+    position_title: '',
+    city: '',
+    state: '',
+    priority: 'medium',
     source: '',
     stage: defaultStage?.stage_key || '',
     estimated_value: '',
@@ -191,6 +202,7 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900">{lead.company_name}</p>
               <p className="mt-0.5 truncate text-xs text-slate-500">{lead.contact_name || 'Contato não informado'}</p>
+              {(lead.whatsapp || lead.phone) && <p className="mt-1 truncate text-[10px] font-medium text-slate-400">{lead.whatsapp || lead.phone}{lead.city ? ` · ${lead.city}${lead.state ? `/${lead.state}` : ''}` : ''}</p>}
               {lead.source === 'Diagnóstico APOGEU' && (
                 <span className="mt-2 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-700">APOGEU · Diagnóstico</span>
               )}
@@ -207,6 +219,11 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
             <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${safeStage.soft}`}>{lead.probability}%</span>
           </div>
           <DiagnosticLeadSummary lead={lead} compact />
+          {lead.priority && lead.source !== 'Diagnóstico APOGEU' && (
+            <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wide ${lead.priority === 'high' ? 'bg-rose-50 text-rose-600' : lead.priority === 'low' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>
+              Prioridade {lead.priority === 'high' ? 'alta' : lead.priority === 'low' ? 'baixa' : 'média'}
+            </span>
+          )}
 
           {(lead.next_action || lead.next_action_date) && (
             <div className={`mt-3 rounded-xl px-3 py-2 ${overdue ? 'bg-rose-50 text-rose-700' : 'bg-slate-50 text-slate-600'}`}>
@@ -241,6 +258,8 @@ export default function Sales() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [stageManagerOpen, setStageManagerOpen] = useState(false);
+  const [leadImportOpen, setLeadImportOpen] = useState(false);
+  const [importNotice, setImportNotice] = useState('');
 
   const clientId = user?.role === 'client' ? Number(user.client_id) : Number(selectedClient?.id || 0);
   const currentClient = user?.role === 'client'
@@ -302,10 +321,10 @@ export default function Sales() {
       if (originFilter === 'apogeu' && lead.source !== 'Diagnóstico APOGEU') return false;
       if (originFilter === 'other' && lead.source === 'Diagnóstico APOGEU') return false;
 
-      const priority = String(lead.diagnostic_priority || '').toUpperCase();
-      if (priorityFilter === 'high' && !priority.includes('ALTA')) return false;
-      if (priorityFilter === 'medium' && !(priority.includes('MÉDIA') || priority.includes('MEDIA'))) return false;
-      if (priorityFilter === 'low' && !priority.includes('BAIXA')) return false;
+      const priority = String(lead.priority || lead.diagnostic_priority || '').toUpperCase();
+      if (priorityFilter === 'high' && !(priority === 'HIGH' || priority.includes('ALTA'))) return false;
+      if (priorityFilter === 'medium' && !(priority === 'MEDIUM' || priority.includes('MÉDIA') || priority.includes('MEDIA'))) return false;
+      if (priorityFilter === 'low' && !(priority === 'LOW' || priority.includes('BAIXA'))) return false;
 
       const fit = Number(lead.diagnostic_fit_score);
       if (fitFilter === '80' && !(Number.isFinite(fit) && fit >= 80)) return false;
@@ -314,7 +333,8 @@ export default function Sales() {
 
       if (!term) return true;
       return [
-        lead.company_name, lead.contact_name, lead.email, lead.phone, lead.source,
+        lead.company_name, lead.contact_name, lead.email, lead.phone, lead.whatsapp, lead.cnpj, lead.instagram,
+        lead.website, lead.segment, lead.position_title, lead.city, lead.state, lead.source,
         lead.diagnostic_primary_gap, lead.diagnostic_classification, lead.diagnostic_segment,
         lead.diagnostic_role, lead.diagnostic_priority,
       ].some((value) => String(value || '').toLowerCase().includes(term));
@@ -350,6 +370,15 @@ export default function Sales() {
       contact_name: lead.contact_name || '',
       email: lead.email || '',
       phone: lead.phone || '',
+      whatsapp: lead.whatsapp || '',
+      cnpj: lead.cnpj || '',
+      instagram: lead.instagram || '',
+      website: lead.website || '',
+      segment: lead.segment || '',
+      position_title: lead.position_title || '',
+      city: lead.city || '',
+      state: lead.state || '',
+      priority: lead.priority || 'medium',
       source: lead.source || '',
       stage: lead.stage || defaultStage?.stage_key || '',
       estimated_value: lead.estimated_value ?? '',
@@ -474,6 +503,11 @@ export default function Sales() {
             <button type="button" onClick={() => navigate('/comercial/funil')} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
               <TrendingUp size={17} /> Ver funil
             </button>
+            {user?.role !== 'client' && (
+              <button type="button" onClick={() => setLeadImportOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
+                <Upload size={17} /> Importar leads
+              </button>
+            )}
             <button type="button" onClick={beginCreate} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5">
               <Plus size={17} /> Nova oportunidade
             </button>
@@ -527,9 +561,17 @@ export default function Sales() {
             <option value="all">Todos os responsáveis</option>
             {teamUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
           </select>
+          {user?.role !== 'client' && <button type="button" onClick={() => setLeadImportOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"><Upload size={16} /> Importar</button>}
           <button type="button" onClick={beginCreate} className="btn-primary inline-flex items-center gap-2 text-sm"><Plus size={16} /> Adicionar lead</button>
         </div>
       </section>
+
+      {importNotice && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          <span>{importNotice}</span>
+          <button type="button" onClick={() => setImportNotice('')} className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-100"><X size={15} /></button>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 xl:grid-cols-5">
@@ -647,6 +689,22 @@ export default function Sales() {
         }}
       />
 
+      <CommercialLeadImportModal
+        open={leadImportOpen}
+        onClose={() => setLeadImportOpen(false)}
+        clientId={clientId}
+        clientName={currentClient?.name || ''}
+        stages={stages}
+        teamUsers={teamUsers}
+        currentUser={user}
+        onImported={async (data) => {
+          await loadData();
+          notifyCommercialUpdated(clientId);
+          const stats = data?.stats || {};
+          setImportNotice(`Importação concluída: ${stats.created || 0} criados, ${stats.updated || 0} atualizados e ${stats.skipped || 0} ignorados.`);
+        }}
+      />
+
       {form && (
         <ModalBackdrop onClose={() => !saving && setForm(null)} disabled={saving} className="z-[70]">
           <form onSubmit={saveLead} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[28px] bg-white shadow-2xl">
@@ -719,6 +777,7 @@ export default function Sales() {
                   <label className="mb-1 block text-sm font-medium text-slate-700">Origem</label>
                   <select className="input-field" value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })}>
                     <option value="">Não informada</option>
+                    {form.source && !ORIGINS.includes(form.source) && <option value={form.source}>{form.source}</option>}
                     {ORIGINS.map((origin) => <option key={origin} value={origin}>{origin}</option>)}
                   </select>
                 </div>
@@ -729,6 +788,21 @@ export default function Sales() {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Telefone</label>
                   <div className="relative"><Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" /><input className="input-field pl-10" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="(00) 00000-0000" /></div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/65 p-4">
+                <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Dados de prospecção</p>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">WhatsApp</label><input className="input-field" value={form.whatsapp} onChange={(event) => setForm({ ...form, whatsapp: event.target.value })} placeholder="(00) 00000-0000" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">CNPJ</label><input className="input-field" value={form.cnpj} onChange={(event) => setForm({ ...form, cnpj: event.target.value })} placeholder="00.000.000/0000-00" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Instagram</label><input className="input-field" value={form.instagram} onChange={(event) => setForm({ ...form, instagram: event.target.value })} placeholder="@empresa" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Site</label><input className="input-field" value={form.website} onChange={(event) => setForm({ ...form, website: event.target.value })} placeholder="https://..." /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Segmento</label><input className="input-field" value={form.segment} onChange={(event) => setForm({ ...form, segment: event.target.value })} placeholder="Ex: Contabilidade" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Cargo</label><input className="input-field" value={form.position_title} onChange={(event) => setForm({ ...form, position_title: event.target.value })} placeholder="Ex: Sócio / Diretor" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Cidade</label><input className="input-field" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} placeholder="Natal" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Estado</label><input className="input-field" value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })} placeholder="RN" /></div>
+                  <div><label className="mb-1 block text-sm font-medium text-slate-700">Prioridade</label><select className="input-field" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option></select></div>
                 </div>
               </div>
 
