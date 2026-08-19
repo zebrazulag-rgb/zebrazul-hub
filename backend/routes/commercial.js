@@ -193,7 +193,7 @@ function prepareLeadImport(req, clientId, rows, defaults = {}) {
       cnpj: normalizeText(row.cnpj),
       instagram: normalizeText(row.instagram),
       website: normalizeText(row.website),
-      segment: normalizeText(row.segment),
+      segment: normalizeText(row.segment || defaults.default_segment),
       position_title: normalizeText(row.position_title),
       city: normalizeText(row.city),
       state: normalizeText(row.state),
@@ -240,6 +240,7 @@ function prepareLeadImport(req, clientId, rows, defaults = {}) {
     if (meaningful(defaults.default_owner_user_id) && !providedFields.includes('owner') && !providedFields.includes('owner_user_id')) providedFields.push('owner_user_id');
     if (meaningful(defaults.default_source) && !providedFields.includes('source')) providedFields.push('source');
     if (meaningful(defaults.default_priority) && !providedFields.includes('priority')) providedFields.push('priority');
+    if (meaningful(defaults.default_segment) && !providedFields.includes('segment')) providedFields.push('segment');
 
     prepared.push({
       row_number: rowNumber,
@@ -454,6 +455,37 @@ function addActivity(agencyId, leadId, userId, type, description) {
   `).run(Number(agencyId), Number(leadId), Number(userId), type, description);
 }
 
+function syncNichesFromLeads(agencyId, clientId, createdBy) {
+  const values = db.prepare(`
+    SELECT DISTINCT trim(segment) AS name
+    FROM commercial_leads
+    WHERE agency_id = ? AND client_id = ?
+      AND segment IS NOT NULL AND trim(segment) != ''
+    ORDER BY name COLLATE NOCASE
+  `).all(Number(agencyId), Number(clientId));
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO commercial_niches (agency_id, client_id, created_by, name)
+    VALUES (?, ?, ?, ?)
+  `);
+  const run = db.transaction(() => {
+    values.forEach((item) => insert.run(Number(agencyId), Number(clientId), Number(createdBy), item.name));
+  });
+  run();
+}
+
+function listNiches(agencyId, clientId, createdBy) {
+  syncNichesFromLeads(agencyId, clientId, createdBy);
+  return db.prepare(`
+    SELECT n.id, n.name, n.created_at, n.updated_at,
+      (SELECT COUNT(*) FROM commercial_leads l
+       WHERE l.agency_id = n.agency_id AND l.client_id = n.client_id
+         AND lower(trim(COALESCE(l.segment, ''))) = lower(trim(n.name))) AS lead_count
+    FROM commercial_niches n
+    WHERE n.agency_id = ? AND n.client_id = ?
+    ORDER BY n.name COLLATE NOCASE
+  `).all(Number(agencyId), Number(clientId));
+}
+
 router.get('/clients', (req, res) => {
   res.json({ clients: accessibleClients(req.user) });
 });
@@ -468,6 +500,78 @@ router.get('/stages', (req, res) => {
   const scope = resolveClientId(req, req.query.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
   res.json({ stages: getStages(req.user.agency_id, scope.clientId), client_id: scope.clientId });
+});
+
+router.get('/niches', (req, res) => {
+  const scope = resolveClientId(req, req.query.client_id);
+  if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
+  const unclassified = db.prepare(`
+    SELECT COUNT(*) AS total FROM commercial_leads
+    WHERE agency_id = ? AND client_id = ? AND (segment IS NULL OR trim(segment) = '')
+  `).get(Number(req.user.agency_id), scope.clientId);
+  res.json({
+    niches: listNiches(req.user.agency_id, scope.clientId, req.user.id),
+    unclassified_count: Number(unclassified?.total || 0),
+  });
+});
+
+router.post('/niches', (req, res) => {
+  if (req.user?.role === 'client') return res.status(403).json({ error: 'Apenas a equipe pode criar nichos' });
+  const scope = resolveClientId(req, req.body.client_id);
+  if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Informe o nome do nicho' });
+  if (name.length > 80) return res.status(400).json({ error: 'Use um nome de nicho com até 80 caracteres' });
+
+  db.prepare(`
+    INSERT OR IGNORE INTO commercial_niches (agency_id, client_id, created_by, name)
+    VALUES (?, ?, ?, ?)
+  `).run(Number(req.user.agency_id), scope.clientId, Number(req.user.id), name);
+
+  let updatedCount = 0;
+  if (req.body.apply_to_unclassified === true) {
+    const result = db.prepare(`
+      UPDATE commercial_leads
+      SET segment = ?, updated_at = datetime('now')
+      WHERE agency_id = ? AND client_id = ? AND (segment IS NULL OR trim(segment) = '')
+    `).run(name, Number(req.user.agency_id), scope.clientId);
+    updatedCount = Number(result.changes || 0);
+  }
+
+  res.status(201).json({
+    niches: listNiches(req.user.agency_id, scope.clientId, req.user.id),
+    updated_count: updatedCount,
+  });
+});
+
+router.post('/leads/bulk-niche', (req, res) => {
+  if (req.user?.role === 'client') return res.status(403).json({ error: 'Apenas a equipe pode classificar leads em massa' });
+  const scope = resolveClientId(req, req.body.client_id);
+  if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Selecione um nicho' });
+  db.prepare(`
+    INSERT OR IGNORE INTO commercial_niches (agency_id, client_id, created_by, name)
+    VALUES (?, ?, ?, ?)
+  `).run(Number(req.user.agency_id), scope.clientId, Number(req.user.id), name);
+
+  const ids = Array.isArray(req.body.lead_ids) ? req.body.lead_ids.map(Number).filter(Boolean) : [];
+  let result;
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    result = db.prepare(`
+      UPDATE commercial_leads SET segment = ?, updated_at = datetime('now')
+      WHERE agency_id = ? AND client_id = ? AND id IN (${placeholders})
+    `).run(name, Number(req.user.agency_id), scope.clientId, ...ids);
+  } else if (req.body.only_unclassified === true) {
+    result = db.prepare(`
+      UPDATE commercial_leads SET segment = ?, updated_at = datetime('now')
+      WHERE agency_id = ? AND client_id = ? AND (segment IS NULL OR trim(segment) = '')
+    `).run(name, Number(req.user.agency_id), scope.clientId);
+  } else {
+    return res.status(400).json({ error: 'Informe os leads que deseja classificar' });
+  }
+  res.json({ updated_count: Number(result?.changes || 0), niches: listNiches(req.user.agency_id, scope.clientId, req.user.id) });
 });
 
 router.post('/stages', (req, res) => {

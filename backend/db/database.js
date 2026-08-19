@@ -392,6 +392,20 @@ CREATE TABLE IF NOT EXISTS commercial_lead_imports (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS commercial_niches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  name TEXT NOT NULL COLLATE NOCASE,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  UNIQUE(agency_id, client_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS financial_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL DEFAULT 1,
@@ -1642,6 +1656,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_phone ON commercial_leads(agency_id, client_id, phone);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_cnpj ON commercial_leads(agency_id, client_id, cnpj);
   CREATE INDEX IF NOT EXISTS idx_commercial_lead_imports_client ON commercial_lead_imports(agency_id, client_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_commercial_niches_client ON commercial_niches(agency_id, client_id, name);
   CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_client ON commercial_lead_diagnostics(agency_id, client_id, fit_score, created_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_submission ON commercial_lead_diagnostics(agency_id, client_id, submission_id);
