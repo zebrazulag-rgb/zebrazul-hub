@@ -601,6 +601,33 @@ CREATE TABLE IF NOT EXISTS meta_organic_content_snapshots (
   FOREIGN KEY (organic_account_id) REFERENCES meta_organic_accounts(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS feed_cover_analyses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  source_type TEXT NOT NULL CHECK(source_type IN ('planned','instagram')),
+  source_id TEXT NOT NULL,
+  image_ref TEXT,
+  content_type TEXT,
+  status TEXT NOT NULL DEFAULT 'review' CHECK(status IN ('cover_likely','frame_likely','review','missing_cover','not_applicable','error')),
+  confidence REAL DEFAULT 0,
+  cover_score INTEGER DEFAULT 0,
+  summary TEXT,
+  visual_signals TEXT DEFAULT '[]',
+  analysis_source TEXT DEFAULT 'rule',
+  model TEXT,
+  source_updated_at TEXT,
+  analyzed_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(agency_id, client_id, source_type, source_id),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_feed_cover_analyses_client
+  ON feed_cover_analyses(agency_id, client_id, source_type, status);
+
 CREATE TABLE IF NOT EXISTS action_plans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL DEFAULT 1,
@@ -1615,7 +1642,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '34', datetime('now'))
+   VALUES ('schema_version', '35', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
