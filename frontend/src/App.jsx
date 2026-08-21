@@ -27,6 +27,7 @@ import BeeRematriculas from './pages/BeeRematriculas.jsx';
 import BeeCampaignBriefing from './pages/BeeCampaignBriefing.jsx';
 import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
+import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
 
 
 function SocialMediaLegacyRedirect({ section }) {
@@ -55,6 +56,7 @@ export default function App() {
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
       <Route path="/briefing-bee-2027/:token" element={<PublicBeeCampaignBriefing />} />
       <Route path="/solicitar/:token" element={<PublicTaskRequest />} />
+      <Route path="/agenda/:token" element={<PublicTaskCalendar />} />
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />

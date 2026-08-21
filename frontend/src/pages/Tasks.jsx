@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
 import TaskCsvModal, { downloadTaskCsvModel } from '../components/TaskCsvModal.jsx';
 import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
+import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PageHero from '../components/PageHero.jsx';
 import Approval from './Approval.jsx';
@@ -244,6 +245,7 @@ export default function Tasks() {
   const [convertError, setConvertError] = useState('');
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [showRequestLink, setShowRequestLink] = useState(false);
+  const [showCalendarShare, setShowCalendarShare] = useState(false);
   const [showTaskActions, setShowTaskActions] = useState(false);
   const taskActionsRef = useRef(null);
   const [hidePosted, setHidePosted] = useState(() => {
@@ -1032,6 +1034,16 @@ export default function Tasks() {
                 <Calendar size={14} /> Calendário
               </button>
             </div>
+            {view === 'calendar' && user?.role !== 'client' && effectiveClientId && (
+              <button
+                type="button"
+                onClick={() => setShowCalendarShare(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-zebrazul-200 hover:bg-zebrazul-50 hover:text-zebrazul-700"
+                title={`Compartilhar ${MONTHS[month]} de ${year}`}
+              >
+                <Link2 size={14} /> Compartilhar mês
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1177,6 +1189,18 @@ export default function Tasks() {
 
       {showRequestLink && selectedClient && (
         <TaskRequestLinkModal client={selectedClient} onClose={() => setShowRequestLink(false)} />
+      )}
+
+
+      {showCalendarShare && effectiveClientId && (
+        <TaskCalendarShareModal
+          clientId={effectiveClientId}
+          clientName={selectedClient?.name || user?.client_name || 'Cliente'}
+          year={year}
+          month={month}
+          hidePosted={hidePosted}
+          onClose={() => setShowCalendarShare(false)}
+        />
       )}
 
       {showCsvImport && (
