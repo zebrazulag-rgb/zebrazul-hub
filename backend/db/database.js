@@ -1639,6 +1639,32 @@ try {
 }
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS task_calendar_shares (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    share_year INTEGER NOT NULL,
+    share_month INTEGER NOT NULL,
+    show_status INTEGER NOT NULL DEFAULT 1,
+    show_assignees INTEGER NOT NULL DEFAULT 0,
+    show_description INTEGER NOT NULL DEFAULT 0,
+    include_posted INTEGER NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+    UNIQUE(agency_id, client_id, share_year, share_month)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_task_calendar_shares_client_month
+    ON task_calendar_shares(agency_id, client_id, share_year, share_month, active);
+`);
+
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
@@ -1699,7 +1725,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '35', datetime('now'))
+   VALUES ('schema_version', '36', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

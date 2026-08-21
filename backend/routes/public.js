@@ -109,4 +109,105 @@ router.get('/feed/:token', (req, res) => {
   res.json({ client, posts: posts.map(normalizePost) });
 });
 
+
+const PUBLIC_TASK_STATUS_LABELS = {
+  pending: 'Pendente',
+  in_progress: 'Em andamento',
+  done: 'Concluída',
+  posted: 'Postado',
+};
+
+router.get('/task-calendar/:token', (req, res) => {
+  const share = db.prepare(`
+    SELECT
+      s.id, s.agency_id, s.client_id, s.share_year, s.share_month,
+      s.show_status, s.show_assignees, s.show_description, s.include_posted,
+      c.name AS client_name, c.avatar_data, c.logo_color
+    FROM task_calendar_shares s
+    JOIN clients c ON c.id = s.client_id AND c.agency_id = s.agency_id
+    WHERE s.token = ? AND s.active = 1
+    LIMIT 1
+  `).get(req.params.token);
+
+  if (!share) return res.status(404).json({ error: 'Link inválido ou desativado' });
+
+  const start = `${share.share_year}-${String(share.share_month).padStart(2, '0')}-01`;
+  const endDate = new Date(Number(share.share_year), Number(share.share_month), 0);
+  const end = `${share.share_year}-${String(share.share_month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+
+  let query = `
+    SELECT
+      t.id, t.parent_task_id, t.title, t.description, t.task_type, t.content_type,
+      t.due_date, t.status, t.project_name, t.front_name,
+      parent.title AS parent_title
+    FROM tasks t
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    WHERE t.agency_id = ? AND t.client_id = ?
+      AND t.due_date BETWEEN ? AND ?
+  `;
+  const params = [Number(share.agency_id), Number(share.client_id), start, end];
+  if (!Number(share.include_posted)) query += ` AND t.status <> 'posted'`;
+  query += ` ORDER BY t.due_date ASC, CASE WHEN t.parent_task_id IS NULL THEN 0 ELSE 1 END, t.title COLLATE NOCASE ASC`;
+
+  const tasks = db.prepare(query).all(...params);
+
+  let assigneesByTask = new Map();
+  if (Number(share.show_assignees) && tasks.length) {
+    const ids = tasks.map((task) => Number(task.id));
+    const placeholders = ids.map(() => '?').join(',');
+    const assignees = db.prepare(`
+      SELECT ta.task_id, u.name
+      FROM task_assignees ta
+      JOIN users u ON u.id = ta.user_id AND u.agency_id = ?
+      WHERE ta.task_id IN (${placeholders})
+      ORDER BY u.name
+    `).all(Number(share.agency_id), ...ids);
+    assigneesByTask = assignees.reduce((map, item) => {
+      if (!map.has(Number(item.task_id))) map.set(Number(item.task_id), []);
+      map.get(Number(item.task_id)).push(item.name);
+      return map;
+    }, new Map());
+  }
+
+  const serializedTasks = tasks.map((task) => ({
+    id: Number(task.id),
+    parent_task_id: task.parent_task_id ? Number(task.parent_task_id) : null,
+    parent_title: task.parent_title || null,
+    title: task.title,
+    description: Number(share.show_description) ? (task.description || '') : '',
+    task_type: task.task_type,
+    content_type: task.content_type,
+    due_date: task.due_date,
+    status: Number(share.show_status) ? task.status : null,
+    status_label: Number(share.show_status) ? (PUBLIC_TASK_STATUS_LABELS[task.status] || task.status) : null,
+    project_name: task.project_name || '',
+    front_name: task.front_name || '',
+    assignees: Number(share.show_assignees) ? (assigneesByTask.get(Number(task.id)) || []) : [],
+  }));
+
+  const summary = serializedTasks.reduce((acc, task) => {
+    acc.total += 1;
+    if (task.status && Object.prototype.hasOwnProperty.call(acc, task.status)) acc[task.status] += 1;
+    return acc;
+  }, { total: 0, pending: 0, in_progress: 0, done: 0, posted: 0 });
+
+  return res.json({
+    client: {
+      id: Number(share.client_id),
+      name: share.client_name,
+      avatar_data: share.avatar_data,
+      logo_color: share.logo_color,
+    },
+    period: { year: Number(share.share_year), month: Number(share.share_month) },
+    options: {
+      show_status: Number(share.show_status) === 1,
+      show_assignees: Number(share.show_assignees) === 1,
+      show_description: Number(share.show_description) === 1,
+      include_posted: Number(share.include_posted) === 1,
+    },
+    summary,
+    tasks: serializedTasks,
+  });
+});
+
 module.exports = router;

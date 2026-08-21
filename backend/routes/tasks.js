@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
 const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
@@ -841,6 +842,148 @@ router.get('/calendar', (req, res) => {
 
   const tasks = attachAssignees(db.prepare(query).all(...params), req.user.agency_id);
   res.json({ tasks });
+});
+
+
+function validCalendarSharePeriod(yearValue, monthValue) {
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  return Number.isInteger(year) && year >= 2020 && year <= 2100
+    && Number.isInteger(month) && month >= 1 && month <= 12;
+}
+
+function calendarSharePayload(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    client_id: Number(row.client_id),
+    client_name: row.client_name,
+    year: Number(row.share_year),
+    month: Number(row.share_month),
+    token: row.token,
+    active: Number(row.active) === 1,
+    show_status: Number(row.show_status) === 1,
+    show_assignees: Number(row.show_assignees) === 1,
+    show_description: Number(row.show_description) === 1,
+    include_posted: Number(row.include_posted) === 1,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+router.get('/calendar-share', requireRole('admin', 'team'), (req, res) => {
+  const { client_id, year, month } = req.query;
+  if (!client_id || !validCalendarSharePeriod(year, month)) {
+    return res.status(400).json({ error: 'Informe cliente, ano e mês válidos' });
+  }
+  if (!ensureClientAccess(req, res, client_id)) return;
+
+  const row = db.prepare(`
+    SELECT s.*, c.name AS client_name
+    FROM task_calendar_shares s
+    JOIN clients c ON c.id = s.client_id AND c.agency_id = s.agency_id
+    WHERE s.agency_id = ? AND s.client_id = ? AND s.share_year = ? AND s.share_month = ?
+    LIMIT 1
+  `).get(Number(req.user.agency_id), Number(client_id), Number(year), Number(month));
+
+  return res.json({ share: calendarSharePayload(row) });
+});
+
+router.post('/calendar-share', requireRole('admin', 'team'), (req, res) => {
+  const {
+    client_id,
+    year,
+    month,
+    show_status = true,
+    show_assignees = false,
+    show_description = false,
+    include_posted = true,
+    regenerate = false,
+  } = req.body || {};
+
+  if (!client_id || !validCalendarSharePeriod(year, month)) {
+    return res.status(400).json({ error: 'Informe cliente, ano e mês válidos' });
+  }
+  if (!ensureClientAccess(req, res, client_id)) return;
+
+  const agencyId = Number(req.user.agency_id);
+  const clientId = Number(client_id);
+  const shareYear = Number(year);
+  const shareMonth = Number(month);
+  const existing = db.prepare(`
+    SELECT id, token FROM task_calendar_shares
+    WHERE agency_id = ? AND client_id = ? AND share_year = ? AND share_month = ?
+  `).get(agencyId, clientId, shareYear, shareMonth);
+
+  const token = (!existing || regenerate)
+    ? crypto.randomBytes(24).toString('base64url')
+    : existing.token;
+
+  if (existing) {
+    db.prepare(`
+      UPDATE task_calendar_shares
+      SET token = ?, active = 1, show_status = ?, show_assignees = ?, show_description = ?, include_posted = ?, updated_at = datetime('now')
+      WHERE id = ? AND agency_id = ?
+    `).run(
+      token,
+      show_status ? 1 : 0,
+      show_assignees ? 1 : 0,
+      show_description ? 1 : 0,
+      include_posted ? 1 : 0,
+      Number(existing.id),
+      agencyId
+    );
+  } else {
+    db.prepare(`
+      INSERT INTO task_calendar_shares (
+        agency_id, client_id, token, share_year, share_month,
+        show_status, show_assignees, show_description, include_posted,
+        active, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+    `).run(
+      agencyId,
+      clientId,
+      token,
+      shareYear,
+      shareMonth,
+      show_status ? 1 : 0,
+      show_assignees ? 1 : 0,
+      show_description ? 1 : 0,
+      include_posted ? 1 : 0,
+      Number(req.user.id)
+    );
+  }
+
+  const row = db.prepare(`
+    SELECT s.*, c.name AS client_name
+    FROM task_calendar_shares s
+    JOIN clients c ON c.id = s.client_id AND c.agency_id = s.agency_id
+    WHERE s.agency_id = ? AND s.client_id = ? AND s.share_year = ? AND s.share_month = ?
+  `).get(agencyId, clientId, shareYear, shareMonth);
+
+  return res.status(existing ? 200 : 201).json({ share: calendarSharePayload(row) });
+});
+
+router.patch('/calendar-share', requireRole('admin', 'team'), (req, res) => {
+  const { client_id, year, month, active } = req.body || {};
+  if (!client_id || !validCalendarSharePeriod(year, month)) {
+    return res.status(400).json({ error: 'Informe cliente, ano e mês válidos' });
+  }
+  if (!ensureClientAccess(req, res, client_id)) return;
+
+  const info = db.prepare(`
+    UPDATE task_calendar_shares
+    SET active = ?, updated_at = datetime('now')
+    WHERE agency_id = ? AND client_id = ? AND share_year = ? AND share_month = ?
+  `).run(
+    active ? 1 : 0,
+    Number(req.user.agency_id),
+    Number(client_id),
+    Number(year),
+    Number(month)
+  );
+  if (!info.changes) return res.status(404).json({ error: 'Link compartilhável ainda não foi criado' });
+  return res.json({ ok: true, active: Boolean(active) });
 });
 
 router.get('/featured/all', (req, res) => {
