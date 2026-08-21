@@ -108,14 +108,28 @@ export default function PublicTaskCalendar() {
       </main>
 
       {openTask && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-3 sm:items-center" onClick={() => setOpenTask(null)}>
-          <div className="w-full max-w-lg rounded-[26px] bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{openTask.due_date?.slice(8, 10)} de {MONTHS[monthIndex]}</p><h2 className="mt-1 text-lg font-semibold text-slate-900">{openTask.title}</h2>{openTask.parent_title && <p className="mt-1 text-xs text-indigo-600">Subtarefa de {openTask.parent_title}</p>}</div><button type="button" onClick={() => setOpenTask(null)} className="rounded-xl bg-slate-100 px-3 py-1.5 text-sm text-slate-500">Fechar</button></div>
-            <div className="mt-5 space-y-3 text-sm">
-              {data.options.show_status && openTask.status_label && <div className="flex items-center gap-2"><CheckCircle2 size={15} className="text-slate-400" /><span className="text-slate-500">Status</span><span className="ml-auto font-medium text-slate-800">{openTask.status_label}</span></div>}
-              {data.options.show_assignees && <div className="flex items-center gap-2"><Clock3 size={15} className="text-slate-400" /><span className="text-slate-500">Responsáveis</span><span className="ml-auto text-right font-medium text-slate-800">{openTask.assignees?.length ? openTask.assignees.join(', ') : 'Não informado'}</span></div>}
-              {(openTask.project_name || openTask.front_name) && <div className="flex flex-wrap gap-2">{openTask.project_name && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">{openTask.project_name}</span>}{openTask.front_name && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">{openTask.front_name}</span>}</div>}
-              {data.options.show_description && openTask.description && <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-600 whitespace-pre-wrap">{openTask.description}</div>}
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-3 sm:p-6" onClick={() => setOpenTask(null)}>
+          <div className="flex min-h-full items-end justify-center sm:items-center">
+            <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-[26px] bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]" onClick={(event) => event.stopPropagation()}>
+              <div className="shrink-0 border-b border-slate-100 bg-white px-6 pb-4 pt-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{openTask.due_date?.slice(8, 10)} de {MONTHS[monthIndex]}</p>
+                    <h2 className="mt-1 text-lg font-semibold text-slate-900">{openTask.title}</h2>
+                    {openTask.parent_title && <p className="mt-1 text-xs text-indigo-600">Subtarefa de {openTask.parent_title}</p>}
+                  </div>
+                  <button type="button" onClick={() => setOpenTask(null)} className="shrink-0 rounded-xl bg-slate-100 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-200">Fechar</button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-7 pt-5">
+                <div className="space-y-3 text-sm">
+                  {data.options.show_status && openTask.status_label && <div className="flex items-center gap-2"><CheckCircle2 size={15} className="text-slate-400" /><span className="text-slate-500">Status</span><span className="ml-auto font-medium text-slate-800">{openTask.status_label}</span></div>}
+                  {data.options.show_assignees && <div className="flex items-center gap-2"><Clock3 size={15} className="text-slate-400" /><span className="text-slate-500">Responsáveis</span><span className="ml-auto text-right font-medium text-slate-800">{openTask.assignees?.length ? openTask.assignees.join(', ') : 'Não informado'}</span></div>}
+                  {(openTask.project_name || openTask.front_name) && <div className="flex flex-wrap gap-2">{openTask.project_name && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">{openTask.project_name}</span>}{openTask.front_name && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">{openTask.front_name}</span>}</div>}
+                  {data.options.show_description && openTask.description && <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-600 whitespace-pre-wrap">{openTask.description}</div>}
+                </div>
+              </div>
             </div>
           </div>
         </div>
