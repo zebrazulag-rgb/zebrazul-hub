@@ -332,9 +332,9 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
             </div>
             <p className="mt-3 font-semibold text-slate-700">Conexão orgânica pendente</p>
             <p className="mt-1 max-w-lg text-sm leading-6 text-slate-500">Você pode usar a conexão pela Meta ou conectar somente o Instagram profissional quando ele não aparecer pela Página do Facebook.</p>
-            <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={onOpenConnections}>
+            {onOpenConnections && <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={onOpenConnections}>
               <Settings2 size={16} /> Conectar Instagram ou Meta
-            </button>
+            </button>}
           </div>
         )}
       </div>

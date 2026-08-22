@@ -24,7 +24,6 @@ import {
   KeyRound,
   Instagram,
   RefreshCw,
-  Menu,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -36,6 +35,7 @@ import { formChanged } from '../utils/formState.js';
 import zebraHubLogo from '../assets/logo-hub-white.png';
 import { isBeeClient } from '../utils/beeClientAccess.js';
 import NotificationBell from './NotificationBell.jsx';
+import { anyPermission, hasPermission } from '../permissions.js';
 
 export default function Layout({ children }) {
   const { user, logout, refreshUser } = useAuth();
@@ -53,13 +53,10 @@ export default function Layout({ children }) {
   const initialProfileNameRef = useRef(user?.name || '');
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
   });
-
-  useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
 
   const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
 
@@ -169,15 +166,15 @@ export default function Layout({ children }) {
   }
 
   const workspaceItems = [
-    { to: '/', label: 'Painel', icon: LayoutDashboard, roles: ['admin', 'team'], commercialTeam: true },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, roles: ['admin', 'team', 'client'], commercialTeam: true },
-    { to: '/bussola', label: 'Bússola', icon: Compass, roles: ['admin', 'team'] },
-    { to: '/social-media', label: 'Social Media', icon: Instagram, roles: ['admin', 'team', 'client'] },
-    { to: '/comercial', label: 'Comercial', icon: Handshake, roles: ['admin', 'client'], commercialTeam: true },
-    { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, roles: ['admin', 'team', 'client'], commercialTeam: true, beeOnly: true },
-    { to: '/materiais', label: 'Materiais', icon: FolderOpen, roles: ['admin', 'team', 'client'] },
-    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, roles: ['admin'] },
-    { to: '/senhas', label: 'Senhas', icon: KeyRound, roles: ['admin'] },
+    { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
+    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
+    { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
+    { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
+    { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
+    { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
+    { to: '/materiais', label: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
+    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, permission: 'finance.view' },
+    { to: '/senhas', label: 'Senhas', icon: KeyRound, permission: 'vault.view' },
   ];
 
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
@@ -185,11 +182,14 @@ export default function Layout({ children }) {
 
   const visibleWorkspaceItems = workspaceItems.filter((item) => {
     if (item.beeOnly && !beeWorkspaceActive) return false;
-    if (user?.is_commercial_team) return item.commercialTeam === true;
-    return item.roles.includes(user?.role);
+    if (!hasPermission(user, item.permission)) return false;
+    if (item.permission === 'social.view') {
+      return anyPermission(user, ['social.feed', 'social.stories', 'social.reports']);
+    }
+    return true;
   });
 
-  const canSeeSettings = !user?.is_commercial_team;
+  const canSeeSettings = !user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions']);
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -226,16 +226,8 @@ export default function Layout({ children }) {
 
   return (
     <div className="app-shell flex h-screen min-h-0 overflow-hidden bg-[#f5f7fb] text-slate-900">
-      {mobileMenuOpen && (
-        <button
-          type="button"
-          aria-label="Fechar menu"
-          onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[2px] md:hidden"
-        />
-      )}
       <aside
-        className={`app-sidebar fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(86vw,300px)] shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.16)] transition-transform duration-300 md:sticky md:top-0 md:z-30 md:h-screen md:translate-x-0 md:transition-[width] ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'md:w-[76px]' : 'md:w-[244px]'}`}
+        className={`app-sidebar sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[76px]' : 'w-[244px]'}`}
         style={{ backgroundColor: agencySidebar }}
       >
         <div className={`relative flex min-h-[76px] items-center ${sidebarCollapsed ? 'justify-center px-2.5' : 'px-4'} py-3`}>
@@ -249,7 +241,7 @@ export default function Layout({ children }) {
             onClick={() => setSidebarCollapsed((current) => !current)}
             aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Encolher barra lateral'}
             title={sidebarCollapsed ? 'Expandir barra lateral' : 'Encolher barra lateral'}
-            className="absolute -right-3 top-1/2 z-40 hidden h-7 w-7 md:flex -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.16)] transition hover:text-slate-900"
+            className="absolute -right-3 top-1/2 z-40 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.16)] transition hover:text-slate-900"
           >
             {sidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
           </button>
@@ -308,7 +300,7 @@ export default function Layout({ children }) {
               {!sidebarCollapsed && (
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
-                  <p className="truncate text-[11px] text-white/40">{roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team)}</p>
+                  <p className="truncate text-[11px] text-white/40">{user?.permission_role_name || roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team)}</p>
                 </div>
               )}
             </button>
@@ -327,20 +319,10 @@ export default function Layout({ children }) {
 
       <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <NotificationBell />
-        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-3 pr-16 backdrop-blur-xl sm:gap-4 sm:px-5 sm:pr-20 md:px-8 md:pr-24 xl:px-10 xl:pr-24">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => { setSidebarCollapsed(false); setMobileMenuOpen(true); }}
-              aria-label="Abrir menu"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm md:hidden"
-            >
-              <Menu size={20} />
-            </button>
-            <div className="min-w-0">
+        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-8 pr-24 backdrop-blur-xl xl:px-10 xl:pr-24">
+          <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
             <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
-            </div>
           </div>
           {user?.role === 'client' ? (
             <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
@@ -358,7 +340,7 @@ export default function Layout({ children }) {
                 aria-haspopup="listbox"
                 aria-expanded={clientPickerOpen}
                 onClick={() => setClientPickerOpen((open) => !open)}
-                className="flex min-w-0 max-w-[210px] sm:min-w-[230px] sm:max-w-[330px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                className="flex min-w-[230px] max-w-[330px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
               >
                 <ClientAvatar client={selectedClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
                 <div className="min-w-0 flex-1">
@@ -369,7 +351,7 @@ export default function Layout({ children }) {
               </button>
 
               {clientPickerOpen && (
-                <div className="fixed inset-x-3 top-[70px] z-50 w-auto sm:absolute sm:inset-x-auto sm:right-0 sm:top-[calc(100%+8px)] sm:w-[340px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[340px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
                   <div className="border-b border-slate-100 p-3">
                     <div className="relative">
                       <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -435,7 +417,7 @@ export default function Layout({ children }) {
           )}
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
-        <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-3 py-5 sm:px-5 sm:py-6 md:px-8 md:py-8 xl:px-10">{children}</div>
+        <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-8 py-8 xl:px-10">{children}</div>
       </main>
 
       {showProfile && (

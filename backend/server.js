@@ -41,6 +41,7 @@ const publicVideoReviewRoutes = require('./routes/publicVideoReviews');
 const mediaRoutes = require('./routes/media');
 const instagramStoriesWebhookRoutes = require('./routes/instagramStoriesWebhook');
 const instagramStoriesRoutes = require('./routes/instagramStories');
+const permissionsRoutes = require('./routes/permissions');
 const { runMediaMigration } = require('./services/mediaMigration');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
@@ -48,6 +49,7 @@ const { getHealthStatus } = require('./db/health');
 const { syncAllConnectedAccounts, currentMonthRange } = require('./services/metaSync');
 const { syncAllOrganicAccounts, currentMonthRange: currentOrganicMonthRange } = require('./services/metaOrganicSync');
 const { authRequired } = require('./middleware/auth');
+const { apiPermissionForRequest, hasPermission } = require('./services/permissions');
 const { seedBuiltInMaterials } = require('./services/materials');
 
 if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
@@ -90,23 +92,33 @@ app.get('/api/health', (req, res) => {
 app.use('/api/meta-oauth', metaOAuthRoutes);
 app.use('/api/instagram-oauth', instagramOAuthRoutes);
 
-// A Equipe Comercial usa o mesmo papel interno da equipe para manter
-// compatibilidade com o banco, mas fica isolada das demais áreas da API.
-// Auth, tenant e links públicos continuam sendo validados pelas próprias rotas.
+// Camada central de permissões. Os links públicos e autenticação continuam
+// validados pelas próprias rotas; os demais recursos respeitam o cargo configurado
+// em Configurações > Permissões, inclusive quando a URL é digitada manualmente.
 app.use('/api', (req, res, next) => {
   const publicPrefixes = ['/auth', '/tenant', '/public'];
   if (publicPrefixes.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) return next();
 
   return authRequired(req, res, () => {
-    if (!req.user?.is_commercial_team) return next();
+    const permissionKey = apiPermissionForRequest(req);
+    const permissionAllowed = Array.isArray(permissionKey)
+      ? permissionKey.some((key) => hasPermission(req.user, key))
+      : (!permissionKey || hasPermission(req.user, permissionKey));
+    if (!permissionAllowed) {
+      return res.status(403).json({ error: 'Seu cargo não possui permissão para este recurso.' });
+    }
 
-    const taskAccess = req.path === '/tasks' || req.path.startsWith('/tasks/');
-    const commercialAccess = req.path === '/commercial' || req.path.startsWith('/commercial/');
-    const reenrollmentAccess = req.path === '/reenrollments' || req.path.startsWith('/reenrollments/');
-    const clientsReadAccess = req.path === '/clients' && req.method === 'GET';
-    if (taskAccess || commercialAccess || reenrollmentAccess || clientsReadAccess) return next();
-
-    return res.status(403).json({ error: 'A Equipe Comercial acessa somente Painel, Tarefas, Comercial e Rematrículas da Bee' });
+    // Preserva o isolamento histórico da Equipe Comercial para rotas antigas que
+    // ainda não possuem uma chave de permissão própria.
+    if (req.user?.is_commercial_team && !permissionKey) {
+      const clientsReadAccess = req.path === '/clients' && req.method === 'GET';
+      const notificationAccess = req.path === '/notifications' || req.path.startsWith('/notifications/');
+      const taskRequestAccess = req.path === '/task-request-links' || req.path.startsWith('/task-request-links/');
+      if (!clientsReadAccess && !notificationAccess && !taskRequestAccess) {
+        return res.status(403).json({ error: 'Este recurso não está liberado para o seu cargo.' });
+      }
+    }
+    next();
   });
 });
 
@@ -119,6 +131,7 @@ app.use('/api/public/task-requests', publicTaskRequestRoutes);
 app.use('/api/public/materials', publicMaterialRoutes);
 app.use('/api/public/video-reviews', publicVideoReviewRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/permissions', permissionsRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/reports', reportRoutes);

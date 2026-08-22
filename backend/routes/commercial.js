@@ -1,15 +1,11 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const db = require('../db/database');
-const { authRequired, canAccessClient } = require('../middleware/auth');
+const { authRequired, canAccessClient, hydrateUserAccess } = require('../middleware/auth');
+const { hasPermission } = require('../services/permissions');
 
 const router = express.Router();
 router.use(authRequired);
-router.use((req, res, next) => {
-  const allowed = req.user?.role === 'admin' || req.user?.role === 'client' || req.user?.is_commercial_team;
-  if (!allowed) return res.status(403).json({ error: 'Acesso exclusivo de clientes, administradores e equipe comercial' });
-  next();
-});
 
 const ALLOWED_STAGE_COLORS = new Set(['blue', 'indigo', 'violet', 'amber', 'orange', 'emerald', 'rose', 'cyan', 'teal', 'pink', 'slate']);
 const LEGACY_STAGE_KEYS = new Set(['new_lead', 'contacted', 'meeting', 'proposal', 'negotiation', 'won', 'lost']);
@@ -293,22 +289,27 @@ function accessibleClients(user) {
 }
 
 function commercialUsers(clientId, agencyId) {
-  return db.prepare(`
-    SELECT DISTINCT u.id, u.name, u.email, u.role, u.avatar_color, u.avatar_data,
-           u.is_commercial_team
-    FROM users u
-    LEFT JOIN user_client_access uca ON uca.user_id = u.id AND uca.client_id = ?
-    WHERE u.agency_id = ?
-      AND (
-        u.role = 'admin'
-        OR (u.role = 'client' AND u.client_id = ?)
-        OR (u.role = 'team' AND u.is_commercial_team = 1 AND uca.client_id = ?)
-      )
-    ORDER BY CASE WHEN u.role = 'client' THEN 1 WHEN u.is_commercial_team = 1 THEN 2 ELSE 3 END, u.name
-  `).all(clientId, agencyId, clientId, clientId).map((user) => ({
-    ...user,
-    is_commercial_team: Number(user.is_commercial_team) === 1,
-  }));
+  const rows = db.prepare(`
+    SELECT id, name, email, role, client_id, agency_id, avatar_color, avatar_data,
+           is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team, custom_role_id
+    FROM users
+    WHERE agency_id = ? AND role IN ('admin','team','client')
+    ORDER BY name
+  `).all(agencyId);
+
+  return rows
+    .map((user) => hydrateUserAccess(user))
+    .filter((user) => hasPermission(user, 'commercial.view') && canAccessClient(user, clientId))
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      avatar_color: user.avatar_color,
+      avatar_data: user.avatar_data,
+      is_commercial_team: Boolean(user.is_commercial_team),
+      permission_role_name: user.permission_role_name,
+    }));
 }
 
 function ensureOwner(ownerUserId, agencyId, clientId) {
@@ -516,7 +517,6 @@ router.get('/niches', (req, res) => {
 });
 
 router.post('/niches', (req, res) => {
-  if (req.user?.role === 'client') return res.status(403).json({ error: 'Apenas a equipe pode criar nichos' });
   const scope = resolveClientId(req, req.body.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
   const name = String(req.body.name || '').trim();
@@ -545,7 +545,6 @@ router.post('/niches', (req, res) => {
 });
 
 router.post('/leads/bulk-niche', (req, res) => {
-  if (req.user?.role === 'client') return res.status(403).json({ error: 'Apenas a equipe pode classificar leads em massa' });
   const scope = resolveClientId(req, req.body.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
   const name = String(req.body.name || '').trim();
@@ -760,9 +759,6 @@ router.get('/dashboard-summary', (req, res) => {
 });
 
 router.get('/imports', (req, res) => {
-  if (!(req.user?.role === 'admin' || req.user?.is_commercial_team)) {
-    return res.status(403).json({ error: 'Importação disponível para administradores e equipe comercial' });
-  }
   const scope = resolveClientId(req, req.query.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
   const imports = db.prepare(`
@@ -813,9 +809,6 @@ router.get('/leads', (req, res) => {
 });
 
 router.post('/leads/import/preview', (req, res) => {
-  if (!(req.user?.role === 'admin' || req.user?.is_commercial_team)) {
-    return res.status(403).json({ error: 'Importação disponível para administradores e equipe comercial' });
-  }
   const scope = resolveClientId(req, req.body.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
   const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
@@ -827,9 +820,6 @@ router.post('/leads/import/preview', (req, res) => {
 });
 
 router.post('/leads/import', (req, res) => {
-  if (!(req.user?.role === 'admin' || req.user?.is_commercial_team)) {
-    return res.status(403).json({ error: 'Importação disponível para administradores e equipe comercial' });
-  }
   const scope = resolveClientId(req, req.body.client_id);
   if (scope.error) return res.status(scope.status || 400).json({ error: scope.error });
   const rows = Array.isArray(req.body.rows) ? req.body.rows : [];

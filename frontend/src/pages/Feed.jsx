@@ -13,6 +13,7 @@ import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PostModal from '../components/PostModal.jsx';
 import FeedCoverDashboard, { coverAnalysisKey, isVideoContent } from '../components/FeedCoverDashboard.jsx';
 import { formChanged } from '../utils/formState.js';
+import { hasPermission } from '../permissions.js';
 
 export default function Feed() {
   const { user } = useAuth();
@@ -21,7 +22,20 @@ export default function Feed() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
-  const activeView = ['calendar', 'published', 'compare', 'covers'].includes(requestedView) ? requestedView : 'grid';
+  const canFeedCreate = hasPermission(user, 'social.feed_create');
+  const canShareFeed = hasPermission(user, 'social.feed_share');
+  const canSocialMediaLink = hasPermission(user, 'social.link_social_media');
+  const canCovers = hasPermission(user, 'social.covers');
+  const canPublished = hasPermission(user, 'social.published');
+  const canCompare = hasPermission(user, 'social.compare');
+  const canCalendar = hasPermission(user, 'social.calendar');
+  const canConnections = hasPermission(user, 'social.connections');
+  const requestedAllowed = requestedView === 'covers' ? canCovers
+    : requestedView === 'published' ? canPublished
+      : requestedView === 'compare' ? canCompare
+        : requestedView === 'calendar' ? canCalendar
+          : true;
+  const activeView = requestedAllowed && ['calendar', 'published', 'compare', 'covers'].includes(requestedView) ? requestedView : 'grid';
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
@@ -192,12 +206,12 @@ export default function Feed() {
 
   useEffect(() => {
     if (!clientId) return;
-    loadPublishedFeed(clientId);
-    loadCoverAnalyses(clientId);
-  }, [clientId]);
+    if (canPublished || canCompare || canCovers) loadPublishedFeed(clientId);
+    if (canCovers) loadCoverAnalyses(clientId);
+  }, [clientId, canPublished, canCompare, canCovers]);
 
   useEffect(() => {
-    if (!clientId || user?.role === 'client' || coverAnalyzing) return;
+    if (!clientId || !canCovers || coverAnalyzing) return;
     // Analisa automaticamente apenas os vídeos planejados: é onde o alerta
     // evita que um Reels chegue à publicação sem capa. O feed já publicado
     // também pode ser analisado pelo botão, sem gerar custo a cada abertura.
@@ -210,7 +224,7 @@ export default function Feed() {
     if (!signature || autoAnalysisSignatureRef.current === signature) return;
     autoAnalysisSignatureRef.current = signature;
     analyzeCovers({ silent: true, includePublished: false });
-  }, [clientId, posts, publishedPosts, coverAnalyses, user?.role]);
+  }, [clientId, posts, publishedPosts, coverAnalyses, canCovers]);
 
   function switchView(view) {
     setOpenPost(null);
@@ -249,7 +263,7 @@ export default function Feed() {
     setSavingProfile(true);
     setProfileError('');
     try {
-      await api.put(`/clients/${clientId}`, profileDraft);
+      await api.put(`/clients/${clientId}/feed-profile`, profileDraft);
       setClients((previous) => previous.map((client) => (
         String(client.id) === String(clientId) ? { ...client, ...profileDraft } : client
       )));
@@ -532,16 +546,16 @@ export default function Feed() {
           <h1 className="text-2xl font-bold text-slate-800">Feed em tempo real</h1>
           <p className="text-slate-500 mt-1">{viewDescription}</p>
         </div>
-        {clientId && user?.role !== 'client' && (
+        {clientId && (canFeedCreate || canShareFeed || canSocialMediaLink) && (
           <div className="flex items-center gap-2 flex-wrap">
-            <button
+            {canFeedCreate && <button
               type="button"
               onClick={() => setCreatingPost(true)}
               className="btn-primary flex items-center gap-2 whitespace-nowrap"
             >
               <Plus size={17} /> Nova publicação
-            </button>
-            {activeView === 'grid' && hiddenPosts.length > 0 && (
+            </button>}
+            {canFeedCreate && activeView === 'grid' && hiddenPosts.length > 0 && (
               <button
                 type="button"
                 onClick={() => { setPostActionError(''); setShowHiddenPosts(true); }}
@@ -552,14 +566,14 @@ export default function Feed() {
             )}
             {activeView === 'grid' && (
               <>
-                <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+                {canShareFeed && <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
                   {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
                   {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
-                </button>
-                <button onClick={shareSocialMediaLink} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+                </button>}
+                {canSocialMediaLink && <button onClick={shareSocialMediaLink} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
                   {socialMediaLinkCopied ? <Check size={16} /> : <Share2 size={16} />}
                   {socialMediaLinkCopied ? 'LINK SOCIAL MEDIA copiado!' : 'LINK SOCIAL MEDIA'}
-                </button>
+                </button>}
               </>
             )}
           </div>
@@ -575,6 +589,7 @@ export default function Feed() {
         >
           <Grid3x3 size={17} /> Planejado
         </button>
+        {canCovers && (
         <button
           onClick={() => switchView('covers')}
           className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -583,6 +598,8 @@ export default function Feed() {
         >
           <Sparkles size={17} /> Capas
         </button>
+        )}
+        {canPublished && (
         <button
           onClick={() => switchView('published')}
           className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -591,6 +608,8 @@ export default function Feed() {
         >
           <Radio size={17} /> Publicado
         </button>
+        )}
+        {canCompare && (
         <button
           onClick={() => switchView('compare')}
           className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -599,6 +618,8 @@ export default function Feed() {
         >
           <Columns3 size={17} /> Comparar
         </button>
+        )}
+        {canCalendar && (
         <button
           onClick={() => switchView('calendar')}
           className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -607,6 +628,7 @@ export default function Feed() {
         >
           <CalendarDays size={17} /> Calendário
         </button>
+        )}
       </div>
 
       {!clientId && (
@@ -683,7 +705,7 @@ export default function Feed() {
             client={currentClient}
             posts={posts}
             onPostClick={openFeedPost}
-            editable={user?.role !== 'client'}
+            editable={canFeedCreate}
             onEdit={startEditProfile}
             showCoverBadges={false}
           />
@@ -699,7 +721,7 @@ export default function Feed() {
                 {publishedConnection?.last_synced_at ? `Última sincronização: ${new Date(`${String(publishedConnection.last_synced_at).replace(' ', 'T')}Z`).toLocaleString('pt-BR')}` : 'Ainda não sincronizado.'}
               </p>
             </div>
-            {user?.role !== 'client' && (
+            {canConnections && (
               <button type="button" onClick={syncInstagramFeed} disabled={syncingPublished} className="btn-secondary flex items-center justify-center gap-2 disabled:opacity-50">
                 {syncingPublished ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                 {syncingPublished ? 'Sincronizando...' : 'Sincronizar Instagram'}
@@ -729,7 +751,7 @@ export default function Feed() {
               <p className="text-sm font-semibold text-slate-800">Planejado x publicado</p>
               <p className="text-xs text-slate-500">Use esta visão para conferir composição e sequência antes que o feed real se afaste do planejamento.</p>
             </div>
-            {user?.role !== 'client' && (
+            {canConnections && (
               <button type="button" onClick={syncInstagramFeed} disabled={syncingPublished} className="btn-secondary flex items-center justify-center gap-2 disabled:opacity-50">
                 {syncingPublished ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                 Atualizar publicado
@@ -750,7 +772,7 @@ export default function Feed() {
         </div>
       )}
 
-      {creatingPost && clientId && (
+      {canFeedCreate && creatingPost && clientId && (
         <PostModal
           clients={currentClient ? [currentClient] : clients.filter((client) => String(client.id) === String(clientId))}
           defaultClientId={clientId}
@@ -766,7 +788,7 @@ export default function Feed() {
       )}
 
 
-      {editingPost && clientId && (
+      {canFeedCreate && editingPost && clientId && (
         <PostModal
           clients={currentClient ? [currentClient] : clients.filter((client) => String(client.id) === String(clientId))}
           defaultClientId={clientId}
@@ -892,7 +914,7 @@ export default function Feed() {
               <button onClick={() => setOpenPost(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0" aria-label="Fechar">×</button>
             </div>
 
-            {user?.role !== 'client' && !reorderingPost && (
+            {canFeedCreate && !reorderingPost && (
               <div className="mb-4 flex items-center justify-end gap-2">
                   <button
                     type="button"

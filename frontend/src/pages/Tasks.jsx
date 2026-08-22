@@ -12,6 +12,7 @@ import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PageHero from '../components/PageHero.jsx';
 import Approval from './Approval.jsx';
 import VideoApprovals from './VideoApprovals.jsx';
+import { hasPermission } from '../permissions.js';
 
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
@@ -211,6 +212,11 @@ function InlineAssigneePicker({ task, teamUsers, updating, onChange }) {
 export default function Tasks() {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
+  const canCreateTasks = hasPermission(user, 'tasks.create');
+  const canApproval = hasPermission(user, 'tasks.approval');
+  const canImportTasks = hasPermission(user, 'tasks.import');
+  const canExportTasks = hasPermission(user, 'tasks.export');
+  const canShareTaskCalendar = hasPermission(user, 'tasks.share_calendar');
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('kanban');
   const [tasks, setTasks] = useState([]);
@@ -292,7 +298,7 @@ export default function Tasks() {
     }
   }, [hidePosted]);
 
-  const operationalArea = searchParams.get('area') === 'aprovacao' ? 'approval' : 'tasks';
+  const operationalArea = searchParams.get('area') === 'aprovacao' && canApproval ? 'approval' : 'tasks';
   const approvalView = searchParams.get('approval_view') === 'videos' ? 'videos' : 'posts';
 
   function setOperationalArea(nextArea) {
@@ -658,11 +664,7 @@ export default function Tasks() {
   }
 
   function canDragCalendarItem(item) {
-    if (!item) return false;
-    if (['admin', 'team'].includes(user?.role)) return true;
-    return user?.role === 'client'
-      && Number(item.created_by) === Number(user.id)
-      && item.status === 'pending';
+    return Boolean(item && canCreateTasks);
   }
 
   function isoDateForCalendarDay(day) {
@@ -768,10 +770,7 @@ export default function Tasks() {
   const frontOptions = [...new Set(tasks.map((task) => task.front_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
-  const canModifySelectedTask = selectedTask && (
-    ['admin', 'team'].includes(user?.role) ||
-    (user?.role === 'client' && Number(selectedTask.created_by) === Number(user.id) && selectedTask.status === 'pending')
-  );
+  const canModifySelectedTask = Boolean(selectedTask && canCreateTasks);
 
   const subtaskOverview = tasks.reduce((summary, task) => ({
     total: summary.total + Number(task.subtask_total || 0),
@@ -830,13 +829,13 @@ export default function Tasks() {
       >
         <ListChecks size={15} /> Tarefas
       </button>
-      <button
+      {canApproval && <button
         type="button"
         onClick={() => setOperationalArea('approval')}
         className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'approval' ? 'segmented-control-button-active' : '')}
       >
         <CalendarCheck2 size={15} /> Aprovação
-      </button>
+      </button>}
     </div>
   );
 
@@ -874,15 +873,15 @@ export default function Tasks() {
           : 'Organize prioridades, responsáveis e prazos em uma visão clara da operação.'}
         actions={
           <>
-            <button
+            {canCreateTasks && <button
               onClick={() => { setDefaultTaskDate(''); setShowForm(true); }}
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(9,105,255,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(9,105,255,0.24)]"
               style={{ backgroundColor: 'var(--agency-primary, #0969ff)' }}
             >
               <Plus size={17} /> Nova tarefa
-            </button>
+            </button>}
 
-            <div ref={taskActionsRef} className="relative">
+            {(canImportTasks || canExportTasks || canCreateTasks) && <div ref={taskActionsRef} className="relative">
               <button
                 type="button"
                 onClick={() => setShowTaskActions((open) => !open)}
@@ -899,15 +898,15 @@ export default function Tasks() {
                   role="menu"
                   className="absolute right-0 top-[calc(100%+8px)] z-50 w-[245px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_22px_55px_rgba(15,23,42,0.16)]"
                 >
-                  <button
+                  {canImportTasks && <button
                     type="button"
                     role="menuitem"
                     onClick={() => { setShowTaskActions(false); setShowCsvImport(true); }}
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                   >
                     <Upload size={16} className="text-slate-400" /> Importar CSV
-                  </button>
-                  <button
+                  </button>}
+                  {canExportTasks && <button
                     type="button"
                     role="menuitem"
                     disabled={csvBusy}
@@ -915,8 +914,8 @@ export default function Tasks() {
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                   >
                     <Download size={16} className="text-slate-400" /> Exportar CSV
-                  </button>
-                  <button
+                  </button>}
+                  {canImportTasks && <button
                     type="button"
                     role="menuitem"
                     disabled={csvBusy}
@@ -924,8 +923,8 @@ export default function Tasks() {
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                   >
                     <FileSpreadsheet size={16} className="text-slate-400" /> Baixar modelo CSV
-                  </button>
-                  {user?.role !== 'client' && (
+                  </button>}
+                  {canCreateTasks && (
                     <>
                       <div className="my-1 border-t border-slate-100" />
                       <button
@@ -946,7 +945,7 @@ export default function Tasks() {
                   )}
                 </div>
               )}
-            </div>
+            </div>}
           </>
         }
       >
@@ -1034,7 +1033,7 @@ export default function Tasks() {
                 <Calendar size={14} /> Calendário
               </button>
             </div>
-            {view === 'calendar' && user?.role !== 'client' && effectiveClientId && (
+            {view === 'calendar' && canShareTaskCalendar && effectiveClientId && (
               <button
                 type="button"
                 onClick={() => setShowCalendarShare(true)}
@@ -1067,7 +1066,7 @@ export default function Tasks() {
               </div>
               <div className="space-y-3 min-h-[60px]">
                 {visibleFilteredTasks.filter((t) => t.status === col.key).map((t) => (
-                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
+                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={canCreateTasks ? handleDragStart : null} onToggleFeatured={canCreateTasks ? (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1) : null} />
                 ))}
                 {visibleFilteredTasks.filter((t) => t.status === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
@@ -1167,9 +1166,9 @@ export default function Tasks() {
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h2 className="font-semibold text-slate-800">Tarefas e subtarefas — {dayTasks.day} de {MONTHS[month]}</h2>
-                <button onClick={() => openNewTaskForDate(dayTasks.day)} className="mt-1 text-xs font-medium text-zebrazul-600 hover:underline inline-flex items-center gap-1">
+                {canCreateTasks && <button onClick={() => openNewTaskForDate(dayTasks.day)} className="mt-1 text-xs font-medium text-zebrazul-600 hover:underline inline-flex items-center gap-1">
                   <Plus size={13} /> Adicionar tarefa neste dia
-                </button>
+                </button>}
               </div>
               <button onClick={() => setDayTasks(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
@@ -1179,7 +1178,7 @@ export default function Tasks() {
                   key={t.id}
                   task={t}
                   onClick={() => { setDayTasks(null); openTask(t.id); }}
-                  onToggleFeatured={user?.role === 'client' || t.parent_task_id ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)}
+                  onToggleFeatured={!canCreateTasks || t.parent_task_id ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)}
                 />
               ))}
             </div>
@@ -1192,7 +1191,7 @@ export default function Tasks() {
       )}
 
 
-      {showCalendarShare && effectiveClientId && (
+      {canShareTaskCalendar && showCalendarShare && effectiveClientId && (
         <TaskCalendarShareModal
           clientId={effectiveClientId}
           clientName={selectedClient?.name || user?.client_name || 'Cliente'}
@@ -1203,7 +1202,7 @@ export default function Tasks() {
         />
       )}
 
-      {showCsvImport && (
+      {canImportTasks && showCsvImport && (
         <TaskCsvModal
           onClose={() => setShowCsvImport(false)}
           onImported={async (data) => {
@@ -1214,7 +1213,7 @@ export default function Tasks() {
         />
       )}
 
-      {showForm && (
+      {canCreateTasks && showForm && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1226,7 +1225,7 @@ export default function Tasks() {
         />
       )}
 
-      {showSubtaskForm && selectedTask && (
+      {canCreateTasks && showSubtaskForm && selectedTask && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1238,7 +1237,7 @@ export default function Tasks() {
         />
       )}
 
-      {editingTask && (
+      {canCreateTasks && editingTask && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1254,7 +1253,7 @@ export default function Tasks() {
         />
       )}
 
-      {editingSubtask && (
+      {canCreateTasks && editingSubtask && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1410,7 +1409,7 @@ export default function Tasks() {
               {selectedTask.assignees && selectedTask.assignees.length > 0 && <p>Responsáveis: {selectedTask.assignees.map((a) => a.name).join(', ')}</p>}
             </div>
 
-            {user?.role !== 'client' && <>
+            {canCreateTasks && <>
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
             <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {STATUS_COLUMNS.map((col) => (
@@ -1425,7 +1424,7 @@ export default function Tasks() {
             </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
-              {user?.role !== 'client' && !user?.is_commercial_team && selectedTask.client_id && (selectedTask.task_type === 'post' || subtasks.some((item) => item.task_type === 'post')) && (
+              {canCreateTasks && selectedTask.client_id && (selectedTask.task_type === 'post' || subtasks.some((item) => item.task_type === 'post')) && (
                 <button
                   type="button"
                   onClick={addAllToFeed}
@@ -1435,7 +1434,7 @@ export default function Tasks() {
                   <Grid3x3 size={15} /> {addingAllToFeed ? 'Adicionando publicações...' : 'Adicionar todos à grade'}
                 </button>
               )}
-              {user?.role !== 'client' && !selectedTask.parent_task_id && (
+              {canCreateTasks && !selectedTask.parent_task_id && (
                 <button
                   onClick={() => toggleFeatured(selectedTask.id, Number(selectedTask.is_featured) !== 1)}
                   className={`col-span-2 flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
@@ -1453,12 +1452,12 @@ export default function Tasks() {
                   <Pencil size={14} /> {selectedTask.media_loading ? 'Preparando...' : 'Editar tarefa'}
                 </button>
               )}
-              {user?.role !== 'client' && (
+              {canCreateTasks && (
                 <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex items-center justify-center gap-1.5">
                   <Copy size={14} /> Duplicar
                 </button>
               )}
-              {user?.role !== 'client' && !selectedTask.parent_task_id && (
+              {canCreateTasks && !selectedTask.parent_task_id && (
                 <button
                   onClick={openConvertToSubtask}
                   className="btn-secondary text-sm flex items-center justify-center gap-1.5"
@@ -1467,7 +1466,7 @@ export default function Tasks() {
                   <ListTree size={14} /> Tornar subtarefa
                 </button>
               )}
-              {user?.role !== 'client' && !user?.is_commercial_team && selectedTask.task_type === 'post' && selectedTask.client_id && (
+              {canCreateTasks && selectedTask.task_type === 'post' && selectedTask.client_id && (
                 Number(selectedTask.feed_post_visible) === 1 ? (
                   <div className="col-span-2 grid grid-cols-2 gap-2">
                     <Link to={`/feed?client_id=${selectedTask.client_id}`} className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
@@ -1501,7 +1500,7 @@ export default function Tasks() {
                 <p className="text-sm font-semibold text-slate-700">
                   Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => ['done', 'posted'].includes(s.status)).length}/{subtasks.length})</span>}
                 </p>
-                {user?.role !== 'client' && (
+                {canCreateTasks && (
                   <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
                     <ListPlus size={14} /> Adicionar
                   </button>
@@ -1512,7 +1511,7 @@ export default function Tasks() {
                 {subtasks.map((s) => (
                   <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
                     <button
-                      onClick={() => user?.role !== 'client' && updateSubtaskStatus(s.id, nextStatus(s.status))}
+                      onClick={() => canCreateTasks && updateSubtaskStatus(s.id, nextStatus(s.status))}
                       className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (s.status === 'posted' ? 'bg-indigo-500 border-indigo-500' : s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
                       title="Clique para avançar o status"
                     >
@@ -1524,7 +1523,7 @@ export default function Tasks() {
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}
                       </div>
-                      {user?.role !== 'client' && !user?.is_commercial_team && s.task_type === 'post' && s.client_id && (
+                      {canCreateTasks && s.task_type === 'post' && s.client_id && (
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                           {Number(s.feed_post_visible) === 1 ? (
                             <>
@@ -1553,7 +1552,7 @@ export default function Tasks() {
                         </div>
                       )}
                     </div>
-                    {user?.role !== 'client' && (
+                    {canCreateTasks && (
                       <InlineAssigneePicker
                         task={s}
                         teamUsers={teamUsers}
@@ -1561,7 +1560,7 @@ export default function Tasks() {
                         onChange={setSubtaskAssignee}
                       />
                     )}
-                    {(['admin', 'team'].includes(user?.role) || (user?.role === 'client' && Number(s.created_by) === Number(user.id) && s.status === 'pending')) && (
+                    {canCreateTasks && (
                       <>
                         <button
                           onClick={() => editSubtask(s.id)}

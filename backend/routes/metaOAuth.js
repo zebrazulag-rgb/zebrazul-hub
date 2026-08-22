@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db/database');
-const { authRequired, canAccessClient } = require('../middleware/auth');
+const { authRequired, canAccessClient, requirePermission } = require('../middleware/auth');
 const {
   MetaOAuthError,
   getConfig,
@@ -89,6 +89,7 @@ router.get('/callback', async (req, res) => {
 });
 
 router.use(authRequired);
+router.use(requirePermission('social.connections'));
 
 router.get('/status/:clientId', (req, res) => {
   const clientId = Number(req.params.clientId);

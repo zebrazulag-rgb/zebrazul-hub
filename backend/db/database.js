@@ -1249,6 +1249,54 @@ tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');
 tryAddColumn('action_plans', 'annual_plan_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'annual_plan_progress', 'INTEGER DEFAULT 0');
+tryAddColumn('users', 'custom_role_id', 'INTEGER');
+
+// Permissões configuráveis por cargo. Mantemos os papéis internos legados
+// (admin/team/client) para compatibilidade e adicionamos cargos customizados
+// sobre o papel "team", sem reconstruir a tabela de usuários.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS custom_roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    UNIQUE(agency_id, slug)
+  );
+
+  CREATE TABLE IF NOT EXISTS agency_role_permissions (
+    agency_id INTEGER NOT NULL,
+    role_key TEXT NOT NULL,
+    permission_key TEXT NOT NULL,
+    allowed INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (agency_id, role_key, permission_key),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS custom_role_permissions (
+    custom_role_id INTEGER NOT NULL,
+    permission_key TEXT NOT NULL,
+    allowed INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (custom_role_id, permission_key),
+    FOREIGN KEY (custom_role_id) REFERENCES custom_roles(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS agency_permission_visibility (
+    agency_id INTEGER NOT NULL,
+    permission_key TEXT NOT NULL,
+    owner_only INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (agency_id, permission_key),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_custom_roles_agency ON custom_roles(agency_id, name);
+  CREATE INDEX IF NOT EXISTS idx_users_custom_role ON users(agency_id, custom_role_id);
+`);
 
 // Migração do módulo financeiro para bancos criados nas primeiras versões.
 // A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual

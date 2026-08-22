@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const { publicAgency } = require('../services/tenant');
+const { getPermissionSetForUser, roleKeyForUser, roleNameForUser, hasPermission } = require('../services/permissions');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zebrazul-hub-dev-secret-troque-em-producao';
 
@@ -19,6 +20,7 @@ function hydrateUserAccess(user) {
   const agency = db.prepare('SELECT * FROM agencies WHERE id = ?').get(user.agency_id);
   const base = {
     ...user,
+    custom_role_id: user.custom_role_id ? Number(user.custom_role_id) : null,
     agency_id: Number(user.agency_id),
     is_platform_owner: Number(user.is_platform_owner) === 1,
     is_agency_owner: Number(user.is_agency_owner) === 1,
@@ -26,13 +28,19 @@ function hydrateUserAccess(user) {
     is_commercial_team: Number(user.is_commercial_team) === 1,
     agency: publicAgency(agency),
   };
-  if (user.role === 'admin') return { ...base, client_ids: [] };
+  const permissionBase = {
+    ...base,
+    permission_role_key: roleKeyForUser(base),
+    permission_role_name: roleNameForUser(base),
+    permissions: getPermissionSetForUser(base),
+  };
+  if (user.role === 'admin') return { ...permissionBase, client_ids: [] };
   if (base.is_operations_head) {
     const clientIds = db.prepare('SELECT id FROM clients WHERE agency_id = ? ORDER BY id').all(user.agency_id).map((row) => Number(row.id));
-    return { ...base, client_ids: clientIds };
+    return { ...permissionBase, client_ids: clientIds };
   }
-  if (user.role === 'client') return { ...base, client_ids: user.client_id ? [Number(user.client_id)] : [] };
-  return { ...base, client_ids: getUserClientIds(user.id, user.agency_id) };
+  if (user.role === 'client') return { ...permissionBase, client_ids: user.client_id ? [Number(user.client_id)] : [] };
+  return { ...permissionBase, client_ids: getUserClientIds(user.id, user.agency_id) };
 }
 
 function canAccessClient(user, clientId) {
@@ -59,7 +67,7 @@ function authRequired(req, res, next) {
     const payload = jwt.verify(token, JWT_SECRET);
     const currentUser = db.prepare(`
       SELECT id, name, email, role, client_id, agency_id,
-             is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
+             is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team, custom_role_id
       FROM users WHERE id = ?
     `).get(payload.id);
 
@@ -95,6 +103,15 @@ function requirePlatformOwner(req, res, next) {
   next();
 }
 
+function requirePermission(permissionKey) {
+  return (req, res, next) => {
+    if (!req.user || !hasPermission(req.user, permissionKey)) {
+      return res.status(403).json({ error: 'Você não possui permissão para acessar este recurso.' });
+    }
+    next();
+  };
+}
+
 module.exports = {
   authRequired,
   requireRole,
@@ -103,4 +120,5 @@ module.exports = {
   canAccessClient,
   getUserClientIds,
   hydrateUserAccess,
+  requirePermission,
 };

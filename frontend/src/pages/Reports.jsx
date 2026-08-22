@@ -33,6 +33,7 @@ import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 import OrganicReports from '../components/OrganicReports.jsx';
 import ReportConnectionsModal from '../components/ReportConnectionsModal.jsx';
+import { hasPermission } from '../permissions.js';
 
 function localIsoDate(date = new Date()) {
   const year = date.getFullYear();
@@ -92,6 +93,7 @@ function sumOrganic(report, field) {
 
 export default function Reports() {
   const { user } = useAuth();
+  const canConnections = hasPermission(user, 'social.connections');
   const { selectedClient } = useClientFilter();
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
@@ -317,13 +319,13 @@ export default function Reports() {
                 onChange={(event) => setTo(event.target.value)}
               />
             </label>
-            <button
+            {canConnections && <button
               type="button"
               onClick={() => setConnectionsOpen(true)}
               className="btn-secondary flex items-center gap-2 py-2.5"
             >
               <Settings2 size={16} /> Conexões
-            </button>
+            </button>}
           </div>
         )}
       >
@@ -355,7 +357,7 @@ export default function Reports() {
         user={user}
         refreshKey={connectionsVersion}
         onReportLoaded={setOrganicReport}
-        onOpenConnections={() => setConnectionsOpen(true)}
+        onOpenConnections={canConnections ? () => setConnectionsOpen(true) : null}
       />
 
       <div className="flex items-center gap-3 pt-2">
@@ -383,7 +385,7 @@ export default function Reports() {
 
           <div className="flex flex-wrap items-center gap-2">
             <ConnectionBadge status={metaReport?.connection?.last_sync_status} configured={metaStatus.configured} connected={Boolean(metaReport?.connection)} />
-            {metaReport?.connection && user?.role !== 'client' && (
+            {metaReport?.connection && canConnections && (
               <button className="btn-primary flex items-center gap-2" onClick={syncMeta} disabled={syncing || loadingReport}>
                 {syncing ? <LoaderCircle size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                 {syncing ? 'Sincronizando...' : 'Atualizar tráfego'}
@@ -406,9 +408,9 @@ export default function Reports() {
             <div className="icon-tile bg-slate-100 text-slate-400"><Megaphone size={19} /></div>
             <p className="mt-3 font-semibold text-slate-700">Sem tráfego pago conectado</p>
             <p className="mt-1 max-w-lg text-sm leading-6 text-slate-500">O relatório orgânico continua funcionando normalmente. A conta de anúncios pode ser vinculada depois, apenas nos clientes que utilizam mídia paga.</p>
-            <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={() => setConnectionsOpen(true)}>
+            {canConnections && <button className="btn-secondary mt-4 flex items-center gap-2" type="button" onClick={() => setConnectionsOpen(true)}>
               <Settings2 size={16} /> Conectar Meta
-            </button>
+            </button>}
           </div>
         )}
       </section>
@@ -534,14 +536,14 @@ export default function Reports() {
         </details>
       )}
 
-      <ReportConnectionsModal
+      {canConnections && <ReportConnectionsModal
         open={connectionsOpen}
         onClose={() => setConnectionsOpen(false)}
         clientId={clientId}
         clientName={currentClient?.name}
         onChanged={handleConnectionsChanged}
         user={user}
-      />
+      />}
     </div>
   );
 }

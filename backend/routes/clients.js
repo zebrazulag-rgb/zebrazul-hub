@@ -97,6 +97,32 @@ router.post('/', requireRole('admin', 'team'), (req, res) => {
   res.status(201).json({ id });
 });
 
+
+router.put('/:id/feed-profile', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const client = db.prepare('SELECT * FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  const allowedFields = [
+    'avatar_data', 'avatar_mime', 'bio', 'instagram_username', 'instagram_display_name',
+    'instagram_posts_count', 'instagram_followers_count', 'instagram_following_count',
+    'instagram_link', 'instagram_primary_action', 'instagram_secondary_action', 'instagram_tertiary_action'
+  ];
+  const updates = [];
+  const values = [];
+  for (const field of allowedFields) {
+    if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
+    updates.push(`${field} = ?`);
+    values.push(field === 'avatar_data'
+      ? persistMedia(req.body[field], req.body.avatar_mime || client.avatar_mime || 'image/jpeg')
+      : (req.body[field] === '' ? null : req.body[field]));
+  }
+  if (updates.length) {
+    db.prepare(`UPDATE clients SET ${updates.join(', ')} WHERE id = ? AND agency_id = ?`)
+      .run(...values, req.params.id, req.user.agency_id);
+  }
+  res.json({ ok: true });
+});
+
 router.put('/:id', requireRole('admin', 'team'), (req, res) => {
   if (!ensureClientAccess(req, res, req.params.id)) return;
   const client = db.prepare('SELECT * FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);

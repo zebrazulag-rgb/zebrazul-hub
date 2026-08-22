@@ -29,6 +29,7 @@ import BeeCampaignBriefing from './pages/BeeCampaignBriefing.jsx';
 import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
+import { hasPermission } from './permissions.js';
 
 
 function SocialMediaLegacyRedirect({ section }) {
@@ -36,14 +37,26 @@ function SocialMediaLegacyRedirect({ section }) {
   return <Navigate to={`/social-media/${section}${location.search || ''}`} replace />;
 }
 
-function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false }) {
+function fallbackRoute(user) {
+  if (hasPermission(user, 'dashboard.view')) return '/';
+  if (hasPermission(user, 'tasks.view')) return '/tarefas';
+  if (hasPermission(user, 'social.feed')) return '/social-media/feed';
+  if (hasPermission(user, 'social.stories')) return '/social-media/stories';
+  if (hasPermission(user, 'social.reports')) return '/social-media/relatorios';
+  if (hasPermission(user, 'commercial.view')) return '/comercial';
+  if (hasPermission(user, 'materials.view')) return '/materiais';
+  return '/configuracoes/aparencia';
+}
+
+function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false, permission }) {
   const { user, checkingSession } = useAuth();
   if (checkingSession) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando Zebrahub...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to={user.role === 'client' ? '/tarefas?area=aprovacao' : '/'} replace />;
-  if (user.is_commercial_team && !commercialTeamAllowed) return <Navigate to="/" replace />;
-  if (commercialAccess && !(user.role === 'admin' || user.role === 'client' || user.is_commercial_team)) return <Navigate to="/" replace />;
-  if (platformOnly && !user.is_platform_owner) return <Navigate to="/" replace />;
+  if (permission && !hasPermission(user, permission)) return <Navigate to={fallbackRoute(user)} replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={fallbackRoute(user)} replace />;
+  if (user.is_commercial_team && !commercialTeamAllowed && !permission) return <Navigate to={fallbackRoute(user)} replace />;
+  if (commercialAccess && !(user.role === 'admin' || user.role === 'client' || user.is_commercial_team) && !hasPermission(user, 'commercial.view')) return <Navigate to={fallbackRoute(user)} replace />;
+  if (platformOnly && !user.is_platform_owner) return <Navigate to={fallbackRoute(user)} replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -62,29 +75,29 @@ export default function App() {
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
-      <Route path="/" element={<ProtectedRoute roles={['admin', 'team']} commercialTeamAllowed><Dashboard /></ProtectedRoute>} />
-      <Route path="/aprovacao" element={<ProtectedRoute><Navigate to="/tarefas?area=aprovacao" replace /></ProtectedRoute>} />
-      <Route path="/aprovacao/videos" element={<ProtectedRoute><Navigate to="/tarefas?area=aprovacao&approval_view=videos" replace /></ProtectedRoute>} />
-      <Route path="/aprovacao/videos/:id" element={<ProtectedRoute><VideoReviewWorkspace /></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
+      <Route path="/aprovacao" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao" replace /></ProtectedRoute>} />
+      <Route path="/aprovacao/videos" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao&approval_view=videos" replace /></ProtectedRoute>} />
+      <Route path="/aprovacao/videos/:id" element={<ProtectedRoute permission="tasks.approval"><VideoReviewWorkspace /></ProtectedRoute>} />
       <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />
       <Route path="/social-media" element={<Navigate to="/social-media/feed" replace />} />
-      <Route path="/social-media/feed" element={<ProtectedRoute><SocialMedia section="feed" /></ProtectedRoute>} />
-      <Route path="/social-media/stories" element={<ProtectedRoute roles={['admin', 'team']}><SocialMedia section="stories" /></ProtectedRoute>} />
-      <Route path="/social-media/relatorios" element={<ProtectedRoute><SocialMedia section="relatorios" /></ProtectedRoute>} />
-      <Route path="/feed" element={<ProtectedRoute><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
-      <Route path="/stories" element={<ProtectedRoute roles={['admin', 'team']}><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
+      <Route path="/social-media/feed" element={<ProtectedRoute permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
+      <Route path="/social-media/stories" element={<ProtectedRoute permission="social.stories"><SocialMedia section="stories" /></ProtectedRoute>} />
+      <Route path="/social-media/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMedia section="relatorios" /></ProtectedRoute>} />
+      <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
+      <Route path="/stories" element={<ProtectedRoute permission="social.stories"><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
       <Route
         path="/tarefas"
         element={
-          <ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed>
+          <ProtectedRoute permission="tasks.view">
             <Tasks />
           </ProtectedRoute>
         }
       />
-      <Route path="/bussola" element={<ProtectedRoute roles={['admin', 'team']}><CompassPage /></ProtectedRoute>} />
-      <Route path="/bussola/dme" element={<ProtectedRoute roles={['admin', 'team']}><Diagnostics /></ProtectedRoute>} />
-      <Route path="/bussola/diagnostico" element={<ProtectedRoute roles={['admin', 'team']}><StrategicDiagnosis /></ProtectedRoute>} />
-      <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute roles={['admin', 'team']}><BeeCampaignBriefing /></ProtectedRoute>} />
+      <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
+      <Route path="/bussola/dme" element={<ProtectedRoute permission="compass.view"><Diagnostics /></ProtectedRoute>} />
+      <Route path="/bussola/diagnostico" element={<ProtectedRoute permission="compass.view"><StrategicDiagnosis /></ProtectedRoute>} />
+      <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />
       <Route path="/bussola/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
@@ -94,17 +107,17 @@ export default function App() {
       <Route path="/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/comercial" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><Sales /></ProtectedRoute>} />
-      <Route path="/comercial/funil" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed commercialAccess><CommercialFunnel /></ProtectedRoute>} />
-      <Route path="/rematriculas" element={<ProtectedRoute roles={['admin', 'team', 'client']} commercialTeamAllowed><BeeRematriculas /></ProtectedRoute>} />
-      <Route path="/relatorios" element={<ProtectedRoute><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
-      <Route path="/materiais" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
-      <Route path="/materiais/:id" element={<ProtectedRoute><MaterialViewer /></ProtectedRoute>} />
-      <Route path="/senhas" element={<ProtectedRoute roles={['admin']}><PasswordVault /></ProtectedRoute>} />
+      <Route path="/comercial" element={<ProtectedRoute permission="commercial.view"><Sales /></ProtectedRoute>} />
+      <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view"><CommercialFunnel /></ProtectedRoute>} />
+      <Route path="/rematriculas" element={<ProtectedRoute permission="reenrollments.view"><BeeRematriculas /></ProtectedRoute>} />
+      <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
+      <Route path="/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
+      <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
+      <Route path="/senhas" element={<ProtectedRoute permission="vault.view"><PasswordVault /></ProtectedRoute>} />
       <Route
         path="/financeiro"
         element={
-          <ProtectedRoute roles={['admin']}>
+          <ProtectedRoute permission="finance.view">
             <Finance />
           </ProtectedRoute>
         }

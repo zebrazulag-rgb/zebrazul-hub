@@ -9,10 +9,15 @@ const {
   hydrateUserAccess,
 } = require('../middleware/auth');
 const { resolveAgency } = require('../services/tenant');
+const { hasPermission } = require('../services/permissions');
 
 const { persistMedia } = require('../services/mediaStorage');
 const router = express.Router();
 const VALID_ROLES = ['admin', 'team', 'operations_head', 'commercial_team', 'client'];
+
+function canManageUsers(req) {
+  return req.user?.role === 'admin' && hasPermission(req.user, 'settings.users');
+}
 
 function normalizeAccessRole(value) {
   const requested = String(value || '');
@@ -49,6 +54,13 @@ function validateClientIds(clientIds, agencyId) {
   return Number(count) === clientIds.length;
 }
 
+function normalizeCustomRoleId(value, agencyId) {
+  const id = Number(value) || null;
+  if (!id) return null;
+  const role = db.prepare('SELECT id FROM custom_roles WHERE id = ? AND agency_id = ?').get(id, agencyId);
+  return role ? Number(role.id) : null;
+}
+
 function replaceUserClientAccess(userId, clientIds, agencyId) {
   db.prepare('DELETE FROM user_client_access WHERE user_id = ?').run(userId);
   if (!clientIds.length) return;
@@ -76,6 +88,10 @@ function publicUser(user) {
     is_agency_owner: hydrated.is_agency_owner,
     is_operations_head: hydrated.is_operations_head,
     is_commercial_team: hydrated.is_commercial_team,
+    custom_role_id: hydrated.custom_role_id,
+    permission_role_key: hydrated.permission_role_key,
+    permission_role_name: hydrated.permission_role_name,
+    permissions: hydrated.permissions,
   };
 }
 
@@ -99,8 +115,13 @@ function attachUserAccess(users, agencyId) {
     const accesses = operationsHead
       ? db.prepare('SELECT id, name FROM clients WHERE agency_id = ? ORDER BY name').all(agencyId)
       : user.role === 'team' ? (byUser.get(user.id) || []) : [];
+    const customRole = user.custom_role_id
+      ? db.prepare('SELECT id, name FROM custom_roles WHERE id = ? AND agency_id = ?').get(user.custom_role_id, agencyId)
+      : null;
     return {
       ...user,
+      custom_role_id: customRole ? Number(customRole.id) : null,
+      custom_role_name: customRole?.name || null,
       is_platform_owner: Number(user.is_platform_owner) === 1,
       is_agency_owner: Number(user.is_agency_owner) === 1,
       is_operations_head: operationsHead,
@@ -140,14 +161,14 @@ router.post('/login', (req, res) => {
 router.get('/me', authRequired, (req, res) => {
   const user = db.prepare(`
     SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-           agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
+           agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team, custom_role_id
     FROM users WHERE id = ?
   `).get(req.user.id);
   res.json({ user: publicUser(user) });
 });
 
 router.post('/users', authRequired, (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas admin pode criar usuarios' });
+  if (!canManageUsers(req)) return res.status(403).json({ error: 'Seu cargo não possui permissão para criar usuários.' });
 
   const name = String(req.body.name || '').trim();
   const email = normalizeEmail(req.body.email);
@@ -156,11 +177,16 @@ router.post('/users', authRequired, (req, res) => {
   const role = accessRole.role;
   const clientId = role === 'client' ? Number(req.body.client_id) || null : null;
   const clientIds = role === 'team' && !accessRole.isOperationsHead ? normalizeClientIds(req.body.client_ids) : [];
+  const requestedCustomRoleId = role === 'team' && !accessRole.isOperationsHead && !accessRole.isCommercialTeam
+    ? (Number(req.body.custom_role_id) || null)
+    : null;
+  const customRoleId = requestedCustomRoleId ? normalizeCustomRoleId(requestedCustomRoleId, req.user.agency_id) : null;
 
   if (!name || !email || !password || !accessRole.requested) return res.status(400).json({ error: 'Campos obrigatorios faltando' });
   if (!VALID_ROLES.includes(accessRole.requested)) return res.status(400).json({ error: 'Papel de usuario invalido' });
   if (String(password).length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres' });
   if (role === 'client' && !clientId) return res.status(400).json({ error: 'Selecione um cliente para este usuario' });
+  if (requestedCustomRoleId && !customRoleId) return res.status(400).json({ error: 'Cargo personalizado inválido para esta agência' });
   if (role === 'client' && !validateClientIds([clientId], req.user.agency_id)) return res.status(400).json({ error: 'Cliente inválido para esta agência' });
   if (role === 'team' && !accessRole.isOperationsHead && !validateClientIds(clientIds, req.user.agency_id)) return res.status(400).json({ error: 'Um ou mais clientes selecionados sao invalidos' });
 
@@ -174,9 +200,9 @@ router.post('/users', authRequired, (req, res) => {
     const createUser = db.transaction(() => {
       const passwordHash = bcrypt.hashSync(password, 10);
       const info = db.prepare(`
-        INSERT INTO users (name, email, password_hash, role, client_id, agency_id, is_operations_head, is_commercial_team)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(name, email, passwordHash, role, clientId, req.user.agency_id, accessRole.isOperationsHead ? 1 : 0, accessRole.isCommercialTeam ? 1 : 0);
+        INSERT INTO users (name, email, password_hash, role, client_id, agency_id, is_operations_head, is_commercial_team, custom_role_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(name, email, passwordHash, role, clientId, req.user.agency_id, accessRole.isOperationsHead ? 1 : 0, accessRole.isCommercialTeam ? 1 : 0, customRoleId);
       replaceUserClientAccess(info.lastInsertRowid, clientIds, req.user.agency_id);
       return info.lastInsertRowid;
     });
@@ -189,7 +215,7 @@ router.post('/users', authRequired, (req, res) => {
 
 router.get('/team-users', authRequired, (req, res) => {
   let users = db.prepare(`
-    SELECT id, name, role, avatar_color, avatar_data, is_operations_head, is_commercial_team
+    SELECT id, name, role, avatar_color, avatar_data, is_operations_head, is_commercial_team, custom_role_id
     FROM users
     WHERE agency_id = ? AND role IN ('admin','team')
     ORDER BY name
@@ -208,10 +234,10 @@ router.get('/team-users', authRequired, (req, res) => {
 });
 
 router.get('/users', authRequired, (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
+  if (!canManageUsers(req)) return res.status(403).json({ error: 'Seu cargo não possui permissão para visualizar usuários.' });
   const users = db.prepare(`
     SELECT u.id, u.name, u.email, u.role, u.client_id, u.avatar_color, u.avatar_data, u.avatar_mime,
-           u.is_platform_owner, u.is_agency_owner, u.is_operations_head, u.is_commercial_team, c.name as client_name
+           u.is_platform_owner, u.is_agency_owner, u.is_operations_head, u.is_commercial_team, u.custom_role_id, c.name as client_name
     FROM users u
     LEFT JOIN clients c ON c.id = u.client_id AND c.agency_id = u.agency_id
     WHERE u.agency_id = ?
@@ -230,14 +256,14 @@ router.put('/me', authRequired, (req, res) => {
 
   const user = db.prepare(`
     SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-           agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
+           agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team, custom_role_id
     FROM users WHERE id = ? AND agency_id = ?
   `).get(req.user.id, req.user.agency_id);
   res.json({ user: publicUser(user) });
 });
 
 router.put('/users/:id', authRequired, (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas admin pode editar usuarios' });
+  if (!canManageUsers(req)) return res.status(403).json({ error: 'Seu cargo não possui permissão para editar usuários.' });
 
   const targetId = Number(req.params.id);
   const existing = db.prepare('SELECT * FROM users WHERE id = ? AND agency_id = ?').get(targetId, req.user.agency_id);
@@ -271,6 +297,12 @@ router.put('/users/:id', authRequired, (req, res) => {
     : [];
   if (nextRole === 'team' && !nextAccess.isOperationsHead && !validateClientIds(nextClientIds, req.user.agency_id)) return res.status(400).json({ error: 'Um ou mais clientes selecionados sao invalidos' });
 
+  const requestedCustomRoleId = nextRole === 'team' && !nextAccess.isOperationsHead && !nextAccess.isCommercialTeam
+    ? (req.body.custom_role_id === undefined ? existing.custom_role_id : (Number(req.body.custom_role_id) || null))
+    : null;
+  const nextCustomRoleId = requestedCustomRoleId ? normalizeCustomRoleId(requestedCustomRoleId, req.user.agency_id) : null;
+  if (requestedCustomRoleId && !nextCustomRoleId) return res.status(400).json({ error: 'Cargo personalizado inválido para esta agência' });
+
   let nextPasswordHash = existing.password_hash;
   if (req.body.password !== undefined && req.body.password !== '') {
     if (String(req.body.password).length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres' });
@@ -284,16 +316,16 @@ router.put('/users/:id', authRequired, (req, res) => {
     const updateUser = db.transaction(() => {
       db.prepare(`
         UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, client_id = ?,
-          avatar_data = ?, avatar_mime = ?, is_operations_head = ?, is_commercial_team = ?
+          avatar_data = ?, avatar_mime = ?, is_operations_head = ?, is_commercial_team = ?, custom_role_id = ?
         WHERE id = ? AND agency_id = ?
-      `).run(nextName, nextEmail, nextPasswordHash, nextRole, nextClientId, nextAvatarData, nextAvatarMime, nextAccess.isOperationsHead ? 1 : 0, nextAccess.isCommercialTeam ? 1 : 0, targetId, req.user.agency_id);
+      `).run(nextName, nextEmail, nextPasswordHash, nextRole, nextClientId, nextAvatarData, nextAvatarMime, nextAccess.isOperationsHead ? 1 : 0, nextAccess.isCommercialTeam ? 1 : 0, nextCustomRoleId, targetId, req.user.agency_id);
       replaceUserClientAccess(targetId, nextClientIds, req.user.agency_id);
     });
     updateUser();
 
     const updatedUser = db.prepare(`
       SELECT id, name, email, role, client_id, avatar_color, avatar_data, avatar_mime,
-             agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team
+             agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team, custom_role_id
       FROM users WHERE id = ? AND agency_id = ?
     `).get(targetId, req.user.agency_id);
     res.json({ ok: true, user: publicUser(updatedUser) });
@@ -315,7 +347,7 @@ const deleteUserTransaction = db.transaction((targetId, replacementUserId, agenc
 });
 
 router.delete('/users/:id', authRequired, (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas admin pode apagar usuarios' });
+  if (!canManageUsers(req)) return res.status(403).json({ error: 'Seu cargo não possui permissão para remover usuários.' });
 
   const targetId = Number(req.params.id);
   if (targetId === req.user.id) return res.status(400).json({ error: 'Voce nao pode apagar o proprio usuario' });

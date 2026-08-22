@@ -27,6 +27,7 @@ import CommercialLeadImportModal from '../components/CommercialLeadImportModal.j
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { notifyCommercialUpdated } from '../utils/commercialRealtime.js';
+import { hasPermission } from '../permissions.js';
 import {
   commercialStageMap,
   decorateCommercialStage,
@@ -182,7 +183,7 @@ function OwnerAvatar({ lead }) {
   );
 }
 
-function LeadCard({ lead, stage, onOpen, onDragStart }) {
+function LeadCard({ lead, stage, onOpen, onDragStart, canManage = false }) {
   const safeStage = stage || {
     soft: 'bg-slate-100 text-slate-700 border-slate-200',
     stage_type: 'open',
@@ -191,13 +192,13 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
   return (
     <button
       type="button"
-      draggable
-      onDragStart={(event) => onDragStart(event, lead.id)}
+      draggable={canManage}
+      onDragStart={canManage ? (event) => onDragStart(event, lead.id) : undefined}
       onClick={() => onOpen(lead)}
       className="group w-full rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)]"
     >
       <div className="flex items-start gap-3">
-        <GripVertical size={15} className="mt-0.5 shrink-0 text-slate-300 opacity-0 transition group-hover:opacity-100" />
+        {canManage && <GripVertical size={15} className="mt-0.5 shrink-0 text-slate-300 opacity-0 transition group-hover:opacity-100" />}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -246,6 +247,8 @@ function LeadCard({ lead, stage, onOpen, onDragStart }) {
 export default function Sales() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canManageCommercial = hasPermission(user, 'commercial.manage');
+  const canImportCommercial = hasPermission(user, 'commercial.import');
   const { selectedClient, setSelectedClient } = useClientFilter();
   const [commercialClients, setCommercialClients] = useState([]);
   const [leads, setLeads] = useState([]);
@@ -564,20 +567,20 @@ export default function Sales() {
           : 'Selecione um cliente no filtro lateral para abrir o pipeline comercial correspondente.'}
         actions={clientId ? (
           <>
-            <button type="button" onClick={() => setStageManagerOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
+            {canManageCommercial && <button type="button" onClick={() => setStageManagerOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
               <Settings2 size={17} /> Gerenciar quadros
-            </button>
+            </button>}
             <button type="button" onClick={() => navigate('/comercial/funil')} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
               <TrendingUp size={17} /> Ver funil
             </button>
-            {user?.role !== 'client' && (
+            {canImportCommercial && (
               <button type="button" onClick={() => setLeadImportOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">
                 <Upload size={17} /> Importar leads
               </button>
             )}
-            <button type="button" onClick={beginCreate} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5">
+            {canManageCommercial && <button type="button" onClick={beginCreate} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5">
               <Plus size={17} /> Nova oportunidade
-            </button>
+            </button>}
           </>
         ) : null}
       />
@@ -617,7 +620,7 @@ export default function Sales() {
             {niches.map((niche) => <option key={niche.id || niche.name} value={niche.name}>{niche.name} ({niche.lead_count || 0})</option>)}
             {unclassifiedNicheCount > 0 && <option value="__unclassified__">Sem nicho ({unclassifiedNicheCount})</option>}
           </select>
-          {user?.role !== 'client' && (
+          {canManageCommercial && (
             <button type="button" onClick={openNicheModal} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50">
               <Tag size={15} /> Novo nicho
             </button>
@@ -638,8 +641,8 @@ export default function Sales() {
             <option value="all">Todos os responsáveis</option>
             {teamUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
           </select>
-          {user?.role !== 'client' && <button type="button" onClick={() => setLeadImportOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"><Upload size={16} /> Importar</button>}
-          <button type="button" onClick={beginCreate} className="btn-primary inline-flex items-center gap-2 text-sm"><Plus size={16} /> Adicionar lead</button>
+          {canImportCommercial && <button type="button" onClick={() => setLeadImportOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"><Upload size={16} /> Importar</button>}
+          {canManageCommercial && <button type="button" onClick={beginCreate} className="btn-primary inline-flex items-center gap-2 text-sm"><Plus size={16} /> Adicionar lead</button>}
         </div>
       </section>
 
@@ -666,7 +669,7 @@ export default function Sales() {
           <div className="flex flex-col gap-2 border-b border-slate-200/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Pipeline visual</h2>
-              <p className="mt-0.5 text-xs text-slate-500">Arraste as oportunidades entre os quadros. Use “Gerenciar quadros” para criar, renomear, reorganizar ou excluir etapas.</p>
+              <p className="mt-0.5 text-xs text-slate-500">{canManageCommercial ? 'Arraste as oportunidades entre os quadros. Use “Gerenciar quadros” para criar, renomear, reorganizar ou excluir etapas.' : 'Visualização do pipeline comercial. Seu cargo está com edição desativada.'}</p>
             </div>
             <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
               <span className="h-2 w-2 rounded-full bg-emerald-500" /> Atualização automática
@@ -680,9 +683,9 @@ export default function Sales() {
               return (
                 <div
                   key={stage.key}
-                  onDragOver={(event) => { event.preventDefault(); setDragOverStage(stage.key); }}
-                  onDragLeave={() => setDragOverStage((current) => current === stage.key ? null : current)}
-                  onDrop={(event) => onDrop(event, stage.key)}
+                  onDragOver={canManageCommercial ? (event) => { event.preventDefault(); setDragOverStage(stage.key); } : undefined}
+                  onDragLeave={canManageCommercial ? () => setDragOverStage((current) => current === stage.key ? null : current) : undefined}
+                  onDrop={canManageCommercial ? (event) => onDrop(event, stage.key) : undefined}
                   className={`w-[350px] shrink-0 rounded-[22px] border p-3.5 transition ${dragOverStage === stage.key ? 'border-[#0969ff] bg-blue-50/60 shadow-[0_0_0_4px_rgba(9,105,255,0.08)]' : 'border-slate-200/80 bg-slate-50/70 shadow-[0_8px_24px_rgba(15,23,42,0.035)]'}`}
                 >
                   <div className="sticky top-0 z-[1] flex items-start justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white/90 px-3 pb-3 pt-3 shadow-sm backdrop-blur">
@@ -694,15 +697,15 @@ export default function Sales() {
                       </div>
                       <p className="mt-1 pl-[18px] text-xs text-slate-400">{formatCurrency(total)}</p>
                     </div>
-                    <button type="button" onClick={() => { beginCreate(); setForm((current) => ({ ...current, stage: stage.key, probability: stage.probability })); }} className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm transition hover:text-[#0969ff]" title={`Adicionar em ${stage.label}`}>
+                    {canManageCommercial && <button type="button" onClick={() => { beginCreate(); setForm((current) => ({ ...current, stage: stage.key, probability: stage.probability })); }} className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm transition hover:text-[#0969ff]" title={`Adicionar em ${stage.label}`}>
                       <Plus size={15} />
-                    </button>
+                    </button>}
                   </div>
                   <div className="mt-3 space-y-3">
-                    {items.map((lead) => <LeadCard key={lead.id} lead={lead} stage={stageMap[lead.stage]} onOpen={beginEdit} onDragStart={onDragStart} />)}
+                    {items.map((lead) => <LeadCard key={lead.id} lead={lead} stage={stageMap[lead.stage]} onOpen={canManageCommercial ? beginEdit : () => {}} onDragStart={onDragStart} canManage={canManageCommercial} />)}
                     {items.length === 0 && (
                       <div className="flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300/80 bg-white/70 px-5 text-center text-xs leading-5 text-slate-400">
-                        Arraste uma oportunidade para esta etapa.
+                        {canManageCommercial ? 'Arraste uma oportunidade para esta etapa.' : 'Nenhuma oportunidade nesta etapa.'}
                       </div>
                     )}
                   </div>

@@ -3,6 +3,7 @@ const db = require('../db/database');
 const { authRequired } = require('../middleware/auth');
 const { resolveAgency, publicAgency } = require('../services/tenant');
 const { persistMedia } = require('../services/mediaStorage');
+const { hasPermission } = require('../services/permissions');
 
 const router = express.Router();
 
@@ -19,8 +20,8 @@ router.get('/me', authRequired, (req, res) => {
 });
 
 router.put('/me', authRequired, (req, res) => {
-  if (req.user.role !== 'admin' && !req.user.is_platform_owner) {
-    return res.status(403).json({ error: 'Apenas administradores podem editar a marca' });
+  if (!req.user.is_platform_owner && !hasPermission(req.user, 'settings.brand')) {
+    return res.status(403).json({ error: 'Seu cargo não possui permissão para editar a marca.' });
   }
 
   const current = db.prepare('SELECT * FROM agencies WHERE id = ?').get(req.user.agency_id);

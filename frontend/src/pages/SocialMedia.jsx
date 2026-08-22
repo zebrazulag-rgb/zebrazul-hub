@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import Feed from './Feed.jsx';
 import StoryHub from './StoryHub.jsx';
 import Reports from './Reports.jsx';
+import { hasPermission } from '../permissions.js';
 
 const SECTIONS = {
   feed: {
@@ -11,31 +12,32 @@ const SECTIONS = {
     description: 'Planejamento, calendário e visualização dos conteúdos do cliente.',
     icon: Grid3x3,
     path: '/social-media/feed',
-    roles: ['admin', 'team', 'client'],
+    permission: 'social.feed',
   },
   stories: {
     label: 'Stories',
     description: 'Menções, repostagens e acompanhamento dos Stories.',
     icon: Instagram,
     path: '/social-media/stories',
-    roles: ['admin', 'team'],
+    permission: 'social.stories',
   },
   relatorios: {
     label: 'Relatórios',
     description: 'Desempenho orgânico, Meta Ads e conexões do cliente.',
     icon: BarChart3,
     path: '/social-media/relatorios',
-    roles: ['admin', 'team', 'client'],
+    permission: 'social.reports',
   },
 };
 
 export default function SocialMedia({ section = 'feed' }) {
   const { user } = useAuth();
-  const visibleSections = Object.entries(SECTIONS).filter(([, item]) => item.roles.includes(user?.role));
+  const visibleSections = Object.entries(SECTIONS).filter(([, item]) => hasPermission(user, item.permission));
   const current = SECTIONS[section];
 
-  if (!current || !current.roles.includes(user?.role)) {
-    return <Navigate to="/social-media/feed" replace />;
+  if (!current || !hasPermission(user, current.permission)) {
+    const firstVisible = visibleSections[0]?.[1]?.path;
+    return <Navigate to={firstVisible || '/tarefas'} replace />;
   }
 
   return (

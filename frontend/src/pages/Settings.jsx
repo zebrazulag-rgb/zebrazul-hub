@@ -1,12 +1,14 @@
 import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { Building2, Palette, Settings as SettingsIcon, UserCog, Users } from 'lucide-react';
+import { Building2, Palette, Settings as SettingsIcon, ShieldCheck, UserCog, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import AppearanceSettings from './AppearanceSettings.jsx';
 import Clients from './Clients.jsx';
 import UserManagement from './UserManagement.jsx';
 import BrandSettings from './BrandSettings.jsx';
 import Agencies from './Agencies.jsx';
+import PermissionsSettings from './PermissionsSettings.jsx';
+import { hasPermission } from '../permissions.js';
 
 export default function Settings() {
   const { user } = useAuth();
@@ -15,9 +17,10 @@ export default function Settings() {
 
   const items = useMemo(() => [
     { key: 'aparencia', label: 'Aparência', description: 'Modo claro ou noturno', icon: Palette, allowed: true },
-    { key: 'clientes', label: 'Clientes', description: 'Contas e informações', icon: Users, allowed: ['admin', 'team'].includes(user?.role) && !user?.is_commercial_team },
-    { key: 'usuarios', label: 'Usuários', description: 'Equipe e permissões', icon: UserCog, allowed: user?.role === 'admin' && !user?.is_commercial_team },
-    { key: 'marca', label: 'Marca da agência', description: 'Logo, cores e domínio', icon: SettingsIcon, allowed: user?.role === 'admin' && !user?.is_commercial_team },
+    { key: 'clientes', label: 'Clientes', description: 'Contas e informações', icon: Users, allowed: hasPermission(user, 'settings.clients') },
+    { key: 'usuarios', label: 'Usuários', description: 'Equipe e acessos', icon: UserCog, allowed: hasPermission(user, 'settings.users') },
+    { key: 'permissoes', label: 'Permissões', description: 'Cargos e visibilidade', icon: ShieldCheck, allowed: hasPermission(user, 'settings.permissions') },
+    { key: 'marca', label: 'Marca da agência', description: 'Logo, cores e domínio', icon: SettingsIcon, allowed: hasPermission(user, 'settings.brand') },
     { key: 'agencias', label: 'Agências', description: 'Ambientes da plataforma', icon: Building2, allowed: Boolean(user?.is_platform_owner) },
   ].filter((item) => item.allowed), [user]);
 
@@ -34,6 +37,7 @@ export default function Settings() {
     aparencia: <AppearanceSettings />,
     clientes: <Clients embedded />,
     usuarios: <UserManagement embedded />,
+    permissoes: <PermissionsSettings />,
     marca: <BrandSettings embedded />,
     agencias: <Agencies embedded />,
   }[section];

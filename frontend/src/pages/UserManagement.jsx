@@ -17,13 +17,14 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Administrador', icon: Shield }
 ];
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '', client_ids: [] };
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '', client_ids: [], custom_role_id: '' };
 
 export default function UserManagement({ embedded = false }) {
   const { user: currentUser, refreshUser } = useAuth();
   const { agency } = useTenant();
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
+  const [customRoles, setCustomRoles] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editUser, setEditUser] = useState(null);
@@ -40,6 +41,7 @@ export default function UserManagement({ embedded = false }) {
   useEffect(() => {
     api.get('/clients').then((res) => setClients(res.data.clients));
     loadUsers();
+    loadCustomRoles();
     if (currentUser?.is_platform_owner) loadStorageStatus();
     else setLoadingStorage(false);
   }, [currentUser?.is_platform_owner]);
@@ -47,6 +49,15 @@ export default function UserManagement({ embedded = false }) {
   async function loadUsers() {
     const { data } = await api.get('/auth/users');
     setUsers(data.users);
+  }
+
+  async function loadCustomRoles() {
+    try {
+      const { data } = await api.get('/permissions/roles');
+      setCustomRoles((data.roles || []).filter((role) => role.type === 'custom'));
+    } catch {
+      setCustomRoles([]);
+    }
   }
 
   async function loadStorageStatus() {
@@ -121,7 +132,8 @@ export default function UserManagement({ embedded = false }) {
         name: form.name.trim(),
         email: form.email.trim(),
         client_id: form.role === 'client' ? form.client_id : null,
-        client_ids: ['team', 'commercial_team'].includes(form.role) ? form.client_ids : []
+        client_ids: ['team', 'commercial_team'].includes(form.role) ? form.client_ids : [],
+        custom_role_id: form.role === 'team' ? (form.custom_role_id || null) : null
       });
       setSuccess(`Usuário "${form.name}" criado com sucesso.`);
       setForm(EMPTY_FORM);
@@ -143,7 +155,8 @@ export default function UserManagement({ embedded = false }) {
       password: '',
       role: user.is_operations_head ? 'operations_head' : user.is_commercial_team ? 'commercial_team' : (user.role || 'team'),
       client_id: user.client_id || '',
-      client_ids: user.client_ids || []
+      client_ids: user.client_ids || [],
+      custom_role_id: user.custom_role_id || ''
     });
   }
 
@@ -162,7 +175,8 @@ export default function UserManagement({ embedded = false }) {
         email: editForm.email.trim(),
         role: editForm.role,
         client_id: editForm.role === 'client' ? editForm.client_id : null,
-        client_ids: ['team', 'commercial_team'].includes(editForm.role) ? editForm.client_ids : []
+        client_ids: ['team', 'commercial_team'].includes(editForm.role) ? editForm.client_ids : [],
+        custom_role_id: editForm.role === 'team' ? (editForm.custom_role_id || null) : null
       };
       if (editForm.password) payload.password = editForm.password;
 
@@ -360,7 +374,7 @@ export default function UserManagement({ embedded = false }) {
                   <p className="text-xs text-slate-400 truncate">{user.email}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="badge bg-slate-100 text-slate-600 capitalize">{roleBadgeLabel(user.role, user.is_operations_head, user.is_commercial_team)}</span>
+                  <span className="badge bg-slate-100 text-slate-600 capitalize">{user.custom_role_name || roleBadgeLabel(user.role, user.is_operations_head, user.is_commercial_team)}</span>
                   {user.client_name && <p className="text-xs text-slate-400 mt-1 max-w-48 truncate">{user.client_name}</p>}
                   {user.role === 'team' && !user.is_operations_head && (
                     <p className="text-xs text-slate-400 mt-1 max-w-56 line-clamp-2">
@@ -400,6 +414,7 @@ export default function UserManagement({ embedded = false }) {
           form={form}
           setForm={setForm}
           clients={clients}
+          customRoles={customRoles}
           error={error}
           saving={saving}
           submitLabel="Criar usuário"
@@ -418,6 +433,7 @@ export default function UserManagement({ embedded = false }) {
           form={editForm}
           setForm={setEditForm}
           clients={clients}
+          customRoles={customRoles}
           error={error}
           saving={saving}
           submitLabel="Salvar alterações"
@@ -471,6 +487,7 @@ function UserFormModal({
   form,
   setForm,
   clients,
+  customRoles = [],
   error,
   saving,
   submitLabel,
@@ -554,7 +571,8 @@ function UserFormModal({
                     ...form,
                     role: role.value,
                     client_id: role.value === 'client' ? form.client_id : '',
-                    client_ids: ['team', 'commercial_team'].includes(role.value) ? (form.client_ids || []) : []
+                    client_ids: ['team', 'commercial_team'].includes(role.value) ? (form.client_ids || []) : [],
+                    custom_role_id: role.value === 'team' ? (form.custom_role_id || '') : ''
                   })}
                   disabled={lockRole}
                   className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-lg border text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
@@ -570,6 +588,21 @@ function UserFormModal({
             </div>
             {lockRole && <p className="text-[11px] text-slate-400 mt-2">Seu próprio papel de acesso não pode ser alterado aqui.</p>}
           </div>
+          {form.role === 'team' && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Cargo da equipe</label>
+              <select
+                className="input-field"
+                value={form.custom_role_id || ''}
+                onChange={(event) => setForm({ ...form, custom_role_id: event.target.value })}
+                disabled={lockRole}
+              >
+                <option value="">Equipe da agência (padrão)</option>
+                {customRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+              </select>
+              <p className="mt-1.5 text-[11px] text-slate-400">Crie e configure cargos em Configurações → Permissões.</p>
+            </div>
+          )}
           {form.role === 'operations_head' && (
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
               Este perfil poderá visualizar e gerenciar todas as tarefas e subtarefas da equipe, além de acessar todos os clientes da agência. O Financeiro e as configurações administrativas continuam restritos.
