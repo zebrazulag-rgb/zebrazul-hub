@@ -80,11 +80,11 @@ export default function NotificationBell() {
   }
 
   return (
-    <div ref={panelRef} className="fixed right-6 top-5 z-50">
+    <div ref={panelRef} className="relative z-50 shrink-0">
       <button
         type="button"
         onClick={() => { setOpen((current) => !current); if (!open) loadNotifications(); }}
-        className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200/80 bg-white text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.10)] transition hover:-translate-y-0.5 hover:text-slate-900"
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl sm:h-11 sm:w-11 sm:rounded-2xl border border-slate-200/80 bg-white text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.10)] transition hover:-translate-y-0.5 hover:text-slate-900"
         aria-label="Notificações"
       >
         <Bell size={18} />

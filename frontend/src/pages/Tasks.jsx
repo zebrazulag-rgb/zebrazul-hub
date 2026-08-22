@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, CalendarCheck2 } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, CalendarCheck2, SlidersHorizontal } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -270,6 +270,7 @@ export default function Tasks() {
     due_from: '',
     due_to: '',
   });
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   useEffect(() => {
     if (!showTaskActions) return undefined;
@@ -856,15 +857,12 @@ export default function Tasks() {
 
   return (
     <div className="space-y-6">
-      <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Área de trabalho</p>
-          <p className="mt-1 text-sm font-medium text-slate-700">Gerencie a operação e a aprovação sem sair de Tarefas.</p>
-        </div>
+      <div className="toolbar-panel flex items-center justify-end">
         {areaSwitcher}
       </div>
 
       <PageHero
+        hideHeadingMobile
         icon={ListChecks}
         eyebrow={user?.role === 'client' ? 'Solicitações para a equipe' : 'Operação e entregas'}
         title="Tarefas"
@@ -949,24 +947,28 @@ export default function Tasks() {
           </>
         }
       >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
           {[
-            { label: 'Total geral', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
-            { label: 'Pendentes', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
-            { label: 'Em andamento', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
-            { label: 'Concluídas', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
-            { label: 'Postadas', value: taskOverview.posted, icon: Send, color: 'text-indigo-300' },
+            { label: 'Total geral', shortLabel: 'Total', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
+            { label: 'Pendentes', shortLabel: 'Pend.', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
+            { label: 'Em andamento', shortLabel: 'Andam.', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
+            { label: 'Concluídas', shortLabel: 'Concl.', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
+            { label: 'Postadas', shortLabel: 'Post.', value: taskOverview.posted, icon: Send, color: 'text-indigo-300' },
           ].map((item) => (
-            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
-              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
-              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+            <div key={item.label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.055] px-1.5 py-2 text-center sm:rounded-2xl sm:px-4 sm:py-3 sm:text-left">
+              <div className="flex items-center justify-center gap-1 text-[9px] text-white/45 sm:justify-start sm:gap-2 sm:text-xs"><item.icon size={11} className={`${item.color} shrink-0 sm:h-[14px] sm:w-[14px]`} /><span className="sm:hidden">{item.shortLabel}</span><span className="hidden sm:inline">{item.label}</span></div>
+              <p className="mt-0.5 text-base font-bold text-white sm:mt-1 sm:text-2xl">{item.value}</p>
             </div>
           ))}
         </div>
       </PageHero>
 
       <div className="toolbar-panel space-y-3">
-        <div className="flex flex-wrap items-end gap-2">
+        <button type="button" onClick={() => setMobileFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 md:hidden">
+          <span className="inline-flex items-center gap-2"><SlidersHorizontal size={14} /> Filtros{hasActiveFilters ? ' ativos' : ''}</span>
+          <ChevronDown size={14} className={`transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`} />
+        </button>
+        <div className={`${mobileFiltersOpen ? 'flex' : 'hidden'} flex-wrap items-end gap-2 md:flex`}>
           <div className="min-w-[150px] flex-1">
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Projeto</label>
             <select className="input-field py-2 text-xs" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))}>
@@ -1051,14 +1053,14 @@ export default function Tasks() {
       {csvNotice && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">{csvNotice}</p>}
 
       {view === 'kanban' && (
-        <div className={`grid gap-5 md:grid-cols-2 ${hidePosted ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}`}>
+        <div className={`flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 md:grid md:snap-none md:overflow-visible md:pb-0 md:gap-5 md:grid-cols-2 ${hidePosted ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}`}>
           {visibleStatusColumns.map((col) => (
             <div
               key={col.key}
               onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, col.key)}
-              className={'min-h-[420px] rounded-[24px] border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
+              className={'w-[calc(100vw-48px)] shrink-0 snap-start min-h-[420px] rounded-[24px] md:w-auto md:shrink border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
             >
               <div className="mb-3 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>

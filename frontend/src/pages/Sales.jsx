@@ -593,13 +593,13 @@ export default function Sales() {
         </section>
       ) : (<>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-4 gap-1.5 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="surface-card p-5">
-            <div className={`icon-tile ${stat.className}`}><stat.icon size={19} /></div>
-            <p className="mt-5 text-2xl font-bold tracking-tight text-slate-900">{stat.value}</p>
-            <p className="mt-1 text-sm font-medium text-slate-700">{stat.label}</p>
-            <p className="mt-1 text-xs text-slate-400">{stat.helper}</p>
+          <div key={stat.label} className="surface-card min-w-0 p-2 sm:p-5">
+            <div className={`icon-tile h-7 w-7 rounded-lg sm:h-auto sm:w-auto sm:rounded-xl ${stat.className}`}><stat.icon size={14} className="sm:h-[19px] sm:w-[19px]" /></div>
+            <p className="mt-2 truncate text-sm font-bold tracking-tight text-slate-900 sm:mt-5 sm:text-2xl">{stat.value}</p>
+            <p className="mt-1 line-clamp-2 text-[9px] font-medium leading-tight text-slate-700 sm:text-sm">{stat.label}</p>
+            <p className="mt-1 hidden text-xs text-slate-400 sm:block">{stat.helper}</p>
           </div>
         ))}
       </section>

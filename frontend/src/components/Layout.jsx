@@ -322,8 +322,7 @@ export default function Layout({ children }) {
       </aside>
 
       <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-        <NotificationBell />
-        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-4 pr-16 backdrop-blur-xl sm:px-6 md:px-8 md:pr-24 xl:px-10 xl:pr-24">
+        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:px-6 md:px-8 xl:px-10">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
             <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
@@ -419,6 +418,7 @@ export default function Layout({ children }) {
               )}
             </div>
           )}
+          <NotificationBell />
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
         <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-4 pb-28 pt-5 sm:px-6 md:px-8 md:py-8 xl:px-10">{children}</div>

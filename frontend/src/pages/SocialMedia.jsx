@@ -44,7 +44,7 @@ export default function SocialMedia({ section = 'feed' }) {
     <div className="space-y-5">
       <section className="rounded-[22px] border border-slate-200/80 bg-white px-4 py-3 shadow-[0_8px_30px_rgba(15,23,42,0.035)] sm:px-5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
+          <div className="hidden min-w-0 sm:block">
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
                 <Instagram size={17} />
@@ -76,7 +76,7 @@ export default function SocialMedia({ section = 'feed' }) {
             })}
           </nav>
         </div>
-        <p className="mt-3 text-sm text-slate-500 sm:ml-[46px]">{current.description}</p>
+        <p className="mt-3 hidden text-sm text-slate-500 sm:ml-[46px] sm:block">{current.description}</p>
       </section>
 
       {section === 'feed' && <Feed />}

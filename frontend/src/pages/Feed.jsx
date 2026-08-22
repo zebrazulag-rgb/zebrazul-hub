@@ -389,7 +389,7 @@ export default function Feed() {
       setTimeout(() => setSocialMediaLinkCopied(false), 2500);
     } catch (err) {
       const status = err.response?.status ? ` (HTTP ${err.response.status})` : '';
-      window.alert((err.response?.data?.error || 'Não foi possível gerar o LINK SOCIAL MEDIA.') + status);
+      window.alert((err.response?.data?.error || 'Não foi possível gerar o Link Social Media.') + status);
     }
   }
 
@@ -542,16 +542,16 @@ export default function Feed() {
   return (
     <div className="feed-page space-y-6 min-w-0">
       <div className="flex items-center justify-between flex-wrap gap-4 min-w-0">
-        <div className="min-w-0">
+        <div className="hidden min-w-0 sm:block">
           <h1 className="text-2xl font-bold text-slate-800">Feed em tempo real</h1>
           <p className="text-slate-500 mt-1">{viewDescription}</p>
         </div>
         {clientId && (canFeedCreate || canShareFeed || canSocialMediaLink) && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex w-full items-center gap-1.5 flex-nowrap sm:w-auto sm:gap-2 sm:flex-wrap">
             {canFeedCreate && <button
               type="button"
               onClick={() => setCreatingPost(true)}
-              className="btn-primary flex items-center gap-2 whitespace-nowrap"
+              className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-1 px-2 py-2 text-[10px] whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
             >
               <Plus size={17} /> Nova publicação
             </button>}
@@ -566,13 +566,13 @@ export default function Feed() {
             )}
             {activeView === 'grid' && (
               <>
-                {canShareFeed && <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+                {canShareFeed && <button onClick={shareFeed} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-1 px-2 py-2 text-[10px] whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm">
                   {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
                   {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
                 </button>}
-                {canSocialMediaLink && <button onClick={shareSocialMediaLink} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+                {canSocialMediaLink && <button onClick={shareSocialMediaLink} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-1 px-2 py-2 text-[10px] whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm">
                   {socialMediaLinkCopied ? <Check size={16} /> : <Share2 size={16} />}
-                  {socialMediaLinkCopied ? 'LINK SOCIAL MEDIA copiado!' : 'LINK SOCIAL MEDIA'}
+                  {socialMediaLinkCopied ? 'Link Social Media copiado!' : 'Link Social Media'}
                 </button>}
               </>
             )}
