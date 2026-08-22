@@ -89,12 +89,17 @@ async function downloadAsset(url, filename) {
   }
 }
 
+function isPostedStatus(status) {
+  return status === 'published' || status === 'posted';
+}
+
 function statusLabel(status) {
   return {
     draft: 'Rascunho',
     pending_approval: 'Em aprovação',
     approved: 'Aprovado',
     scheduled: 'Agendado',
+    published: 'Postado',
     posted: 'Postado',
   }[status] || status || 'Planejado';
 }
@@ -123,7 +128,7 @@ export default function PublicSocialMediaFeed() {
   }, [token]);
 
   const summary = useMemo(() => {
-    const posted = posts.filter((post) => post.status === 'posted').length;
+    const posted = posts.filter((post) => isPostedStatus(post.status)).length;
     return { total: posts.length, posted, pending: Math.max(0, posts.length - posted) };
   }, [posts]);
 
@@ -166,17 +171,17 @@ export default function PublicSocialMediaFeed() {
   }
 
   async function confirmPosted() {
-    if (!openPost || openPost.status === 'posted' || actionLoading) return;
+    if (!openPost || isPostedStatus(openPost.status) || actionLoading) return;
     const confirmed = window.confirm('Confirmar que esta publicação já foi postada?');
     if (!confirmed) return;
     setActionLoading(true);
     setActionError('');
     try {
-      await publicApi.put(`/public/social-media/${token}/posts/${openPost.id}/posted`);
-      const next = { ...openPost, status: 'posted' };
+      const { data } = await publicApi.put(`/public/social-media/${token}/posts/${openPost.id}/posted`);
+      const next = { ...openPost, status: data?.status || 'published' };
       setOpenPost(next);
       setPosts((current) => current.map((post) => (
-        String(post.id) === String(openPost.id) ? { ...post, status: 'posted' } : post
+        String(post.id) === String(openPost.id) ? { ...post, status: data?.status || 'published' } : post
       )));
     } catch (err) {
       setActionError(err.response?.data?.error || 'Não foi possível confirmar a postagem.');
@@ -246,7 +251,7 @@ export default function PublicSocialMediaFeed() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="truncate text-lg font-bold text-slate-900">{openPost.title}</h2>
                   <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
-                    openPost.status === 'posted'
+                    isPostedStatus(openPost.status)
                       ? 'bg-emerald-100 text-emerald-700'
                       : 'bg-slate-100 text-slate-600'
                   }`}>
@@ -292,15 +297,15 @@ export default function PublicSocialMediaFeed() {
                 <button
                   type="button"
                   onClick={confirmPosted}
-                  disabled={actionLoading || openPost.status === 'posted'}
+                  disabled={actionLoading || isPostedStatus(openPost.status)}
                   className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold transition disabled:cursor-default ${
-                    openPost.status === 'posted'
+                    isPostedStatus(openPost.status)
                       ? 'bg-emerald-100 text-emerald-700'
                       : 'bg-slate-950 text-white hover:bg-slate-800 disabled:opacity-60'
                   }`}
                 >
                   {actionLoading ? <Loader2 size={17} className="animate-spin" /> : <CheckCircle2 size={17} />}
-                  {openPost.status === 'posted' ? 'Postado confirmado' : 'Confirmar postado'}
+                  {isPostedStatus(openPost.status) ? 'Postado confirmado' : 'Confirmar postado'}
                 </button>
               </div>
 

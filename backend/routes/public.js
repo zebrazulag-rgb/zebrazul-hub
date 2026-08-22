@@ -3,6 +3,54 @@ const db = require('../db/database');
 
 const router = express.Router();
 
+function ensureSocialMediaShareStorage() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS social_media_share_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agency_id INTEGER NOT NULL,
+      client_id INTEGER NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(agency_id, client_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_media_share_links_token
+      ON social_media_share_links(token);
+  `);
+}
+
+function getSocialMediaSharedClient(token) {
+  ensureSocialMediaShareStorage();
+  let client = db.prepare(`
+    SELECT c.id, c.agency_id, c.name, c.logo_color, c.avatar_data, c.bio,
+           c.instagram_username, c.instagram_display_name,
+           c.instagram_posts_count, c.instagram_followers_count, c.instagram_following_count,
+           c.instagram_link, c.instagram_primary_action, c.instagram_secondary_action, c.instagram_tertiary_action
+    FROM social_media_share_links s
+    JOIN clients c ON c.id = s.client_id AND c.agency_id = s.agency_id
+    WHERE s.token = ? AND s.active = 1
+    LIMIT 1
+  `).get(token);
+
+  // Compatibilidade com links gerados na primeira versão, que ficavam na
+  // coluna clients.social_media_share_token.
+  if (!client) {
+    try {
+      client = db.prepare(`
+        SELECT id, agency_id, name, logo_color, avatar_data, bio,
+               instagram_username, instagram_display_name,
+               instagram_posts_count, instagram_followers_count, instagram_following_count,
+               instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action
+        FROM clients
+        WHERE social_media_share_token = ?
+        LIMIT 1
+      `).get(token);
+    } catch {}
+  }
+  return client;
+}
+
 function parseGallery(value, fallbackData = null, fallbackMime = null) {
   if (value) {
     try {
@@ -113,14 +161,7 @@ router.get('/feed/:token', (req, res) => {
 // Link operacional do Social Media: grade completa do cliente com ações
 // estritamente limitadas à publicação. O token não expõe o restante do Hub.
 router.get('/social-media/:token', (req, res) => {
-  const client = db.prepare(`
-    SELECT id, name, logo_color, avatar_data, bio, instagram_username, instagram_display_name,
-           instagram_posts_count, instagram_followers_count, instagram_following_count,
-           instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action
-    FROM clients
-    WHERE social_media_share_token = ?
-    LIMIT 1
-  `).get(req.params.token);
+  const client = getSocialMediaSharedClient(req.params.token);
 
   if (!client) return res.status(404).json({ error: 'Link inválido ou desativado' });
 
@@ -131,7 +172,7 @@ router.get('/social-media/:token', (req, res) => {
     WHERE client_id = ?
       AND COALESCE(feed_visible, 1) = 1
       AND scheduled_at IS NOT NULL
-      AND status IN ('pending_approval','approved','scheduled','draft','posted')
+      AND status IN ('pending_approval','approved','scheduled','draft','published','posted')
     ORDER BY scheduled_at DESC, id DESC
   `).all(client.id);
 
@@ -139,8 +180,7 @@ router.get('/social-media/:token', (req, res) => {
 });
 
 router.put('/social-media/:token/posts/:postId/posted', (req, res) => {
-  const client = db.prepare('SELECT id, agency_id FROM clients WHERE social_media_share_token = ? LIMIT 1')
-    .get(req.params.token);
+  const client = getSocialMediaSharedClient(req.params.token);
   if (!client) return res.status(404).json({ error: 'Link inválido ou desativado' });
 
   const post = db.prepare(`
@@ -154,7 +194,7 @@ router.put('/social-media/:token/posts/:postId/posted', (req, res) => {
   const markPosted = db.transaction(() => {
     db.prepare(`
       UPDATE posts
-      SET status = 'posted', updated_at = datetime('now')
+      SET status = 'published', updated_at = datetime('now')
       WHERE id = ? AND client_id = ? AND agency_id = ?
     `).run(Number(post.id), Number(client.id), Number(client.agency_id));
 
@@ -168,7 +208,7 @@ router.put('/social-media/:token/posts/:postId/posted', (req, res) => {
   });
   markPosted();
 
-  res.json({ ok: true, post_id: Number(post.id), status: 'posted' });
+  res.json({ ok: true, post_id: Number(post.id), status: 'published' });
 });
 
 

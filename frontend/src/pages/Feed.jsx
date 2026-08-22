@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2 } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -21,7 +21,7 @@ export default function Feed() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
-  const activeView = ['calendar', 'published', 'compare'].includes(requestedView) ? requestedView : 'grid';
+  const activeView = ['calendar', 'published', 'compare', 'covers'].includes(requestedView) ? requestedView : 'grid';
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
@@ -374,7 +374,8 @@ export default function Feed() {
       setSocialMediaLinkCopied(true);
       setTimeout(() => setSocialMediaLinkCopied(false), 2500);
     } catch (err) {
-      window.alert(err.response?.data?.error || 'Não foi possível gerar o LINK SOCIAL MEDIA.');
+      const status = err.response?.status ? ` (HTTP ${err.response.status})` : '';
+      window.alert((err.response?.data?.error || 'Não foi possível gerar o LINK SOCIAL MEDIA.') + status);
     }
   }
 
@@ -517,7 +518,8 @@ export default function Feed() {
   } : currentClient;
 
   const viewDescription = {
-    grid: 'Feed planejado no ZebraHub, com leitura visual das capas antes da publicação.',
+    grid: 'Feed planejado no ZebraHub, com a grade limpa para organizar a sequência das publicações.',
+    covers: 'Área exclusiva para revisar capas de Reels e vídeos antes e depois da publicação.',
     published: 'Feed publicado no Instagram, usando a última sincronização disponível.',
     compare: 'Compare lado a lado o que foi planejado no ZebraHub com o que está publicado.',
     calendar: 'Visualize as datas de publicação dentro do planejamento do feed.',
@@ -574,6 +576,14 @@ export default function Feed() {
           <Grid3x3 size={17} /> Planejado
         </button>
         <button
+          onClick={() => switchView('covers')}
+          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeView === 'covers' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Sparkles size={17} /> Capas
+        </button>
+        <button
           onClick={() => switchView('published')}
           className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
             activeView === 'published' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
@@ -603,15 +613,64 @@ export default function Feed() {
         <p className="text-sm text-slate-400 py-12 text-center">Selecione um cliente para visualizar o feed.</p>
       )}
 
-      {clientId && activeView !== 'calendar' && (
-        <FeedCoverDashboard
-          plannedPosts={posts}
-          publishedPosts={publishedPosts}
-          analyses={coverAnalyses}
-          analyzing={coverAnalyzing}
-          onAnalyze={() => analyzeCovers({ force: true })}
-          error={coverError}
-        />
+      {clientId && activeView === 'covers' && (
+        <div className="space-y-5">
+          <FeedCoverDashboard
+            plannedPosts={posts}
+            publishedPosts={publishedPosts}
+            analyses={coverAnalyses}
+            analyzing={coverAnalyzing}
+            onAnalyze={() => analyzeCovers({ force: true })}
+            error={coverError}
+          />
+
+          <div className={`grid items-start gap-6 ${publishedPosts.some((item) => isVideoContent(item.content_type)) ? '2xl:grid-cols-2' : ''}`}>
+            <section className="min-w-0 rounded-[22px] border border-slate-200 bg-white p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-slate-900">Capas do feed planejado</h3>
+                  <p className="mt-1 text-xs text-slate-500">Somente Reels e vídeos aparecem nesta revisão.</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                  {posts.filter((item) => isVideoContent(item.content_type)).length} vídeos
+                </span>
+              </div>
+              {posts.some((item) => isVideoContent(item.content_type)) ? (
+                <InstagramProfileMockup
+                  client={currentClient}
+                  posts={posts.filter((item) => isVideoContent(item.content_type))}
+                  onPostClick={openFeedPost}
+                  editable={false}
+                  coverAnalyses={coverAnalyses}
+                  sourceType="planned"
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-10 text-center text-sm text-slate-400">Nenhum vídeo planejado para revisar.</div>
+              )}
+            </section>
+
+            {publishedPosts.some((item) => isVideoContent(item.content_type)) && (
+              <section className="min-w-0 rounded-[22px] border border-slate-200 bg-white p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-900">Capas já publicadas</h3>
+                    <p className="mt-1 text-xs text-slate-500">Confira visualmente os Reels que já chegaram ao Instagram.</p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                    {publishedPosts.filter((item) => isVideoContent(item.content_type)).length} vídeos
+                  </span>
+                </div>
+                <InstagramProfileMockup
+                  client={publishedClient}
+                  posts={publishedPosts.filter((item) => isVideoContent(item.content_type))}
+                  onPostClick={openPublishedPost}
+                  coverAnalyses={coverAnalyses}
+                  sourceType="instagram"
+                />
+              </section>
+            )}
+          </div>
+        </div>
       )}
 
       {clientId && activeView === 'calendar' && (
@@ -626,8 +685,7 @@ export default function Feed() {
             onPostClick={openFeedPost}
             editable={user?.role !== 'client'}
             onEdit={startEditProfile}
-            coverAnalyses={coverAnalyses}
-            sourceType="planned"
+            showCoverBadges={false}
           />
         </div>
       )}
@@ -657,8 +715,7 @@ export default function Feed() {
                 client={publishedClient}
                 posts={publishedPosts}
                 onPostClick={openPublishedPost}
-                coverAnalyses={coverAnalyses}
-                sourceType="instagram"
+                showCoverBadges={false}
               />
             </div>
           )}
@@ -670,7 +727,7 @@ export default function Feed() {
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-800">Planejado x publicado</p>
-              <p className="text-xs text-slate-500">Use esta visão para conferir composição, sequência e capas antes que o feed real se afaste do planejamento.</p>
+              <p className="text-xs text-slate-500">Use esta visão para conferir composição e sequência antes que o feed real se afaste do planejamento.</p>
             </div>
             {user?.role !== 'client' && (
               <button type="button" onClick={syncInstagramFeed} disabled={syncingPublished} className="btn-secondary flex items-center justify-center gap-2 disabled:opacity-50">
@@ -683,11 +740,11 @@ export default function Feed() {
           <div className="grid items-start gap-6 2xl:grid-cols-2">
             <section className="min-w-0">
               <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Planejado no ZebraHub</h3><span className="text-xs font-semibold text-slate-400">{posts.length} itens</span></div>
-              <InstagramProfileMockup client={currentClient} posts={posts} onPostClick={openFeedPost} coverAnalyses={coverAnalyses} sourceType="planned" />
+              <InstagramProfileMockup client={currentClient} posts={posts} onPostClick={openFeedPost} showCoverBadges={false} />
             </section>
             <section className="min-w-0">
               <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Publicado no Instagram</h3><span className="text-xs font-semibold text-slate-400">{publishedPosts.length} itens</span></div>
-              <InstagramProfileMockup client={publishedClient} posts={publishedPosts} onPostClick={openPublishedPost} coverAnalyses={coverAnalyses} sourceType="instagram" />
+              <InstagramProfileMockup client={publishedClient} posts={publishedPosts} onPostClick={openPublishedPost} showCoverBadges={false} />
             </section>
           </div>
         </div>
