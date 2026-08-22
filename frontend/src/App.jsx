@@ -7,6 +7,7 @@ import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
+import PublicSocialMediaFeed from './pages/PublicSocialMediaFeed.jsx';
 import PublicPost from './pages/PublicPost.jsx';
 import Finance from './pages/Finance.jsx';
 import PasswordVault from './pages/PasswordVault.jsx';
@@ -52,6 +53,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
+      <Route path="/link-social-media/:token" element={<PublicSocialMediaFeed />} />
       <Route path="/post/:token" element={<PublicPost />} />
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
       <Route path="/briefing-bee-2027/:token" element={<PublicBeeCampaignBriefing />} />

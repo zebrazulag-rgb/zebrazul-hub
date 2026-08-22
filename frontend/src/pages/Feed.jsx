@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3 } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -37,6 +37,7 @@ export default function Feed() {
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [socialMediaLinkCopied, setSocialMediaLinkCopied] = useState(false);
   const [postLinkCopiedId, setPostLinkCopiedId] = useState(null);
   const [reorderingPost, setReorderingPost] = useState(false);
   const [galleryDraft, setGalleryDraft] = useState([]);
@@ -362,6 +363,21 @@ export default function Feed() {
     setTimeout(() => setLinkCopied(false), 2500);
   }
 
+
+  async function shareSocialMediaLink() {
+    if (!clientId) return;
+    setPostActionError('');
+    try {
+      const { data } = await api.post(`/clients/${clientId}/social-media-share`);
+      const url = `${window.location.origin}/link-social-media/${data.token}`;
+      await navigator.clipboard.writeText(url);
+      setSocialMediaLinkCopied(true);
+      setTimeout(() => setSocialMediaLinkCopied(false), 2500);
+    } catch (err) {
+      window.alert(err.response?.data?.error || 'Não foi possível gerar o LINK SOCIAL MEDIA.');
+    }
+  }
+
   async function shareSinglePost(post) {
     if (!post?.id) return;
     setPostActionLoading(`share-${post.id}`);
@@ -533,10 +549,16 @@ export default function Feed() {
               </button>
             )}
             {activeView === 'grid' && (
-              <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
-                {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
-                {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
-              </button>
+              <>
+                <button onClick={shareFeed} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+                  {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
+                  {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
+                </button>
+                <button onClick={shareSocialMediaLink} className="btn-secondary flex items-center gap-2 whitespace-nowrap">
+                  {socialMediaLinkCopied ? <Check size={16} /> : <Share2 size={16} />}
+                  {socialMediaLinkCopied ? 'LINK SOCIAL MEDIA copiado!' : 'LINK SOCIAL MEDIA'}
+                </button>
+              </>
             )}
           </div>
         )}
