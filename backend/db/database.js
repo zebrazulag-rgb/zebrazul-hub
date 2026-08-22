@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS clients (
   avatar_mime TEXT,
   bio TEXT,
   feed_share_token TEXT,
+  social_media_share_token TEXT,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
   responsible_user_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
@@ -1201,6 +1202,12 @@ tryAddColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
 tryAddColumn('tasks', 'goal', 'TEXT');
 tryAddColumn('tasks', 'deadline_label', 'TEXT');
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
+tryAddColumn('clients', 'social_media_share_token', 'TEXT');
+try {
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_social_media_share_token ON clients(social_media_share_token) WHERE social_media_share_token IS NOT NULL");
+} catch (err) {
+  // índice já existe ou o banco ainda está sendo migrado — ignora
+}
 
 // Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
 // registros existentes e, logo abaixo, todos os dados atuais são vinculados

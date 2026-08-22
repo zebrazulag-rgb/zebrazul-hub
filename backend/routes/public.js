@@ -110,6 +110,68 @@ router.get('/feed/:token', (req, res) => {
 });
 
 
+// Link operacional do Social Media: grade completa do cliente com ações
+// estritamente limitadas à publicação. O token não expõe o restante do Hub.
+router.get('/social-media/:token', (req, res) => {
+  const client = db.prepare(`
+    SELECT id, name, logo_color, avatar_data, bio, instagram_username, instagram_display_name,
+           instagram_posts_count, instagram_followers_count, instagram_following_count,
+           instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action
+    FROM clients
+    WHERE social_media_share_token = ?
+    LIMIT 1
+  `).get(req.params.token);
+
+  if (!client) return res.status(404).json({ error: 'Link inválido ou desativado' });
+
+  const posts = db.prepare(`
+    SELECT id, title, caption, content_type, media_data, media_mime, media_gallery,
+           scheduled_at, status, updated_at
+    FROM posts
+    WHERE client_id = ?
+      AND COALESCE(feed_visible, 1) = 1
+      AND scheduled_at IS NOT NULL
+      AND status IN ('pending_approval','approved','scheduled','draft','posted')
+    ORDER BY scheduled_at DESC, id DESC
+  `).all(client.id);
+
+  res.json({ client, posts: posts.map(normalizePost) });
+});
+
+router.put('/social-media/:token/posts/:postId/posted', (req, res) => {
+  const client = db.prepare('SELECT id, agency_id FROM clients WHERE social_media_share_token = ? LIMIT 1')
+    .get(req.params.token);
+  if (!client) return res.status(404).json({ error: 'Link inválido ou desativado' });
+
+  const post = db.prepare(`
+    SELECT id, client_id, status
+    FROM posts
+    WHERE id = ? AND client_id = ? AND agency_id = ?
+    LIMIT 1
+  `).get(Number(req.params.postId), Number(client.id), Number(client.agency_id));
+  if (!post) return res.status(404).json({ error: 'Publicação não encontrada neste cliente' });
+
+  const markPosted = db.transaction(() => {
+    db.prepare(`
+      UPDATE posts
+      SET status = 'posted', updated_at = datetime('now')
+      WHERE id = ? AND client_id = ? AND agency_id = ?
+    `).run(Number(post.id), Number(client.id), Number(client.agency_id));
+
+    // Se o post nasceu de uma tarefa, o Kanban acompanha a confirmação do
+    // Social Media automaticamente.
+    db.prepare(`
+      UPDATE tasks
+      SET status = 'posted', updated_at = datetime('now')
+      WHERE feed_post_id = ? AND client_id = ? AND agency_id = ?
+    `).run(Number(post.id), Number(client.id), Number(client.agency_id));
+  });
+  markPosted();
+
+  res.json({ ok: true, post_id: Number(post.id), status: 'posted' });
+});
+
+
 const PUBLIC_TASK_STATUS_LABELS = {
   pending: 'Pendente',
   in_progress: 'Em andamento',

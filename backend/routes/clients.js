@@ -150,6 +150,33 @@ router.post('/:id/feed-share', requireRole('admin', 'team'), (req, res) => {
   res.json({ token });
 });
 
+
+// Link operacional exclusivo do Social Media. Diferente do link público do
+// cliente: permite baixar as mídias, copiar a legenda e confirmar postagem.
+router.post('/:id/social-media-share', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const client = db.prepare('SELECT id, social_media_share_token FROM clients WHERE id = ? AND agency_id = ?')
+    .get(req.params.id, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+
+  let token = client.social_media_share_token;
+  if (!token) {
+    token = require('crypto').randomBytes(24).toString('hex');
+    db.prepare('UPDATE clients SET social_media_share_token = ? WHERE id = ? AND agency_id = ?')
+      .run(token, req.params.id, req.user.agency_id);
+  }
+  res.json({ token });
+});
+
+router.delete('/:id/social-media-share', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  db.prepare('UPDATE clients SET social_media_share_token = NULL WHERE id = ? AND agency_id = ?')
+    .run(req.params.id, req.user.agency_id);
+  res.json({ ok: true });
+});
+
 router.post('/:id/accounts', requireRole('admin', 'team'), (req, res) => {
   if (!ensureClientAccess(req, res, req.params.id)) return;
   const { platform, handle } = req.body;
