@@ -7,6 +7,7 @@ import { ClientFilterProvider } from './context/ClientFilterContext.jsx';
 import { TenantProvider } from './context/TenantContext.jsx';
 import { initializeTheme } from './utils/theme.js';
 import { installMediaDomFallback } from './utils/mediaUrl.js';
+import PwaInstallPrompt from './components/PwaInstallPrompt.jsx';
 import './index.css';
 import './theme.css';
 
@@ -20,9 +21,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <AuthProvider>
           <ClientFilterProvider>
             <App />
+            <PwaInstallPrompt />
           </ClientFilterProvider>
         </AuthProvider>
       </TenantProvider>
     </BrowserRouter>
   </React.StrictMode>
 );
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

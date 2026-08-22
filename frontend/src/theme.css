@@ -606,3 +606,17 @@ body.zebrahub-all-black .video-status-rejected {
   background: rgba(244, 63, 94, 0.10);
   color: #fda4af;
 }
+
+/* Mobile/PWA shell */
+html, body, #root { min-height: 100%; }
+@supports (height: 100dvh) {
+  .app-shell, .app-main { height: 100dvh; }
+}
+@media (max-width: 767px) {
+  .app-main { width: 100%; }
+  button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+}
+@media (display-mode: standalone) {
+  body { overscroll-behavior-y: none; }
+  .app-main > div.sticky:first-of-type { padding-top: env(safe-area-inset-top); }
+}
