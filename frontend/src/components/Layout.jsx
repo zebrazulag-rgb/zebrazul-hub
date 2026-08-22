@@ -24,6 +24,7 @@ import {
   KeyRound,
   Instagram,
   RefreshCw,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -53,6 +54,7 @@ export default function Layout({ children }) {
   const initialProfileNameRef = useRef(user?.name || '');
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
@@ -174,7 +176,6 @@ export default function Layout({ children }) {
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
     { to: '/materiais', label: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, permission: 'finance.view' },
-    { to: '/senhas', label: 'Senhas', icon: KeyRound, permission: 'vault.view' },
   ];
 
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
@@ -189,7 +190,10 @@ export default function Layout({ children }) {
     return true;
   });
 
-  const canSeeSettings = !user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions']);
+  const canSeeSettings = !user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view']);
+
+  const mobilePrimaryItems = visibleWorkspaceItems.filter((item) => ['/','/tarefas','/social-media','/comercial'].includes(item.to));
+  const mobileMoreItems = visibleWorkspaceItems.filter((item) => ['/bussola','/rematriculas','/materiais'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -227,7 +231,7 @@ export default function Layout({ children }) {
   return (
     <div className="app-shell flex h-screen min-h-0 overflow-hidden bg-[#f5f7fb] text-slate-900">
       <aside
-        className={`app-sidebar sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[76px]' : 'w-[244px]'}`}
+        className={`app-sidebar hidden md:flex sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[76px]' : 'w-[244px]'}`}
         style={{ backgroundColor: agencySidebar }}
       >
         <div className={`relative flex min-h-[76px] items-center ${sidebarCollapsed ? 'justify-center px-2.5' : 'px-4'} py-3`}>
@@ -319,7 +323,7 @@ export default function Layout({ children }) {
 
       <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <NotificationBell />
-        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-8 pr-24 backdrop-blur-xl xl:px-10 xl:pr-24">
+        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-4 pr-16 backdrop-blur-xl sm:px-6 md:px-8 md:pr-24 xl:px-10 xl:pr-24">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
             <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
@@ -340,7 +344,7 @@ export default function Layout({ children }) {
                 aria-haspopup="listbox"
                 aria-expanded={clientPickerOpen}
                 onClick={() => setClientPickerOpen((open) => !open)}
-                className="flex min-w-[230px] max-w-[330px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                className="flex min-w-[150px] max-w-[190px] sm:min-w-[210px] sm:max-w-[280px] md:min-w-[230px] md:max-w-[330px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
               >
                 <ClientAvatar client={selectedClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
                 <div className="min-w-0 flex-1">
@@ -351,7 +355,7 @@ export default function Layout({ children }) {
               </button>
 
               {clientPickerOpen && (
-                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[340px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[min(340px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
                   <div className="border-b border-slate-100 p-3">
                     <div className="relative">
                       <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -417,8 +421,45 @@ export default function Layout({ children }) {
           )}
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
-        <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-8 py-8 xl:px-10">{children}</div>
+        <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-4 pb-28 pt-5 sm:px-6 md:px-8 md:py-8 xl:px-10">{children}</div>
       </main>
+
+      <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/90 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl md:hidden">
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          {mobilePrimaryItems.map((item) => (
+            <MobileNavLink key={item.to} item={item} agencyPrimary={agencyPrimary} />
+          ))}
+          <button
+            type="button"
+            onClick={() => setMobileMoreOpen(true)}
+            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/bussola','/rematriculas','/materiais','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
+            <span>Mais</span>
+          </button>
+        </div>
+      </nav>
+
+      {mobileMoreOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+          <button type="button" aria-label="Fechar menu" className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" onClick={() => setMobileMoreOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 rounded-t-[28px] bg-white px-4 pb-[max(22px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-24px_70px_rgba(15,23,42,0.22)]">
+            <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-200" />
+            <div className="mb-3 flex items-center justify-between px-1">
+              <div><p className="text-lg font-bold text-slate-900">Mais</p><p className="text-xs text-slate-400">Outras áreas do ZebraHub</p></div>
+              <button type="button" onClick={() => setMobileMoreOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={18} /></button>
+            </div>
+            <div className="space-y-1">
+              {mobileMoreItems.map((item) => (
+                <MobileMoreLink key={item.to} item={item} agencyPrimary={agencyPrimary} onClick={() => setMobileMoreOpen(false)} />
+              ))}
+              {canSeeSettings && (
+                <MobileMoreLink item={{ to: '/configuracoes/aparencia', label: 'Configurações', icon: Settings }} agencyPrimary={agencyPrimary} onClick={() => setMobileMoreOpen(false)} activeOverride={settingsActive || location.pathname.startsWith('/senhas')} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showProfile && (
         <ModalBackdrop onClose={handleProfileRequestClose} disabled={savingProfile}>
@@ -519,6 +560,43 @@ function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = 
           {!collapsed && <span className="truncate">{item.label}</span>}
         </>
         );
+      }}
+    </NavLink>
+  );
+}
+
+function MobileNavLink({ item, agencyPrimary }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === '/'}
+      className={({ isActive }) => `flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${isActive ? 'text-slate-900' : 'text-slate-400'}`}
+    >
+      {({ isActive }) => (
+        <>
+          <span className={`flex h-8 w-8 items-center justify-center rounded-xl transition ${isActive ? 'text-white shadow-sm' : ''}`} style={isActive ? { backgroundColor: agencyPrimary } : undefined}>
+            <item.icon size={19} strokeWidth={2.1} />
+          </span>
+          <span className="max-w-full truncate">{item.label === 'Social Media' ? 'Social' : item.label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function MobileMoreLink({ item, agencyPrimary, onClick, activeOverride = null }) {
+  return (
+    <NavLink
+      to={item.to}
+      onClick={onClick}
+      className={({ isActive }) => {
+        const active = activeOverride == null ? isActive : activeOverride;
+        return `flex items-center gap-3 rounded-2xl px-3 py-3 transition ${active ? 'bg-blue-50 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`;
+      }}
+    >
+      {({ isActive }) => {
+        const active = activeOverride == null ? isActive : activeOverride;
+        return <><span className="flex h-10 w-10 items-center justify-center rounded-xl text-white" style={{ backgroundColor: active ? agencyPrimary : '#94a3b8' }}><item.icon size={18} /></span><span className="text-sm font-semibold">{item.label}</span></>;
       }}
     </NavLink>
   );

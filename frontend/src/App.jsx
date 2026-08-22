@@ -113,7 +113,7 @@ export default function App() {
       <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
       <Route path="/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
       <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
-      <Route path="/senhas" element={<ProtectedRoute permission="vault.view"><PasswordVault /></ProtectedRoute>} />
+      <Route path="/senhas" element={<Navigate to="/configuracoes/senhas" replace />} />
       <Route
         path="/financeiro"
         element={
