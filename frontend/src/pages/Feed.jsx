@@ -216,6 +216,13 @@ export default function Feed() {
     setSearchParams(view === 'grid' ? {} : { view }, { replace: true });
   }
 
+  function openCalendarPostInFeed(post) {
+    // O calendário deve abrir exatamente o mesmo modal usado pela grade do Feed.
+    // Mantemos a visualização em Calendário e apenas reutilizamos o fluxo openFeedPost.
+    if (!post?.id) return;
+    openFeedPost(post);
+  }
+
   function startEditProfile() {
     const nextDraft = {
       instagram_username: currentClient?.instagram_username || currentClient?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || '',
@@ -586,7 +593,7 @@ export default function Feed() {
       )}
 
       {clientId && activeView === 'calendar' && (
-        <CalendarView key={`${clientId}-${calendarRefreshKey}`} embedded clientId={clientId} />
+        <CalendarView key={`${clientId}-${calendarRefreshKey}`} embedded clientId={clientId} onOpenPost={openCalendarPostInFeed} />
       )}
 
       {clientId && activeView === 'grid' && (

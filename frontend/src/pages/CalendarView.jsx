@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, Image as ImageIcon, Loader2 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -28,7 +28,7 @@ function sameCalendarDate(value, year, month, day) {
     && date.getDate() === day;
 }
 
-export default function CalendarView({ embedded = false, clientId: controlledClientId }) {
+export default function CalendarView({ embedded = false, clientId: controlledClientId, onOpenPost }) {
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
   const [clients, setClients] = useState([]);
@@ -79,6 +79,29 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
   function postsForDay(day) {
     if (!day) return [];
     return posts.filter((post) => sameCalendarDate(post.scheduled_at, year, month, day));
+  }
+
+  function openCalendarDay(day, dayItems) {
+    if (!day || calendarDrag || !dayItems.length) return;
+
+    // Dentro do Feed, um dia com apenas uma publicação abre exatamente
+    // a mesma prévia detalhada usada ao clicar na grade do Instagram.
+    if (dayItems.length === 1 && onOpenPost) {
+      onOpenPost(dayItems[0]);
+      return;
+    }
+
+    setDayPosts({ day, items: dayItems });
+  }
+
+  function openCalendarPost(post) {
+    if (!post || calendarDrag) return;
+
+    if (onOpenPost) {
+      setDayPosts(null);
+      onOpenPost(post);
+      return;
+    }
   }
 
   function changeMonth(delta) {
@@ -259,7 +282,7 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
                   return (
                     <div
                       key={`${day || 'empty'}-${index}`}
-                      onClick={() => day && !calendarDrag && dayItems.length > 0 && setDayPosts({ day, items: dayItems })}
+                      onClick={() => openCalendarDay(day, dayItems)}
                       onDragOver={(event) => handleCalendarDragOver(event, day)}
                       onDragEnter={(event) => {
                         if (day && calendarDrag && canManageCalendar) {
@@ -289,27 +312,48 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
                             {dayItems.slice(0, 2).map((post) => (
                               <div
                                 key={post.id}
-                                draggable={canManageCalendar && !savingPostId}
-                                onDragStart={(event) => handleCalendarDragStart(event, post)}
-                                onDragEnd={handleCalendarDragEnd}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (!calendarDrag) setDayPosts({ day, items: dayItems });
-                                }}
-                                title={`${post.title || 'Publicação'}${canManageCalendar ? ' · arraste para mover; Alt/Option para duplicar' : ''}`}
-                                className={`relative w-full rounded overflow-hidden bg-slate-100 flex items-center justify-center ${
+                                className={`group/post relative w-full rounded overflow-hidden bg-slate-100 ${
                                   dayItems.length === 1 ? 'h-full' : 'h-[calc(50%_-_2px)]'
-                                } ${canManageCalendar ? 'cursor-grab active:cursor-grabbing' : ''} ${
-                                  Number(savingPostId) === Number(post.id) ? 'opacity-60' : ''
-                                }`}
+                                } ${Number(savingPostId) === Number(post.id) ? 'opacity-60' : ''}`}
                               >
-                                {post.media_data ? (
-                                  <img src={post.media_data} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
-                                ) : (
-                                  <ImageIcon size={14} className="text-slate-300" />
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (calendarDrag || savingPostId) return;
+                                    if (onOpenPost) {
+                                      openCalendarPost(post);
+                                    } else {
+                                      setDayPosts({ day, items: dayItems });
+                                    }
+                                  }}
+                                  title={`${post.title || 'Publicação'} · abrir prévia completa do Feed`}
+                                  className="absolute inset-0 z-[1] flex h-full w-full cursor-pointer items-center justify-center overflow-hidden rounded text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-zebrazul-500 focus-visible:ring-inset"
+                                  aria-label={`Abrir ${post.title || 'publicação'} na prévia do Feed`}
+                                >
+                                  {post.media_data ? (
+                                    <img src={post.media_data} alt="" draggable={false} className="h-full w-full object-cover pointer-events-none" />
+                                  ) : (
+                                    <ImageIcon size={14} className="text-slate-300" />
+                                  )}
+                                </button>
+
+                                {canManageCalendar && !savingPostId && (
+                                  <div
+                                    draggable
+                                    onDragStart={(event) => handleCalendarDragStart(event, post)}
+                                    onDragEnd={handleCalendarDragEnd}
+                                    onClick={(event) => event.stopPropagation()}
+                                    title="Arraste para alterar a data · Alt/Option para duplicar"
+                                    className="absolute left-1.5 top-1.5 z-[3] flex h-7 w-7 cursor-grab items-center justify-center rounded-lg bg-slate-950/70 text-white opacity-0 shadow-sm backdrop-blur-sm transition group-hover/post:opacity-100 active:cursor-grabbing"
+                                    aria-label="Arrastar publicação"
+                                  >
+                                    <GripVertical size={14} />
+                                  </div>
                                 )}
+
                                 {Number(savingPostId) === Number(post.id) && (
-                                  <div className="absolute inset-0 flex items-center justify-center bg-white/55">
+                                  <div className="absolute inset-0 z-[4] flex items-center justify-center bg-white/55">
                                     <Loader2 size={16} className="animate-spin text-zebrazul-600" />
                                   </div>
                                 )}
@@ -348,7 +392,15 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
             </div>
             <div className="space-y-3">
               {dayPosts.items.map((post) => (
-                <div key={post.id} className="flex gap-3 border border-slate-100 rounded-lg p-3 min-w-0">
+                <button
+                  key={post.id}
+                  type="button"
+                  onClick={() => openCalendarPost(post)}
+                  disabled={!onOpenPost}
+                  className={`flex w-full gap-3 rounded-lg border border-slate-100 p-3 text-left min-w-0 transition ${
+                    onOpenPost ? 'hover:border-zebrazul-200 hover:bg-zebrazul-50/40 cursor-pointer' : 'cursor-default'
+                  }`}
+                >
                   <div className="w-16 h-16 rounded-lg bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
                     {post.media_data ? (
                       <img src={post.media_data} alt="" className="w-full h-full object-cover" />
@@ -362,8 +414,11 @@ export default function CalendarView({ embedded = false, clientId: controlledCli
                       {new Date(post.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                     <div className="mt-1"><StatusBadge status={post.status} /></div>
+                    {onOpenPost && (
+                      <p className="mt-2 text-[11px] font-medium text-zebrazul-600">Abrir prévia completa do Feed</p>
+                    )}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
