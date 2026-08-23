@@ -1,0 +1,24 @@
+ZEBRAHUB APP ANDROID — FASE 2.0
+
+Este incremental adiciona uma pasta mobile independente do frontend/backend.
+O site atual continua exatamente como está.
+
+O app Android abre:
+https://app.zebrazul.com.br
+
+e usa o mesmo login, backend, banco e dados do ZebraHub atual.
+
+COMO GERAR O APK PELO GITHUB
+1. Copie as pastas deste incremental para a raiz do repositório.
+2. Faça commit e push.
+3. No GitHub, abra a aba Actions.
+4. Abra "ZebraHub Android Debug APK".
+5. Se o build não iniciar sozinho, clique em Run workflow.
+6. Ao terminar, abra a execução e baixe o artifact "zebrahub-debug-apk".
+7. Extraia o ZIP do artifact e instale app-debug.apk no Android.
+
+OBSERVAÇÃO
+Esta é uma versão nativa de TESTE que aponta para a versão online do ZebraHub.
+É ideal para validar navegação, login, uploads, câmera, comportamento mobile e estabilidade.
+A versão final para Play Store deve empacotar os assets e receber acabamento de loja,
+ícone/splash definitivos, notificações e política de atualização.

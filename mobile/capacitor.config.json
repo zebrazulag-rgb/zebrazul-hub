@@ -1,0 +1,14 @@
+{
+  "appId": "com.zebrazul.zebrahub",
+  "appName": "ZebraHub",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.zebrazul.com.br",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": true
+  }
+}
