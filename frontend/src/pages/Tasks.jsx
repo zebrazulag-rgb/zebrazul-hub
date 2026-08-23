@@ -843,12 +843,12 @@ export default function Tasks() {
   if (operationalArea === 'approval') {
     return (
       <div className="space-y-5">
-        <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="toolbar-panel flex items-center justify-center sm:justify-between">
+          <div className="hidden sm:block">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Área de trabalho</p>
             <p className="mt-1 text-sm font-medium text-slate-700">Tarefas e aprovações no mesmo fluxo operacional.</p>
           </div>
-          {areaSwitcher}
+          <div className="flex w-full justify-center sm:w-auto">{areaSwitcher}</div>
         </div>
         {approvalView === 'videos' ? <VideoApprovals /> : <Approval />}
       </div>
@@ -857,7 +857,7 @@ export default function Tasks() {
 
   return (
     <div className="space-y-6">
-      <div className="toolbar-panel flex items-center justify-end">
+      <div className="toolbar-panel flex items-center justify-center sm:justify-end">
         {areaSwitcher}
       </div>
 

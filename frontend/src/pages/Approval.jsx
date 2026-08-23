@@ -205,6 +205,7 @@ export default function Approval() {
   return (
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden">
       <PageHero
+        hideHeadingMobile
         icon={CalendarCheck2}
         eyebrow={selectedClient?.name || 'Fluxo editorial'}
         title="Aprovação de conteúdo"

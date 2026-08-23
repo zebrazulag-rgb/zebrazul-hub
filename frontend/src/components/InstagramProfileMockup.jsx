@@ -15,41 +15,41 @@ export default function InstagramProfileMockup({ client, posts, onPostClick, edi
   const profileLink = client?.instagram_link || '';
 
   return (
-    <div className="instagram-profile-mockup w-full max-w-[620px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl">
-      <div className="flex items-center justify-between px-5 py-4">
-        <ArrowLeft size={28} strokeWidth={2.2} />
-        <p className="min-w-0 flex-1 truncate px-4 text-center text-[23px] font-bold text-black">{username}</p>
-        <div className="flex items-center gap-4">
-          <Bell size={27} strokeWidth={2.1} />
-          <MoreVertical size={27} strokeWidth={2.1} />
+    <div className="instagram-profile-mockup w-full min-w-0 max-w-[620px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-xl sm:rounded-[28px]">
+      <div className="flex items-center justify-between px-3 py-3 sm:px-5 sm:py-4">
+        <ArrowLeft className="h-6 w-6 shrink-0 sm:h-7 sm:w-7" strokeWidth={2.2} />
+        <p className="min-w-0 flex-1 truncate px-2 text-center text-[18px] font-bold text-black sm:px-4 sm:text-[23px]">{username}</p>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+          <Bell className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2.1} />
+          <MoreVertical className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2.1} />
         </div>
       </div>
 
       {editable && (
-        <div className="px-5 pb-2 text-right">
+        <div className="px-3 pb-2 text-right sm:px-5">
           <button onClick={onEdit} className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200">
             Editar perfil do feed
           </button>
         </div>
       )}
 
-      <div className="px-5 pb-4">
-        <div className="grid grid-cols-[118px_1fr] items-center gap-5">
+      <div className="px-3 pb-4 sm:px-5">
+        <div className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[118px_1fr] sm:gap-5">
           {client?.avatar_data ? (
-            <img src={client.avatar_data} alt="" className="h-[112px] w-[112px] rounded-full object-cover" />
+            <img src={client.avatar_data} alt="" className="h-[78px] w-[78px] rounded-full object-cover sm:h-[112px] sm:w-[112px]" />
           ) : (
-            <div className="flex h-[112px] w-[112px] items-center justify-center rounded-full text-4xl font-bold text-white" style={{ backgroundColor: client?.logo_color || '#111827' }}>
+            <div className="flex h-[78px] w-[78px] items-center justify-center rounded-full text-2xl font-bold text-white sm:h-[112px] sm:w-[112px] sm:text-4xl" style={{ backgroundColor: client?.logo_color || '#111827' }}>
               {client?.name?.[0] || '?'}
             </div>
           )}
-          <div className="grid grid-cols-3 text-center">
-            <div><p className="text-[22px] font-bold text-black">{formatMetric(postsCount)}</p><p className="text-[16px] text-black">Posts</p></div>
-            <div><p className="text-[22px] font-bold text-black">{formatMetric(followers)}</p><p className="text-[16px] text-black">Seguidores</p></div>
-            <div><p className="text-[22px] font-bold text-black">{formatMetric(following)}</p><p className="text-[16px] text-black">Seguindo</p></div>
+          <div className="grid min-w-0 grid-cols-3 gap-1 text-center">
+            <div><p className="text-[16px] font-bold text-black sm:text-[22px]">{formatMetric(postsCount)}</p><p className="text-[11px] text-black sm:text-[16px]">Posts</p></div>
+            <div><p className="text-[16px] font-bold text-black sm:text-[22px]">{formatMetric(followers)}</p><p className="text-[11px] text-black sm:text-[16px]">Seguidores</p></div>
+            <div><p className="text-[16px] font-bold text-black sm:text-[22px]">{formatMetric(following)}</p><p className="text-[11px] text-black sm:text-[16px]">Seguindo</p></div>
           </div>
         </div>
 
-        <div className="mt-4 text-[16px] leading-[1.35] text-black">
+        <div className="mt-3 text-[13px] leading-[1.35] text-black sm:mt-4 sm:text-[16px]">
           <p className="font-bold">{displayName}</p>
           <p className="whitespace-pre-wrap">{client?.bio || 'Bio do perfil'}</p>
           {profileLink && (
@@ -59,9 +59,9 @@ export default function InstagramProfileMockup({ client, posts, onPostClick, edi
           )}
         </div>
 
-        <div className="mt-4 grid grid-cols-[1fr_1fr_1fr_54px] gap-3">
+        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_38px] gap-1.5 sm:mt-4 sm:grid-cols-[1fr_1fr_1fr_54px] sm:gap-3">
           {[client?.instagram_primary_action || 'Seguindo', client?.instagram_secondary_action || 'Mensagem', client?.instagram_tertiary_action || 'Contato'].map((label) => (
-            <button key={label} className="rounded-md bg-[#ececec] px-2 py-2 text-[16px] font-medium text-black">{label}</button>
+            <button key={label} className="min-w-0 truncate rounded-md bg-[#ececec] px-1 py-2 text-[11px] font-medium text-black sm:px-2 sm:text-[16px]">{label}</button>
           ))}
           <button className="flex items-center justify-center rounded-md bg-[#ececec]"><UserPlus size={22} /></button>
         </div>
