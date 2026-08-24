@@ -12,6 +12,7 @@ export default function PublicFeed() {
   const { token } = useParams();
   const [client, setClient] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [highlights, setHighlights] = useState([]);
   const [openPost, setOpenPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,6 +21,7 @@ export default function PublicFeed() {
     publicApi.get(`/public/feed/${token}`)
       .then((res) => {
         setClient(res.data.client);
+        setHighlights(res.data.highlights || []);
         setPosts([...(res.data.posts || [])].sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at)));
       })
       .catch(() => setError('Este link não é válido ou expirou.'))
@@ -31,7 +33,7 @@ export default function PublicFeed() {
 
   return (
     <div className="min-h-screen bg-slate-100 px-3 py-8 flex justify-center">
-      <InstagramProfileMockup client={client} posts={posts} onPostClick={setOpenPost} />
+      <InstagramProfileMockup client={client} highlights={highlights} posts={posts} onPostClick={setOpenPost} />
       {openPost && (
         <ModalBackdrop onClose={() => setOpenPost(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[92vh] overflow-y-auto">

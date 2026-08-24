@@ -117,6 +117,24 @@ CREATE TABLE IF NOT EXISTS social_accounts (
   FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS feed_highlights (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL DEFAULT 1,
+  client_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  cover_data TEXT,
+  cover_mime TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  visible INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_feed_highlights_client_order
+  ON feed_highlights(agency_id, client_id, sort_order, id);
+
 CREATE TABLE IF NOT EXISTS posts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL DEFAULT 1,

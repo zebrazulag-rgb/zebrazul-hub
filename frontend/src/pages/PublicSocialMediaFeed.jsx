@@ -108,6 +108,7 @@ export default function PublicSocialMediaFeed() {
   const { token } = useParams();
   const [client, setClient] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [highlights, setHighlights] = useState([]);
   const [openPost, setOpenPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -121,6 +122,7 @@ export default function PublicSocialMediaFeed() {
     publicApi.get(`/public/social-media/${token}`)
       .then((res) => {
         setClient(res.data.client);
+        setHighlights(res.data.highlights || []);
         setPosts(res.data.posts || []);
       })
       .catch((err) => setError(err.response?.data?.error || 'Este link não é válido ou foi desativado.'))
@@ -236,6 +238,7 @@ export default function PublicSocialMediaFeed() {
       <main className="mx-auto flex max-w-[760px] justify-center px-3 py-6 sm:px-6 sm:py-8">
         <InstagramProfileMockup
           client={client}
+          highlights={highlights}
           posts={posts}
           onPostClick={handleOpenPost}
           editable={false}

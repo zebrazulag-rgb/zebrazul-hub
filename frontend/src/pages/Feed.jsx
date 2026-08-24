@@ -12,6 +12,7 @@ import CalendarView from './CalendarView.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PostModal from '../components/PostModal.jsx';
 import FeedCoverDashboard, { coverAnalysisKey, isVideoContent } from '../components/FeedCoverDashboard.jsx';
+import FeedHighlightsManager from '../components/FeedHighlightsManager.jsx';
 import { formChanged } from '../utils/formState.js';
 import { hasPermission } from '../permissions.js';
 
@@ -40,6 +41,7 @@ export default function Feed() {
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
   const [hiddenPosts, setHiddenPosts] = useState([]);
+  const [highlights, setHighlights] = useState([]);
   const [openPost, setOpenPost] = useState(null);
   const [editingPost, setEditingPost] = useState(null);
   const [showHiddenPosts, setShowHiddenPosts] = useState(false);
@@ -91,6 +93,7 @@ export default function Feed() {
     if (!selectedClient) {
       setPosts([]);
       setHiddenPosts([]);
+      setHighlights([]);
       setOpenPost(null);
       setPostLinkCopiedId(null);
       setEditingPost(null);
@@ -120,8 +123,18 @@ export default function Feed() {
     setHiddenPosts(upcoming.filter((post) => Number(post.feed_visible ?? 1) === 0));
   }
 
+  async function loadHighlights(targetClientId = clientId) {
+    if (!targetClientId) {
+      setHighlights([]);
+      return;
+    }
+    const { data } = await api.get(`/clients/${targetClientId}/feed-highlights`);
+    setHighlights(data.highlights || []);
+  }
+
   useEffect(() => {
     loadPosts(clientId).catch(() => { setPosts([]); setHiddenPosts([]); });
+    loadHighlights(clientId).catch(() => setHighlights([]));
   }, [clientId]);
 
   const currentClient = clients.find((client) => String(client.id) === String(clientId));
@@ -660,6 +673,7 @@ export default function Feed() {
               {posts.some((item) => isVideoContent(item.content_type)) ? (
                 <InstagramProfileMockup
                   client={currentClient}
+                  highlights={highlights}
                   posts={posts.filter((item) => isVideoContent(item.content_type))}
                   onPostClick={openFeedPost}
                   editable={false}
@@ -684,6 +698,7 @@ export default function Feed() {
                 </div>
                 <InstagramProfileMockup
                   client={publishedClient}
+                  highlights={highlights}
                   posts={publishedPosts.filter((item) => isVideoContent(item.content_type))}
                   onPostClick={openPublishedPost}
                   coverAnalyses={coverAnalyses}
@@ -703,6 +718,7 @@ export default function Feed() {
         <div className="instagram-preview-stage flex justify-center">
           <InstagramProfileMockup
             client={currentClient}
+            highlights={highlights}
             posts={posts}
             onPostClick={openFeedPost}
             editable={canFeedCreate}
@@ -735,6 +751,7 @@ export default function Feed() {
             <div className="instagram-preview-stage flex justify-center">
               <InstagramProfileMockup
                 client={publishedClient}
+                highlights={highlights}
                 posts={publishedPosts}
                 onPostClick={openPublishedPost}
                 showCoverBadges={false}
@@ -762,11 +779,11 @@ export default function Feed() {
           <div className="grid items-start gap-6 2xl:grid-cols-2">
             <section className="min-w-0">
               <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Planejado no ZebraHub</h3><span className="text-xs font-semibold text-slate-400">{posts.length} itens</span></div>
-              <InstagramProfileMockup client={currentClient} posts={posts} onPostClick={openFeedPost} showCoverBadges={false} />
+              <InstagramProfileMockup client={currentClient} highlights={highlights} posts={posts} onPostClick={openFeedPost} showCoverBadges={false} />
             </section>
             <section className="min-w-0">
               <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Publicado no Instagram</h3><span className="text-xs font-semibold text-slate-400">{publishedPosts.length} itens</span></div>
-              <InstagramProfileMockup client={publishedClient} posts={publishedPosts} onPostClick={openPublishedPost} showCoverBadges={false} />
+              <InstagramProfileMockup client={publishedClient} highlights={highlights} posts={publishedPosts} onPostClick={openPublishedPost} showCoverBadges={false} />
             </section>
           </div>
         </div>
@@ -827,6 +844,7 @@ export default function Feed() {
               <Field label="Botão 3" value={profileDraft.instagram_tertiary_action} onChange={(v) => setProfileDraft((p) => ({ ...p, instagram_tertiary_action: v }))} />
               <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium text-slate-700">Bio</label><textarea className="input-field min-h-[110px]" value={profileDraft.bio || ''} onChange={(e) => setProfileDraft((p) => ({ ...p, bio: e.target.value }))} /></div>
             </div>
+            <FeedHighlightsManager clientId={clientId} highlights={highlights} onHighlightsChange={setHighlights} />
             {profileError && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{profileError}</p>}
             <div className="mt-6 flex gap-3 border-t border-slate-100 pt-4"><button onClick={() => setEditingProfile(false)} className="btn-secondary flex-1">Cancelar</button><button onClick={saveProfile} disabled={savingProfile} className="btn-primary flex-1">{savingProfile ? 'Salvando...' : 'Salvar perfil'}</button></div>
           </div>

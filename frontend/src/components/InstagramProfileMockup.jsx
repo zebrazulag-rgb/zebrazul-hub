@@ -6,7 +6,7 @@ function formatMetric(value) {
   return new Intl.NumberFormat('pt-BR').format(number);
 }
 
-export default function InstagramProfileMockup({ client, posts, onPostClick, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
+export default function InstagramProfileMockup({ client, posts, highlights = [], onPostClick, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
   const username = client?.instagram_username || client?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || 'perfil';
   const displayName = client?.instagram_display_name || client?.name || 'Nome do perfil';
   const postsCount = client?.instagram_posts_count ?? posts.length;
@@ -66,6 +66,27 @@ export default function InstagramProfileMockup({ client, posts, onPostClick, edi
           <button className="flex items-center justify-center rounded-md bg-[#ececec]"><UserPlus size={22} /></button>
         </div>
       </div>
+
+      {highlights.filter((item) => Number(item.visible ?? 1) !== 0).length > 0 && (
+        <div className="overflow-x-auto px-3 pb-3 pt-1 sm:px-5 sm:pb-4">
+          <div className="flex min-w-max gap-3 sm:gap-4">
+            {highlights.filter((item) => Number(item.visible ?? 1) !== 0).map((item) => (
+              <div key={item.id} className="w-[68px] shrink-0 text-center sm:w-[78px]">
+                <div className="mx-auto h-[62px] w-[62px] rounded-full border-[3px] border-[#d8dbe0] bg-white p-[3px] sm:h-[70px] sm:w-[70px]">
+                  <div className="h-full w-full overflow-hidden rounded-full bg-slate-100">
+                    {item.cover_data ? (
+                      <img src={item.cover_data} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-base font-bold text-slate-400">{item.name?.[0]?.toUpperCase() || '?'}</div>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1.5 truncate text-[10px] font-medium leading-tight text-black sm:text-[11px]" title={item.name}>{item.name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 border-b border-slate-200">
         <div className="flex h-14 items-center justify-center border-b-2 border-black"><Grid3x3 size={29} /></div>

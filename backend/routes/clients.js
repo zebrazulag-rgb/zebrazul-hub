@@ -123,6 +123,104 @@ router.put('/:id/feed-profile', requireRole('admin', 'team'), (req, res) => {
   res.json({ ok: true });
 });
 
+function listFeedHighlights(clientId, agencyId, includeHidden = true) {
+  let sql = `
+    SELECT id, client_id, name, cover_data, cover_mime, sort_order, visible, created_at, updated_at
+    FROM feed_highlights
+    WHERE client_id = ? AND agency_id = ?
+  `;
+  if (!includeHidden) sql += ' AND visible = 1';
+  sql += ' ORDER BY sort_order ASC, id ASC';
+  return db.prepare(sql).all(clientId, agencyId);
+}
+
+router.get('/:id/feed-highlights', (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  const includeHidden = req.user.role !== 'client';
+  res.json({ highlights: listFeedHighlights(req.params.id, req.user.agency_id, includeHidden) });
+});
+
+router.post('/:id/feed-highlights', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Nome do destaque e obrigatorio' });
+  if (name.length > 40) return res.status(400).json({ error: 'Use um nome de ate 40 caracteres.' });
+
+  const nextOrder = Number(db.prepare(`
+    SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
+    FROM feed_highlights WHERE client_id = ? AND agency_id = ?
+  `).get(req.params.id, req.user.agency_id)?.next_order || 0);
+  const coverMime = req.body.cover_mime || 'image/jpeg';
+  const coverData = req.body.cover_data ? persistMedia(req.body.cover_data, coverMime) : null;
+  const visible = Object.prototype.hasOwnProperty.call(req.body, 'visible') ? (Number(req.body.visible) ? 1 : 0) : 1;
+  const info = db.prepare(`
+    INSERT INTO feed_highlights (agency_id, client_id, name, cover_data, cover_mime, sort_order, visible)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.agency_id, req.params.id, name, coverData, coverData ? coverMime : null, nextOrder, visible);
+  const highlight = db.prepare('SELECT * FROM feed_highlights WHERE id = ? AND agency_id = ?').get(info.lastInsertRowid, req.user.agency_id);
+  res.status(201).json({ highlight });
+});
+
+router.put('/:id/feed-highlights/reorder', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map(Number).filter((id) => Number.isInteger(id) && id > 0) : [];
+  const current = listFeedHighlights(req.params.id, req.user.agency_id, true);
+  if (ids.length !== current.length || new Set(ids).size !== current.length) {
+    return res.status(400).json({ error: 'A ordem enviada nao corresponde aos destaques deste cliente.' });
+  }
+  const currentIds = new Set(current.map((item) => Number(item.id)));
+  if (ids.some((id) => !currentIds.has(id))) return res.status(400).json({ error: 'Existe um destaque invalido na nova ordem.' });
+  const update = db.prepare(`UPDATE feed_highlights SET sort_order = ?, updated_at = datetime('now') WHERE id = ? AND client_id = ? AND agency_id = ?`);
+  db.transaction(() => ids.forEach((id, index) => update.run(index, id, req.params.id, req.user.agency_id)))();
+  res.json({ ok: true, highlights: listFeedHighlights(req.params.id, req.user.agency_id, true) });
+});
+
+router.put('/:id/feed-highlights/:highlightId', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const item = db.prepare('SELECT * FROM feed_highlights WHERE id = ? AND client_id = ? AND agency_id = ?')
+    .get(req.params.highlightId, req.params.id, req.user.agency_id);
+  if (!item) return res.status(404).json({ error: 'Destaque nao encontrado' });
+
+  const updates = [];
+  const values = [];
+  if (Object.prototype.hasOwnProperty.call(req.body, 'name')) {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Nome do destaque e obrigatorio' });
+    if (name.length > 40) return res.status(400).json({ error: 'Use um nome de ate 40 caracteres.' });
+    updates.push('name = ?'); values.push(name);
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'cover_data')) {
+    const mime = req.body.cover_mime || item.cover_mime || 'image/jpeg';
+    const cover = req.body.cover_data ? persistMedia(req.body.cover_data, mime) : null;
+    updates.push('cover_data = ?'); values.push(cover);
+    updates.push('cover_mime = ?'); values.push(cover ? mime : null);
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'visible')) {
+    updates.push('visible = ?'); values.push(Number(req.body.visible) ? 1 : 0);
+  }
+  if (!updates.length) return res.json({ ok: true, highlight: item });
+  updates.push("updated_at = datetime('now')");
+  db.prepare(`UPDATE feed_highlights SET ${updates.join(', ')} WHERE id = ? AND client_id = ? AND agency_id = ?`)
+    .run(...values, req.params.highlightId, req.params.id, req.user.agency_id);
+  const highlight = db.prepare('SELECT * FROM feed_highlights WHERE id = ? AND agency_id = ?').get(req.params.highlightId, req.user.agency_id);
+  res.json({ ok: true, highlight });
+});
+
+router.delete('/:id/feed-highlights/:highlightId', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const info = db.prepare('DELETE FROM feed_highlights WHERE id = ? AND client_id = ? AND agency_id = ?')
+    .run(req.params.highlightId, req.params.id, req.user.agency_id);
+  if (!info.changes) return res.status(404).json({ error: 'Destaque nao encontrado' });
+  const remaining = listFeedHighlights(req.params.id, req.user.agency_id, true);
+  const update = db.prepare(`UPDATE feed_highlights SET sort_order = ?, updated_at = datetime('now') WHERE id = ? AND client_id = ? AND agency_id = ?`);
+  db.transaction(() => remaining.forEach((item, index) => update.run(index, item.id, req.params.id, req.user.agency_id)))();
+  res.json({ ok: true, highlights: listFeedHighlights(req.params.id, req.user.agency_id, true) });
+});
+
 router.put('/:id', requireRole('admin', 'team'), (req, res) => {
   if (!ensureClientAccess(req, res, req.params.id)) return;
   const client = db.prepare('SELECT * FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);

@@ -177,6 +177,7 @@ function apiPermissionForRequest(req) {
     if (/^\/clients\/\d+\/feed-share$/.test(path)) return 'social.feed_share';
     if (/^\/clients\/\d+\/social-media-share$/.test(path)) return 'social.link_social_media';
     if (/^\/clients\/\d+\/feed-profile$/.test(path)) return 'social.feed_create';
+    if (/^\/clients\/\d+\/feed-highlights(?:\/.*)?$/.test(path)) return method === 'GET' ? 'social.feed' : 'social.feed_create';
     if (/^\/clients\/\d+\/accounts$/.test(path)) return 'social.connections';
     return method === 'GET' ? null : 'settings.clients';
   }

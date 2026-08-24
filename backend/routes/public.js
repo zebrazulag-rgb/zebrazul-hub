@@ -66,6 +66,21 @@ function normalizePost(post) {
   return { ...post, media_gallery: parseGallery(post.media_gallery, post.media_data, post.media_mime) };
 }
 
+function getVisibleFeedHighlights(clientId, agencyId = null) {
+  let sql = `
+    SELECT id, name, cover_data, cover_mime, sort_order, visible
+    FROM feed_highlights
+    WHERE client_id = ? AND visible = 1
+  `;
+  const params = [clientId];
+  if (agencyId != null) {
+    sql += ' AND agency_id = ?';
+    params.push(agencyId);
+  }
+  sql += ' ORDER BY sort_order ASC, id ASC';
+  return db.prepare(sql).all(...params);
+}
+
 // Consulta pública somente para visualização de um post.
 // O token é separado do fluxo de aprovação.
 router.get('/view-posts/:token', (req, res) => {
@@ -144,7 +159,7 @@ router.post('/posts/:token/comments', (req, res) => {
 
 // Consulta o feed de um cliente pelo token publico - sem autenticacao
 router.get('/feed/:token', (req, res) => {
-  const client = db.prepare('SELECT id, name, logo_color, avatar_data, bio, instagram_username, instagram_display_name, instagram_posts_count, instagram_followers_count, instagram_following_count, instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action FROM clients WHERE feed_share_token = ?').get(req.params.token);
+  const client = db.prepare('SELECT id, agency_id, name, logo_color, avatar_data, bio, instagram_username, instagram_display_name, instagram_posts_count, instagram_followers_count, instagram_following_count, instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action FROM clients WHERE feed_share_token = ?').get(req.params.token);
   if (!client) return res.status(404).json({ error: 'Link invalido ou expirado' });
 
   const posts = db.prepare(`
@@ -154,7 +169,7 @@ router.get('/feed/:token', (req, res) => {
     ORDER BY scheduled_at DESC
   `).all(client.id);
 
-  res.json({ client, posts: posts.map(normalizePost) });
+  res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: posts.map(normalizePost) });
 });
 
 
@@ -176,7 +191,7 @@ router.get('/social-media/:token', (req, res) => {
     ORDER BY scheduled_at DESC, id DESC
   `).all(client.id);
 
-  res.json({ client, posts: posts.map(normalizePost) });
+  res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: posts.map(normalizePost) });
 });
 
 router.put('/social-media/:token/posts/:postId/posted', (req, res) => {
