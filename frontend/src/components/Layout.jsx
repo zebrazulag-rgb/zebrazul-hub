@@ -114,11 +114,14 @@ export default function Layout({ children }) {
     api.get(clientsEndpoint).then((res) => {
       if (!active) return;
       const nextClients = res.data.clients || [];
-      setClients(nextClients);
-      if (selectedClient && !nextClients.some((client) => client.id === selectedClient.id)) {
+      // O seletor operacional global exibe somente clientes ativos.
+      // Clientes inativos continuam preservados no banco e na área de gestão de clientes.
+      const activeClients = nextClients.filter((client) => client.status === 'active');
+      setClients(activeClients);
+      if (selectedClient && !activeClients.some((client) => client.id === selectedClient.id)) {
         setSelectedClient(null);
-      } else if (!selectedClient && user?.is_commercial_team && nextClients.length === 1) {
-        setSelectedClient(nextClients[0]);
+      } else if (!selectedClient && user?.is_commercial_team && activeClients.length === 1) {
+        setSelectedClient(activeClients[0]);
       }
     }).catch(() => {
       if (active) setClients([]);
