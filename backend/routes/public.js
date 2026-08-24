@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db/database');
+const { recordActivity } = require('../services/activity');
 
 const router = express.Router();
 
@@ -222,6 +223,15 @@ router.put('/social-media/:token/posts/:postId/posted', (req, res) => {
     `).run(Number(post.id), Number(client.id), Number(client.agency_id));
   });
   markPosted();
+
+  recordActivity({
+    agencyId: client.agency_id, actorName: 'LINK SOCIAL MEDIA', clientId: client.id,
+    module: 'social', action: 'published', entityType: 'post', entityId: post.id,
+    entityLabel: db.prepare('SELECT title FROM posts WHERE id = ?').get(post.id)?.title || null,
+    summary: 'Confirmou uma publicação como postada',
+    details: { source: 'link_social_media', previous_status: post.status, new_status: 'published' },
+    path: `/public/social-media/${req.params.token}/posts/${post.id}/posted`, method: 'PUT'
+  });
 
   res.json({ ok: true, post_id: Number(post.id), status: 'published' });
 });

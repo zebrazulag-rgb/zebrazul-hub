@@ -1316,6 +1316,52 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_custom_role ON users(agency_id, custom_role_id);
 `);
 
+// Histórico operacional e presença da equipe. O ZebraHub registra apenas ações
+// relevantes do sistema (criação, edição, status, importações etc.) e não captura
+// teclado, mouse, tela ou conteúdo sensível de senhas/tokens.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS activity_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER,
+    actor_name TEXT,
+    client_id INTEGER,
+    module TEXT NOT NULL DEFAULT 'system',
+    action TEXT NOT NULL DEFAULT 'updated',
+    entity_type TEXT,
+    entity_id TEXT,
+    entity_label TEXT,
+    summary TEXT NOT NULL,
+    details_json TEXT DEFAULT '{}',
+    path TEXT,
+    method TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS user_presence (
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    last_seen TEXT DEFAULT (datetime('now')),
+    last_path TEXT,
+    last_client_id INTEGER,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (agency_id, user_id),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (last_client_id) REFERENCES clients(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_activity_logs_agency_date ON activity_logs(agency_id, created_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date ON activity_logs(agency_id, user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_activity_logs_client_date ON activity_logs(agency_id, client_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_activity_logs_module_date ON activity_logs(agency_id, module, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_user_presence_last_seen ON user_presence(agency_id, last_seen DESC);
+`);
+tryAddColumn('activity_logs', 'actor_name', 'TEXT');
+
 // Migração do módulo financeiro para bancos criados nas primeiras versões.
 // A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual
 // usa `type = income`, `recurring`, `payment_method` e `notes`. Como o SQLite

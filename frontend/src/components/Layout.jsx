@@ -126,6 +126,27 @@ export default function Layout({ children }) {
     return () => { active = false; };
   }, [user?.id, user?.role, user?.is_commercial_team, user?.client_ids?.join(','), selectedClient?.id, setSelectedClient]);
 
+  useEffect(() => {
+    if (!user?.id || user?.role === 'client') return undefined;
+    let active = true;
+    const sendPresence = () => {
+      if (!active || document.visibilityState === 'hidden') return;
+      api.post('/activity/presence', {
+        path: `${location.pathname}${location.search || ''}`,
+        client_id: selectedClient?.id || (user?.role === 'client' ? user?.client_id : null),
+      }).catch(() => {});
+    };
+    sendPresence();
+    const interval = window.setInterval(sendPresence, 75000);
+    const handleVisibility = () => { if (document.visibilityState === 'visible') sendPresence(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [user?.id, user?.role, user?.client_id, location.pathname, location.search, selectedClient?.id]);
+
   function handleLogout() {
     logout();
     navigate('/login');
@@ -190,7 +211,7 @@ export default function Layout({ children }) {
     return true;
   });
 
-  const canSeeSettings = !user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view']);
+  const canSeeSettings = !user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']);
 
   const mobilePrimaryItems = visibleWorkspaceItems.filter((item) => ['/','/tarefas','/social-media','/comercial'].includes(item.to));
   const mobileMoreItems = visibleWorkspaceItems.filter((item) => ['/bussola','/rematriculas','/materiais'].includes(item.to));

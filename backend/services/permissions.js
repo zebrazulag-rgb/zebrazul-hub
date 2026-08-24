@@ -26,6 +26,9 @@ const PERMISSION_CATALOG = [
   { key: 'commercial.import', group: 'Comercial', label: 'Importar leads', description: 'Importar listas de leads em CSV.' },
   { key: 'reenrollments.view', group: 'Rematrículas', label: 'Rematrículas', description: 'Acessar o CRM de rematrículas da Bee.' },
   { key: 'materials.view', group: 'Materiais', label: 'Materiais', description: 'Acessar biblioteca, links e rascunhos.' },
+  { key: 'activity.view_own', group: 'Atividade', label: 'Ver própria atividade', description: 'Visualizar o próprio histórico de ações e presença recente.' },
+  { key: 'activity.view_team', group: 'Atividade', label: 'Ver atividade da equipe', description: 'Visualizar histórico, presença e filtros de todos os usuários da agência.' },
+  { key: 'activity.export', group: 'Atividade', label: 'Exportar histórico', description: 'Baixar o histórico filtrado da equipe em CSV.' },
   { key: 'finance.view', group: 'Financeiro', label: 'Financeiro', description: 'Acessar entradas, saídas e indicadores financeiros.', admin_only: true },
   { key: 'vault.view', group: 'Senhas', label: 'Cofre de senhas', description: 'Acessar credenciais criptografadas.', admin_only: true },
   { key: 'settings.clients', group: 'Configurações', label: 'Clientes', description: 'Gerenciar clientes da agência.' },
@@ -42,16 +45,16 @@ const DEFAULTS = {
     'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
-    'reenrollments.view', 'materials.view', 'settings.clients',
+    'reenrollments.view', 'materials.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
   ]),
   team: new Set([
     'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
-    'reenrollments.view', 'materials.view', 'settings.clients',
+    'reenrollments.view', 'materials.view', 'activity.view_own', 'settings.clients',
   ]),
   commercial_team: new Set([
-    'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.export', 'commercial.view', 'commercial.manage', 'commercial.import', 'reenrollments.view',
+    'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.export', 'commercial.view', 'commercial.manage', 'commercial.import', 'reenrollments.view', 'activity.view_own',
   ]),
   client: new Set([
     'tasks.view', 'tasks.approval', 'social.view', 'social.feed', 'social.calendar', 'social.reports',
@@ -199,6 +202,7 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/meta-organic')) return ['social.reports', 'social.published'];
   if (path.startsWith('/meta-oauth') || path.startsWith('/instagram-oauth') || path.startsWith('/meta')) return 'social.connections';
   if (path.startsWith('/commercial')) return path.includes('import') ? 'commercial.import' : (method === 'GET' ? 'commercial.view' : 'commercial.manage');
+  if (path.startsWith('/activity')) return ['activity.view_own', 'activity.view_team'];
   if (path.startsWith('/reenrollments')) return 'reenrollments.view';
   if (path.startsWith('/materials') || path.startsWith('/material-boards')) return 'materials.view';
   if (path.startsWith('/finance')) return 'finance.view';

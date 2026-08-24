@@ -42,6 +42,7 @@ const mediaRoutes = require('./routes/media');
 const instagramStoriesWebhookRoutes = require('./routes/instagramStoriesWebhook');
 const instagramStoriesRoutes = require('./routes/instagramStories');
 const permissionsRoutes = require('./routes/permissions');
+const activityRoutes = require('./routes/activity');
 const { runMediaMigration } = require('./services/mediaMigration');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
@@ -51,6 +52,7 @@ const { syncAllOrganicAccounts, currentMonthRange: currentOrganicMonthRange } = 
 const { authRequired } = require('./middleware/auth');
 const { apiPermissionForRequest, hasPermission } = require('./services/permissions');
 const { seedBuiltInMaterials } = require('./services/materials');
+const { activityMutationMiddleware } = require('./services/activity');
 
 if (String(process.env.SEED_DEMO_DATA).toLowerCase() === 'true') {
   const allowDemoInProduction = String(process.env.ALLOW_DEMO_SEED_IN_PRODUCTION || 'false').toLowerCase() === 'true';
@@ -101,9 +103,10 @@ app.use('/api', (req, res, next) => {
 
   return authRequired(req, res, () => {
     const permissionKey = apiPermissionForRequest(req);
-    const permissionAllowed = Array.isArray(permissionKey)
+    const activityPresenceAccess = req.path === '/activity/presence' && req.method === 'POST';
+    const permissionAllowed = activityPresenceAccess || (Array.isArray(permissionKey)
       ? permissionKey.some((key) => hasPermission(req.user, key))
-      : (!permissionKey || hasPermission(req.user, permissionKey));
+      : (!permissionKey || hasPermission(req.user, permissionKey)));
     if (!permissionAllowed) {
       return res.status(403).json({ error: 'Seu cargo não possui permissão para este recurso.' });
     }
@@ -118,7 +121,7 @@ app.use('/api', (req, res, next) => {
         return res.status(403).json({ error: 'Este recurso não está liberado para o seu cargo.' });
       }
     }
-    next();
+    activityMutationMiddleware(req, res, next);
   });
 });
 
@@ -132,6 +135,7 @@ app.use('/api/public/materials', publicMaterialRoutes);
 app.use('/api/public/video-reviews', publicVideoReviewRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/permissions', permissionsRoutes);
+app.use('/api/activity', activityRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/reports', reportRoutes);

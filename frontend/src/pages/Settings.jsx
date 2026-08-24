@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { Building2, KeyRound, Palette, Settings as SettingsIcon, ShieldCheck, UserCog, Users } from 'lucide-react';
+import { Activity, Building2, KeyRound, Palette, Settings as SettingsIcon, ShieldCheck, UserCog, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import AppearanceSettings from './AppearanceSettings.jsx';
 import Clients from './Clients.jsx';
@@ -9,6 +9,7 @@ import BrandSettings from './BrandSettings.jsx';
 import Agencies from './Agencies.jsx';
 import PermissionsSettings from './PermissionsSettings.jsx';
 import PasswordVault from './PasswordVault.jsx';
+import ActivitySettings from './ActivitySettings.jsx';
 import { hasPermission } from '../permissions.js';
 
 export default function Settings() {
@@ -21,6 +22,7 @@ export default function Settings() {
     { key: 'clientes', label: 'Clientes', description: 'Contas e informações', icon: Users, allowed: hasPermission(user, 'settings.clients') },
     { key: 'usuarios', label: 'Usuários', description: 'Equipe e acessos', icon: UserCog, allowed: hasPermission(user, 'settings.users') },
     { key: 'permissoes', label: 'Permissões', description: 'Cargos e visibilidade', icon: ShieldCheck, allowed: hasPermission(user, 'settings.permissions') },
+    { key: 'atividade', label: 'Atividade', description: 'Histórico da equipe', icon: Activity, allowed: hasPermission(user, 'activity.view_own') || hasPermission(user, 'activity.view_team') },
     { key: 'senhas', label: 'Senhas', description: 'Credenciais e acessos', icon: KeyRound, allowed: hasPermission(user, 'vault.view') },
     { key: 'marca', label: 'Marca da agência', description: 'Logo, cores e domínio', icon: SettingsIcon, allowed: hasPermission(user, 'settings.brand') },
     { key: 'agencias', label: 'Agências', description: 'Ambientes da plataforma', icon: Building2, allowed: Boolean(user?.is_platform_owner) },
@@ -40,6 +42,7 @@ export default function Settings() {
     clientes: <Clients embedded />,
     usuarios: <UserManagement embedded />,
     permissoes: <PermissionsSettings />,
+    atividade: <ActivitySettings />,
     senhas: <PasswordVault />,
     marca: <BrandSettings embedded />,
     agencias: <Agencies embedded />,

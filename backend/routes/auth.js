@@ -10,6 +10,7 @@ const {
 } = require('../middleware/auth');
 const { resolveAgency } = require('../services/tenant');
 const { hasPermission } = require('../services/permissions');
+const { recordActivity, updatePresence } = require('../services/activity');
 
 const { persistMedia } = require('../services/mediaStorage');
 const router = express.Router();
@@ -155,6 +156,12 @@ router.post('/login', (req, res) => {
   if (!valid) return res.status(401).json({ error: 'Credenciais invalidas' });
 
   const token = jwt.sign({ id: user.id, agency_id: user.agency_id }, JWT_SECRET, { expiresIn: '7d' });
+  recordActivity({
+    agencyId: user.agency_id, userId: user.id, clientId: user.client_id || null,
+    module: 'auth', action: 'login', entityType: 'user', entityId: user.id, entityLabel: user.name,
+    summary: 'Entrou no ZebraHub', path: '/auth/login', method: 'POST'
+  });
+  updatePresence({ agencyId: user.agency_id, userId: user.id, path: '/login', clientId: user.client_id || null });
   res.json({ token, user: publicUser(user) });
 });
 
@@ -207,6 +214,12 @@ router.post('/users', authRequired, (req, res) => {
       return info.lastInsertRowid;
     });
     const id = createUser();
+    recordActivity({
+      agencyId: req.user.agency_id, userId: req.user.id, clientId: clientId || null,
+      module: 'users', action: 'created', entityType: 'user', entityId: id, entityLabel: name,
+      summary: 'Criou um usuário da equipe', details: { role: accessRole.requested, custom_role_id: customRoleId, client_ids: clientIds },
+      path: '/auth/users', method: 'POST'
+    });
     res.status(201).json({ id });
   } catch (err) {
     res.status(400).json({ error: 'Email ja cadastrado ou dados invalidos' });
@@ -259,6 +272,12 @@ router.put('/me', authRequired, (req, res) => {
            agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team, custom_role_id
     FROM users WHERE id = ? AND agency_id = ?
   `).get(req.user.id, req.user.agency_id);
+  recordActivity({
+    agencyId: req.user.agency_id, userId: req.user.id, clientId: req.user.client_id || null,
+    module: 'users', action: 'profile_updated', entityType: 'user', entityId: req.user.id, entityLabel: user?.name || req.user.name,
+    summary: 'Atualizou o próprio perfil', details: { name_changed: Boolean(name), avatar_changed: Boolean(avatarData) },
+    path: '/auth/me', method: 'PUT'
+  });
   res.json({ user: publicUser(user) });
 });
 
@@ -328,6 +347,12 @@ router.put('/users/:id', authRequired, (req, res) => {
              agency_id, is_platform_owner, is_agency_owner, is_operations_head, is_commercial_team, custom_role_id
       FROM users WHERE id = ? AND agency_id = ?
     `).get(targetId, req.user.agency_id);
+    recordActivity({
+      agencyId: req.user.agency_id, userId: req.user.id, clientId: updatedUser?.client_id || null,
+      module: 'users', action: 'updated', entityType: 'user', entityId: targetId, entityLabel: updatedUser?.name || nextName,
+      summary: 'Atualizou um usuário da equipe', details: { role: requestedAccessRole, custom_role_id: nextCustomRoleId, client_ids: nextClientIds },
+      path: `/auth/users/${targetId}`, method: 'PUT'
+    });
     res.json({ ok: true, user: publicUser(updatedUser) });
   } catch (err) {
     res.status(400).json({ error: 'Email ja cadastrado ou dados invalidos' });
@@ -362,7 +387,13 @@ router.delete('/users/:id', authRequired, (req, res) => {
   }
 
   try {
+    const targetName = db.prepare('SELECT name FROM users WHERE id = ? AND agency_id = ?').get(targetId, req.user.agency_id)?.name || `Usuário #${targetId}`;
     deleteUserTransaction(targetId, req.user.id, req.user.agency_id);
+    recordActivity({
+      agencyId: req.user.agency_id, userId: req.user.id,
+      module: 'users', action: 'deleted', entityType: 'user', entityId: targetId, entityLabel: targetName,
+      summary: 'Removeu um usuário da equipe', path: `/auth/users/${targetId}`, method: 'DELETE'
+    });
     res.json({ ok: true });
   } catch (err) {
     console.error('Erro ao apagar usuario:', err);
