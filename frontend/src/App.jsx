@@ -27,6 +27,7 @@ import DataDeletion from './pages/DataDeletion.jsx';
 import BeeRematriculas from './pages/BeeRematriculas.jsx';
 import BeeCampaignBriefing from './pages/BeeCampaignBriefing.jsx';
 import BeeFamilySurvey from './pages/BeeFamilySurvey.jsx';
+import PublicBeeFamilySurvey from './pages/PublicBeeFamilySurvey.jsx';
 import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
@@ -65,6 +66,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/npsbee" element={<PublicBeeFamilySurvey />} />
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/link-social-media/:token" element={<PublicSocialMediaFeed />} />

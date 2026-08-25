@@ -1,0 +1,154 @@
+@font-face { font-family: "Bauer Bodoni"; src: url("/npsbee-assets/fonts/bauer-bodoni-400.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Bauer Bodoni"; src: url("/npsbee-assets/fonts/bauer-bodoni-700.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Bauer Bodoni"; src: url("/npsbee-assets/fonts/bauer-bodoni-900.woff2") format("woff2"); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Poppins"; src: url("/npsbee-assets/fonts/poppins-400.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Poppins"; src: url("/npsbee-assets/fonts/poppins-600.ttf") format("truetype"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Poppins"; src: url("/npsbee-assets/fonts/poppins-700.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Poppins"; src: url("/npsbee-assets/fonts/poppins-900.ttf") format("truetype"); font-weight: 900; font-style: normal; font-display: swap; }
+
+.bee-survey-page {
+  --bee-black: #1c1c1c;
+  --bee-yellow: #ebae20;
+  --bee-yellow-deep: #d89a0d;
+  --bee-cream: #f8f5ed;
+  --bee-gray: #7d7d7d;
+  --line: #e7e2d7;
+  --ink: #25231f;
+}
+
+.bee-survey-page, .bee-survey-page * { box-sizing: border-box; }
+.bee-survey-page { margin: 0; background: var(--bee-cream); color: var(--ink); font-family: "Poppins", Arial, sans-serif; }
+.bee-survey-page button, .bee-survey-page input, .bee-survey-page select, .bee-survey-page textarea { font: inherit; }
+.bee-survey-page button { cursor: pointer; }
+
+.bee-survey-page .survey-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(380px, 42%) minmax(0, 58%); }
+.bee-survey-page .brand-panel { position: relative; min-height: 100vh; overflow: hidden; background: var(--bee-black); color: white; }
+.bee-survey-page .brand-panel::before { content: ""; position: absolute; width: 470px; height: 470px; left: -260px; bottom: -240px; border: 74px solid rgba(235,174,32,.1); border-radius: 50%; }
+.bee-survey-page .brand-panel::after { content: ""; position: absolute; width: 260px; height: 260px; right: -170px; top: 22%; border: 1px solid rgba(235,174,32,.22); border-radius: 50%; }
+.bee-survey-page .brand-inner { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; padding: 42px clamp(32px, 5vw, 78px) 38px; }
+.bee-survey-page .brand-logos { display: flex; align-items: center; gap: 20px; }
+.bee-survey-page .brand-logos img { max-width: 105px; max-height: 66px; width: auto; height: auto; object-fit: contain; filter: brightness(0) invert(1); }
+.bee-survey-page .brand-divider { width: 1px; height: 42px; background: rgba(255,255,255,.18); }
+.bee-survey-page .brand-copy { margin-top: clamp(62px, 10vh, 120px); max-width: 590px; }
+.bee-survey-page .eyebrow { display: flex; align-items: center; gap: 12px; margin: 0 0 22px; color: var(--bee-yellow); font-size: 11px; font-weight: 900; letter-spacing: .2em; text-transform: uppercase; }
+.bee-survey-page .eyebrow span { width: 34px; height: 3px; background: var(--bee-yellow); }
+.bee-survey-page .brand-copy h1 { margin: 0; font-family: "Bauer Bodoni", Georgia, serif; font-size: clamp(50px, 5.2vw, 84px); font-weight: 900; line-height: .94; letter-spacing: -.035em; }
+.bee-survey-page .brand-copy h1 em { display: block; color: var(--bee-yellow); font-style: normal; }
+.bee-survey-page .brand-copy > p:last-child { max-width: 530px; margin: 28px 0 0; color: rgba(255,255,255,.66); font-size: 14px; line-height: 1.8; }
+.bee-survey-page .brand-points { display: grid; gap: 14px; margin-top: 36px; max-width: 520px; }
+.bee-survey-page .brand-points > div { display: flex; align-items: flex-start; gap: 12px; }
+.bee-survey-page .brand-points > div > span { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border: 1px solid rgba(235,174,32,.45); border-radius: 50%; color: var(--bee-yellow); }
+.bee-survey-page .brand-points p { margin: 0; color: rgba(255,255,255,.45); font-size: 11px; line-height: 1.5; }
+.bee-survey-page .brand-points strong { display: block; color: white; font-size: 11px; letter-spacing: .02em; }
+.bee-survey-page .family-photo { position: relative; margin-top: auto; padding-top: 34px; }
+.bee-survey-page .family-photo img { width: 100%; max-height: 180px; display: block; object-fit: cover; object-position: center 42%; border-radius: 3px; filter: saturate(.85); }
+.bee-survey-page .family-photo::after { content: ""; position: absolute; inset: 34px 0 0; background: linear-gradient(90deg, rgba(28,28,28,.3), transparent 55%); pointer-events: none; }
+.bee-survey-page .family-photo div { position: absolute; z-index: 1; left: 18px; bottom: 15px; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 30px; background: rgba(28,28,28,.82); color: white; font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; backdrop-filter: blur(8px); }
+.bee-survey-page .family-photo div span { width: 7px; height: 7px; border-radius: 50%; background: var(--bee-yellow); }
+
+.bee-survey-page .form-panel { min-width: 0; background: var(--bee-cream); }
+.bee-survey-page .form-container { width: min(100%, 880px); margin: 0 auto; padding: 46px clamp(24px, 5vw, 72px) 38px; }
+.bee-survey-page .form-header { margin-bottom: 44px; }
+.bee-survey-page .step-meta { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; color: #8b867d; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.bee-survey-page .step-meta span:first-child { color: #9a6a00; }
+.bee-survey-page .progress-track { height: 3px; overflow: hidden; background: #ded8ca; }
+.bee-survey-page .progress-track span { display: block; height: 100%; background: var(--bee-yellow); transition: width .35s ease; }
+.bee-survey-page .form-step { animation: step-in .28s ease both; }
+@keyframes step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.bee-survey-page .step-heading p { margin: 0 0 9px; color: #a37306; font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+.bee-survey-page .step-heading h2 { margin: 0; font-family: "Bauer Bodoni", Georgia, serif; color: var(--bee-black); font-size: clamp(38px, 4vw, 56px); font-weight: 900; line-height: .98; letter-spacing: -.03em; }
+.bee-survey-page .step-heading > span { display: block; max-width: 620px; margin-top: 15px; color: #777268; font-size: 12px; line-height: 1.7; }
+.bee-survey-page .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 21px 18px; margin-top: 38px; }
+.bee-survey-page .field.full { grid-column: 1 / -1; }
+.bee-survey-page .field { display: grid; gap: 8px; }
+.bee-survey-page .field > span { color: #4e4a43; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.bee-survey-page .field > span b { color: #ac7800; }
+.bee-survey-page .field input, .bee-survey-page .field select, .bee-survey-page .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 3px; outline: none; background: rgba(255,255,255,.78); color: var(--ink); font-size: 12px; transition: border-color .15s, box-shadow .15s, background .15s; }
+.bee-survey-page .field input, .bee-survey-page .field select { min-height: 48px; padding: 0 14px; }
+.bee-survey-page .field textarea { resize: vertical; min-height: 116px; padding: 14px; line-height: 1.65; }
+.bee-survey-page .field input::placeholder, .bee-survey-page .field textarea::placeholder { color: #aaa59c; }
+.bee-survey-page .field input:focus, .bee-survey-page .field select:focus, .bee-survey-page .field textarea:focus { border-color: var(--bee-yellow); background: white; box-shadow: 0 0 0 3px rgba(235,174,32,.12); }
+.bee-survey-page .honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+.bee-survey-page .rating-list { display: grid; gap: 15px; margin-top: 34px; }
+.bee-survey-page .rating-question, .bee-survey-page .relationship-field, .bee-survey-page .nps-field { min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.68); padding: 19px 20px 15px; }
+.bee-survey-page .rating-question legend, .bee-survey-page .relationship-field legend, .bee-survey-page .nps-field legend { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 0; color: #34312c; font-size: 12px; font-weight: 700; line-height: 1.55; }
+.bee-survey-page .question-number { flex: none; color: #a67506; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.bee-survey-page .rating-scale { display: grid; grid-template-columns: repeat(5, 42px); gap: 8px; margin-top: 17px; }
+.bee-survey-page .rating-option, .bee-survey-page .nps-option { border: 1px solid #dcd6ca; border-radius: 2px; background: white; color: #6b665d; font-size: 12px; font-weight: 800; transition: .15s ease; }
+.bee-survey-page .rating-option { width: 42px; height: 38px; }
+.bee-survey-page .rating-option:hover, .bee-survey-page .nps-option:hover { border-color: var(--bee-yellow); color: #765000; }
+.bee-survey-page .rating-option.selected, .bee-survey-page .nps-option.selected { border-color: var(--bee-black); background: var(--bee-black); color: white; box-shadow: inset 0 -3px 0 var(--bee-yellow); }
+.bee-survey-page .scale-labels { display: flex; justify-content: space-between; gap: 18px; margin-top: 9px; color: #a09a8f; font-size: 8px; font-weight: 600; }
+.bee-survey-page .relationship-field { margin-top: 34px; }
+.bee-survey-page .relationship-options { display: grid; gap: 8px; margin-top: 17px; }
+.bee-survey-page .relationship-option { width: 100%; display: flex; align-items: center; gap: 11px; border: 1px solid #e0dbd0; border-radius: 3px; background: white; padding: 12px 13px; color: #625e56; text-align: left; font-size: 11px; line-height: 1.45; transition: .15s ease; }
+.bee-survey-page .relationship-option:hover { border-color: #c69a36; }
+.bee-survey-page .relationship-option.selected { border-color: var(--bee-yellow); background: #fff9ea; color: #2c2924; }
+.bee-survey-page .radio-mark { width: 17px; height: 17px; flex: none; display: grid; place-items: center; border: 1px solid #c9c2b5; border-radius: 50%; }
+.bee-survey-page .relationship-option.selected .radio-mark { border-color: var(--bee-yellow-deep); }
+.bee-survey-page .radio-mark i { width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+.bee-survey-page .relationship-option.selected .radio-mark i { background: var(--bee-yellow); }
+.bee-survey-page .nps-field { margin-top: 15px; }
+.bee-survey-page .nps-scale { display: grid; grid-template-columns: repeat(11, minmax(34px, 1fr)); gap: 5px; margin-top: 18px; }
+.bee-survey-page .nps-option { min-width: 0; height: 38px; padding: 0; }
+.bee-survey-page .open-fields { display: grid; gap: 19px; margin-top: 20px; }
+.bee-survey-page .contact-choice { position: relative; display: flex; align-items: flex-start; gap: 12px; margin-top: 20px; border: 1px solid #e1d8c6; border-radius: 4px; background: #fff9ea; padding: 15px 16px; cursor: pointer; }
+.bee-survey-page .contact-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.bee-survey-page .checkbox-mark { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border: 1px solid #bdb5a7; border-radius: 3px; background: white; color: transparent; }
+.bee-survey-page .contact-choice input:checked + .checkbox-mark { border-color: var(--bee-black); background: var(--bee-black); color: var(--bee-yellow); }
+.bee-survey-page .contact-choice strong { display: block; color: #36332e; font-size: 11px; }
+.bee-survey-page .contact-choice small { display: block; margin-top: 3px; color: #8a8479; font-size: 9px; line-height: 1.5; }
+.bee-survey-page .form-error { margin: 22px 0 0; border-left: 3px solid #b43b2b; background: #fff1ee; padding: 11px 13px; color: #8f2e22; font-size: 10px; font-weight: 700; }
+.bee-survey-page .form-actions { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--line); }
+.bee-survey-page .primary-button, .bee-survey-page .secondary-button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; border-radius: 2px; padding: 0 23px; font-size: 11px; font-weight: 900; transition: .18s ease; }
+.bee-survey-page .primary-button { border: 1px solid var(--bee-yellow); background: var(--bee-yellow); color: var(--bee-black); box-shadow: 0 8px 24px rgba(203,145,13,.15); }
+.bee-survey-page .primary-button:hover { border-color: var(--bee-yellow-deep); background: var(--bee-yellow-deep); transform: translateY(-1px); }
+.bee-survey-page .primary-button:disabled { opacity: .6; cursor: wait; transform: none; }
+.bee-survey-page .secondary-button { border: 1px solid #d7d1c6; background: transparent; color: #676159; }
+.bee-survey-page .secondary-button:hover { border-color: #a59d8e; background: white; }
+.bee-survey-page .privacy-note { max-width: 630px; margin: 20px auto 0; color: #9a958b; font-size: 8px; line-height: 1.6; text-align: center; }
+.bee-survey-page .success-card { min-height: 68vh; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; animation: step-in .35s ease both; }
+.bee-survey-page .success-symbol { width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; background: var(--bee-yellow); color: var(--bee-black); }
+.bee-survey-page .success-symbol svg { width: 26px; height: 26px; }
+.bee-survey-page .success-card > p { margin: 30px 0 10px; color: #a37306; font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+.bee-survey-page .success-card h2 { max-width: 560px; margin: 0; font-family: "Bauer Bodoni", Georgia, serif; color: var(--bee-black); font-size: clamp(50px, 6vw, 76px); font-weight: 900; line-height: .94; letter-spacing: -.035em; }
+.bee-survey-page .success-card > span { max-width: 570px; margin-top: 24px; color: #746f66; font-size: 13px; line-height: 1.75; }
+.bee-survey-page .success-line { width: 70px; height: 3px; margin-top: 32px; background: var(--bee-yellow); }
+.bee-survey-page .success-card small { margin-top: 15px; color: #8a857b; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+@media (max-width: 980px) {
+  .bee-survey-page .survey-shell { grid-template-columns: 1fr; }
+  .bee-survey-page .brand-panel { min-height: auto; }
+  .bee-survey-page .brand-inner { min-height: auto; padding: 28px 24px 30px; }
+  .bee-survey-page .brand-copy { margin-top: 44px; }
+  .bee-survey-page .brand-copy h1 { max-width: 640px; font-size: clamp(46px, 10vw, 70px); }
+  .bee-survey-page .brand-copy > p:last-child { font-size: 13px; }
+  .bee-survey-page .brand-points { grid-template-columns: repeat(3, 1fr); max-width: none; }
+  .bee-survey-page .family-photo { display: none; }
+  .bee-survey-page .form-container { padding-top: 34px; }
+}
+
+@media (max-width: 640px) {
+  .bee-survey-page .brand-logos img { max-width: 86px; max-height: 52px; }
+  .bee-survey-page .brand-divider { height: 34px; }
+  .bee-survey-page .brand-copy { margin-top: 38px; }
+  .bee-survey-page .brand-copy h1 { font-size: 48px; }
+  .bee-survey-page .brand-points { grid-template-columns: 1fr; gap: 11px; }
+  .bee-survey-page .brand-points > div:nth-child(2) { display: none; }
+  .bee-survey-page .form-container { padding: 28px 17px 30px; }
+  .bee-survey-page .form-header { margin-bottom: 34px; }
+  .bee-survey-page .step-heading h2 { font-size: 39px; }
+  .bee-survey-page .field-grid { grid-template-columns: 1fr; gap: 17px; margin-top: 30px; }
+  .bee-survey-page .field.full { grid-column: auto; }
+  .bee-survey-page .rating-question, .bee-survey-page .relationship-field, .bee-survey-page .nps-field { padding: 17px 14px 14px; }
+  .bee-survey-page .rating-scale { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .bee-survey-page .rating-option { width: 100%; }
+  .bee-survey-page .nps-scale { grid-template-columns: repeat(6, 1fr); }
+  .bee-survey-page .form-actions { position: sticky; bottom: 0; z-index: 4; margin-left: -17px; margin-right: -17px; padding: 14px 17px max(14px, env(safe-area-inset-bottom)); background: rgba(248,245,237,.94); backdrop-filter: blur(12px); }
+  .bee-survey-page .primary-button, .bee-survey-page .secondary-button { padding: 0 17px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bee-survey-page *, .bee-survey-page *::before, .bee-survey-page *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

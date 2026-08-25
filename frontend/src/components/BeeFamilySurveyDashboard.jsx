@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 
-const SURVEY_URL = 'https://pesquisa-familias-bee.almeidaarthur.chatgpt.site';
+const SURVEY_URL = 'https://app.zebrazul.com.br/npsbee';
 
 const RISK_META = {
   strong: { label: 'Vínculo forte', badge: 'bg-emerald-50 text-emerald-700 border-emerald-100', dot: 'bg-emerald-500', ring: 'ring-emerald-100' },
