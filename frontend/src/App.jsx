@@ -26,6 +26,7 @@ import TermsOfUse from './pages/TermsOfUse.jsx';
 import DataDeletion from './pages/DataDeletion.jsx';
 import BeeRematriculas from './pages/BeeRematriculas.jsx';
 import BeeCampaignBriefing from './pages/BeeCampaignBriefing.jsx';
+import BeeFamilySurvey from './pages/BeeFamilySurvey.jsx';
 import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
@@ -98,6 +99,7 @@ export default function App() {
       <Route path="/bussola/dme" element={<ProtectedRoute permission="compass.view"><Diagnostics /></ProtectedRoute>} />
       <Route path="/bussola/diagnostico" element={<ProtectedRoute permission="compass.view"><StrategicDiagnosis /></ProtectedRoute>} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />
+      <Route path="/bussola/pesquisa-familias-bee" element={<ProtectedRoute permission="compass.view"><BeeFamilySurvey /></ProtectedRoute>} />
       <Route path="/bussola/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />

@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   Compass,
   FileText,
+  HeartHandshake,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
@@ -17,6 +18,7 @@ const EMPTY_STATUS = {
   dme: null,
   diagnosis: 0,
   briefing: { count: 0, submitted: 0, progress: 0 },
+  survey: { total: 0, pending_follow_up: 0, average_health: 0, nps: 0 },
 };
 
 export default function CompassPage() {
@@ -53,10 +55,15 @@ export default function CompassPage() {
           ? api.get('/bee-campaign-briefing', { params: { client_id: clientId, year: 2027 } })
           : Promise.resolve({ data: { responses: [] } });
 
-        const [planResponse, diagnosticResponse, briefingResponse] = await Promise.all([
+        const surveyRequest = beeActive
+          ? api.get('/bee-family-survey', { params: { client_id: clientId } }).catch(() => ({ data: { summary: {} } }))
+          : Promise.resolve({ data: { summary: {} } });
+
+        const [planResponse, diagnosticResponse, briefingResponse, surveyResponse] = await Promise.all([
           api.get('/action-plans', { params: { client_id: clientId } }),
           diagnosticRequest,
           briefingRequest,
+          surveyRequest,
         ]);
 
         if (!active) return;
@@ -74,6 +81,12 @@ export default function CompassPage() {
             count: briefingResponses.length,
             submitted: briefingResponses.filter((item) => item.status === 'submitted').length,
             progress: briefingProgress,
+          },
+          survey: {
+            total: Number(surveyResponse?.data?.summary?.total || 0),
+            pending_follow_up: Number(surveyResponse?.data?.summary?.pending_follow_up || 0),
+            average_health: Number(surveyResponse?.data?.summary?.average_health || 0),
+            nps: Number(surveyResponse?.data?.summary?.nps || 0),
           },
         });
       } catch {
@@ -120,6 +133,20 @@ export default function CompassPage() {
       path: '/bussola/briefing-bee-2027',
       progress: status.briefing?.progress || 0,
       statusLabel: briefingStatus(status.briefing),
+    }, {
+      number: '04',
+      title: 'Pesquisa de Famílias',
+      subtitle: 'Ouvir, classificar e acompanhar',
+      description: 'Centralize as respostas dos pais, identifique sinais sutis de vínculo e organize o acompanhamento das famílias que pedem mais cuidado.',
+      icon: HeartHandshake,
+      available: true,
+      path: '/bussola/pesquisa-familias-bee',
+      metric: {
+        value: status.survey?.total || 0,
+        label: 'respostas recebidas',
+      },
+      trackProgress: false,
+      statusLabel: surveyStatus(status.survey),
     }] : []),
   ], [status, user?.role, beeActive]);
 
@@ -152,7 +179,7 @@ export default function CompassPage() {
               <h2 className="section-title mt-1">Da leitura à direção</h2>
               <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-500">O DME organiza a percepção inicial do negócio. O Diagnóstico Estratégico aprofunda essa leitura, define prioridades e concentra o direcionamento necessário para a execução.</p>
             </div>
-            <div className={`grid gap-4 p-6 ${steps.length > 2 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+            <div className={`grid gap-4 p-6 ${steps.length > 3 ? 'md:grid-cols-2 xl:grid-cols-4' : steps.length > 2 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
               {steps.map((step) => (
                 <CompassCard key={step.title} step={step} onOpen={() => step.available && navigate(step.path)} />
               ))}
@@ -180,10 +207,19 @@ function CompassCard({ step, onOpen }) {
       <p className="mt-5 text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">{step.subtitle}</p>
       <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">{step.title}</h3>
       <p className="mt-3 min-h-[72px] text-sm leading-6 text-slate-500">{step.description}</p>
-      <div className="mt-5">
-        <div className="flex items-center justify-between gap-3 text-xs"><span className="truncate font-medium text-slate-500">{step.statusLabel}</span><span className="font-bold text-slate-700">{step.progress}%</span></div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[var(--agency-primary)] transition-all" style={{ width: `${Math.max(0, Math.min(100, step.progress))}%` }} /></div>
-      </div>
+      {step.trackProgress === false ? (
+        <div className="mt-5 rounded-2xl bg-slate-50 px-3.5 py-3">
+          <div className="flex items-end justify-between gap-3">
+            <div><span className="text-xl font-black text-slate-900">{step.metric?.value || 0}</span><span className="ml-1.5 text-[10px] font-semibold text-slate-400">{step.metric?.label}</span></div>
+          </div>
+          <p className="mt-1.5 truncate text-[10px] font-semibold text-slate-500">{step.statusLabel}</p>
+        </div>
+      ) : (
+        <div className="mt-5">
+          <div className="flex items-center justify-between gap-3 text-xs"><span className="truncate font-medium text-slate-500">{step.statusLabel}</span><span className="font-bold text-slate-700">{step.progress}%</span></div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[var(--agency-primary)] transition-all" style={{ width: `${Math.max(0, Math.min(100, step.progress))}%` }} /></div>
+        </div>
+      )}
       <button type="button" disabled={!step.available} onClick={onOpen} className={`mt-5 inline-flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition ${step.available ? 'bg-[#121620] text-white hover:bg-slate-800' : 'cursor-not-allowed bg-slate-100 text-slate-400'}`}>
         <span>{step.available ? 'Abrir etapa' : 'Gerenciado pela agência'}</span><ArrowRight size={16} />
       </button>
@@ -218,8 +254,16 @@ function briefingStatus(item) {
   return `${submitted}/${count} resposta${count === 1 ? '' : 's'} enviada${submitted === 1 ? '' : 's'}`;
 }
 
+function surveyStatus(item) {
+  const total = Number(item?.total || 0);
+  const pending = Number(item?.pending_follow_up || 0);
+  if (!total) return 'Aguardando primeira resposta';
+  if (pending) return `${pending} acompanhamento${pending === 1 ? '' : 's'} pendente${pending === 1 ? '' : 's'}`;
+  return 'Acompanhamentos em dia';
+}
+
 function overallProgress(steps) {
-  const available = steps.filter((step) => step.available);
+  const available = steps.filter((step) => step.available && step.trackProgress !== false);
   if (!available.length) return '0%';
   return `${Math.round(available.reduce((sum, step) => sum + Number(step.progress || 0), 0) / available.length)}%`;
 }

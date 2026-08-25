@@ -1742,6 +1742,48 @@ db.exec(`
     FOREIGN KEY (family_id) REFERENCES reenrollment_families(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
   );
+
+  CREATE TABLE IF NOT EXISTS bee_family_survey_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id TEXT NOT NULL UNIQUE,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    family_id INTEGER,
+    responsible_name TEXT NOT NULL,
+    student_name TEXT NOT NULL,
+    whatsapp TEXT NOT NULL,
+    email TEXT,
+    unit TEXT NOT NULL,
+    school TEXT NOT NULL,
+    class_group TEXT NOT NULL,
+    experience INTEGER NOT NULL,
+    wellbeing INTEGER NOT NULL,
+    development INTEGER NOT NULL,
+    christian_alignment INTEGER NOT NULL,
+    communication INTEGER NOT NULL,
+    support INTEGER NOT NULL,
+    value_perception INTEGER NOT NULL,
+    future_fit INTEGER NOT NULL,
+    relationship INTEGER NOT NULL,
+    nps INTEGER NOT NULL,
+    trust_strength TEXT,
+    improvement TEXT,
+    contact_requested INTEGER NOT NULL DEFAULT 0,
+    health_score INTEGER NOT NULL,
+    risk_level TEXT NOT NULL DEFAULT 'stable' CHECK(risk_level IN ('strong','stable','attention','high')),
+    risk_signals_json TEXT NOT NULL DEFAULT '[]',
+    follow_up_status TEXT NOT NULL DEFAULT 'new' CHECK(follow_up_status IN ('new','in_follow_up','resolved')),
+    follow_up_notes TEXT,
+    handled_by INTEGER,
+    handled_at TEXT,
+    received_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (family_id) REFERENCES reenrollment_families(id) ON DELETE SET NULL,
+    FOREIGN KEY (handled_by) REFERENCES users(id) ON DELETE SET NULL
+  );
 `);
 
 // A mesma conta do Instagram pode existir em agencias diferentes, mas dentro da
@@ -1817,6 +1859,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reenrollment_family_stage ON reenrollment_families(agency_id, campaign_id, stage_key, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_reenrollment_family_risk ON reenrollment_families(agency_id, campaign_id, risk_score, next_action_date);
   CREATE INDEX IF NOT EXISTS idx_reenrollment_activity_family ON reenrollment_activities(agency_id, family_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_bee_family_survey_client ON bee_family_survey_responses(agency_id, client_id, received_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_bee_family_survey_risk ON bee_family_survey_responses(agency_id, client_id, risk_level, health_score, follow_up_status);
+  CREATE INDEX IF NOT EXISTS idx_bee_family_survey_family ON bee_family_survey_responses(agency_id, family_id, received_at DESC);
 `);
 
 const installationId = db.prepare("SELECT value FROM system_meta WHERE key = 'installation_id'").get();
@@ -1844,7 +1889,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '36', datetime('now'))
+   VALUES ('schema_version', '37', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

@@ -209,7 +209,7 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/credentials')) return 'vault.view';
   if (path.startsWith('/video-reviews')) return 'tasks.approval';
   if (path.startsWith('/task-request-links')) return 'tasks.create';
-  if (path.startsWith('/diagnostics') || path.startsWith('/action-plans') || path.startsWith('/planning-documents') || path.startsWith('/bee-campaign-briefing')) return 'compass.view';
+  if (path.startsWith('/diagnostics') || path.startsWith('/action-plans') || path.startsWith('/planning-documents') || path.startsWith('/bee-campaign-briefing') || path.startsWith('/bee-family-survey')) return 'compass.view';
   if (path.startsWith('/ai')) return 'compass.view';
   return null;
 }
