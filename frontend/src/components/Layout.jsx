@@ -208,7 +208,7 @@ export default function Layout({ children }) {
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
-    { to: '/conversas', label: 'Conversas', icon: MessageCircle },
+    { to: '/conversas', label: 'Conversas', icon: MessageCircle, permission: 'chat.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
