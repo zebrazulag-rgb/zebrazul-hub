@@ -26,7 +26,8 @@ export function permissionRoleKey(user) {
 }
 
 export function hasPermission(user, key) {
-  if (!user) return false;
+  // Nunca permita que um item de menu sem chave de permissão derrube o app inteiro.
+  if (!user || !key || typeof key !== 'string') return false;
   let allowed;
   if (user.permissions && Object.prototype.hasOwnProperty.call(user.permissions, key)) allowed = Boolean(user.permissions[key]);
   else {
