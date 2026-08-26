@@ -167,6 +167,7 @@ function hasPermission(user, permissionKey) {
 
 function roleNameForUser(user) {
   if (!user) return '';
+  if (Number(user.is_platform_owner) === 1 || user.is_platform_owner === true) return 'Super Administrador';
   if (Number(user.custom_role_id) > 0) {
     const custom = db.prepare('SELECT name FROM custom_roles WHERE id = ? AND agency_id = ?').get(user.custom_role_id, user.agency_id);
     if (custom?.name) return custom.name;
