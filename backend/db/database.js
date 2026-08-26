@@ -1608,11 +1608,29 @@ const initializeAgencyScope = db.transaction(() => {
   db.prepare(`UPDATE meta_organic_accounts SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = meta_organic_accounts.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
   db.prepare(`UPDATE action_plans SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = action_plans.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
 
-  const platformOwner = db.prepare('SELECT id FROM users WHERE is_platform_owner = 1 LIMIT 1').get();
-  if (!platformOwner) {
-    const firstAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' AND agency_id = ? ORDER BY id LIMIT 1").get(defaultAgencyId);
-    if (firstAdmin) {
-      db.prepare('UPDATE users SET is_platform_owner = 1, is_agency_owner = 1 WHERE id = ?').run(firstAdmin.id);
+  // Super Administrador da plataforma.
+  // A conta do Arthur é promovida de forma idempotente para evitar que uma
+  // migração antiga mantenha o primeiro administrador cadastrado como dono
+  // da plataforma. Enquanto existir um administrador cujo nome comece por
+  // "Arthur", ele será o único Super Administrador.
+  const arthurPlatformOwner = db.prepare(`
+    SELECT id
+    FROM users
+    WHERE role = 'admin' AND lower(trim(name)) LIKE 'arthur%'
+    ORDER BY is_agency_owner DESC, id ASC
+    LIMIT 1
+  `).get();
+
+  if (arthurPlatformOwner) {
+    db.prepare('UPDATE users SET is_platform_owner = 0 WHERE id <> ? AND is_platform_owner = 1').run(arthurPlatformOwner.id);
+    db.prepare('UPDATE users SET is_platform_owner = 1 WHERE id = ?').run(arthurPlatformOwner.id);
+  } else {
+    const platformOwner = db.prepare('SELECT id FROM users WHERE is_platform_owner = 1 LIMIT 1').get();
+    if (!platformOwner) {
+      const firstAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' AND agency_id = ? ORDER BY id LIMIT 1").get(defaultAgencyId);
+      if (firstAdmin) {
+        db.prepare('UPDATE users SET is_platform_owner = 1, is_agency_owner = 1 WHERE id = ?').run(firstAdmin.id);
+      }
     }
   }
 });
