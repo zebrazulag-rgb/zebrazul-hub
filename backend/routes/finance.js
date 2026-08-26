@@ -225,7 +225,7 @@ router.put('/:id', (req, res) => {
   res.json({ entry: normalizeEntry(entry) });
 });
 
-router.delete('/:id', requireRole('admin'), (req, res) => {
+router.delete('/:id', (req, res) => {
   const info = db.prepare('DELETE FROM financial_entries WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
   if (!info.changes) return res.status(404).json({ error: 'Lancamento nao encontrado' });
   res.json({ ok: true });
