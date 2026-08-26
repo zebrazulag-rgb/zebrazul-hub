@@ -26,6 +26,8 @@ export function permissionRoleKey(user) {
 }
 
 export function hasPermission(user, key) {
+  // Financeiro é exclusivo do Super Administrador (dono da plataforma).
+  if (key === 'finance.view') return Boolean(user?.is_platform_owner);
   // Nunca permita que um item de menu sem chave de permissão derrube o app inteiro.
   if (!user || !key || typeof key !== 'string') return false;
   let allowed;

@@ -1,10 +1,10 @@
 const express = require('express');
 const db = require('../db/database');
-const { authRequired, requireRole } = require('../middleware/auth');
+const { authRequired, requirePlatformOwner } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authRequired);
-router.use(requireRole('admin'));
+router.use(requirePlatformOwner);
 
 function normalizeEntry(entry) {
   if (!entry) return entry;

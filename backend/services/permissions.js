@@ -138,6 +138,8 @@ function getPermissionSetForUser(user) {
   ALL_KEYS.forEach((key) => {
     if (ownerOnly[key] && !isOwner) map[key] = false;
   });
+  // Financeiro é uma área de Super Administrador: administrador comum nunca recebe acesso.
+  map['finance.view'] = Boolean(user.is_platform_owner);
   return map;
 }
 

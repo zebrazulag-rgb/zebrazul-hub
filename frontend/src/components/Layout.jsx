@@ -349,7 +349,7 @@ export default function Layout({ children }) {
               {!sidebarCollapsed && (
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
-                  <p className="truncate text-[11px] text-white/40">{user?.permission_role_name || roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team)}</p>
+                  <p className="truncate text-[11px] text-white/40">{user?.permission_role_name || roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team, user?.is_platform_owner)}</p>
                 </div>
               )}
             </button>
@@ -647,7 +647,8 @@ function MobileMoreLink({ item, agencyPrimary, onClick, activeOverride = null })
   );
 }
 
-function roleLabel(role, agencyName, isOperationsHead = false, isCommercialTeam = false) {
+function roleLabel(role, agencyName, isOperationsHead = false, isCommercialTeam = false, isPlatformOwner = false) {
+  if (isPlatformOwner) return 'Super Administrador';
   if (isOperationsHead) return 'Head de Operação';
   if (isCommercialTeam) return 'Equipe Comercial';
   if (role === 'admin') return 'Administrador';
