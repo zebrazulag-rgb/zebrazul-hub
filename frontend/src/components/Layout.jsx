@@ -27,6 +27,7 @@ import {
   MoreHorizontal,
   Send,
   CalendarCheck2,
+  MessageCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -207,6 +208,7 @@ export default function Layout({ children }) {
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
+    { to: '/conversas', label: 'Conversas', icon: MessageCircle },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
@@ -229,7 +231,7 @@ export default function Layout({ children }) {
 
   const canSeeSettings = !isClientPortal && (!user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']));
 
-  const mobilePrimaryItems = isClientPortal ? clientPortalItems : visibleWorkspaceItems.filter((item) => ['/','/tarefas','/social-media','/comercial'].includes(item.to));
+  const mobilePrimaryItems = isClientPortal ? clientPortalItems : visibleWorkspaceItems.filter((item) => ['/','/tarefas','/conversas','/social-media','/comercial'].includes(item.to));
   const mobileMoreItems = visibleWorkspaceItems.filter((item) => ['/bussola','/rematriculas','/materiais'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
@@ -245,6 +247,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
     if (path.startsWith('/tarefas')) return 'Tarefas';
+    if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories') || path.startsWith('/relatorios')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
     if (path.startsWith('/bussola')) return 'Bússola';
