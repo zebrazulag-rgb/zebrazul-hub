@@ -5,7 +5,7 @@ const { authRequired, requireRole, canAccessClient } = require('../middleware/au
 
 const router = express.Router();
 router.use(authRequired);
-router.use(requireRole('admin', 'team'));
+router.use(requireRole('admin', 'team', 'client'));
 
 function clientRecord(req, res) {
   const clientId = Number(req.params.clientId);
@@ -44,11 +44,24 @@ function publicLinkRow(clientId, agencyId) {
 router.get('/:clientId', (req, res) => {
   const client = clientRecord(req, res);
   if (!client) return;
-  const link = publicLinkRow(client.id, req.user.agency_id) || null;
+  let link = publicLinkRow(client.id, req.user.agency_id) || null;
+  // No portal do cliente, garanta que exista um link próprio e ativo para solicitar demandas.
+  if (req.user.role === 'client' && (!link || Number(link.active) !== 1)) {
+    if (!link) {
+      const info = db.prepare(`
+        INSERT INTO client_task_request_links (agency_id, client_id, token, active, created_by)
+        VALUES (?, ?, ?, 1, ?)
+      `).run(req.user.agency_id, client.id, createToken(), req.user.id);
+      link = db.prepare(`SELECT id, client_id, token, active, created_at, updated_at FROM client_task_request_links WHERE id = ?`).get(info.lastInsertRowid);
+    } else {
+      db.prepare(`UPDATE client_task_request_links SET active = 1, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`).run(link.id, req.user.agency_id);
+      link = publicLinkRow(client.id, req.user.agency_id);
+    }
+  }
   res.json({ client, link });
 });
 
-router.post('/:clientId', (req, res) => {
+router.post('/:clientId', requireRole('admin', 'team'), (req, res) => {
   const client = clientRecord(req, res);
   if (!client) return;
 
@@ -74,7 +87,7 @@ router.post('/:clientId', (req, res) => {
   res.status(201).json({ client, link });
 });
 
-router.post('/:clientId/regenerate', (req, res) => {
+router.post('/:clientId/regenerate', requireRole('admin', 'team'), (req, res) => {
   const client = clientRecord(req, res);
   if (!client) return;
 
@@ -100,7 +113,7 @@ router.post('/:clientId/regenerate', (req, res) => {
   res.json({ client, link: publicLinkRow(client.id, req.user.agency_id) });
 });
 
-router.put('/:clientId/status', (req, res) => {
+router.put('/:clientId/status', requireRole('admin', 'team'), (req, res) => {
   const client = clientRecord(req, res);
   if (!client) return;
   const link = publicLinkRow(client.id, req.user.agency_id);

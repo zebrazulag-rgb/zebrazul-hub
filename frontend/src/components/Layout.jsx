@@ -25,6 +25,8 @@ import {
   Instagram,
   RefreshCw,
   MoreHorizontal,
+  Send,
+  CalendarCheck2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -59,6 +61,9 @@ export default function Layout({ children }) {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
   });
+
+  const isNativeApp = typeof window !== 'undefined' && Boolean(window.Capacitor?.isNativePlatform?.());
+  const isClientPortal = user?.role === 'client';
 
   const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
 
@@ -191,6 +196,14 @@ export default function Layout({ children }) {
     await saveProfileName();
   }
 
+  const clientPortalItems = [
+    { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
+    { to: '/cliente/grade', label: 'Ver grade', mobileLabel: 'Grade', icon: Grid3x3 },
+    { to: '/cliente/aprovacao', label: 'Área de aprovação', mobileLabel: 'Aprovação', icon: CalendarCheck2 },
+    { to: '/cliente/relatorios', label: 'Ver relatórios', mobileLabel: 'Relatórios', icon: BarChart3 },
+    { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen },
+  ];
+
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
@@ -205,7 +218,7 @@ export default function Layout({ children }) {
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
   const beeWorkspaceActive = isBeeClient(workspaceClient);
 
-  const visibleWorkspaceItems = workspaceItems.filter((item) => {
+  const visibleWorkspaceItems = isClientPortal ? clientPortalItems : workspaceItems.filter((item) => {
     if (item.beeOnly && !beeWorkspaceActive) return false;
     if (!hasPermission(user, item.permission)) return false;
     if (item.permission === 'social.view') {
@@ -214,9 +227,9 @@ export default function Layout({ children }) {
     return true;
   });
 
-  const canSeeSettings = !user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']);
+  const canSeeSettings = !isClientPortal && (!user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']));
 
-  const mobilePrimaryItems = visibleWorkspaceItems.filter((item) => ['/','/tarefas','/social-media','/comercial'].includes(item.to));
+  const mobilePrimaryItems = isClientPortal ? clientPortalItems : visibleWorkspaceItems.filter((item) => ['/','/tarefas','/social-media','/comercial'].includes(item.to));
   const mobileMoreItems = visibleWorkspaceItems.filter((item) => ['/bussola','/rematriculas','/materiais'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
@@ -225,6 +238,11 @@ export default function Layout({ children }) {
   const agencyLogo = agency?.logo_data || zebraHubLogo;
   const topbarLabel = (() => {
     const path = location.pathname;
+    if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
+    if (path.startsWith('/cliente/grade')) return 'Ver grade';
+    if (path.startsWith('/cliente/aprovacao')) return 'Área de aprovação';
+    if (path.startsWith('/cliente/relatorios')) return 'Ver relatórios';
+    if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
     if (path.startsWith('/tarefas')) return 'Tarefas';
     if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories') || path.startsWith('/relatorios')) return 'Social Media';
@@ -255,7 +273,7 @@ export default function Layout({ children }) {
   return (
     <div className="app-shell flex h-screen min-h-0 overflow-hidden bg-[#f5f7fb] text-slate-900">
       <aside
-        className={`app-sidebar hidden md:flex sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[76px]' : 'w-[244px]'}`}
+        className={`app-sidebar ${isNativeApp ? 'hidden' : 'hidden md:flex'} sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[76px]' : 'w-[244px]'}`}
         style={{ backgroundColor: agencySidebar }}
       >
         <div className={`relative flex min-h-[76px] items-center ${sidebarCollapsed ? 'justify-center px-2.5' : 'px-4'} py-3`}>
@@ -445,26 +463,26 @@ export default function Layout({ children }) {
           <NotificationBell />
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
-        <div className="relative mx-auto w-full max-w-[1320px] min-w-0 px-4 pb-28 pt-5 sm:px-6 md:px-8 md:py-8 xl:px-10">{children}</div>
+        <div className={`relative mx-auto w-full max-w-[1320px] min-w-0 px-4 pb-28 pt-5 sm:px-6 ${isNativeApp ? '' : 'md:px-8 md:py-8 xl:px-10'}`}>{children}</div>
       </main>
 
-      <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/90 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl md:hidden">
+      <nav className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/90 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl ${isNativeApp ? '' : 'md:hidden'}`}>
         <div className="mx-auto grid max-w-lg grid-cols-5">
           {mobilePrimaryItems.map((item) => (
             <MobileNavLink key={item.to} item={item} agencyPrimary={agencyPrimary} />
           ))}
-          <button
+          {!isClientPortal && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
             className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/bussola','/rematriculas','/materiais','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
             <span>Mais</span>
-          </button>
+          </button>}
         </div>
       </nav>
 
-      {mobileMoreOpen && (
+      {!isClientPortal && mobileMoreOpen && (
         <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
           <button type="button" aria-label="Fechar menu" className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" onClick={() => setMobileMoreOpen(false)} />
           <div className="absolute inset-x-0 bottom-0 rounded-t-[28px] bg-white px-4 pb-[max(22px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-24px_70px_rgba(15,23,42,0.22)]">
@@ -601,7 +619,7 @@ function MobileNavLink({ item, agencyPrimary }) {
           <span className={`flex h-8 w-8 items-center justify-center rounded-xl transition ${isActive ? 'text-white shadow-sm' : ''}`} style={isActive ? { backgroundColor: agencyPrimary } : undefined}>
             <item.icon size={19} strokeWidth={2.1} />
           </span>
-          <span className="max-w-full truncate">{item.label === 'Social Media' ? 'Social' : item.label}</span>
+          <span className="max-w-full truncate">{item.mobileLabel || (item.label === 'Social Media' ? 'Social' : item.label)}</span>
         </>
       )}
     </NavLink>

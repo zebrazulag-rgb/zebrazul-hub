@@ -11,7 +11,7 @@ const DEFAULTS = {
     'reenrollments.view','materials.view','activity.view_own','settings.clients'
   ]),
   commercial_team: new Set(['dashboard.view','tasks.view','tasks.create','tasks.export','commercial.view','commercial.manage','commercial.import','reenrollments.view','activity.view_own']),
-  client: new Set(['tasks.view','tasks.approval','social.view','social.feed','social.calendar','social.reports','commercial.view','reenrollments.view','materials.view']),
+  client: new Set(['tasks.view','tasks.approval','social.view','social.feed','social.calendar','social.reports','materials.view']),
 };
 
 export function permissionRoleKey(user) {

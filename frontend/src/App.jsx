@@ -31,6 +31,7 @@ import PublicBeeFamilySurvey from './pages/PublicBeeFamilySurvey.jsx';
 import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
+import ClientDemand from './pages/ClientDemand.jsx';
 import { hasPermission } from './permissions.js';
 
 
@@ -40,6 +41,7 @@ function SocialMediaLegacyRedirect({ section }) {
 }
 
 function fallbackRoute(user) {
+  if (user?.role === 'client') return '/cliente/solicitar';
   if (hasPermission(user, 'dashboard.view')) return '/';
   if (hasPermission(user, 'tasks.view')) return '/tarefas';
   if (hasPermission(user, 'social.feed')) return '/social-media/feed';
@@ -78,6 +80,11 @@ export default function App() {
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
+      <Route path="/cliente/solicitar" element={<ProtectedRoute roles={["client"]}><ClientDemand /></ProtectedRoute>} />
+      <Route path="/cliente/grade" element={<ProtectedRoute roles={["client"]} permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
+      <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><Tasks /></ProtectedRoute>} />
+      <Route path="/cliente/relatorios" element={<ProtectedRoute roles={["client"]} permission="social.reports"><SocialMedia section="relatorios" /></ProtectedRoute>} />
+      <Route path="/cliente/materiais" element={<ProtectedRoute roles={["client"]} permission="materials.view"><Materials /></ProtectedRoute>} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao" replace /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao&approval_view=videos" replace /></ProtectedRoute>} />

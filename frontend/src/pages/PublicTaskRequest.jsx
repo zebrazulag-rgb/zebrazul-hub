@@ -20,8 +20,9 @@ function formatDateTime(value) {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 
-export default function PublicTaskRequest() {
-  const { token } = useParams();
+export default function PublicTaskRequest({ token: tokenProp = null, embedded = false }) {
+  const params = useParams();
+  const token = tokenProp || params.token;
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [context, setContext] = useState(null);
@@ -95,12 +96,12 @@ export default function PublicTaskRequest() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-[#f5f7fb] flex items-center justify-center text-slate-500"><Loader2 className="mr-2 animate-spin" size={18} /> Carregando formulário...</div>;
+    return <div className={`${embedded ? 'min-h-[45vh]' : 'min-h-screen'} bg-[#f5f7fb] flex items-center justify-center text-slate-500`}><Loader2 className="mr-2 animate-spin" size={18} /> Carregando formulário...</div>;
   }
 
   if (!context) {
     return (
-      <div className="min-h-screen bg-[#f5f7fb] px-5 py-16">
+      <div className={`${embedded ? 'min-h-[45vh]' : 'min-h-screen'} bg-[#f5f7fb] px-5 py-10`}>
         <div className="mx-auto max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h1 className="text-xl font-semibold text-slate-900">Link indisponível</h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">{error || 'Solicite à equipe um novo link para enviar sua demanda.'}</p>
@@ -111,7 +112,7 @@ export default function PublicTaskRequest() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-[#f5f7fb] px-5 py-12 sm:py-20">
+      <div className={`${embedded ? 'min-h-0' : 'min-h-screen'} bg-[#f5f7fb] px-0 py-4 sm:py-8`}>
         <div className="mx-auto max-w-xl overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
           <div className="h-2" style={{ backgroundColor: accent }} />
           <div className="p-8 text-center sm:p-10">
@@ -136,7 +137,7 @@ export default function PublicTaskRequest() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f7fb] px-4 py-6 sm:px-6 sm:py-10">
+    <div className={`${embedded ? 'min-h-0 bg-transparent px-0 py-0' : 'min-h-screen bg-[#f5f7fb] px-4 py-6 sm:px-6 sm:py-10'}`}>
       <div className="mx-auto max-w-3xl overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.10)]">
         <div className="h-2" style={{ backgroundColor: accent }} />
         <div className="border-b border-slate-100 px-6 py-6 sm:px-8">

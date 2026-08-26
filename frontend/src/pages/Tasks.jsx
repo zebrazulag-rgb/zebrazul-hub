@@ -299,7 +299,7 @@ export default function Tasks() {
     }
   }, [hidePosted]);
 
-  const operationalArea = searchParams.get('area') === 'aprovacao' && canApproval ? 'approval' : 'tasks';
+  const operationalArea = user?.role === 'client' ? 'approval' : (searchParams.get('area') === 'aprovacao' && canApproval ? 'approval' : 'tasks');
   const approvalView = searchParams.get('approval_view') === 'videos' ? 'videos' : 'posts';
 
   function setOperationalArea(nextArea) {
@@ -823,13 +823,13 @@ export default function Tasks() {
 
   const areaSwitcher = (
     <div className="segmented-control">
-      <button
+      {user?.role !== 'client' && <button
         type="button"
         onClick={() => setOperationalArea('tasks')}
         className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'tasks' ? 'segmented-control-button-active' : '')}
       >
         <ListChecks size={15} /> Tarefas
-      </button>
+      </button>}
       {canApproval && <button
         type="button"
         onClick={() => setOperationalArea('approval')}

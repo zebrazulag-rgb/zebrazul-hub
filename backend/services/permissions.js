@@ -58,7 +58,7 @@ const DEFAULTS = {
   ]),
   client: new Set([
     'tasks.view', 'tasks.approval', 'social.view', 'social.feed', 'social.calendar', 'social.reports',
-    'commercial.view', 'reenrollments.view', 'materials.view',
+    'materials.view',
   ]),
 };
 
