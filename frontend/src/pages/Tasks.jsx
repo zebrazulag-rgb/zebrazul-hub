@@ -43,6 +43,21 @@ function priorityLabel(value) {
   return 'Média';
 }
 
+function localTodayIso() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isTaskOverdue(task) {
+  const due = String(task?.due_date || '').slice(0, 10);
+  if (!due) return false;
+  if (task?.status === 'done' || task?.status === 'posted') return false;
+  return due < localTodayIso();
+}
+
 function taskMatchesFilters(task, filters) {
   if (filters.status && task.status !== filters.status) return false;
   if (filters.priority && (task.priority || 'medium') !== filters.priority) return false;
@@ -271,6 +286,7 @@ export default function Tasks() {
     due_to: '',
   });
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [showOverdueOnly, setShowOverdueOnly] = useState(() => searchParams.get('atrasadas') === '1');
 
   useEffect(() => {
     if (!showTaskActions) return undefined;
@@ -298,6 +314,11 @@ export default function Tasks() {
       window.localStorage.setItem('zebrahub.tasks.hidePosted', hidePosted ? '1' : '0');
     }
   }, [hidePosted]);
+
+  useEffect(() => {
+    const shouldShow = searchParams.get('atrasadas') === '1';
+    setShowOverdueOnly(shouldShow);
+  }, [searchParams]);
 
   const operationalArea = user?.role === 'client' ? 'approval' : (searchParams.get('area') === 'aprovacao' && canApproval ? 'approval' : 'tasks');
   const approvalView = searchParams.get('approval_view') === 'videos' ? 'videos' : 'posts';
@@ -765,8 +786,11 @@ export default function Tasks() {
   }
 
   const filteredTasks = tasks.filter((task) => taskMatchesFilters(task, filters));
-  const visibleFilteredTasks = hidePosted ? filteredTasks.filter((task) => task.status !== 'posted') : filteredTasks;
-  const visibleStatusColumns = hidePosted ? STATUS_COLUMNS.filter((column) => column.key !== 'posted') : STATUS_COLUMNS;
+  const postedFilteredTasks = hidePosted ? filteredTasks.filter((task) => task.status !== 'posted') : filteredTasks;
+  const visibleFilteredTasks = showOverdueOnly ? postedFilteredTasks.filter(isTaskOverdue) : postedFilteredTasks;
+  const visibleStatusColumns = showOverdueOnly
+    ? STATUS_COLUMNS.filter((column) => column.key === 'pending' || column.key === 'in_progress')
+    : (hidePosted ? STATUS_COLUMNS.filter((column) => column.key !== 'posted') : STATUS_COLUMNS);
   const projectOptions = [...new Set(tasks.map((task) => task.project_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const frontOptions = [...new Set(tasks.map((task) => task.front_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const hasActiveFilters = Object.values(filters).some(Boolean);
@@ -785,6 +809,7 @@ export default function Tasks() {
     total: tasks.length + subtaskOverview.total,
     pending: tasks.filter((task) => task.status === 'pending').length + subtaskOverview.pending,
     inProgress: tasks.filter((task) => task.status === 'in_progress').length + subtaskOverview.inProgress,
+    overdue: tasks.filter(isTaskOverdue).length,
     done: tasks.filter((task) => task.status === 'done').length + (subtaskOverview.done - subtaskOverview.posted),
     posted: tasks.filter((task) => task.status === 'posted').length + subtaskOverview.posted,
   };
@@ -819,6 +844,19 @@ export default function Tasks() {
       }
       return next;
     });
+  }
+
+  function toggleOverdueVisibility() {
+    const nextParams = new URLSearchParams(searchParams);
+    if (showOverdueOnly) nextParams.delete('atrasadas');
+    else {
+      nextParams.set('atrasadas', '1');
+      nextParams.delete('task_id');
+      if (filters.status === 'done' || filters.status === 'posted') {
+        setFilters((current) => ({ ...current, status: '' }));
+      }
+    }
+    setSearchParams(nextParams);
   }
 
   const areaSwitcher = (
@@ -947,11 +985,12 @@ export default function Tasks() {
           </>
         }
       >
-        <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 sm:gap-3">
           {[
             { label: 'Total geral', shortLabel: 'Total', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
             { label: 'Pendentes', shortLabel: 'Pend.', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
             { label: 'Em andamento', shortLabel: 'Andam.', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
+            { label: 'Atrasadas', shortLabel: 'Atras.', value: taskOverview.overdue, icon: AlertTriangle, color: 'text-rose-300' },
             { label: 'Concluídas', shortLabel: 'Concl.', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
             { label: 'Postadas', shortLabel: 'Post.', value: taskOverview.posted, icon: Send, color: 'text-indigo-300' },
           ].map((item) => (
@@ -1012,8 +1051,21 @@ export default function Tasks() {
           {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', priority: '', project: '', front: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-slate-400">{visibleFilteredTasks.length} tarefa(s) principal(is) exibida(s){hasActiveFilters ? ' com os filtros atuais' : ''}{hidePosted ? ' · postadas ocultas' : ''}.</p>
+          <p className="text-xs text-slate-400">{visibleFilteredTasks.length} tarefa(s) principal(is) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' com os filtros atuais' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleOverdueVisibility}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                showOverdueOnly
+                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+              title={showOverdueOnly ? 'Voltar a visualizar todas as tarefas' : 'Mostrar somente tarefas com prazo vencido'}
+            >
+              <AlertTriangle size={14} />
+              {showOverdueOnly ? 'Ver todas' : `Ver atrasadas (${taskOverview.overdue})`}
+            </button>
             <button
               type="button"
               onClick={togglePostedVisibility}
