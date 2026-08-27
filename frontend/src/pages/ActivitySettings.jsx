@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity, RefreshCw, Download, Users, Building2, MousePointer2, Clock3,
-  Search, Filter, CheckCircle2, CircleDot, ChevronDown, UserRound, Layers3,
+  Search, Filter, CircleDot, FileText, Copy, Check, ListChecks, BadgeCheck,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -56,9 +56,11 @@ export default function ActivitySettings() {
   const canViewTeam = hasPermission(user, 'activity.view_team');
   const canExport = hasPermission(user, 'activity.export');
   const [filtersData, setFiltersData] = useState({ users: [], clients: [], modules: [], can_view_team: canViewTeam, can_export: canExport });
-  const [filters, setFilters] = useState({ days: 7, user_id: '', client_id: '', module: '', search: '' });
+  const [filters, setFilters] = useState({ days: 1, user_id: '', client_id: '', module: '', search: '' });
   const [logs, setLogs] = useState([]);
   const [summary, setSummary] = useState({ actions: 0, users: 0, clients: 0, by_module: [], by_user: [] });
+  const [report, setReport] = useState({ metrics: {}, top_users: [], top_clients: [], top_modules: [], paragraphs: [], text: '' });
+  const [copied, setCopied] = useState(false);
   const [teamUsers, setTeamUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,16 +89,18 @@ export default function ActivitySettings() {
     setError('');
     try {
       const suffix = query ? `${query}&` : '';
-      const [logsRes, summaryRes, usersRes] = await Promise.all([
+      const [logsRes, summaryRes, usersRes, reportRes] = await Promise.all([
         api.get(`/activity/logs?${suffix}limit=${limit}&offset=${nextOffset}`),
         api.get(`/activity/summary?${query}`),
         api.get(`/activity/users?days=${filters.days}`),
+        api.get(`/activity/report?${query}`),
       ]);
       setLogs(logsRes.data.logs || []);
       setTotal(Number(logsRes.data.total || 0));
       setOffset(nextOffset);
       setSummary(summaryRes.data || {});
       setTeamUsers(usersRes.data.users || []);
+      setReport(reportRes.data || { metrics: {}, top_users: [], top_clients: [], top_modules: [], paragraphs: [], text: '' });
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível carregar o histórico da equipe.');
     } finally {
@@ -135,8 +139,19 @@ export default function ActivitySettings() {
     }
   }
 
+  async function copyReport() {
+    const text = String(report.text || '').trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setError('Não foi possível copiar o resumo automaticamente.');
+    }
+  }
+
   const activeNow = teamUsers.filter((item) => item.active_now).length;
-  const currentPeriod = PERIODS.find((item) => item.value === Number(filters.days))?.label || `${filters.days} dias`;
 
   return (
     <div className="space-y-5">
@@ -158,24 +173,62 @@ export default function ActivitySettings() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">Ações</span><MousePointer2 size={17} className="text-blue-500" /></div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{summary.actions || 0}</p><p className="mt-1 text-xs text-slate-400">{currentPeriod.toLowerCase()}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">Ativos agora</span><CircleDot size={17} className="text-emerald-500" /></div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{activeNow}</p><p className="mt-1 text-xs text-slate-400">atividade nos últimos 3 min</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">Pessoas</span><Users size={17} className="text-violet-500" /></div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{summary.users || 0}</p><p className="mt-1 text-xs text-slate-400">com atividade no período</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">Clientes</span><Building2 size={17} className="text-amber-500" /></div>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{summary.clients || 0}</p><p className="mt-1 text-xs text-slate-400">movimentados no período</p>
-        </div>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {[
+          { label: 'Ações', value: report.metrics?.actions ?? summary.actions ?? 0, icon: MousePointer2, tone: 'text-blue-500 bg-blue-50' },
+          { label: 'Pessoas', value: report.metrics?.users ?? summary.users ?? 0, icon: Users, tone: 'text-violet-500 bg-violet-50' },
+          { label: 'Clientes', value: report.metrics?.clients ?? summary.clients ?? 0, icon: Building2, tone: 'text-amber-500 bg-amber-50' },
+          { label: 'Tarefas criadas', value: report.metrics?.tasks_created ?? 0, icon: ListChecks, tone: 'text-cyan-600 bg-cyan-50' },
+          { label: 'Concluídas', value: report.metrics?.tasks_completed ?? 0, icon: Check, tone: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Aprovações', value: report.metrics?.approvals ?? 0, icon: BadgeCheck, tone: 'text-indigo-600 bg-indigo-50' },
+        ].map(({ label, value, icon: Icon, tone }) => (
+          <div key={label} className="rounded-2xl border border-slate-200 bg-white p-3.5">
+            <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-semibold text-slate-500">{label}</span><span className={`grid h-7 w-7 place-items-center rounded-lg ${tone}`}><Icon size={14} /></span></div>
+            <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+          </div>
+        ))}
       </div>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600"><FileText size={17} /></span>
+            <div><h3 className="text-sm font-bold text-slate-900">Resumo executivo</h3><p className="mt-0.5 text-xs text-slate-400">Relatório automático do período selecionado</p></div>
+          </div>
+          <button type="button" onClick={copyReport} disabled={!report.text} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40">
+            {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />} {copied ? 'Copiado' : 'Copiar resumo'}
+          </button>
+        </div>
+        <div className="grid gap-0 xl:grid-cols-[1.55fr_1fr]">
+          <div className="p-4 md:p-5">
+            {report.paragraphs?.length ? (
+              <div className="space-y-3 text-sm leading-6 text-slate-700">{report.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
+            ) : (
+              <p className="text-sm text-slate-400">O resumo aparecerá assim que houver atividades no período.</p>
+            )}
+          </div>
+          <div className="grid gap-0 border-t border-slate-100 sm:grid-cols-2 xl:grid-cols-1 xl:border-l xl:border-t-0">
+            <div className="p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Mais ativos</p>
+              <div className="mt-2 space-y-2">
+                {(report.top_users || []).slice(0, 4).map((item, index) => (
+                  <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{item.name}</span><span className="shrink-0 font-bold text-slate-400">{item.total}</span></div>
+                ))}
+                {!report.top_users?.length && <p className="text-xs text-slate-400">Sem movimentação.</p>}
+              </div>
+            </div>
+            <div className="border-t border-slate-100 p-4 sm:border-l sm:border-t-0 xl:border-l-0 xl:border-t">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Clientes movimentados</p>
+              <div className="mt-2 space-y-2">
+                {(report.top_clients || []).slice(0, 4).map((item, index) => (
+                  <div key={`${item.name}-${index}`} className="flex items-center justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-700">{item.name}</span><span className="shrink-0 font-bold text-slate-400">{item.total}</span></div>
+                ))}
+                {!report.top_clients?.length && <p className="text-xs text-slate-400">Sem movimentação.</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Filter size={16} /> Filtros</div>
@@ -202,7 +255,7 @@ export default function ActivitySettings() {
 
       {canViewTeam && teamUsers.length > 0 && (
         <section className="rounded-2xl border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5"><div><h3 className="text-sm font-bold text-slate-900">Equipe agora</h3><p className="mt-0.5 text-xs text-slate-400">Presença recente no ZebraHub</p></div><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{activeNow} ativo{activeNow === 1 ? '' : 's'}</span></div>
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5"><div><h3 className="text-sm font-bold text-slate-900">Movimento por usuário</h3><p className="mt-0.5 text-xs text-slate-400">Atividade individual e presença recente</p></div><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{activeNow} ativo{activeNow === 1 ? '' : 's'}</span></div>
           <div className="grid gap-0 sm:grid-cols-2 xl:grid-cols-3">
             {teamUsers.map((member) => (
               <button key={member.id} type="button" onClick={() => setFilters((prev) => ({ ...prev, user_id: String(member.id) }))} className="flex min-w-0 items-center gap-3 border-b border-slate-100 p-4 text-left transition hover:bg-slate-50 sm:border-r">
@@ -215,7 +268,7 @@ export default function ActivitySettings() {
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3.5"><div><h3 className="text-sm font-bold text-slate-900">Timeline</h3><p className="mt-0.5 text-xs text-slate-400">{total} registro{total === 1 ? '' : 's'} encontrado{total === 1 ? '' : 's'}</p></div><div className="flex items-center gap-1.5 text-xs text-slate-400"><Clock3 size={14} /> atualiza automaticamente</div></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3.5"><div><h3 className="text-sm font-bold text-slate-900">Log detalhado</h3><p className="mt-0.5 text-xs text-slate-400">{total} registro{total === 1 ? '' : 's'} encontrado{total === 1 ? '' : 's'}</p></div><div className="flex items-center gap-1.5 text-xs text-slate-400"><Clock3 size={14} /> atualiza automaticamente</div></div>
         {error && <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {loading ? (
           <div className="flex min-h-64 items-center justify-center text-sm text-slate-400"><RefreshCw size={17} className="mr-2 animate-spin" /> Carregando atividades...</div>

@@ -52,7 +52,10 @@ function whereFor(req, alias = 'al') {
   const to = normalizeDate(req.query.to);
   const days = clampInt(req.query.days, 1, 365, 7);
   if (from) { clauses.push(`datetime(${alias}.created_at) >= datetime(?)`); params.push(`${from} 00:00:00`); }
-  else { clauses.push(`datetime(${alias}.created_at) >= datetime('now', ?)`); params.push(`-${days - 1} days`,); }
+  else if (days === 1) {
+    // "Hoje" considera o dia local de Brasília (UTC-3), onde a operação do ZebraHub está baseada.
+    clauses.push(`date(datetime(${alias}.created_at, '-3 hours')) = date(datetime('now', '-3 hours'))`);
+  } else { clauses.push(`datetime(${alias}.created_at) >= datetime('now', ?)`); params.push(`-${days - 1} days`,); }
   if (to) { clauses.push(`datetime(${alias}.created_at) < datetime(?, '+1 day')`); params.push(`${to} 00:00:00`); }
   const search = String(req.query.search || '').trim();
   if (search) {
@@ -159,6 +162,140 @@ router.get('/summary', ensureView, (req, res) => {
     clients: Number(summary.clients || 0),
     by_module: byModule,
     by_user: byUser,
+  });
+});
+
+function normalizedText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function reportPeriodLabel(req) {
+  const from = normalizeDate(req.query.from);
+  const to = normalizeDate(req.query.to);
+  if (from && to) return `de ${from.split('-').reverse().join('/')} a ${to.split('-').reverse().join('/')}`;
+  if (from) return `desde ${from.split('-').reverse().join('/')}`;
+  const days = clampInt(req.query.days, 1, 365, 1);
+  if (days === 1) return 'hoje';
+  return `nos últimos ${days} dias`;
+}
+
+router.get('/report', ensureView, (req, res) => {
+  const { clauses, params } = whereFor(req);
+  const where = clauses.join(' AND ');
+  const rows = db.prepare(`
+    SELECT al.id, al.user_id, al.actor_name, al.client_id, al.module, al.action,
+           al.entity_type, al.summary, al.details_json, al.created_at,
+           COALESCE(al.actor_name, u.name, 'Sistema') AS user_name,
+           c.name AS client_name
+    FROM activity_logs al
+    LEFT JOIN users u ON u.id = al.user_id
+    LEFT JOIN clients c ON c.id = al.client_id
+    WHERE ${where}
+    ORDER BY datetime(al.created_at) DESC, al.id DESC
+    LIMIT 10000
+  `).all(...params);
+
+  const users = new Map();
+  const clients = new Map();
+  const modules = new Map();
+  let tasksCreated = 0;
+  let tasksCompleted = 0;
+  let postsCreated = 0;
+  let approvals = 0;
+  let rejections = 0;
+
+  rows.forEach((row) => {
+    const userName = String(row.user_name || 'Sistema').trim() || 'Sistema';
+    if (row.user_id) users.set(userName, (users.get(userName) || 0) + 1);
+    if (row.client_id && row.client_name) clients.set(row.client_name, (clients.get(row.client_name) || 0) + 1);
+    const label = moduleLabel(row.module);
+    modules.set(label, (modules.get(label) || 0) + 1);
+
+    const summaryText = normalizedText(row.summary);
+    if (row.entity_type === 'task' && (row.action === 'created' || summaryText.includes('criou uma tarefa'))) tasksCreated += 1;
+    if (row.entity_type === 'post' && (row.action === 'created' || summaryText.includes('criou uma publicação'))) postsCreated += 1;
+
+    const details = parseJson(row.details_json, {});
+    const changes = Array.isArray(details.changes) ? details.changes : [];
+    changes.forEach((change) => {
+      if (String(change?.field || '') !== 'status') return;
+      const target = normalizedText(change?.to);
+      if (row.entity_type === 'task' && (target.includes('conclu') || target === 'done')) tasksCompleted += 1;
+      if (row.entity_type === 'post' && target.includes('aprovad')) approvals += 1;
+      if (row.entity_type === 'post' && target.includes('reprovad')) rejections += 1;
+    });
+  });
+
+  const topUsers = [...users.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, total]) => ({ name, total }));
+  const topClients = [...clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, total]) => ({ name, total }));
+  const topModules = [...modules.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, total]) => ({ name, total }));
+
+  let overdueOpen = 0;
+  try {
+    overdueOpen = Number(db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM tasks
+      WHERE agency_id = ?
+        AND due_date IS NOT NULL AND trim(due_date) != ''
+        AND date(due_date) < date('now')
+        AND status NOT IN ('done','posted')
+    `).get(Number(req.user.agency_id))?.total || 0);
+  } catch {}
+
+  const period = reportPeriodLabel(req);
+  const actionCount = rows.length;
+  const userCount = users.size;
+  const clientCount = clients.size;
+  const paragraphs = [];
+
+  if (actionCount === 0) {
+    paragraphs.push(`Nenhuma atividade foi registrada ${period} com os filtros selecionados.`);
+  } else {
+    paragraphs.push(`${period === 'hoje' ? 'Hoje' : `No período ${period}`}, ${userCount} membro${userCount === 1 ? '' : 's'} da equipe registraram ${actionCount} aç${actionCount === 1 ? 'ão' : 'ões'} em ${clientCount} cliente${clientCount === 1 ? '' : 's'}.`);
+
+    const taskParts = [];
+    if (tasksCreated) taskParts.push(`${tasksCreated} tarefa${tasksCreated === 1 ? '' : 's'} criada${tasksCreated === 1 ? '' : 's'}`);
+    if (tasksCompleted) taskParts.push(`${tasksCompleted} tarefa${tasksCompleted === 1 ? '' : 's'} concluída${tasksCompleted === 1 ? '' : 's'}`);
+    if (taskParts.length) paragraphs.push(`Na operação de tarefas, foram registradas ${taskParts.join(' e ')}.`);
+
+    const contentParts = [];
+    if (postsCreated) contentParts.push(`${postsCreated} publicaç${postsCreated === 1 ? 'ão criada' : 'ões criadas'}`);
+    if (approvals) contentParts.push(`${approvals} aprovaç${approvals === 1 ? 'ão' : 'ões'}`);
+    if (rejections) contentParts.push(`${rejections} reprovaç${rejections === 1 ? 'ão' : 'ões'}`);
+    if (contentParts.length) paragraphs.push(`Em conteúdo, houve ${contentParts.join(', ')}.`);
+
+    if (topUsers.length) {
+      paragraphs.push(`Maior movimentação da equipe: ${topUsers.slice(0, 3).map((item) => `${item.name} (${item.total})`).join(', ')}.`);
+    }
+    if (topClients.length) {
+      paragraphs.push(`Clientes mais movimentados: ${topClients.slice(0, 3).map((item) => `${item.name} (${item.total})`).join(', ')}.`);
+    }
+    if (topModules.length) {
+      paragraphs.push(`Áreas com mais atividade: ${topModules.slice(0, 3).map((item) => `${item.name} (${item.total})`).join(', ')}.`);
+    }
+    if (overdueOpen > 0 && !req.query.user_id && !req.query.client_id) {
+      paragraphs.push(`Neste momento existem ${overdueOpen} tarefa${overdueOpen === 1 ? '' : 's'} vencida${overdueOpen === 1 ? '' : 's'} ainda em aberto.`);
+    }
+  }
+
+  res.json({
+    period,
+    metrics: {
+      actions: actionCount,
+      users: userCount,
+      clients: clientCount,
+      tasks_created: tasksCreated,
+      tasks_completed: tasksCompleted,
+      posts_created: postsCreated,
+      approvals,
+      rejections,
+      overdue_open: overdueOpen,
+    },
+    top_users: topUsers,
+    top_clients: topClients,
+    top_modules: topModules,
+    paragraphs,
+    text: paragraphs.join('\n\n'),
   });
 });
 
