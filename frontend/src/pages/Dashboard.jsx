@@ -218,6 +218,14 @@ export default function Dashboard() {
       href: '/clientes',
     },
     {
+      label: 'Atrasadas',
+      value: taskStatsLoading ? '—' : taskStats.overdue,
+      icon: AlertCircle,
+      iconClass: 'bg-red-50 text-red-600',
+      accent: 'from-red-500 to-rose-500',
+      href: '/tarefas',
+    },
+    {
       label: 'Aguardando aprovação',
       value: pendingApproval.length,
       icon: Clock,
@@ -279,7 +287,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section className={`grid grid-cols-2 gap-4 ${isCommercialTeam ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
         {contentStats.map((stat) => (
           <Link key={stat.label} to={stat.href} className="group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.045)] transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
             <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${stat.accent}`} />
