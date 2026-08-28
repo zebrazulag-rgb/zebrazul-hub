@@ -9,7 +9,6 @@ import TaskCsvModal, { downloadTaskCsvModel } from '../components/TaskCsvModal.j
 import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
-import PageHero from '../components/PageHero.jsx';
 import Approval from './Approval.jsx';
 import VideoApprovals from './VideoApprovals.jsx';
 import { hasPermission } from '../permissions.js';
@@ -823,6 +822,7 @@ export default function Tasks() {
     return calendarTasks.filter((t) => {
       if (!t.due_date || !taskMatchesFilters(t, filters)) return false;
       if (hidePosted && t.status === 'posted') return false;
+      if (showOverdueOnly && !isTaskOverdue(t)) return false;
       const parts = dateParts(t.due_date);
       return parts.year === year && parts.month === month + 1 && parts.day === day;
     });
@@ -844,6 +844,46 @@ export default function Tasks() {
       }
       return next;
     });
+  }
+
+  function quickPeriodRange(key) {
+    const now = new Date();
+    const toIso = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (key === '7d') {
+      const end = new Date(now);
+      end.setDate(end.getDate() + 6);
+      return { due_from: toIso(now), due_to: toIso(end) };
+    }
+
+    if (key === 'month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { due_from: toIso(start), due_to: toIso(end) };
+    }
+
+    if (key === '30d') {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 29);
+      return { due_from: toIso(start), due_to: toIso(now) };
+    }
+
+    return { due_from: '', due_to: '' };
+  }
+
+  function applyQuickPeriod(key) {
+    const range = quickPeriodRange(key);
+    setFilters((current) => ({ ...current, ...range }));
+  }
+
+  function quickPeriodIsActive(key) {
+    const range = quickPeriodRange(key);
+    return filters.due_from === range.due_from && filters.due_to === range.due_to;
   }
 
   function toggleOverdueVisibility() {
@@ -878,136 +918,170 @@ export default function Tasks() {
     </div>
   );
 
+  const taskActionControls = (
+    <div className="flex shrink-0 items-center gap-2">
+      {canCreateTasks && <button
+        onClick={() => { setDefaultTaskDate(''); setShowForm(true); }}
+        className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_20px_rgba(9,105,255,0.16)] transition hover:-translate-y-0.5"
+        style={{ backgroundColor: 'var(--agency-primary, #0969ff)' }}
+      >
+        <Plus size={15} /> <span className="hidden sm:inline">Nova tarefa</span><span className="sm:hidden">Nova</span>
+      </button>}
+
+      {(canImportTasks || canExportTasks || canCreateTasks) && <div ref={taskActionsRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setShowTaskActions((open) => !open)}
+          aria-haspopup="menu"
+          aria-expanded={showTaskActions}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300"
+        >
+          <MoreHorizontal size={15} /> <span className="hidden sm:inline">Mais ações</span>
+          <ChevronDown size={13} className={`transition-transform ${showTaskActions ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showTaskActions && (
+          <div
+            role="menu"
+            className="absolute right-0 top-[calc(100%+8px)] z-50 w-[245px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_22px_55px_rgba(15,23,42,0.16)]"
+          >
+            {canImportTasks && <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setShowTaskActions(false); setShowCsvImport(true); }}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <Upload size={16} className="text-slate-400" /> Importar CSV
+            </button>}
+            {canExportTasks && <button
+              type="button"
+              role="menuitem"
+              disabled={csvBusy}
+              onClick={() => { setShowTaskActions(false); exportCsv(); }}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              <Download size={16} className="text-slate-400" /> Exportar CSV
+            </button>}
+            {canImportTasks && <button
+              type="button"
+              role="menuitem"
+              disabled={csvBusy}
+              onClick={() => { setShowTaskActions(false); downloadCsvModel(); }}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              <FileSpreadsheet size={16} className="text-slate-400" /> Baixar modelo CSV
+            </button>}
+            {canCreateTasks && (
+              <>
+                <div className="my-1 border-t border-slate-100" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!selectedClient}
+                  onClick={() => {
+                    if (!selectedClient) return;
+                    setShowTaskActions(false);
+                    setShowRequestLink(true);
+                  }}
+                  title={selectedClient ? `Gerenciar link de solicitações de ${selectedClient.name}` : 'Selecione um cliente para gerar o link'}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Link2 size={16} className="text-slate-400" /> Link de solicitações
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>}
+    </div>
+  );
+
+  const taskCommandBar = (
+    <div className="toolbar-panel flex flex-wrap items-center gap-2.5 py-3">
+      <div className="shrink-0">{areaSwitcher}</div>
+
+      {operationalArea === 'tasks' && (
+        <>
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen((open) => !open)}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+              mobileFiltersOpen || hasActiveFilters
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <SlidersHorizontal size={14} />
+            Filtros{hasActiveFilters ? ' ativos' : ''}
+            <ChevronDown size={13} className={`transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5">
+            {[
+              { key: '7d', label: '7 dias' },
+              { key: 'month', label: 'Esse mês' },
+              { key: '30d', label: 'Últimos 30 dias' },
+              { key: 'total', label: 'Total' },
+            ].map((period) => {
+              const active = quickPeriodIsActive(period.key);
+              return (
+                <button
+                  key={period.key}
+                  type="button"
+                  onClick={() => applyQuickPeriod(period.key)}
+                  className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                    active
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {period.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div className="ml-auto">{taskActionControls}</div>
+    </div>
+  );
+
   if (operationalArea === 'approval') {
     return (
       <div className="space-y-5">
-        <div className="toolbar-panel flex items-center justify-center sm:justify-between">
-          <div className="hidden sm:block">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Área de trabalho</p>
-            <p className="mt-1 text-sm font-medium text-slate-700">Tarefas e aprovações no mesmo fluxo operacional.</p>
-          </div>
-          <div className="flex w-full justify-center sm:w-auto">{areaSwitcher}</div>
-        </div>
+        {taskCommandBar}
         {approvalView === 'videos' ? <VideoApprovals /> : <Approval />}
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="toolbar-panel flex items-center justify-center sm:justify-end">
-        {areaSwitcher}
+    <div className="space-y-4">
+      {taskCommandBar}
+
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {[
+          { label: 'Total geral', shortLabel: 'Total', value: taskOverview.total, icon: ListChecks, iconClass: 'text-blue-500' },
+          { label: 'Pendentes', shortLabel: 'Pend.', value: taskOverview.pending, icon: Clock3, iconClass: 'text-amber-500' },
+          { label: 'Em andamento', shortLabel: 'Andam.', value: taskOverview.inProgress, icon: Calendar, iconClass: 'text-cyan-500' },
+          { label: 'Atrasadas', shortLabel: 'Atras.', value: taskOverview.overdue, icon: AlertTriangle, iconClass: 'text-rose-500' },
+          { label: 'Concluídas', shortLabel: 'Concl.', value: taskOverview.done, icon: CheckCircle2, iconClass: 'text-emerald-500' },
+          { label: 'Postadas', shortLabel: 'Post.', value: taskOverview.posted, icon: Send, iconClass: 'text-indigo-500' },
+        ].map((item) => (
+          <div key={item.label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 shadow-sm">
+            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 sm:text-[11px]">
+              <item.icon size={12} className={`${item.iconClass} shrink-0`} />
+              <span className="sm:hidden">{item.shortLabel}</span>
+              <span className="hidden truncate sm:inline">{item.label}</span>
+            </div>
+            <p className="mt-0.5 text-lg font-bold leading-none text-slate-900 sm:text-xl">{item.value}</p>
+          </div>
+        ))}
       </div>
 
-      <PageHero
-        hideHeadingMobile
-        icon={ListChecks}
-        eyebrow={user?.role === 'client' ? 'Solicitações para a equipe' : 'Operação e entregas'}
-        title="Tarefas"
-        description={user?.role === 'client'
-          ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe cada etapa.'
-          : 'Organize prioridades, responsáveis e prazos em uma visão clara da operação.'}
-        actions={
-          <>
-            {canCreateTasks && <button
-              onClick={() => { setDefaultTaskDate(''); setShowForm(true); }}
-              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(9,105,255,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(9,105,255,0.24)]"
-              style={{ backgroundColor: 'var(--agency-primary, #0969ff)' }}
-            >
-              <Plus size={17} /> Nova tarefa
-            </button>}
-
-            {(canImportTasks || canExportTasks || canCreateTasks) && <div ref={taskActionsRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setShowTaskActions((open) => !open)}
-                aria-haspopup="menu"
-                aria-expanded={showTaskActions}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-white"
-              >
-                <MoreHorizontal size={17} /> Mais ações
-                <ChevronDown size={14} className={`transition-transform ${showTaskActions ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showTaskActions && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-[245px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_22px_55px_rgba(15,23,42,0.16)]"
-                >
-                  {canImportTasks && <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => { setShowTaskActions(false); setShowCsvImport(true); }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <Upload size={16} className="text-slate-400" /> Importar CSV
-                  </button>}
-                  {canExportTasks && <button
-                    type="button"
-                    role="menuitem"
-                    disabled={csvBusy}
-                    onClick={() => { setShowTaskActions(false); exportCsv(); }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    <Download size={16} className="text-slate-400" /> Exportar CSV
-                  </button>}
-                  {canImportTasks && <button
-                    type="button"
-                    role="menuitem"
-                    disabled={csvBusy}
-                    onClick={() => { setShowTaskActions(false); downloadCsvModel(); }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    <FileSpreadsheet size={16} className="text-slate-400" /> Baixar modelo CSV
-                  </button>}
-                  {canCreateTasks && (
-                    <>
-                      <div className="my-1 border-t border-slate-100" />
-                      <button
-                        type="button"
-                        role="menuitem"
-                        disabled={!selectedClient}
-                        onClick={() => {
-                          if (!selectedClient) return;
-                          setShowTaskActions(false);
-                          setShowRequestLink(true);
-                        }}
-                        title={selectedClient ? `Gerenciar link de solicitações de ${selectedClient.name}` : 'Selecione um cliente para gerar o link'}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Link2 size={16} className="text-slate-400" /> Link de solicitações
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>}
-          </>
-        }
-      >
-        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 sm:gap-3">
-          {[
-            { label: 'Total geral', shortLabel: 'Total', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
-            { label: 'Pendentes', shortLabel: 'Pend.', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
-            { label: 'Em andamento', shortLabel: 'Andam.', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
-            { label: 'Atrasadas', shortLabel: 'Atras.', value: taskOverview.overdue, icon: AlertTriangle, color: 'text-rose-300' },
-            { label: 'Concluídas', shortLabel: 'Concl.', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
-            { label: 'Postadas', shortLabel: 'Post.', value: taskOverview.posted, icon: Send, color: 'text-indigo-300' },
-          ].map((item) => (
-            <div key={item.label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.055] px-1.5 py-2 text-center sm:rounded-2xl sm:px-4 sm:py-3 sm:text-left">
-              <div className="flex items-center justify-center gap-1 text-[9px] text-white/45 sm:justify-start sm:gap-2 sm:text-xs"><item.icon size={11} className={`${item.color} shrink-0 sm:h-[14px] sm:w-[14px]`} /><span className="sm:hidden">{item.shortLabel}</span><span className="hidden sm:inline">{item.label}</span></div>
-              <p className="mt-0.5 text-base font-bold text-white sm:mt-1 sm:text-2xl">{item.value}</p>
-            </div>
-          ))}
-        </div>
-      </PageHero>
-
-      <div className="toolbar-panel space-y-3">
-        <button type="button" onClick={() => setMobileFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 md:hidden">
-          <span className="inline-flex items-center gap-2"><SlidersHorizontal size={14} /> Filtros{hasActiveFilters ? ' ativos' : ''}</span>
-          <ChevronDown size={14} className={`transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`} />
-        </button>
-        <div className={`${mobileFiltersOpen ? 'flex' : 'hidden'} flex-wrap items-end gap-2 md:flex`}>
+      <div className="toolbar-panel space-y-3 py-3">
+        <div className={`${mobileFiltersOpen ? 'flex' : 'hidden'} flex-wrap items-end gap-2`}>
           <div className="min-w-[150px] flex-1">
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Projeto</label>
             <select className="input-field py-2 text-xs" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))}>
@@ -1050,9 +1124,9 @@ export default function Tasks() {
           </div>
           {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', priority: '', project: '', front: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-slate-400">{visibleFilteredTasks.length} tarefa(s) principal(is) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' com os filtros atuais' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] text-slate-400">{visibleFilteredTasks.length} tarefa(s) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' · filtros ativos' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={toggleOverdueVisibility}
