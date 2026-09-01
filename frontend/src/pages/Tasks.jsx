@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Search, SlidersHorizontal, X, AlertTriangle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -182,6 +182,11 @@ export default function Tasks() {
   const [loadingParentOptions, setLoadingParentOptions] = useState(false);
   const [convertingTask, setConvertingTask] = useState(false);
   const [convertError, setConvertError] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [taskSearch, setTaskSearch] = useState('');
+  const [periodFilter, setPeriodFilter] = useState('all');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [featuredOnly, setFeaturedOnly] = useState(false);
 
   const effectiveClientId = user?.role === 'client'
     ? (user.client_id ? String(user.client_id) : null)
@@ -620,6 +625,63 @@ export default function Tasks() {
     posted: summary.posted + Number(task.subtask_posted || 0),
   }), { total: 0, pending: 0, inProgress: 0, done: 0, posted: 0 });
 
+  const activeFilterCount = [
+    taskSearch.trim() ? 1 : 0,
+    periodFilter !== 'all' ? 1 : 0,
+    assigneeFilter ? 1 : 0,
+    featuredOnly ? 1 : 0,
+  ].reduce((total, value) => total + value, 0);
+
+  function matchesTaskFilters(task) {
+    const search = taskSearch.trim().toLowerCase();
+    if (search) {
+      const searchable = [task.title, task.client_name, task.parent_title]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!searchable.includes(search)) return false;
+    }
+
+    if (assigneeFilter && !(task.assignees || []).some((assignee) => String(assignee.id) === String(assigneeFilter))) {
+      return false;
+    }
+
+    if (featuredOnly && Number(task.is_featured || 0) !== 1) return false;
+
+    if (periodFilter !== 'all') {
+      const dueValue = String(task.due_date || '').slice(0, 10);
+      if (!dueValue) return false;
+      const dueDate = new Date(`${dueValue}T12:00:00`);
+      if (Number.isNaN(dueDate.getTime())) return false;
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+      const diffDays = Math.floor((dueDate - today) / 86400000);
+
+      if (periodFilter === 'overdue') {
+        if (!(diffDays < 0 && !['done', 'posted'].includes(task.status))) return false;
+      } else if (periodFilter === '7d') {
+        if (diffDays < 0 || diffDays > 7) return false;
+      } else if (periodFilter === '30d') {
+        if (diffDays < 0 || diffDays > 30) return false;
+      } else if (periodFilter === 'month') {
+        if (dueDate.getFullYear() !== today.getFullYear() || dueDate.getMonth() !== today.getMonth()) return false;
+      }
+    }
+
+    return true;
+  }
+
+  const filteredTasks = tasks.filter(matchesTaskFilters);
+  const filteredCalendarTasks = calendarTasks.filter(matchesTaskFilters);
+
+  function clearTaskFilters() {
+    setTaskSearch('');
+    setPeriodFilter('all');
+    setAssigneeFilter('');
+    setFeaturedOnly(false);
+  }
+
   const taskOverview = {
     total: tasks.length + subtaskOverview.total,
     pending: tasks.filter((task) => task.status === 'pending').length + subtaskOverview.pending,
@@ -628,7 +690,7 @@ export default function Tasks() {
     posted: tasks.filter((task) => task.status === 'posted').length + subtaskOverview.posted,
   };
 
-  const approvalTasks = tasks.filter((task) => {
+  const approvalTasks = filteredTasks.filter((task) => {
     const stage = approvalStage(task);
     return task.status === 'done' || stage !== 'completed';
   });
@@ -639,7 +701,7 @@ export default function Tasks() {
 
   function tasksForDay(day) {
     if (!day) return [];
-    return calendarTasks.filter((t) => {
+    return filteredCalendarTasks.filter((t) => {
       if (!t.due_date) return false;
       const parts = dateParts(t.due_date);
       return parts.year === year && parts.month === month + 1 && parts.day === day;
@@ -685,18 +747,87 @@ export default function Tasks() {
         </div>
       </PageHero>
 
-      <div className="toolbar-panel flex items-center justify-end">
-        <div className="segmented-control">
-          <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
-            <LayoutGrid size={14} /> Kanban
-          </button>
-          <button onClick={() => setView('approval')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'approval' ? 'segmented-control-button-active' : '')}>
-            <CheckCircle2 size={14} /> Aprovação
-          </button>
-          <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
-            <Calendar size={14} /> Calendário
-          </button>
+      <div className="toolbar-panel space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((current) => !current)}
+              className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition ${filtersOpen || activeFilterCount ? 'border-[#0969ff]/25 bg-[#eef5ff] text-[#0969ff]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              <SlidersHorizontal size={15} /> Filtros
+              {activeFilterCount > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0969ff] px-1.5 text-[10px] font-bold text-white">{activeFilterCount}</span>
+              )}
+            </button>
+
+            {[
+              { key: 'all', label: 'Total' },
+              { key: 'overdue', label: 'Atrasadas', icon: AlertTriangle },
+              { key: '7d', label: '7 dias' },
+              { key: 'month', label: 'Mês' },
+              { key: '30d', label: '30 dias' },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setPeriodFilter(item.key)}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition ${periodFilter === item.key ? 'border-[#0969ff]/25 bg-[#eef5ff] text-[#0969ff]' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+              >
+                {item.icon && <item.icon size={13} />} {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="segmented-control">
+            <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
+              <LayoutGrid size={14} /> Kanban
+            </button>
+            <button onClick={() => setView('approval')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'approval' ? 'segmented-control-button-active' : '')}>
+              <CheckCircle2 size={14} /> Aprovação
+            </button>
+            <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
+              <Calendar size={14} /> Calendário
+            </button>
+          </div>
         </div>
+
+        {filtersOpen && (
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+            <label className="relative min-w-[240px] flex-1">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={taskSearch}
+                onChange={(event) => setTaskSearch(event.target.value)}
+                placeholder="Buscar tarefa ou cliente..."
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-[#0969ff]/40 focus:ring-4 focus:ring-[#0969ff]/5"
+              />
+            </label>
+
+            <select
+              value={assigneeFilter}
+              onChange={(event) => setAssigneeFilter(event.target.value)}
+              className="h-10 min-w-[190px] rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 outline-none transition focus:border-[#0969ff]/40"
+            >
+              <option value="">Todos os responsáveis</option>
+              {teamUsers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setFeaturedOnly((current) => !current)}
+              className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${featuredOnly ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+              <Star size={14} fill={featuredOnly ? 'currentColor' : 'none'} /> Destaques
+            </button>
+
+            {activeFilterCount > 0 && (
+              <button type="button" onClick={clearTaskFilters} className="inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+                <X size={14} /> Limpar
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {taskError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{taskError}</p>}
@@ -713,13 +844,13 @@ export default function Tasks() {
             >
               <div className="mb-3 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{tasks.filter((t) => t.status === col.key).length}</span>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{filteredTasks.filter((t) => t.status === col.key).length}</span>
               </div>
               <div className="space-y-3 min-h-[60px]">
-                {tasks.filter((t) => t.status === col.key).map((t) => (
+                {filteredTasks.filter((t) => t.status === col.key).map((t) => (
                   <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
                 ))}
-                {tasks.filter((t) => t.status === col.key).length === 0 && (
+                {filteredTasks.filter((t) => t.status === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
                 )}
               </div>
