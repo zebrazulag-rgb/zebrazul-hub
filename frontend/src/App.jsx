@@ -18,6 +18,7 @@ import CompassPage from './pages/Compass.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
 import CommercialFunnel from './pages/CommercialFunnel.jsx';
+import CommercialSectionNav from './components/CommercialSectionNav.jsx';
 import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
@@ -35,7 +36,6 @@ import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
 import ClientDemand from './pages/ClientDemand.jsx';
 import TeamChat from './pages/TeamChat.jsx';
 import { hasPermission } from './permissions.js';
-
 
 function SocialMediaLegacyRedirect({ section }) {
   const location = useLocation();
@@ -64,6 +64,15 @@ function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamA
   if (commercialAccess && !(user.role === 'admin' || user.role === 'client' || user.is_commercial_team) && !hasPermission(user, 'commercial.view')) return <Navigate to={fallbackRoute(user)} replace />;
   if (platformOnly && !user.is_platform_owner) return <Navigate to={fallbackRoute(user)} replace />;
   return <Layout>{children}</Layout>;
+}
+
+function CommercialPage({ children }) {
+  return (
+    <>
+      <CommercialSectionNav />
+      {children}
+    </>
+  );
 }
 
 export default function App() {
@@ -99,14 +108,7 @@ export default function App() {
       <Route path="/social-media/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMedia section="relatorios" /></ProtectedRoute>} />
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
       <Route path="/stories" element={<ProtectedRoute permission="social.stories"><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
-      <Route
-        path="/tarefas"
-        element={
-          <ProtectedRoute permission="tasks.view">
-            <Tasks />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/tarefas" element={<ProtectedRoute permission="tasks.view"><Tasks /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
       <Route path="/bussola/dme" element={<ProtectedRoute permission="compass.view"><Diagnostics /></ProtectedRoute>} />
       <Route path="/bussola/diagnostico" element={<ProtectedRoute permission="compass.view"><StrategicDiagnosis /></ProtectedRoute>} />
@@ -121,22 +123,18 @@ export default function App() {
       <Route path="/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/comercial" element={<ProtectedRoute permission="commercial.view"><Sales /></ProtectedRoute>} />
-      <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view"><CommercialFunnel /></ProtectedRoute>} />
+
+      <Route path="/comercial" element={<ProtectedRoute permission="commercial.view"><CommercialPage><Sales /></CommercialPage></ProtectedRoute>} />
+      <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view"><CommercialPage><CommercialFunnel /></CommercialPage></ProtectedRoute>} />
+      <Route path="/comercial/contratos" element={<ProtectedRoute permission="commercial.view"><CommercialPage><Contracts /></CommercialPage></ProtectedRoute>} />
+      <Route path="/contratos" element={<Navigate to="/comercial/contratos" replace />} />
+
       <Route path="/rematriculas" element={<ProtectedRoute permission="reenrollments.view"><BeeRematriculas /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
       <Route path="/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
       <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
-      <Route path="/contratos" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
       <Route path="/senhas" element={<Navigate to="/configuracoes/senhas" replace />} />
-      <Route
-        path="/financeiro"
-        element={
-          <ProtectedRoute permission="finance.view">
-            <Finance />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/financeiro" element={<ProtectedRoute permission="finance.view"><Finance /></ProtectedRoute>} />
       <Route path="/configuracoes/:section?" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/clientes" element={<Navigate to="/configuracoes/clientes" replace />} />
       <Route path="/usuarios" element={<Navigate to="/configuracoes/usuarios" replace />} />

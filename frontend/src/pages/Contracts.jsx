@@ -20,9 +20,9 @@ const STORAGE_KEY = 'zebrahub.contracts.mvp.v1';
 
 const SERVICE_OPTIONS = [
   { key: 'social_media', label: 'Social Media', text: 'planejamento, criação, organização, programação e acompanhamento de conteúdos para redes sociais' },
-  { key: 'planning', label: 'Planejamento de conteúdo', text: 'planejamento de calendário editorial e direcionamento estratégico mensal' },
+  { key: 'planning', label: 'Planejamento de conteúdo', text: 'planejamento de calendário editorial e direcionamento estratégico' },
   { key: 'design', label: 'Design gráfico', text: 'criação de peças digitais e materiais gráficos relacionados às campanhas e à comunicação institucional' },
-  { key: 'capture', label: 'Captação audiovisual', text: 'captação presencial de fotos e vídeos conforme frequência e agenda definidas entre as partes' },
+  { key: 'capture', label: 'Captação audiovisual', text: 'captação presencial de fotos e vídeos conforme agenda e frequência definidas entre as partes' },
   { key: 'video_editing', label: 'Edição de vídeo', text: 'edição e finalização de vídeos para Reels, Stories, TikTok, YouTube Shorts e formatos correlatos' },
   { key: 'instagram', label: 'Gestão de Instagram', text: 'gerenciamento e organização do perfil do Instagram, incluindo publicações, bio, destaques e alinhamentos recorrentes' },
   { key: 'tiktok', label: 'TikTok', text: 'planejamento e publicação de conteúdos adequados ao TikTok' },
@@ -64,9 +64,15 @@ const emptyContract = {
   contractorAddress: 'Rua São Paulo 154A, Alecrim, Natal/RN, CEP 59037-460',
   contractorRepresentative: 'ARTHUR BARBOSA CID DE ALMEIDA',
   services: ['social_media', 'planning', 'instagram', 'reports'],
-  postsPerWeek: '3',
-  capturesPerWeek: '1',
+
+  postsQuantity: '3',
+  postsPeriod: 'week',
+  videosQuantity: '1',
+  videosPeriod: 'week',
+  capturesQuantity: '1',
+  capturesPeriod: 'week',
   meetingsPerMonth: '1',
+
   eventsIncluded: '1',
   extraEventValue: '150,00',
   remoteEventsIncluded: '0',
@@ -108,6 +114,20 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizeContract(saved = {}) {
+  return {
+    ...clone(emptyContract),
+    ...saved,
+    clauses: { ...clone(emptyContract.clauses), ...(saved.clauses || {}) },
+    postsQuantity: saved.postsQuantity ?? saved.postsPerWeek ?? '3',
+    postsPeriod: saved.postsPeriod ?? 'week',
+    videosQuantity: saved.videosQuantity ?? '1',
+    videosPeriod: saved.videosPeriod ?? 'week',
+    capturesQuantity: saved.capturesQuantity ?? saved.capturesPerWeek ?? '1',
+    capturesPeriod: saved.capturesPeriod ?? 'week',
+  };
+}
+
 function datePtBr(value) {
   if (!value) return '';
   const [year, month, day] = String(value).slice(0, 10).split('-').map(Number);
@@ -121,6 +141,11 @@ function money(value) {
   return cleaned ? `R$ ${cleaned}` : 'R$ 0,00';
 }
 
+function periodLabel(period, quantity = 1) {
+  if (period === 'month') return Number(quantity) === 1 ? 'mês' : 'mês';
+  return Number(quantity) === 1 ? 'semana' : 'semana';
+}
+
 function SectionTitle({ number, children }) {
   return <h2 className="contract-section-title">{number}. {children}</h2>;
 }
@@ -130,10 +155,11 @@ function Preview({ contract }) {
   const hasTraffic = contract.services.includes('traffic');
   const hasEvents = contract.services.includes('events');
   const hasCapture = contract.services.includes('capture');
+  const hasVideo = contract.services.includes('video_editing') || hasCapture;
+  const hasContent = contract.services.some((item) => ['social_media', 'planning', 'instagram', 'tiktok', 'youtube', 'stories'].includes(item));
   const hasMeetings = contract.services.includes('meetings');
 
   let section = 1;
-
   const objectSection = section++;
   const clientObligationsSection = section++;
   const contractorObligationsSection = section++;
@@ -152,6 +178,8 @@ function Preview({ contract }) {
   const durationText = contract.durationMode === 'date' && contract.endDate
     ? `até ${datePtBr(contract.endDate)}`
     : `${contract.durationMonths || 12} meses`;
+
+  let scopeItem = 4;
 
   return (
     <article id="contract-print-area" className="contract-paper">
@@ -181,14 +209,34 @@ function Preview({ contract }) {
       <SectionTitle number={objectSection}>Do Objeto e Escopo</SectionTitle>
       <p><strong>{objectSection}.1.</strong> O presente contrato tem como objeto a prestação dos serviços profissionais selecionados e descritos neste instrumento, relacionados à comunicação, presença digital, conteúdo, marca e/ou performance da CONTRATANTE.</p>
       <p><strong>{objectSection}.2.</strong> A atuação da CONTRATADA terá como finalidade organizar a presença digital da CONTRATANTE, fortalecer sua autoridade, aprimorar sua comunicação e executar o escopo contratado, sem caracterizar promessa de resultado específico.</p>
+
       {selectedServices.map((item, index) => (
         <p key={item.key}><strong>{objectSection}.3.{index + 1}.</strong> <strong>{item.label}:</strong> {item.text}.</p>
       ))}
-      {hasCapture && <p><strong>{objectSection}.4.</strong> A captação audiovisual terá frequência estimada de {contract.capturesPerWeek || '1'} vez(es) por semana, sujeita a agenda, necessidade de conteúdo e alinhamento prévio.</p>}
-      {hasMeetings && <p><strong>{objectSection}.5.</strong> Estão previstas {contract.meetingsPerMonth || '1'} reunião(ões) de acompanhamento por mês.</p>}
-      {hasEvents && <p><strong>{objectSection}.6.</strong> Estão incluídas até {contract.eventsIncluded || '1'} cobertura(s) de evento presencial por mês. Eventos adicionais poderão ser cobrados em {money(contract.extraEventValue)} por evento. {Number(contract.remoteEventsIncluded || 0) > 0 ? `Também estão incluídas até ${contract.remoteEventsIncluded} coberturas remotas por mês, sendo as adicionais cobradas em ${money(contract.extraRemoteEventValue)} por evento.` : ''}</p>}
-      {contract.customScope?.trim() && <p><strong>{objectSection}.7.</strong> Escopo complementar: {contract.customScope.trim()}</p>}
-      {contract.clauses.no_results && <p><strong>{objectSection}.8.</strong> A CONTRATADA compromete-se a empregar seus melhores esforços técnicos, estratégicos e criativos. Entretanto, fatores externos como algoritmos, público, mercado, concorrência, verba de mídia, atendimento comercial e decisões das plataformas impedem garantia de seguidores, leads, vendas, faturamento ou qualquer métrica específica.</p>}
+
+      {hasContent && (
+        <p><strong>{objectSection}.{scopeItem++}.</strong> A cadência de conteúdo prevista é de <strong>{contract.postsQuantity || '0'} postagem(ns) por {periodLabel(contract.postsPeriod, contract.postsQuantity)}</strong>, podendo a distribuição entre formatos ser ajustada conforme estratégia e calendário.</p>
+      )}
+
+      {hasVideo && (
+        <p><strong>{objectSection}.{scopeItem++}.</strong> A entrega audiovisual prevista contempla <strong>{contract.videosQuantity || '0'} vídeo(s) por {periodLabel(contract.videosPeriod, contract.videosQuantity)}</strong>, observados os formatos contratados e a disponibilidade de captação/material.</p>
+      )}
+
+      {hasCapture && (
+        <p><strong>{objectSection}.{scopeItem++}.</strong> A captação audiovisual terá frequência estimada de <strong>{contract.capturesQuantity || '0'} captação(ões) por {periodLabel(contract.capturesPeriod, contract.capturesQuantity)}</strong>, sujeita a agenda, necessidade de conteúdo e alinhamento prévio.</p>
+      )}
+
+      {hasMeetings && (
+        <p><strong>{objectSection}.{scopeItem++}.</strong> Estão previstas {contract.meetingsPerMonth || '1'} reunião(ões) de acompanhamento por mês.</p>
+      )}
+
+      {hasEvents && (
+        <p><strong>{objectSection}.{scopeItem++}.</strong> Estão incluídas até {contract.eventsIncluded || '1'} cobertura(s) de evento presencial por mês. Eventos adicionais poderão ser cobrados em {money(contract.extraEventValue)} por evento. {Number(contract.remoteEventsIncluded || 0) > 0 ? `Também estão incluídas até ${contract.remoteEventsIncluded} coberturas remotas por mês, sendo as adicionais cobradas em ${money(contract.extraRemoteEventValue)} por evento.` : ''}</p>
+      )}
+
+      {contract.customScope?.trim() && <p><strong>{objectSection}.{scopeItem++}.</strong> Escopo complementar: {contract.customScope.trim()}</p>}
+
+      {contract.clauses.no_results && <p><strong>{objectSection}.{scopeItem++}.</strong> A CONTRATADA compromete-se a empregar seus melhores esforços técnicos, estratégicos e criativos. Entretanto, fatores externos como algoritmos, público, mercado, concorrência, verba de mídia, atendimento comercial e decisões das plataformas impedem garantia de seguidores, leads, vendas, faturamento ou qualquer métrica específica.</p>}
 
       <SectionTitle number={clientObligationsSection}>Das Obrigações da Contratante</SectionTitle>
       <p><strong>{clientObligationsSection}.1.</strong> Fornecer informações, materiais, acessos, aprovações, autorizações e demais elementos necessários à execução dos serviços.</p>
@@ -202,13 +250,11 @@ function Preview({ contract }) {
       {contract.clauses.confidentiality && <p><strong>{contractorObligationsSection}.3.</strong> Manter sigilo sobre dados, documentos, materiais, operações e estratégias da CONTRATANTE, inclusive após o término da relação contratual.</p>}
       <p><strong>{contractorObligationsSection}.4.</strong> A CONTRATADA poderá recusar a publicação ou execução de conteúdo que entenda violar legislação, direitos de terceiros, políticas de plataformas ou princípios éticos de comunicação.</p>
 
-      {approvalSection && (
-        <>
-          <SectionTitle number={approvalSection}>Da Aprovação de Conteúdos e Prazos</SectionTitle>
-          <p><strong>{approvalSection}.1.</strong> Os conteúdos serão submetidos à CONTRATANTE para validação sempre que a dinâmica do calendário permitir. A CONTRATANTE deverá aprovar, reprovar ou solicitar ajustes dentro do prazo operacional comunicado.</p>
-          <p><strong>{approvalSection}.2.</strong> A ausência de retorno poderá impactar a data de publicação, remanejar o conteúdo ou implicar aprovação tácita quando essa dinâmica tiver sido previamente comunicada no fluxo de trabalho.</p>
-        </>
-      )}
+      {approvalSection && <>
+        <SectionTitle number={approvalSection}>Da Aprovação de Conteúdos e Prazos</SectionTitle>
+        <p><strong>{approvalSection}.1.</strong> Os conteúdos serão submetidos à CONTRATANTE para validação sempre que a dinâmica do calendário permitir. A CONTRATANTE deverá aprovar, reprovar ou solicitar ajustes dentro do prazo operacional comunicado.</p>
+        <p><strong>{approvalSection}.2.</strong> A ausência de retorno poderá impactar a data de publicação, remanejar o conteúdo ou implicar aprovação tácita quando essa dinâmica tiver sido previamente comunicada no fluxo de trabalho.</p>
+      </>}
 
       <SectionTitle number={priceSection}>Do Preço e Forma de Pagamento</SectionTitle>
       <p><strong>{priceSection}.1.</strong> Pela execução dos serviços, a CONTRATANTE pagará à CONTRATADA {priceText}.</p>
@@ -217,34 +263,28 @@ function Preview({ contract }) {
       {contract.clauses.late_payment && <p><strong>{priceSection}.{contract.barterEnabled ? '4' : '3'}.</strong> Em caso de atraso, poderá ser aplicada multa de {contract.lateFee || '5'}% sobre o valor em aberto, sem prejuízo da suspensão temporária dos serviços até a regularização.</p>}
       {hasTraffic && contract.mediaBudgetEnabled && <p><strong>{priceSection}.{contract.barterEnabled ? '5' : '4'}.</strong> O orçamento estimado para mídia paga será de até {money(contract.mediaBudget)} mensais. Esse valor não integra os honorários da CONTRATADA e será {contract.mediaPaidDirectly ? 'pago diretamente pela CONTRATANTE às plataformas de anúncios' : 'tratado por meio previamente acordado entre as partes'}.</p>}
 
-      {copyrightSection && (
-        <>
-          <SectionTitle number={copyrightSection}>Dos Direitos Autorais, Portfólio e Materiais</SectionTitle>
-          {contract.clauses.portfolio && <p><strong>{copyrightSection}.1.</strong> Os conteúdos aprovados e publicados poderão ser utilizados pela CONTRATADA em portfólio, estudo de caso, apresentação comercial ou divulgação institucional, salvo restrição expressa formalizada pela CONTRATANTE.</p>}
-          {contract.clauses.editable_files && <p><strong>{copyrightSection}.2.</strong> Arquivos editáveis, projetos abertos, templates internos, métodos, documentos estratégicos internos, prompts e processos de criação não integram a entrega, salvo contratação específica.</p>}
-          <p><strong>{copyrightSection}.3.</strong> Materiais fornecidos pela CONTRATANTE permanecem de sua titularidade, observadas licenças, autorizações e direitos de terceiros.</p>
-        </>
-      )}
+      {copyrightSection && <>
+        <SectionTitle number={copyrightSection}>Dos Direitos Autorais, Portfólio e Materiais</SectionTitle>
+        {contract.clauses.portfolio && <p><strong>{copyrightSection}.1.</strong> Os conteúdos aprovados e publicados poderão ser utilizados pela CONTRATADA em portfólio, estudo de caso, apresentação comercial ou divulgação institucional, salvo restrição expressa formalizada pela CONTRATANTE.</p>}
+        {contract.clauses.editable_files && <p><strong>{copyrightSection}.2.</strong> Arquivos editáveis, projetos abertos, templates internos, métodos, documentos estratégicos internos, prompts e processos de criação não integram a entrega, salvo contratação específica.</p>}
+        <p><strong>{copyrightSection}.3.</strong> Materiais fornecidos pela CONTRATANTE permanecem de sua titularidade, observadas licenças, autorizações e direitos de terceiros.</p>
+      </>}
 
       <SectionTitle number={termSection}>Da Vigência e Renovação</SectionTitle>
       <p><strong>{termSection}.1.</strong> O presente contrato terá vigência inicial de {durationText}, contada a partir de {datePtBr(contract.startDate) || 'sua assinatura'}.</p>
-      <p><strong>{termSection}.2.</strong> {contract.autoRenew ? `O contrato será renovado automaticamente por períodos sucessivos, salvo manifestação contrária com aviso prévio mínimo de ${contract.noticeDays || '30'} dias.` : `Não haverá renovação automática, salvo novo acordo escrito entre as partes.`}</p>
+      <p><strong>{termSection}.2.</strong> {contract.autoRenew ? `O contrato será renovado automaticamente por períodos sucessivos, salvo manifestação contrária com aviso prévio mínimo de ${contract.noticeDays || '30'} dias.` : 'Não haverá renovação automática, salvo novo acordo escrito entre as partes.'}</p>
 
-      {terminationSection && (
-        <>
-          <SectionTitle number={terminationSection}>Da Rescisão Contratual</SectionTitle>
-          <p><strong>{terminationSection}.1.</strong> O contrato poderá ser rescindido por qualquer das partes mediante aviso prévio de {contract.noticeDays || '30'} dias, devendo ser quitados valores vencidos e proporcionais referentes aos serviços já prestados.</p>
-          <p><strong>{terminationSection}.2.</strong> O descumprimento de obrigações contratuais, atraso reiterado, ausência de informações essenciais, violação de direitos de terceiros, quebra de confidencialidade ou conduta que inviabilize a execução poderá justificar rescisão imediata por justa causa.</p>
-          {contract.cancellationFeeEnabled && <p><strong>{terminationSection}.3.</strong> Caso a CONTRATANTE solicite cancelamento sem o aviso prévio previsto, poderá ser cobrado o equivalente a {contract.cancellationFeeDays || '30'} dias de serviço, além dos valores já vencidos ou proporcionais ao período trabalhado.</p>}
-        </>
-      )}
+      {terminationSection && <>
+        <SectionTitle number={terminationSection}>Da Rescisão Contratual</SectionTitle>
+        <p><strong>{terminationSection}.1.</strong> O contrato poderá ser rescindido por qualquer das partes mediante aviso prévio de {contract.noticeDays || '30'} dias, devendo ser quitados valores vencidos e proporcionais referentes aos serviços já prestados.</p>
+        <p><strong>{terminationSection}.2.</strong> O descumprimento de obrigações contratuais, atraso reiterado, ausência de informações essenciais, violação de direitos de terceiros, quebra de confidencialidade ou conduta que inviabilize a execução poderá justificar rescisão imediata por justa causa.</p>
+        {contract.cancellationFeeEnabled && <p><strong>{terminationSection}.3.</strong> Caso a CONTRATANTE solicite cancelamento sem o aviso prévio previsto, poderá ser cobrado o equivalente a {contract.cancellationFeeDays || '30'} dias de serviço, além dos valores já vencidos ou proporcionais ao período trabalhado.</p>}
+      </>}
 
-      {contract.notes?.trim() && (
-        <>
-          <h2 className="contract-section-title">Condições Complementares</h2>
-          <p>{contract.notes.trim()}</p>
-        </>
-      )}
+      {contract.notes?.trim() && <>
+        <h2 className="contract-section-title">Condições Complementares</h2>
+        <p>{contract.notes.trim()}</p>
+      </>}
 
       <p className="contract-legal">Aplicam-se ao presente instrumento, naquilo que couber, as disposições legais pertinentes à atividade contratada, inclusive normas de direitos autorais e publicidade.</p>
       <p className="contract-agreement"><strong>E, por assim estarem justos e acordados, firmam o presente contrato em duas vias de igual teor e forma.</strong></p>
@@ -269,7 +309,7 @@ export default function Contracts() {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      setContracts(Array.isArray(saved) ? saved : []);
+      setContracts(Array.isArray(saved) ? saved.map(normalizeContract) : []);
     } catch {
       setContracts([]);
     }
@@ -307,7 +347,7 @@ export default function Contracts() {
   }
 
   function openContract(contract) {
-    setEditing(clone(contract));
+    setEditing(normalizeContract(contract));
     setView('editor');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -316,9 +356,7 @@ export default function Contracts() {
     if (!editing) return;
     const record = { ...editing, updatedAt: new Date().toISOString() };
     const exists = contracts.some((item) => item.id === record.id);
-    const next = exists
-      ? contracts.map((item) => item.id === record.id ? record : item)
-      : [record, ...contracts];
+    const next = exists ? contracts.map((item) => item.id === record.id ? record : item) : [record, ...contracts];
     persist(next);
     setEditing(record);
     setSavedNotice('Rascunho salvo neste navegador.');
@@ -326,7 +364,7 @@ export default function Contracts() {
 
   function duplicateContract(contract = editing) {
     if (!contract) return;
-    const copy = clone(contract);
+    const copy = normalizeContract(contract);
     copy.id = uid();
     copy.title = `${copy.title} — cópia`;
     copy.status = 'draft';
@@ -391,11 +429,7 @@ export default function Contracts() {
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          {[
-            ['Total', stats.total],
-            ['Rascunhos', stats.drafts],
-            ['Ativos', stats.active],
-          ].map(([label, value]) => (
+          {[['Total', stats.total], ['Rascunhos', stats.drafts], ['Ativos', stats.active]].map(([label, value]) => (
             <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-medium text-slate-500">{label}</p>
               <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
@@ -439,16 +473,11 @@ export default function Contracts() {
             ))}
           </div>
         )}
-
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-          MVP: os rascunhos ficam salvos no navegador deste dispositivo. Antes de usar um contrato de forma definitiva, recomenda-se revisão jurídica do texto e das condições específicas.
-        </div>
       </div>
     );
   }
 
   if (!editing) return null;
-
   const hasTraffic = editing.services.includes('traffic');
   const hasEvents = editing.services.includes('events');
 
@@ -480,9 +509,7 @@ export default function Contracts() {
         .contract-signatures strong { margin-top:5px; }
         .contract-signatures small { margin-top:3px; color:#64748b; }
         .contract-date { margin-top:28px !important; text-align:center !important; font-weight:700; }
-        @media (max-width: 900px) {
-          .contract-party-grid { grid-template-columns:1fr; }
-        }
+        @media (max-width: 900px) { .contract-party-grid { grid-template-columns:1fr; } }
       `}</style>
 
       <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
@@ -519,8 +546,9 @@ export default function Contracts() {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><FileText size={17} /></span>
-              <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">2. Escopo</p><h2 className="font-semibold text-slate-900">Serviços contratados</h2></div>
+              <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">2. Escopo</p><h2 className="font-semibold text-slate-900">Serviços e quantidades</h2></div>
             </div>
+
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {SERVICE_OPTIONS.map((item) => {
                 const active = editing.services.includes(item.key);
@@ -532,16 +560,45 @@ export default function Contracts() {
                 );
               })}
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <Field label="Posts por semana" value={editing.postsPerWeek} onChange={(value) => update('postsPerWeek', value)} />
-              <Field label="Captações por semana" value={editing.capturesPerWeek} onChange={(value) => update('capturesPerWeek', value)} />
-              <Field label="Reuniões por mês" value={editing.meetingsPerMonth} onChange={(value) => update('meetingsPerMonth', value)} />
-              {hasEvents && <Field label="Eventos inclusos / mês" value={editing.eventsIncluded} onChange={(value) => update('eventsIncluded', value)} />}
-              {hasEvents && <Field label="Valor por evento adicional" value={editing.extraEventValue} onChange={(value) => update('extraEventValue', value)} prefix="R$" />}
-              {hasEvents && <Field label="Coberturas remotas inclusas" value={editing.remoteEventsIncluded} onChange={(value) => update('remoteEventsIncluded', value)} />}
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">Cadência de entrega</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <QuantityPeriod
+                  label="Postagens"
+                  quantity={editing.postsQuantity}
+                  period={editing.postsPeriod}
+                  onQuantity={(value) => update('postsQuantity', value)}
+                  onPeriod={(value) => update('postsPeriod', value)}
+                />
+                <QuantityPeriod
+                  label="Vídeos"
+                  quantity={editing.videosQuantity}
+                  period={editing.videosPeriod}
+                  onQuantity={(value) => update('videosQuantity', value)}
+                  onPeriod={(value) => update('videosPeriod', value)}
+                />
+                <QuantityPeriod
+                  label="Captações"
+                  quantity={editing.capturesQuantity}
+                  period={editing.capturesPeriod}
+                  onQuantity={(value) => update('capturesQuantity', value)}
+                  onPeriod={(value) => update('capturesPeriod', value)}
+                />
+                <Field label="Reuniões por mês" value={editing.meetingsPerMonth} onChange={(value) => update('meetingsPerMonth', value)} />
+              </div>
             </div>
+
+            {hasEvents && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Field label="Eventos inclusos / mês" value={editing.eventsIncluded} onChange={(value) => update('eventsIncluded', value)} />
+                <Field label="Valor por evento adicional" value={editing.extraEventValue} onChange={(value) => update('extraEventValue', value)} prefix="R$" />
+                <Field label="Coberturas remotas inclusas" value={editing.remoteEventsIncluded} onChange={(value) => update('remoteEventsIncluded', value)} />
+              </div>
+            )}
+
             <label className="mt-3 block text-xs font-semibold text-slate-600">Escopo complementar
-              <textarea value={editing.customScope} onChange={(event) => update('customScope', event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-blue-400" placeholder="Ex.: 2 vídeos adicionais por mês, gestão do perfil pessoal do sócio..." />
+              <textarea value={editing.customScope} onChange={(event) => update('customScope', event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-blue-400" placeholder="Ex.: gestão do perfil pessoal, 2 reuniões extras, campanha específica..." />
             </label>
           </section>
 
@@ -568,17 +625,15 @@ export default function Contracts() {
               </div>
             )}
 
-            {hasTraffic && (
-              <>
-                <Toggle label="Definir verba de mídia no contrato?" checked={editing.mediaBudgetEnabled} onChange={(checked) => update('mediaBudgetEnabled', checked)} />
-                {editing.mediaBudgetEnabled && (
-                  <div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
-                    <Field label="Verba mensal estimada" value={editing.mediaBudget} onChange={(value) => update('mediaBudget', value)} prefix="R$" />
-                    <div className="pt-5"><Toggle label="Cliente paga diretamente à plataforma" checked={editing.mediaPaidDirectly} onChange={(checked) => update('mediaPaidDirectly', checked)} compact /></div>
-                  </div>
-                )}
-              </>
-            )}
+            {hasTraffic && <>
+              <Toggle label="Definir verba de mídia no contrato?" checked={editing.mediaBudgetEnabled} onChange={(checked) => update('mediaBudgetEnabled', checked)} />
+              {editing.mediaBudgetEnabled && (
+                <div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+                  <Field label="Verba mensal estimada" value={editing.mediaBudget} onChange={(value) => update('mediaBudget', value)} prefix="R$" />
+                  <div className="pt-5"><Toggle label="Cliente paga diretamente à plataforma" checked={editing.mediaPaidDirectly} onChange={(checked) => update('mediaPaidDirectly', checked)} compact /></div>
+                </div>
+              )}
+            </>}
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -640,6 +695,32 @@ export default function Contracts() {
             <Preview contract={editing} />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function QuantityPeriod({ label, quantity, period, onQuantity, onPeriod }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-600">{label}</label>
+      <div className="mt-1 grid grid-cols-[minmax(0,1fr)_110px] overflow-hidden rounded-xl border border-slate-200 bg-white focus-within:border-blue-400">
+        <input
+          type="number"
+          min="0"
+          value={quantity || ''}
+          onChange={(event) => onQuantity(event.target.value)}
+          className="min-w-0 bg-transparent px-3 py-2.5 text-sm font-normal text-slate-800 outline-none"
+          placeholder="0"
+        />
+        <select
+          value={period}
+          onChange={(event) => onPeriod(event.target.value)}
+          className="border-l border-slate-200 bg-slate-50 px-2 text-xs font-semibold text-slate-600 outline-none"
+        >
+          <option value="week">por semana</option>
+          <option value="month">por mês</option>
+        </select>
       </div>
     </div>
   );
