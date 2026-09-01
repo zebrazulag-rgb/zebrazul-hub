@@ -34,6 +34,7 @@ const publicBeeCampaignBriefingRoutes = require('./routes/publicBeeCampaignBrief
 const publicBeeFamilySurveyRoutes = require('./routes/publicBeeFamilySurvey');
 const beeFamilySurveyRoutes = require('./routes/beeFamilySurvey');
 const apogeuDiagnosticIntegrationRoutes = require('./routes/apogeuDiagnosticIntegration');
+const basaltoDiagnosticIntegrationRoutes = require('./routes/basaltoDiagnosticIntegration');
 const aiRoutes = require('./routes/ai');
 const feedIntelligenceRoutes = require('./routes/feedIntelligence');
 const materialRoutes = require('./routes/materials');
@@ -86,6 +87,8 @@ app.use('/api/instagram-stories/webhook', instagramStoriesWebhookRoutes);
 app.use('/api/media', mediaRoutes);
 // Integração servidor-a-servidor do Diagnóstico APOGEU. Protegida por chave própria.
 app.use('/api/integrations/apogeu-diagnostico', apogeuDiagnosticIntegrationRoutes);
+// Integração servidor-a-servidor do Diagnóstico público da Basalto.
+app.use('/api/integrations/basalto-diagnostico', basaltoDiagnosticIntegrationRoutes);
 
 app.get('/api/health', (req, res) => {
   const health = getHealthStatus();
