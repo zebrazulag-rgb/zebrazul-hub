@@ -5,7 +5,7 @@ import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
-import TaskCsvModal, { downloadTaskCsvModel } from '../components/TaskCsvModal.jsx';
+import TaskCsvModal from '../components/TaskCsvModal.jsx';
 import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
@@ -384,15 +384,56 @@ export default function Tasks() {
     }
   }
 
-  async function downloadCsvModel() {
+  function downloadCsvModel() {
     setCsvBusy(true);
     setCsvNotice('');
     setTaskError('');
+
     try {
-      await downloadTaskCsvModel();
+      const headers = [
+        'index',
+        'ID da tarefa',
+        'ID da tarefa pai',
+        'Tipo de tarefa',
+        'Cliente',
+        'Projeto',
+        'Frente',
+        'Título',
+        'Descrição',
+        'Ideia do conteúdo',
+        'Tipo de conteúdo',
+        'Data de postagem',
+        'Legenda',
+        'Roteiro / briefing',
+        'Link do vídeo',
+        'Responsável',
+        'Prioridade',
+        'Status',
+        'Prazo',
+        'Meta',
+      ];
+
+      const escapeCsvCell = (value) => {
+        const normalized = String(value ?? '').replace(/"/g, '""');
+        return `"${normalized}"`;
+      };
+
+      const csv = '\uFEFF' + headers.map(escapeCsvCell).join(',') + '\r\n';
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+
+      anchor.href = url;
+      anchor.download = 'modelo_importacao_tarefas_zebrahub.csv';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+
+      window.setTimeout(() => URL.revokeObjectURL(url), 500);
       setCsvNotice('Modelo CSV baixado com sucesso.');
     } catch (error) {
-      setTaskError(error.response?.data?.error || 'Não foi possível baixar o modelo CSV.');
+      console.error('[TAREFAS] Erro ao gerar modelo CSV:', error);
+      setTaskError('Não foi possível gerar o modelo CSV.');
     } finally {
       setCsvBusy(false);
     }
