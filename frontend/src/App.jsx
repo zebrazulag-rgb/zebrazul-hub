@@ -10,6 +10,7 @@ import PublicFeed from './pages/PublicFeed.jsx';
 import PublicSocialMediaFeed from './pages/PublicSocialMediaFeed.jsx';
 import PublicPost from './pages/PublicPost.jsx';
 import Finance from './pages/Finance.jsx';
+import Contracts from './pages/Contracts.jsx';
 import PasswordVault from './pages/PasswordVault.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
@@ -126,6 +127,7 @@ export default function App() {
       <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
       <Route path="/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
       <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
+      <Route path="/contratos" element={<ProtectedRoute><Contracts /></ProtectedRoute>} />
       <Route path="/senhas" element={<Navigate to="/configuracoes/senhas" replace />} />
       <Route
         path="/financeiro"
