@@ -145,6 +145,12 @@ function getPermissionSetForUser(user) {
 
 function hasPermission(user, permissionKey) {
   if (!ALL_KEYS.includes(permissionKey)) return false;
+  // O Super Administrador nunca perde acesso operacional a importar/exportar tarefas,
+  // mesmo se existir uma configuração antiga de permissões da agência no banco.
+  if ((Number(user?.is_platform_owner) === 1 || user?.is_platform_owner === true) &&
+      (permissionKey === 'tasks.import' || permissionKey === 'tasks.export')) {
+    return true;
+  }
   const map = getPermissionSetForUser(user);
   if (permissionKey.startsWith('social.') && permissionKey !== 'social.view') {
     const feedChildren = new Set([

@@ -228,8 +228,9 @@ export default function Tasks() {
   const { user } = useAuth();
   const canCreateTasks = hasPermission(user, 'tasks.create');
   const canApproval = hasPermission(user, 'tasks.approval');
-  const canImportTasks = hasPermission(user, 'tasks.import');
-  const canExportTasks = hasPermission(user, 'tasks.export');
+  const isAdminUser = user?.role === 'admin' || Number(user?.is_platform_owner) === 1 || user?.is_platform_owner === true;
+  const canImportTasks = isAdminUser || hasPermission(user, 'tasks.import');
+  const canExportTasks = isAdminUser || hasPermission(user, 'tasks.export');
   const canShareTaskCalendar = hasPermission(user, 'tasks.share_calendar');
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('kanban');
