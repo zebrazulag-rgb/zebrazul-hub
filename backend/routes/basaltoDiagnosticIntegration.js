@@ -316,6 +316,15 @@ router.post('/', integrationAuth, (req, res) => {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
     const contact = payload.contact && typeof payload.contact === 'object' ? payload.contact : payload;
 
+    const rawSourceSite = text(payload.source_site || payload.sourceSite, 180) || 'diagnostico.basaltosst.com.br';
+    const allowedSourceSites = new Set([
+      'diagnostico.basaltosst.com.br',
+      'carbone.basaltosst.com.br',
+    ]);
+    const sourceSite = allowedSourceSites.has(rawSourceSite.toLowerCase())
+      ? rawSourceSite.toLowerCase()
+      : 'diagnostico.basaltosst.com.br';
+
     const name = text(contact.name || contact.nome, 180);
     const company = text(contact.company || contact.empresa || contact.razao_social, 220);
     const email = text(contact.email, 180);
@@ -404,7 +413,7 @@ router.post('/', integrationAuth, (req, res) => {
 
     const diagnosis = {
       version: 1,
-      source: 'public_site',
+      source: sourceSite,
       submission_id: submissionId,
       score,
       max_score: 14,
@@ -429,7 +438,7 @@ router.post('/', integrationAuth, (req, res) => {
         `${index + 1}. ${question.label}: ${answerLabel(question.key, answers[question.key])}`
       ),
       '',
-      `Origem: diagnostico.basaltosst.com.br`,
+      `Origem: ${sourceSite}`,
       `BASALTO_SUBMISSION_ID:${submissionId}`,
       '',
       `DIAGNOSTICO_BASALTO_JSON:${JSON.stringify(diagnosis)}`,
@@ -447,7 +456,9 @@ router.post('/', integrationAuth, (req, res) => {
         contact_name: name,
         email,
         phone,
-        source: 'Diagnóstico Basalto',
+        source: sourceSite === 'carbone.basaltosst.com.br'
+          ? 'Diagnóstico Basalto · Carbone'
+          : 'Diagnóstico Basalto',
         stage: 'new_lead',
         stage_key: stage.stage_key,
         estimated_value: 0,
@@ -490,7 +501,7 @@ router.post('/', integrationAuth, (req, res) => {
         agency.id,
         leadId,
         owner.id,
-        `Diagnóstico público da Basalto recebido · ${result.title} · ${percent}% (${score}/14).`
+        `Diagnóstico público da Basalto recebido via ${sourceSite} · ${result.title} · ${percent}% (${score}/14).`
       );
 
       return leadId;
