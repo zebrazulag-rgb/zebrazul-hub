@@ -88,7 +88,6 @@ CREATE TABLE IF NOT EXISTS clients (
   avatar_mime TEXT,
   bio TEXT,
   feed_share_token TEXT,
-  social_media_share_token TEXT,
   status TEXT DEFAULT 'active' CHECK(status IN ('active','paused','archived')),
   responsible_user_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
@@ -117,24 +116,6 @@ CREATE TABLE IF NOT EXISTS social_accounts (
   FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS feed_highlights (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL DEFAULT 1,
-  client_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  cover_data TEXT,
-  cover_mime TEXT,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  visible INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_feed_highlights_client_order
-  ON feed_highlights(agency_id, client_id, sort_order, id);
-
 CREATE TABLE IF NOT EXISTS posts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL DEFAULT 1,
@@ -153,7 +134,6 @@ CREATE TABLE IF NOT EXISTS posts (
   client_feedback TEXT,
   feed_visible INTEGER DEFAULT 1,
   share_token TEXT UNIQUE,
-  public_view_token TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
@@ -171,17 +151,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   task_type TEXT DEFAULT 'basic' CHECK(task_type IN ('basic','post','video')),
   title TEXT NOT NULL,
   description TEXT,
-  project_name TEXT,
-  front_name TEXT,
-  priority TEXT DEFAULT 'medium',
-  goal TEXT,
   content_type TEXT,
   caption TEXT,
   video_link TEXT,
   media_gallery TEXT,
   due_date TEXT,
-  deadline_label TEXT,
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
+  approval_status TEXT DEFAULT 'completed',
   is_featured INTEGER DEFAULT 0,
   attachment_data TEXT,
   attachment_mime TEXT,
@@ -204,86 +180,6 @@ CREATE TABLE IF NOT EXISTS task_assignees (
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
-CREATE TABLE IF NOT EXISTS client_task_request_links (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  token TEXT NOT NULL UNIQUE,
-  active INTEGER DEFAULT 1,
-  created_by INTEGER NOT NULL,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-  UNIQUE(agency_id, client_id)
-);
-
-CREATE TABLE IF NOT EXISTS client_task_requests (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  task_id INTEGER NOT NULL UNIQUE,
-  request_link_id INTEGER,
-  protocol TEXT NOT NULL UNIQUE,
-  requester_name TEXT NOT NULL,
-  requester_email TEXT,
-  requester_phone TEXT,
-  request_type TEXT,
-  requested_due_date TEXT,
-  urgency TEXT DEFAULT 'normal' CHECK(urgency IN ('normal','urgent')),
-  references_text TEXT,
-  notes TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-  FOREIGN KEY (request_link_id) REFERENCES client_task_request_links(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS client_task_request_files (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  request_id INTEGER NOT NULL,
-  file_url TEXT NOT NULL,
-  mime TEXT,
-  filename TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (request_id) REFERENCES client_task_requests(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS client_task_request_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  request_id INTEGER NOT NULL,
-  user_id INTEGER,
-  event_type TEXT NOT NULL,
-  message TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (request_id) REFERENCES client_task_requests(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS notifications (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  user_id INTEGER NOT NULL,
-  type TEXT NOT NULL DEFAULT 'info',
-  title TEXT NOT NULL,
-  message TEXT,
-  entity_type TEXT,
-  entity_id INTEGER,
-  link TEXT,
-  read_at TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS chat_rooms (id INTEGER PRIMARY KEY AUTOINCREMENT, agency_id INTEGER NOT NULL, name TEXT NOT NULL, room_type TEXT NOT NULL DEFAULT 'group' CHECK(room_type IN ('group','direct')), created_by INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE, FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE);
-CREATE TABLE IF NOT EXISTS chat_room_members (room_id INTEGER NOT NULL, user_id INTEGER NOT NULL, last_read_message_id INTEGER DEFAULT 0, joined_at TEXT DEFAULT (datetime('now')), PRIMARY KEY(room_id,user_id), FOREIGN KEY(room_id) REFERENCES chat_rooms(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
-CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, room_id INTEGER NOT NULL, user_id INTEGER NOT NULL, message TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY(room_id) REFERENCES chat_rooms(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
 
 CREATE TABLE IF NOT EXISTS post_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -324,15 +220,6 @@ CREATE TABLE IF NOT EXISTS commercial_leads (
   contact_name TEXT,
   email TEXT,
   phone TEXT,
-  whatsapp TEXT,
-  cnpj TEXT,
-  instagram TEXT,
-  website TEXT,
-  segment TEXT,
-  position_title TEXT,
-  city TEXT,
-  state TEXT,
-  priority TEXT DEFAULT 'medium',
   source TEXT,
   stage TEXT DEFAULT 'new_lead' CHECK(stage IN ('new_lead','contacted','meeting','proposal','negotiation','won','lost')),
   stage_key TEXT,
@@ -362,71 +249,6 @@ CREATE TABLE IF NOT EXISTS commercial_activities (
   FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
   FOREIGN KEY (lead_id) REFERENCES commercial_leads(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
-);
-
-CREATE TABLE IF NOT EXISTS commercial_lead_diagnostics (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  lead_id INTEGER NOT NULL UNIQUE,
-  submission_id TEXT,
-  objective TEXT,
-  role TEXT,
-  segment TEXT,
-  experience TEXT,
-  team_size TEXT,
-  city TEXT,
-  score INTEGER,
-  classification TEXT,
-  primary_gap TEXT,
-  pain_statement TEXT,
-  reason_now TEXT,
-  timeframe TEXT,
-  investment_intent TEXT,
-  fit_score INTEGER,
-  priority TEXT,
-  answers_json TEXT DEFAULT '{}',
-  raw_payload_json TEXT DEFAULT '{}',
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (lead_id) REFERENCES commercial_leads(id) ON DELETE CASCADE,
-  UNIQUE(agency_id, client_id, submission_id)
-);
-
-CREATE TABLE IF NOT EXISTS commercial_lead_imports (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  created_by INTEGER NOT NULL,
-  filename TEXT,
-  total_rows INTEGER DEFAULT 0,
-  valid_rows INTEGER DEFAULT 0,
-  created_count INTEGER DEFAULT 0,
-  updated_count INTEGER DEFAULT 0,
-  skipped_count INTEGER DEFAULT 0,
-  error_count INTEGER DEFAULT 0,
-  duplicate_mode TEXT DEFAULT 'skip',
-  mapping_json TEXT DEFAULT '{}',
-  created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
-);
-
-CREATE TABLE IF NOT EXISTS commercial_niches (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  created_by INTEGER NOT NULL,
-  name TEXT NOT NULL COLLATE NOCASE,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-  UNIQUE(agency_id, client_id, name)
 );
 
 CREATE TABLE IF NOT EXISTS financial_entries (
@@ -667,33 +489,6 @@ CREATE TABLE IF NOT EXISTS meta_organic_content_snapshots (
   FOREIGN KEY (organic_account_id) REFERENCES meta_organic_accounts(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS feed_cover_analyses (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  source_type TEXT NOT NULL CHECK(source_type IN ('planned','instagram')),
-  source_id TEXT NOT NULL,
-  image_ref TEXT,
-  content_type TEXT,
-  status TEXT NOT NULL DEFAULT 'review' CHECK(status IN ('cover_likely','frame_likely','review','missing_cover','not_applicable','error')),
-  confidence REAL DEFAULT 0,
-  cover_score INTEGER DEFAULT 0,
-  summary TEXT,
-  visual_signals TEXT DEFAULT '[]',
-  analysis_source TEXT DEFAULT 'rule',
-  model TEXT,
-  source_updated_at TEXT,
-  analyzed_at TEXT DEFAULT (datetime('now')),
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  UNIQUE(agency_id, client_id, source_type, source_id),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_feed_cover_analyses_client
-  ON feed_cover_analyses(agency_id, client_id, source_type, status);
-
 CREATE TABLE IF NOT EXISTS action_plans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL DEFAULT 1,
@@ -772,27 +567,6 @@ CREATE TABLE IF NOT EXISTS diagnostic_assessments (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS bee_campaign_briefing_responses (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  campaign_year INTEGER NOT NULL DEFAULT 2027,
-  title TEXT NOT NULL DEFAULT 'Briefing Conceitual — Campanha Bee 2027',
-  share_token TEXT NOT NULL UNIQUE,
-  status TEXT NOT NULL DEFAULT 'shared' CHECK(status IN ('shared','in_progress','submitted','archived')),
-  answers_json TEXT NOT NULL DEFAULT '{}',
-  progress INTEGER NOT NULL DEFAULT 0,
-  respondent_name TEXT,
-  created_by INTEGER,
-  submitted_at TEXT,
-  last_saved_at TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
 CREATE TABLE IF NOT EXISTS ai_dme_consolidations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
@@ -848,24 +622,6 @@ CREATE TABLE IF NOT EXISTS materials (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(agency_id, client_id, seed_key),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-
-CREATE TABLE IF NOT EXISTS material_links (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER,
-  title TEXT NOT NULL,
-  url TEXT NOT NULL,
-  description TEXT,
-  category TEXT DEFAULT 'Acesso rápido',
-  is_active INTEGER NOT NULL DEFAULT 1,
-  created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
@@ -1106,6 +862,7 @@ CREATE INDEX IF NOT EXISTS idx_video_events_review ON video_review_events(review
 
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_client ON meta_oauth_connections(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_meta_oauth_state_expiry ON meta_oauth_states(expires_at, used_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_instagram_oauth_user ON instagram_oauth_connections(instagram_user_id);
 CREATE INDEX IF NOT EXISTS idx_instagram_oauth_client ON instagram_oauth_connections(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_instagram_oauth_state_expiry ON instagram_oauth_states(expires_at, used_at);
 CREATE INDEX IF NOT EXISTS idx_story_settings_client ON instagram_story_settings(agency_id, client_id);
@@ -1137,42 +894,6 @@ CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id, ta
 CREATE INDEX IF NOT EXISTS idx_user_client_access_client ON user_client_access(client_id, user_id);
 `);
 
-// Cofre de senhas: os segredos ficam criptografados no banco e o acesso e exclusivo de administradores.
-db.exec(`
-CREATE TABLE IF NOT EXISTS client_credentials (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER,
-  created_by INTEGER,
-  service TEXT NOT NULL,
-  login_encrypted TEXT,
-  password_encrypted TEXT NOT NULL,
-  url_encrypted TEXT,
-  notes_encrypted TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS credential_access_logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  credential_id INTEGER,
-  user_id INTEGER,
-  action TEXT NOT NULL CHECK(action IN ('create','view_details','reveal_password','update','delete')),
-  ip_address TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (credential_id) REFERENCES client_credentials(id) ON DELETE SET NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_client_credentials_agency_client ON client_credentials(agency_id, client_id, service);
-CREATE INDEX IF NOT EXISTS idx_credential_access_logs_credential ON credential_access_logs(agency_id, credential_id, created_at DESC);
-`);
-
 // Migração leve: adiciona colunas novas em bancos já existentes (não falha se já existirem)
 function tryAddColumn(table, column, definition) {
   try {
@@ -1184,12 +905,6 @@ function tryAddColumn(table, column, definition) {
 tryAddColumn('posts', 'media_data', 'TEXT');
 tryAddColumn('posts', 'media_mime', 'TEXT');
 tryAddColumn('posts', 'share_token', 'TEXT');
-tryAddColumn('posts', 'public_view_token', 'TEXT');
-try {
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_public_view_token ON posts(public_view_token) WHERE public_view_token IS NOT NULL");
-} catch (err) {
-  // índice já existe ou o banco ainda está sendo migrado — ignora
-}
 tryAddColumn('users', 'avatar_data', 'TEXT');
 tryAddColumn('users', 'avatar_mime', 'TEXT');
 tryAddColumn('clients', 'avatar_data', 'TEXT');
@@ -1218,18 +933,8 @@ tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('posts', 'feed_visible', 'INTEGER DEFAULT 1');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
-tryAddColumn('tasks', 'project_name', 'TEXT');
-tryAddColumn('tasks', 'front_name', 'TEXT');
-tryAddColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
-tryAddColumn('tasks', 'goal', 'TEXT');
-tryAddColumn('tasks', 'deadline_label', 'TEXT');
+tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
-tryAddColumn('clients', 'social_media_share_token', 'TEXT');
-try {
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_social_media_share_token ON clients(social_media_share_token) WHERE social_media_share_token IS NOT NULL");
-} catch (err) {
-  // índice já existe ou o banco ainda está sendo migrado — ignora
-}
 
 // Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
 // registros existentes e, logo abaixo, todos os dados atuais são vinculados
@@ -1241,15 +946,6 @@ tryAddColumn('users', 'is_operations_head', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_commercial_team', 'INTEGER DEFAULT 0');
 tryAddColumn('commercial_leads', 'client_id', 'INTEGER REFERENCES clients(id)');
 tryAddColumn('commercial_leads', 'stage_key', 'TEXT');
-tryAddColumn('commercial_leads', 'whatsapp', 'TEXT');
-tryAddColumn('commercial_leads', 'cnpj', 'TEXT');
-tryAddColumn('commercial_leads', 'instagram', 'TEXT');
-tryAddColumn('commercial_leads', 'website', 'TEXT');
-tryAddColumn('commercial_leads', 'segment', 'TEXT');
-tryAddColumn('commercial_leads', 'position_title', 'TEXT');
-tryAddColumn('commercial_leads', 'city', 'TEXT');
-tryAddColumn('commercial_leads', 'state', 'TEXT');
-tryAddColumn('commercial_leads', 'priority', "TEXT DEFAULT 'medium'");
 tryAddColumn('clients', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('social_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('posts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
@@ -1260,7 +956,6 @@ tryAddColumn('meta_ad_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)')
 tryAddColumn('meta_organic_accounts', 'agency_id', 'INTEGER REFERENCES agencies(id)');
 tryAddColumn('meta_ad_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
 tryAddColumn('meta_organic_accounts', 'oauth_connection_id', 'INTEGER REFERENCES meta_oauth_connections(id)');
-tryAddColumn('meta_organic_accounts', 'instagram_oauth_connection_id', 'INTEGER REFERENCES instagram_oauth_connections(id)');
 tryAddColumn('instagram_story_mentions', 'instagram_oauth_connection_id', 'INTEGER');
 tryAddColumn('instagram_story_mentions', 'publish_channel', "TEXT DEFAULT 'instagram_login'");
 tryAddColumn('instagram_story_mentions', 'tagging_username', 'TEXT');
@@ -1271,100 +966,6 @@ tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');
 tryAddColumn('action_plans', 'annual_plan_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'annual_plan_progress', 'INTEGER DEFAULT 0');
-tryAddColumn('users', 'custom_role_id', 'INTEGER');
-
-// Permissões configuráveis por cargo. Mantemos os papéis internos legados
-// (admin/team/client) para compatibilidade e adicionamos cargos customizados
-// sobre o papel "team", sem reconstruir a tabela de usuários.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS custom_roles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agency_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    UNIQUE(agency_id, slug)
-  );
-
-  CREATE TABLE IF NOT EXISTS agency_role_permissions (
-    agency_id INTEGER NOT NULL,
-    role_key TEXT NOT NULL,
-    permission_key TEXT NOT NULL,
-    allowed INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (agency_id, role_key, permission_key),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS custom_role_permissions (
-    custom_role_id INTEGER NOT NULL,
-    permission_key TEXT NOT NULL,
-    allowed INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (custom_role_id, permission_key),
-    FOREIGN KEY (custom_role_id) REFERENCES custom_roles(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS agency_permission_visibility (
-    agency_id INTEGER NOT NULL,
-    permission_key TEXT NOT NULL,
-    owner_only INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (agency_id, permission_key),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_custom_roles_agency ON custom_roles(agency_id, name);
-  CREATE INDEX IF NOT EXISTS idx_users_custom_role ON users(agency_id, custom_role_id);
-`);
-
-// Histórico operacional e presença da equipe. O ZebraHub registra apenas ações
-// relevantes do sistema (criação, edição, status, importações etc.) e não captura
-// teclado, mouse, tela ou conteúdo sensível de senhas/tokens.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS activity_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agency_id INTEGER NOT NULL,
-    user_id INTEGER,
-    actor_name TEXT,
-    client_id INTEGER,
-    module TEXT NOT NULL DEFAULT 'system',
-    action TEXT NOT NULL DEFAULT 'updated',
-    entity_type TEXT,
-    entity_id TEXT,
-    entity_label TEXT,
-    summary TEXT NOT NULL,
-    details_json TEXT DEFAULT '{}',
-    path TEXT,
-    method TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS user_presence (
-    agency_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    last_seen TEXT DEFAULT (datetime('now')),
-    last_path TEXT,
-    last_client_id INTEGER,
-    updated_at TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (agency_id, user_id),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (last_client_id) REFERENCES clients(id) ON DELETE SET NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_activity_logs_agency_date ON activity_logs(agency_id, created_at DESC, id DESC);
-  CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date ON activity_logs(agency_id, user_id, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_activity_logs_client_date ON activity_logs(agency_id, client_id, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_activity_logs_module_date ON activity_logs(agency_id, module, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_user_presence_last_seen ON user_presence(agency_id, last_seen DESC);
-`);
-tryAddColumn('activity_logs', 'actor_name', 'TEXT');
 
 // Migração do módulo financeiro para bancos criados nas primeiras versões.
 // A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual
@@ -1409,17 +1010,13 @@ function migrateTaskStatuses() {
           task_type TEXT DEFAULT 'basic' CHECK(task_type IN ('basic','post','video')),
           title TEXT NOT NULL,
           description TEXT,
-          project_name TEXT,
-          front_name TEXT,
-          priority TEXT DEFAULT 'medium',
-          goal TEXT,
           content_type TEXT,
           caption TEXT,
           video_link TEXT,
           media_gallery TEXT,
           due_date TEXT,
-          deadline_label TEXT,
           status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
+          approval_status TEXT DEFAULT 'completed',
           is_featured INTEGER DEFAULT 0,
           attachment_data TEXT,
           attachment_mime TEXT,
@@ -1439,15 +1036,15 @@ function migrateTaskStatuses() {
       db.exec(`
         INSERT INTO tasks_migrated (
           id, agency_id, client_id, created_by, assignee_id, parent_task_id,
-          task_type, title, description, project_name, front_name, priority, goal, content_type, caption, video_link,
-          media_gallery, due_date, deadline_label, status, is_featured, attachment_data,
+          task_type, title, description, content_type, caption, video_link,
+          media_gallery, due_date, status, approval_status, is_featured, attachment_data,
           attachment_mime, attachment_filename, feed_post_id, created_at, updated_at
         )
         SELECT
           id, COALESCE(agency_id, (SELECT id FROM agencies ORDER BY id LIMIT 1), 1),
           client_id, created_by, assignee_id, parent_task_id,
-          COALESCE(task_type, 'basic'), title, description, project_name, front_name, COALESCE(priority, 'medium'), goal, content_type, caption,
-          video_link, media_gallery, due_date, deadline_label, status, COALESCE(is_featured, 0),
+          COALESCE(task_type, 'basic'), title, description, content_type, caption,
+          video_link, media_gallery, due_date, status, 'completed', COALESCE(is_featured, 0),
           attachment_data, attachment_mime, attachment_filename, feed_post_id,
           created_at, updated_at
         FROM tasks;
@@ -1567,12 +1164,6 @@ function migrateFinancialEntries() {
 }
 
 migrateTaskStatuses();
-// Reaplica as colunas operacionais depois da possível reconstrução da tabela de tarefas.
-tryAddColumn('tasks', 'project_name', 'TEXT');
-tryAddColumn('tasks', 'front_name', 'TEXT');
-tryAddColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
-tryAddColumn('tasks', 'goal', 'TEXT');
-tryAddColumn('tasks', 'deadline_label', 'TEXT');
 migrateFinancialEntries();
 
 // Posts antigos devem continuar visíveis na grade após a criação da coluna.
@@ -1607,27 +1198,6 @@ const initializeAgencyScope = db.transaction(() => {
   db.prepare(`UPDATE meta_ad_accounts SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = meta_ad_accounts.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
   db.prepare(`UPDATE meta_organic_accounts SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = meta_organic_accounts.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
   db.prepare(`UPDATE action_plans SET agency_id = COALESCE((SELECT agency_id FROM clients WHERE clients.id = action_plans.client_id), ?) WHERE agency_id IS NULL`).run(defaultAgencyId);
-
-  // Super Administrador: usa uma identidade configurada no servidor, em vez de
-  // depender de "primeiro admin cadastrado". SUPERADMIN_EMAIL tem prioridade;
-  // em instalações existentes, BOOTSTRAP_ADMIN_EMAIL funciona como fallback.
-  const configuredSuperAdminEmail = String(
-    process.env.SUPERADMIN_EMAIL || process.env.BOOTSTRAP_ADMIN_EMAIL || ''
-  ).trim().toLowerCase();
-
-  if (configuredSuperAdminEmail) {
-    const configuredSuperAdmin = db.prepare(`
-      SELECT id
-      FROM users
-      WHERE lower(email) = ? AND role = 'admin'
-      LIMIT 1
-    `).get(configuredSuperAdminEmail);
-
-    if (configuredSuperAdmin) {
-      db.prepare('UPDATE users SET is_platform_owner = 0 WHERE id <> ? AND is_platform_owner = 1').run(configuredSuperAdmin.id);
-      db.prepare('UPDATE users SET is_platform_owner = 1, is_agency_owner = 1 WHERE id = ?').run(configuredSuperAdmin.id);
-    }
-  }
 
   const platformOwner = db.prepare('SELECT id FROM users WHERE is_platform_owner = 1 LIMIT 1').get();
   if (!platformOwner) {
@@ -1674,221 +1244,22 @@ if (tableHasColumn('commercial_leads', 'stage_key')) {
   `);
 }
 
-// CRM operacional de rematrículas da Bee. Mantemos as tabelas separadas do
-// Comercial geral para que famílias/alunos não se misturem com leads de vendas.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS reenrollment_campaigns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agency_id INTEGER NOT NULL,
-    client_id INTEGER NOT NULL,
-    campaign_year INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    target_rate REAL DEFAULT 92,
-    target_classified_rate REAL DEFAULT 100,
-    target_unexplained_losses INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'active' CHECK(status IN ('planning','active','closed')),
-    created_by INTEGER NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-    UNIQUE(agency_id, client_id, campaign_year)
-  );
-
-  CREATE TABLE IF NOT EXISTS reenrollment_families (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agency_id INTEGER NOT NULL,
-    client_id INTEGER NOT NULL,
-    campaign_id INTEGER NOT NULL,
-    created_by INTEGER NOT NULL,
-    owner_user_id INTEGER,
-    family_name TEXT NOT NULL,
-    responsible_name TEXT,
-    phone TEXT,
-    email TEXT,
-    unit TEXT,
-    current_class TEXT,
-    future_class TEXT,
-    student_names_json TEXT DEFAULT '[]',
-    students_count INTEGER DEFAULT 1,
-    financial_profile TEXT DEFAULT 'paying',
-    scholarship_percent REAL DEFAULT 0,
-    monthly_value REAL DEFAULT 0,
-    financial_notes TEXT,
-    pendencies TEXT,
-    stage_key TEXT DEFAULT 'base_validated',
-    intention TEXT,
-    objection_type TEXT,
-    objection_notes TEXT,
-    signals_json TEXT DEFAULT '[]',
-    score_experience INTEGER,
-    score_intention INTEGER,
-    score_financial INTEGER,
-    score_behavior INTEGER,
-    risk_score INTEGER,
-    risk_band TEXT DEFAULT 'unclassified',
-    next_action TEXT,
-    next_action_date TEXT,
-    decision_deadline TEXT,
-    proposal_amount REAL DEFAULT 0,
-    proposal_sent_at TEXT,
-    last_contact_at TEXT,
-    exit_reason TEXT,
-    exit_destination TEXT,
-    vacancy_confirmed INTEGER DEFAULT 0,
-    financial_clearance INTEGER DEFAULT 0,
-    policy_clearance INTEGER DEFAULT 0,
-    contract_confirmed INTEGER DEFAULT 0,
-    documents_confirmed INTEGER DEFAULT 0,
-    finance_confirmed INTEGER DEFAULT 0,
-    notes TEXT,
-    concluded_at TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-    FOREIGN KEY (campaign_id) REFERENCES reenrollment_campaigns(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS reenrollment_activities (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agency_id INTEGER NOT NULL,
-    campaign_id INTEGER NOT NULL,
-    family_id INTEGER NOT NULL,
-    created_by INTEGER NOT NULL,
-    activity_type TEXT DEFAULT 'note' CHECK(activity_type IN ('note','call','whatsapp','meeting','email','stage_change','system')),
-    description TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    FOREIGN KEY (campaign_id) REFERENCES reenrollment_campaigns(id) ON DELETE CASCADE,
-    FOREIGN KEY (family_id) REFERENCES reenrollment_families(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
-  );
-
-  CREATE TABLE IF NOT EXISTS bee_family_survey_responses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    submission_id TEXT NOT NULL UNIQUE,
-    agency_id INTEGER NOT NULL,
-    client_id INTEGER NOT NULL,
-    family_id INTEGER,
-    responsible_name TEXT NOT NULL,
-    student_name TEXT NOT NULL,
-    whatsapp TEXT NOT NULL,
-    email TEXT,
-    unit TEXT NOT NULL,
-    school TEXT NOT NULL,
-    class_group TEXT NOT NULL,
-    experience INTEGER NOT NULL,
-    wellbeing INTEGER NOT NULL,
-    development INTEGER NOT NULL,
-    christian_alignment INTEGER NOT NULL,
-    communication INTEGER NOT NULL,
-    support INTEGER NOT NULL,
-    value_perception INTEGER NOT NULL,
-    future_fit INTEGER NOT NULL,
-    relationship INTEGER NOT NULL,
-    nps INTEGER NOT NULL,
-    trust_strength TEXT,
-    improvement TEXT,
-    contact_requested INTEGER NOT NULL DEFAULT 0,
-    health_score INTEGER NOT NULL,
-    risk_level TEXT NOT NULL DEFAULT 'stable' CHECK(risk_level IN ('strong','stable','attention','high')),
-    risk_signals_json TEXT NOT NULL DEFAULT '[]',
-    follow_up_status TEXT NOT NULL DEFAULT 'new' CHECK(follow_up_status IN ('new','in_follow_up','resolved')),
-    follow_up_notes TEXT,
-    handled_by INTEGER,
-    handled_at TEXT,
-    received_at TEXT NOT NULL DEFAULT (datetime('now')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-    FOREIGN KEY (family_id) REFERENCES reenrollment_families(id) ON DELETE SET NULL,
-    FOREIGN KEY (handled_by) REFERENCES users(id) ON DELETE SET NULL
-  );
-`);
-
-// A mesma conta do Instagram pode existir em agencias diferentes, mas dentro da
-// mesma agencia ela deve pertencer a apenas um cliente. A versao anterior criava
-// um indice global por instagram_user_id, o que podia bloquear conexoes validas.
-try {
-  db.exec(`
-    DROP INDEX IF EXISTS idx_instagram_oauth_user;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_instagram_oauth_user_agency
-      ON instagram_oauth_connections(agency_id, instagram_user_id);
-  `);
-} catch (error) {
-  console.warn('[DB] Nao foi possivel ajustar o indice do Instagram OAuth:', error.message);
-}
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS task_calendar_shares (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agency_id INTEGER NOT NULL,
-    client_id INTEGER NOT NULL,
-    token TEXT NOT NULL UNIQUE,
-    share_year INTEGER NOT NULL,
-    share_month INTEGER NOT NULL,
-    show_status INTEGER NOT NULL DEFAULT 1,
-    show_assignees INTEGER NOT NULL DEFAULT 0,
-    show_description INTEGER NOT NULL DEFAULT 0,
-    include_posted INTEGER NOT NULL DEFAULT 1,
-    active INTEGER NOT NULL DEFAULT 1,
-    created_by INTEGER NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-    UNIQUE(agency_id, client_id, share_year, share_month)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_task_calendar_shares_client_month
-    ON task_calendar_shares(agency_id, client_id, share_year, share_month, active);
-`);
-
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_tasks_featured ON tasks(agency_id, is_featured, status, due_date);
-  CREATE INDEX IF NOT EXISTS idx_task_request_links_client ON client_task_request_links(agency_id, client_id, active);
-  CREATE INDEX IF NOT EXISTS idx_task_requests_client ON client_task_requests(agency_id, client_id, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_task_request_events_request ON client_task_request_events(agency_id, request_id, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(agency_id, user_id, read_at, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, id DESC);
-  CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_room_members(user_id, room_id);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage ON commercial_leads(agency_id, stage, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage_key ON commercial_leads(agency_id, client_id, stage_key, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_stages_client_position ON commercial_stages(agency_id, client_id, position);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_client_stage ON commercial_leads(agency_id, client_id, stage, updated_at);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_next_action ON commercial_leads(agency_id, next_action_date);
-  CREATE INDEX IF NOT EXISTS idx_commercial_leads_email ON commercial_leads(agency_id, client_id, email);
-  CREATE INDEX IF NOT EXISTS idx_commercial_leads_phone ON commercial_leads(agency_id, client_id, phone);
-  CREATE INDEX IF NOT EXISTS idx_commercial_leads_cnpj ON commercial_leads(agency_id, client_id, cnpj);
-  CREATE INDEX IF NOT EXISTS idx_commercial_lead_imports_client ON commercial_lead_imports(agency_id, client_id, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_commercial_niches_client ON commercial_niches(agency_id, client_id, name);
   CREATE INDEX IF NOT EXISTS idx_commercial_activities_lead ON commercial_activities(agency_id, lead_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_client ON commercial_lead_diagnostics(agency_id, client_id, fit_score, created_at);
-  CREATE INDEX IF NOT EXISTS idx_commercial_diagnostics_submission ON commercial_lead_diagnostics(agency_id, client_id, submission_id);
   CREATE INDEX IF NOT EXISTS idx_posts_agency ON posts(agency_id, status, scheduled_at);
   CREATE INDEX IF NOT EXISTS idx_financial_agency ON financial_entries(agency_id, due_date);
-  CREATE INDEX IF NOT EXISTS idx_bee_campaign_briefing_client ON bee_campaign_briefing_responses(agency_id, client_id, campaign_year, updated_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_bee_campaign_briefing_token ON bee_campaign_briefing_responses(share_token);
   CREATE INDEX IF NOT EXISTS idx_ai_dme_consolidations_client ON ai_dme_consolidations(agency_id, client_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_material_boards_agency_client ON material_boards(agency_id, client_id, is_active, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_materials_agency_client ON materials(agency_id, client_id, is_active, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_material_links_agency_client ON material_links(agency_id, client_id, is_active, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_reenrollment_campaign_client ON reenrollment_campaigns(agency_id, client_id, campaign_year);
-  CREATE INDEX IF NOT EXISTS idx_reenrollment_family_stage ON reenrollment_families(agency_id, campaign_id, stage_key, updated_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_reenrollment_family_risk ON reenrollment_families(agency_id, campaign_id, risk_score, next_action_date);
-  CREATE INDEX IF NOT EXISTS idx_reenrollment_activity_family ON reenrollment_activities(agency_id, family_id, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_bee_family_survey_client ON bee_family_survey_responses(agency_id, client_id, received_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_bee_family_survey_risk ON bee_family_survey_responses(agency_id, client_id, risk_level, health_score, follow_up_status);
-  CREATE INDEX IF NOT EXISTS idx_bee_family_survey_family ON bee_family_survey_responses(agency_id, family_id, received_at DESC);
 `);
 
 const installationId = db.prepare("SELECT value FROM system_meta WHERE key = 'installation_id'").get();
@@ -1916,7 +1287,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '38', datetime('now'))
+   VALUES ('schema_version', '29', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

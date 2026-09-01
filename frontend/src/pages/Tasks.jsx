@@ -1,17 +1,12 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, CalendarCheck2, SlidersHorizontal } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
-import TaskCsvModal, { downloadTaskCsvModel } from '../components/TaskCsvModal.jsx';
-import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
-import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
-import Approval from './Approval.jsx';
-import VideoApprovals from './VideoApprovals.jsx';
-import { hasPermission } from '../permissions.js';
+import PageHero from '../components/PageHero.jsx';
 
 const STATUS_COLUMNS = [
   { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
@@ -19,6 +14,19 @@ const STATUS_COLUMNS = [
   { key: 'done', label: 'Concluída', badge: 'bg-emerald-100 text-emerald-700' },
   { key: 'posted', label: 'Postado', badge: 'bg-indigo-100 text-indigo-700' }
 ];
+
+const APPROVAL_COLUMNS = [
+  { key: 'completed', label: 'Concluídos', badge: 'bg-emerald-100 text-emerald-700', accent: 'border-emerald-200/80 bg-emerald-50/35' },
+  { key: 'send', label: 'Enviar', badge: 'bg-blue-100 text-blue-700', accent: 'border-blue-200/80 bg-blue-50/35' },
+  { key: 'pending_approval', label: 'Em aprovação', badge: 'bg-amber-100 text-amber-700', accent: 'border-amber-200/80 bg-amber-50/35' },
+  { key: 'changes_requested', label: 'Em alteração', badge: 'bg-orange-100 text-orange-700', accent: 'border-orange-200/80 bg-orange-50/35' },
+  { key: 'approved', label: 'Aprovado', badge: 'bg-indigo-100 text-indigo-700', accent: 'border-indigo-200/80 bg-indigo-50/35' },
+];
+
+function approvalStage(task) {
+  const stage = String(task?.approval_status || 'completed');
+  return APPROVAL_COLUMNS.some((column) => column.key === stage) ? stage : 'completed';
+}
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
 
@@ -34,39 +42,6 @@ function formatTaskDate(value) {
   const parts = dateParts(value);
   if (!parts.year || !parts.month || !parts.day) return '';
   return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`;
-}
-
-function priorityLabel(value) {
-  if (value === 'high') return 'Alta';
-  if (value === 'low') return 'Baixa';
-  return 'Média';
-}
-
-function localTodayIso() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function isTaskOverdue(task) {
-  const due = String(task?.due_date || '').slice(0, 10);
-  if (!due) return false;
-  if (task?.status === 'done' || task?.status === 'posted') return false;
-  return due < localTodayIso();
-}
-
-function taskMatchesFilters(task, filters) {
-  if (filters.status && task.status !== filters.status) return false;
-  if (filters.priority && (task.priority || 'medium') !== filters.priority) return false;
-  if (filters.project && String(task.project_name || '') !== filters.project) return false;
-  if (filters.front && String(task.front_name || '') !== filters.front) return false;
-  if (filters.assignee_id && !(task.assignees || []).some((item) => String(item.id) === String(filters.assignee_id))) return false;
-  const due = String(task.due_date || '').slice(0, 10);
-  if (filters.due_from && (!due || due < filters.due_from)) return false;
-  if (filters.due_to && (!due || due > filters.due_to)) return false;
-  return true;
 }
 
 function sortTasks(items) {
@@ -143,23 +118,6 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
             ) : null}
           </div>
           {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
-          {t.client_request_id && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">
-                <MessageSquareText size={10} /> Solicitação do cliente
-              </span>
-              {t.request_urgency === 'urgent' && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700"><AlertTriangle size={10} /> Cliente marcou urgente</span>
-              )}
-            </div>
-          )}
-          {(t.project_name || t.front_name || t.priority) && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {t.project_name && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600">{t.project_name}</span>}
-              {t.front_name && <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700">{t.front_name}</span>}
-              {t.priority && <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${t.priority === 'high' ? 'bg-rose-50 text-rose-700' : t.priority === 'low' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{priorityLabel(t.priority)}</span>}
-            </div>
-          )}
           {t.parent_task_id && (
             <p className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600" title={t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}>
               <ListTree size={10} className="shrink-0" />
@@ -176,14 +134,11 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
           <span className="text-[10px] text-slate-400 shrink-0">{t.subtask_done}/{t.subtask_total}</span>
         </div>
       )}
-      {t.client_request_id && t.requested_due_date && (
-        <p className="mt-3 flex items-center gap-1 text-[11px] text-violet-600"><Calendar size={11} /> Desejado pelo cliente: {formatTaskDate(t.requested_due_date)}</p>
-      )}
       <div className="flex items-center justify-between mt-3">
         <AssigneeStack assignees={t.assignees} />
-        {(t.due_date || t.deadline_label) && (
+        {t.due_date && (
           <span className="text-xs text-slate-400 flex items-center gap-1">
-            <Calendar size={11} /> {t.due_date ? formatTaskDate(t.due_date) : t.deadline_label}
+            <Calendar size={11} /> {formatTaskDate(t.due_date)}
           </span>
         )}
       </div>
@@ -191,46 +146,9 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
   );
 }
 
-function InlineAssigneePicker({ task, teamUsers, updating, onChange }) {
-  const currentAssignees = task.assignees || [];
-  const selectedValue = currentAssignees.length === 1
-    ? String(currentAssignees[0].id)
-    : currentAssignees.length > 1
-      ? '__multiple'
-      : '';
-  const clientId = Number(task.client_id) || null;
-  const selectedIds = new Set(currentAssignees.map((item) => Number(item.id)));
-  const availableUsers = teamUsers.filter((member) => {
-    if (member.role === 'admin' || member.is_operations_head || !clientId) return true;
-    if ((member.client_ids || []).map(Number).includes(clientId)) return true;
-    return selectedIds.has(Number(member.id));
-  });
-
-  return (
-    <div className="shrink-0" onClick={(event) => event.stopPropagation()}>
-      <select
-        value={selectedValue}
-        disabled={updating}
-        onChange={(event) => onChange(task, event.target.value)}
-        className="max-w-[190px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 outline-none transition focus:border-[#0969ff] focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
-        title={currentAssignees.length ? currentAssignees.map((item) => item.name).join(', ') : 'Selecionar responsável'}
-      >
-        {currentAssignees.length > 1 && <option value="__multiple" disabled>{currentAssignees.length} responsáveis atuais</option>}
-        <option value="">Sem responsável</option>
-        {availableUsers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-      </select>
-    </div>
-  );
-}
-
 export default function Tasks() {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
-  const canCreateTasks = hasPermission(user, 'tasks.create');
-  const canApproval = hasPermission(user, 'tasks.approval');
-  const canImportTasks = hasPermission(user, 'tasks.import');
-  const canExportTasks = hasPermission(user, 'tasks.export');
-  const canShareTaskCalendar = hasPermission(user, 'tasks.share_calendar');
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('kanban');
   const [tasks, setTasks] = useState([]);
@@ -245,6 +163,7 @@ export default function Tasks() {
   const [editingSubtask, setEditingSubtask] = useState(null);
   const [subtasks, setSubtasks] = useState([]);
   const [dragOverCol, setDragOverCol] = useState(null);
+  const [dragOverApprovalCol, setDragOverApprovalCol] = useState(null);
   const [calendarDrag, setCalendarDrag] = useState(null);
   const [calendarDropDay, setCalendarDropDay] = useState(null);
   const [calendarFeedback, setCalendarFeedback] = useState('');
@@ -263,72 +182,6 @@ export default function Tasks() {
   const [loadingParentOptions, setLoadingParentOptions] = useState(false);
   const [convertingTask, setConvertingTask] = useState(false);
   const [convertError, setConvertError] = useState('');
-  const [showCsvImport, setShowCsvImport] = useState(false);
-  const [showRequestLink, setShowRequestLink] = useState(false);
-  const [showCalendarShare, setShowCalendarShare] = useState(false);
-  const [showTaskActions, setShowTaskActions] = useState(false);
-  const taskActionsRef = useRef(null);
-  const [hidePosted, setHidePosted] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('zebrahub.tasks.hidePosted') === '1';
-  });
-  const [subtaskAssigneeUpdatingId, setSubtaskAssigneeUpdatingId] = useState(null);
-  const [csvBusy, setCsvBusy] = useState(false);
-  const [csvNotice, setCsvNotice] = useState('');
-  const [filters, setFilters] = useState({
-    status: '',
-    priority: '',
-    project: '',
-    front: '',
-    assignee_id: '',
-    due_from: '',
-    due_to: '',
-  });
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [showOverdueOnly, setShowOverdueOnly] = useState(() => searchParams.get('atrasadas') === '1');
-
-  useEffect(() => {
-    if (!showTaskActions) return undefined;
-
-    function closeActions(event) {
-      if (taskActionsRef.current && !taskActionsRef.current.contains(event.target)) {
-        setShowTaskActions(false);
-      }
-    }
-
-    function closeOnEscape(event) {
-      if (event.key === 'Escape') setShowTaskActions(false);
-    }
-
-    document.addEventListener('mousedown', closeActions);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeActions);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [showTaskActions]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('zebrahub.tasks.hidePosted', hidePosted ? '1' : '0');
-    }
-  }, [hidePosted]);
-
-  useEffect(() => {
-    const shouldShow = searchParams.get('atrasadas') === '1';
-    setShowOverdueOnly(shouldShow);
-  }, [searchParams]);
-
-  const operationalArea = user?.role === 'client' ? 'approval' : (searchParams.get('area') === 'aprovacao' && canApproval ? 'approval' : 'tasks');
-  const approvalView = searchParams.get('approval_view') === 'videos' ? 'videos' : 'posts';
-
-  function setOperationalArea(nextArea) {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('task_id');
-    if (nextArea === 'approval') nextParams.set('area', 'aprovacao');
-    else nextParams.delete('area');
-    setSearchParams(nextParams);
-  }
 
   const effectiveClientId = user?.role === 'client'
     ? (user.client_id ? String(user.client_id) : null)
@@ -347,55 +200,6 @@ export default function Tasks() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => loadTasks().catch(() => {}), 30000);
-    return () => window.clearInterval(interval);
-  }, [loadTasks]);
-
-  async function exportCsv() {
-    setCsvBusy(true);
-    setCsvNotice('');
-    setTaskError('');
-    try {
-      const params = {
-        ...(effectiveClientId ? { client_id: effectiveClientId } : {}),
-        ...(selectedClient?.name ? { client_name: selectedClient.name } : {}),
-        ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value)),
-      };
-      const response = await api.get('/tasks/csv/export', { params, responseType: 'blob' });
-      const clientPart = String(selectedClient?.name || 'todos').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'todos';
-      const projectPart = String(filters.project || 'tarefas').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'tarefas';
-      const filename = `tarefas_${clientPart}_${projectPart}_${new Date().toISOString().slice(0, 10)}.csv`;
-      const url = URL.createObjectURL(response.data);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 500);
-      setCsvNotice('Arquivo CSV gerado com sucesso.');
-    } catch (error) {
-      setTaskError(error.response?.data?.error || 'Não foi possível exportar as tarefas.');
-    } finally {
-      setCsvBusy(false);
-    }
-  }
-
-  async function downloadCsvModel() {
-    setCsvBusy(true);
-    setCsvNotice('');
-    setTaskError('');
-    try {
-      await downloadTaskCsvModel();
-      setCsvNotice('Modelo CSV baixado com sucesso.');
-    } catch (error) {
-      setTaskError(error.response?.data?.error || 'Não foi possível baixar o modelo CSV.');
-    } finally {
-      setCsvBusy(false);
-    }
-  }
 
   useEffect(() => {
     const requestedTaskId = Number(searchParams.get('task_id'));
@@ -461,7 +265,7 @@ export default function Tasks() {
     try {
       const { data } = await api.get('/tasks/' + taskId);
       setSelectedTask((previous) => previous?.id === taskId
-        ? { ...previous, ...data.task, request_files: data.request_files || [], request_events: data.request_events || [], details_loading: false }
+        ? { ...previous, ...data.task, details_loading: false }
         : previous);
       setSubtasks(data.subtasks || []);
       loadTaskMedia(taskId);
@@ -485,6 +289,32 @@ export default function Tasks() {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
     setCalendarTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
     await api.put('/tasks/' + taskId, { status });
+  }
+
+  async function updateApprovalStatus(taskId, approvalStatus) {
+    const previousTask = tasks.find((task) => task.id === taskId);
+    if (!previousTask) return;
+
+    setTaskError('');
+    setTasks((previous) => previous.map((task) => task.id === taskId
+      ? { ...task, approval_status: approvalStatus }
+      : task));
+    setSelectedTask((previous) => previous?.id === taskId
+      ? { ...previous, approval_status: approvalStatus }
+      : previous);
+
+    try {
+      const { data } = await api.put('/tasks/' + taskId, { approval_status: approvalStatus });
+      if (data.task) upsertTaskSummary(data.task);
+    } catch (error) {
+      setTasks((previous) => previous.map((task) => task.id === taskId
+        ? { ...task, approval_status: previousTask.approval_status || 'completed' }
+        : task));
+      setSelectedTask((previous) => previous?.id === taskId
+        ? { ...previous, approval_status: previousTask.approval_status || 'completed' }
+        : previous);
+      setTaskError(error.response?.data?.error || 'Não foi possível mover a tarefa no fluxo de aprovação.');
+    }
   }
 
   async function toggleFeatured(taskId, nextValue) {
@@ -524,28 +354,6 @@ export default function Tasks() {
     setCalendarTasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
     await api.put('/tasks/' + subtaskId, { status });
     loadTasks();
-  }
-
-  async function setSubtaskAssignee(subtask, userId) {
-    if (!subtask || subtaskAssigneeUpdatingId || userId === '__multiple') return;
-    const previousAssignees = subtask.assignees || [];
-    const nextIds = userId ? [Number(userId)] : [];
-    const nextAssignees = teamUsers.filter((member) => nextIds.includes(Number(member.id)));
-
-    setSubtaskAssigneeUpdatingId(subtask.id);
-    setTaskError('');
-    setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: nextAssignees } : item));
-    setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: nextAssignees } : item));
-
-    try {
-      await api.put('/tasks/' + subtask.id, { assignee_ids: nextIds });
-    } catch (error) {
-      setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: previousAssignees } : item));
-      setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: previousAssignees } : item));
-      setTaskError(error.response?.data?.error || 'Não foi possível atualizar o responsável da subtarefa.');
-    } finally {
-      setSubtaskAssigneeUpdatingId(null);
-    }
   }
 
   async function deleteSubtask(subtaskId) {
@@ -685,7 +493,11 @@ export default function Tasks() {
   }
 
   function canDragCalendarItem(item) {
-    return Boolean(item && canCreateTasks);
+    if (!item) return false;
+    if (['admin', 'team'].includes(user?.role)) return true;
+    return user?.role === 'client'
+      && Number(item.created_by) === Number(user.id)
+      && item.status === 'pending';
   }
 
   function isoDateForCalendarDay(day) {
@@ -777,6 +589,17 @@ export default function Tasks() {
     if (task && task.status !== columnKey) updateStatus(taskId, columnKey);
   }
 
+  function handleApprovalDrop(e, columnKey) {
+    e.preventDefault();
+    setDragOverApprovalCol(null);
+    const taskId = Number(e.dataTransfer.getData('text/task-id'));
+    if (!taskId) return;
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const currentStage = approvalStage(task);
+    if (currentStage !== columnKey) updateApprovalStatus(taskId, columnKey);
+  }
+
   function nextStatus(status) {
     if (status === 'pending') return 'in_progress';
     if (status === 'in_progress') return 'done';
@@ -784,17 +607,10 @@ export default function Tasks() {
     return 'pending';
   }
 
-  const filteredTasks = tasks.filter((task) => taskMatchesFilters(task, filters));
-  const postedFilteredTasks = hidePosted ? filteredTasks.filter((task) => task.status !== 'posted') : filteredTasks;
-  const visibleFilteredTasks = showOverdueOnly ? postedFilteredTasks.filter(isTaskOverdue) : postedFilteredTasks;
-  const visibleStatusColumns = showOverdueOnly
-    ? STATUS_COLUMNS.filter((column) => column.key === 'pending' || column.key === 'in_progress')
-    : (hidePosted ? STATUS_COLUMNS.filter((column) => column.key !== 'posted') : STATUS_COLUMNS);
-  const projectOptions = [...new Set(tasks.map((task) => task.project_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const frontOptions = [...new Set(tasks.map((task) => task.front_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const hasActiveFilters = Object.values(filters).some(Boolean);
-
-  const canModifySelectedTask = Boolean(selectedTask && canCreateTasks);
+  const canModifySelectedTask = selectedTask && (
+    ['admin', 'team'].includes(user?.role) ||
+    (user?.role === 'client' && Number(selectedTask.created_by) === Number(user.id) && selectedTask.status === 'pending')
+  );
 
   const subtaskOverview = tasks.reduce((summary, task) => ({
     total: summary.total + Number(task.subtask_total || 0),
@@ -808,10 +624,14 @@ export default function Tasks() {
     total: tasks.length + subtaskOverview.total,
     pending: tasks.filter((task) => task.status === 'pending').length + subtaskOverview.pending,
     inProgress: tasks.filter((task) => task.status === 'in_progress').length + subtaskOverview.inProgress,
-    overdue: tasks.filter(isTaskOverdue).length,
     done: tasks.filter((task) => task.status === 'done').length + (subtaskOverview.done - subtaskOverview.posted),
     posted: tasks.filter((task) => task.status === 'posted').length + subtaskOverview.posted,
   };
+
+  const approvalTasks = tasks.filter((task) => {
+    const stage = approvalStage(task);
+    return task.status === 'done' || stage !== 'completed';
+  });
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -820,9 +640,7 @@ export default function Tasks() {
   function tasksForDay(day) {
     if (!day) return [];
     return calendarTasks.filter((t) => {
-      if (!t.due_date || !taskMatchesFilters(t, filters)) return false;
-      if (hidePosted && t.status === 'posted') return false;
-      if (showOverdueOnly && !isTaskOverdue(t)) return false;
+      if (!t.due_date) return false;
       const parts = dateParts(t.due_date);
       return parts.year === year && parts.month === month + 1 && parts.day === day;
     });
@@ -836,372 +654,125 @@ export default function Tasks() {
     setShowForm(true);
   }
 
-  function togglePostedVisibility() {
-    setHidePosted((current) => {
-      const next = !current;
-      if (next && filters.status === 'posted') {
-        setFilters((currentFilters) => ({ ...currentFilters, status: '' }));
-      }
-      return next;
-    });
-  }
-
-  function quickPeriodRange(key) {
-    const now = new Date();
-    const toIso = (date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    if (key === '7d') {
-      const end = new Date(now);
-      end.setDate(end.getDate() + 6);
-      return { due_from: toIso(now), due_to: toIso(end) };
-    }
-
-    if (key === 'month') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return { due_from: toIso(start), due_to: toIso(end) };
-    }
-
-    if (key === '30d') {
-      const start = new Date(now);
-      start.setDate(start.getDate() - 29);
-      return { due_from: toIso(start), due_to: toIso(now) };
-    }
-
-    return { due_from: '', due_to: '' };
-  }
-
-  function applyQuickPeriod(key) {
-    const range = quickPeriodRange(key);
-    setFilters((current) => ({ ...current, ...range }));
-  }
-
-  function quickPeriodIsActive(key) {
-    const range = quickPeriodRange(key);
-    return filters.due_from === range.due_from && filters.due_to === range.due_to;
-  }
-
-  function toggleOverdueVisibility() {
-    const nextParams = new URLSearchParams(searchParams);
-    if (showOverdueOnly) nextParams.delete('atrasadas');
-    else {
-      nextParams.set('atrasadas', '1');
-      nextParams.delete('task_id');
-      if (filters.status === 'done' || filters.status === 'posted') {
-        setFilters((current) => ({ ...current, status: '' }));
-      }
-    }
-    setSearchParams(nextParams);
-  }
-
-  const areaSwitcher = (
-    <div className="segmented-control">
-      {user?.role !== 'client' && <button
-        type="button"
-        onClick={() => setOperationalArea('tasks')}
-        className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'tasks' ? 'segmented-control-button-active' : '')}
-      >
-        <ListChecks size={15} /> Tarefas
-      </button>}
-      {canApproval && <button
-        type="button"
-        onClick={() => setOperationalArea('approval')}
-        className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'approval' ? 'segmented-control-button-active' : '')}
-      >
-        <CalendarCheck2 size={15} /> Aprovação
-      </button>}
-    </div>
-  );
-
-  const taskActionControls = (
-    <div className="flex shrink-0 items-center gap-2">
-      {canCreateTasks && <button
-        onClick={() => { setDefaultTaskDate(''); setShowForm(true); }}
-        className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_20px_rgba(9,105,255,0.16)] transition hover:-translate-y-0.5"
-        style={{ backgroundColor: 'var(--agency-primary, #0969ff)' }}
-      >
-        <Plus size={15} /> <span className="hidden sm:inline">Nova tarefa</span><span className="sm:hidden">Nova</span>
-      </button>}
-
-      {(canImportTasks || canExportTasks || canCreateTasks) && <div ref={taskActionsRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setShowTaskActions((open) => !open)}
-          aria-haspopup="menu"
-          aria-expanded={showTaskActions}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300"
-        >
-          <MoreHorizontal size={15} /> <span className="hidden sm:inline">Mais ações</span>
-          <ChevronDown size={13} className={`transition-transform ${showTaskActions ? 'rotate-180' : ''}`} />
-        </button>
-
-        {showTaskActions && (
-          <div
-            role="menu"
-            className="absolute right-0 top-[calc(100%+8px)] z-50 w-[245px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_22px_55px_rgba(15,23,42,0.16)]"
-          >
-            {canImportTasks && <button
-              type="button"
-              role="menuitem"
-              onClick={() => { setShowTaskActions(false); setShowCsvImport(true); }}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              <Upload size={16} className="text-slate-400" /> Importar CSV
-            </button>}
-            {canExportTasks && <button
-              type="button"
-              role="menuitem"
-              disabled={csvBusy}
-              onClick={() => { setShowTaskActions(false); exportCsv(); }}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-            >
-              <Download size={16} className="text-slate-400" /> Exportar CSV
-            </button>}
-            {canImportTasks && <button
-              type="button"
-              role="menuitem"
-              disabled={csvBusy}
-              onClick={() => { setShowTaskActions(false); downloadCsvModel(); }}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-            >
-              <FileSpreadsheet size={16} className="text-slate-400" /> Baixar modelo CSV
-            </button>}
-            {canCreateTasks && (
-              <>
-                <div className="my-1 border-t border-slate-100" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={!selectedClient}
-                  onClick={() => {
-                    if (!selectedClient) return;
-                    setShowTaskActions(false);
-                    setShowRequestLink(true);
-                  }}
-                  title={selectedClient ? `Gerenciar link de solicitações de ${selectedClient.name}` : 'Selecione um cliente para gerar o link'}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Link2 size={16} className="text-slate-400" /> Link de solicitações
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>}
-    </div>
-  );
-
-  const taskCommandBar = (
-    <div className="toolbar-panel flex flex-wrap items-center gap-2.5 py-3">
-      <div className="shrink-0">{areaSwitcher}</div>
-
-      {operationalArea === 'tasks' && (
-        <>
-          <button
-            type="button"
-            onClick={() => setMobileFiltersOpen((open) => !open)}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-              mobileFiltersOpen || hasActiveFilters
-                ? 'border-blue-200 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <SlidersHorizontal size={14} />
-            Filtros{hasActiveFilters ? ' ativos' : ''}
-            <ChevronDown size={13} className={`transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5">
-            {[
-              { key: '7d', label: '7 dias' },
-              { key: 'month', label: 'Esse mês' },
-              { key: '30d', label: 'Últimos 30 dias' },
-              { key: 'total', label: 'Total' },
-            ].map((period) => {
-              const active = quickPeriodIsActive(period.key);
-              return (
-                <button
-                  key={period.key}
-                  type="button"
-                  onClick={() => applyQuickPeriod(period.key)}
-                  className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                    active
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {period.label}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      <div className="ml-auto">{taskActionControls}</div>
-    </div>
-  );
-
-  if (operationalArea === 'approval') {
-    return (
-      <div className="space-y-5">
-        {taskCommandBar}
-        {approvalView === 'videos' ? <VideoApprovals /> : <Approval />}
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      {taskCommandBar}
-
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {[
-          { label: 'Total geral', shortLabel: 'Total', value: taskOverview.total, icon: ListChecks, iconClass: 'text-blue-500' },
-          { label: 'Pendentes', shortLabel: 'Pend.', value: taskOverview.pending, icon: Clock3, iconClass: 'text-amber-500' },
-          { label: 'Em andamento', shortLabel: 'Andam.', value: taskOverview.inProgress, icon: Calendar, iconClass: 'text-cyan-500' },
-          { label: 'Atrasadas', shortLabel: 'Atras.', value: taskOverview.overdue, icon: AlertTriangle, iconClass: 'text-rose-500' },
-          { label: 'Concluídas', shortLabel: 'Concl.', value: taskOverview.done, icon: CheckCircle2, iconClass: 'text-emerald-500' },
-          { label: 'Postadas', shortLabel: 'Post.', value: taskOverview.posted, icon: Send, iconClass: 'text-indigo-500' },
-        ].map((item) => (
-          <div key={item.label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 shadow-sm">
-            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 sm:text-[11px]">
-              <item.icon size={12} className={`${item.iconClass} shrink-0`} />
-              <span className="sm:hidden">{item.shortLabel}</span>
-              <span className="hidden truncate sm:inline">{item.label}</span>
+    <div className="space-y-6">
+      <PageHero
+        icon={ListChecks}
+        eyebrow={user?.role === 'client' ? 'Solicitações para a equipe' : 'Operação e entregas'}
+        title="Tarefas"
+        description={user?.role === 'client'
+          ? 'Envie solicitações diretamente para a equipe da Zebrazul e acompanhe cada etapa.'
+          : 'Organize prioridades, responsáveis e prazos em uma visão clara da operação.'}
+        actions={
+          <button onClick={() => { setDefaultTaskDate(''); setShowForm(true); }} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] transition hover:-translate-y-0.5 hover:shadow-xl">
+            <Plus size={17} /> Nova tarefa
+          </button>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {[
+            { label: 'Total geral', value: taskOverview.total, icon: ListChecks, color: 'text-blue-300' },
+            { label: 'Pendentes', value: taskOverview.pending, icon: Clock3, color: 'text-amber-300' },
+            { label: 'Em andamento', value: taskOverview.inProgress, icon: Calendar, color: 'text-cyan-300' },
+            { label: 'Concluídas', value: taskOverview.done, icon: CheckCircle2, color: 'text-emerald-300' },
+            { label: 'Postadas', value: taskOverview.posted, icon: Send, color: 'text-indigo-300' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
+              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
             </div>
-            <p className="mt-0.5 text-lg font-bold leading-none text-slate-900 sm:text-xl">{item.value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="toolbar-panel space-y-3 py-3">
-        <div className={`${mobileFiltersOpen ? 'flex' : 'hidden'} flex-wrap items-end gap-2`}>
-          <div className="min-w-[150px] flex-1">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Projeto</label>
-            <select className="input-field py-2 text-xs" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))}>
-              <option value="">Todos</option>
-              {projectOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-          <div className="min-w-[140px] flex-1">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Frente</label>
-            <select className="input-field py-2 text-xs" value={filters.front} onChange={(e) => setFilters((current) => ({ ...current, front: e.target.value }))}>
-              <option value="">Todas</option>
-              {frontOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-          <div className="min-w-[130px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Prioridade</label>
-            <select className="input-field py-2 text-xs" value={filters.priority} onChange={(e) => setFilters((current) => ({ ...current, priority: e.target.value }))}>
-              <option value="">Todas</option><option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option>
-            </select>
-          </div>
-          <div className="min-w-[145px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
-            <select className="input-field py-2 text-xs" value={filters.status} onChange={(e) => setFilters((current) => ({ ...current, status: e.target.value }))}>
-              <option value="">Todos</option>{visibleStatusColumns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-            </select>
-          </div>
-          <div className="min-w-[150px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Responsável</label>
-            <select className="input-field py-2 text-xs" value={filters.assignee_id} onChange={(e) => setFilters((current) => ({ ...current, assignee_id: e.target.value }))}>
-              <option value="">Todos</option>{teamUsers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Prazo de</label>
-            <input type="date" className="input-field py-2 text-xs" value={filters.due_from} onChange={(e) => setFilters((current) => ({ ...current, due_from: e.target.value }))} />
-          </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Até</label>
-            <input type="date" className="input-field py-2 text-xs" value={filters.due_to} onChange={(e) => setFilters((current) => ({ ...current, due_to: e.target.value }))} />
-          </div>
-          {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', priority: '', project: '', front: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
+          ))}
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-slate-400">{visibleFilteredTasks.length} tarefa(s) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' · filtros ativos' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={toggleOverdueVisibility}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                showOverdueOnly
-                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-              title={showOverdueOnly ? 'Voltar a visualizar todas as tarefas' : 'Mostrar somente tarefas com prazo vencido'}
-            >
-              <AlertTriangle size={14} />
-              {showOverdueOnly ? 'Ver todas' : `Ver atrasadas (${taskOverview.overdue})`}
-            </button>
-            <button
-              type="button"
-              onClick={togglePostedVisibility}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                hidePosted
-                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-              title={hidePosted ? 'Exibir novamente as tarefas postadas' : 'Ocultar tarefas postadas para reduzir a poluição visual'}
-            >
-              {hidePosted ? <Eye size={14} /> : <EyeOff size={14} />}
-              {hidePosted ? `Mostrar postados (${taskOverview.posted})` : `Ocultar postados (${taskOverview.posted})`}
-            </button>
-            <div className="segmented-control">
-              <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
-                <LayoutGrid size={14} /> Kanban
-              </button>
-              <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
-                <Calendar size={14} /> Calendário
-              </button>
-            </div>
-            {view === 'calendar' && canShareTaskCalendar && effectiveClientId && (
-              <button
-                type="button"
-                onClick={() => setShowCalendarShare(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-zebrazul-200 hover:bg-zebrazul-50 hover:text-zebrazul-700"
-                title={`Compartilhar ${MONTHS[month]} de ${year}`}
-              >
-                <Link2 size={14} /> Compartilhar mês
-              </button>
-            )}
-          </div>
+      </PageHero>
+
+      <div className="toolbar-panel flex items-center justify-end">
+        <div className="segmented-control">
+          <button onClick={() => setView('kanban')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'kanban' ? 'segmented-control-button-active' : '')}>
+            <LayoutGrid size={14} /> Kanban
+          </button>
+          <button onClick={() => setView('approval')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'approval' ? 'segmented-control-button-active' : '')}>
+            <CheckCircle2 size={14} /> Aprovação
+          </button>
+          <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
+            <Calendar size={14} /> Calendário
+          </button>
         </div>
       </div>
 
       {taskError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{taskError}</p>}
-      {csvNotice && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">{csvNotice}</p>}
 
       {view === 'kanban' && (
-        <div className={`flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 md:grid md:snap-none md:overflow-visible md:pb-0 md:gap-5 md:grid-cols-2 ${hidePosted ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}`}>
-          {visibleStatusColumns.map((col) => (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          {STATUS_COLUMNS.map((col) => (
             <div
               key={col.key}
               onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, col.key)}
-              className={'w-[calc(100vw-48px)] shrink-0 snap-start min-h-[420px] rounded-[24px] md:w-auto md:shrink border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
+              className={'min-h-[420px] rounded-[24px] border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
             >
               <div className="mb-3 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{visibleFilteredTasks.filter((t) => t.status === col.key).length}</span>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{tasks.filter((t) => t.status === col.key).length}</span>
               </div>
               <div className="space-y-3 min-h-[60px]">
-                {visibleFilteredTasks.filter((t) => t.status === col.key).map((t) => (
-                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={canCreateTasks ? handleDragStart : null} onToggleFeatured={canCreateTasks ? (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1) : null} />
+                {tasks.filter((t) => t.status === col.key).map((t) => (
+                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={user?.role === 'client' ? null : handleDragStart} onToggleFeatured={user?.role === 'client' ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)} />
                 ))}
-                {visibleFilteredTasks.filter((t) => t.status === col.key).length === 0 && (
+                {tasks.filter((t) => t.status === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
                 )}
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {view === 'approval' && (
+        <div className="overflow-x-auto pb-2">
+          <div className="grid min-w-[1180px] grid-cols-5 gap-4">
+            {APPROVAL_COLUMNS.map((col) => {
+              const columnTasks = approvalTasks.filter((task) => approvalStage(task) === col.key);
+              return (
+                <div
+                  key={col.key}
+                  onDragOver={(event) => {
+                    if (user?.role === 'client') return;
+                    event.preventDefault();
+                    setDragOverApprovalCol(col.key);
+                  }}
+                  onDragLeave={() => setDragOverApprovalCol(null)}
+                  onDrop={(event) => user?.role === 'client' ? undefined : handleApprovalDrop(event, col.key)}
+                  className={`min-h-[440px] rounded-[24px] border p-3 transition ${col.accent} ${dragOverApprovalCol === col.key ? 'ring-4 ring-[#0969ff]/10 border-[#0969ff]/35' : ''}`}
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2 px-1">
+                    <span className={'badge ' + col.badge}>{col.label}</span>
+                    <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">
+                      {columnTasks.length}
+                    </span>
+                  </div>
+                  <div className="min-h-[80px] space-y-3">
+                    {columnTasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onClick={() => openTask(task.id)}
+                        onDragStart={user?.role === 'client' ? null : handleDragStart}
+                        onToggleFeatured={user?.role === 'client' ? null : (item) => toggleFeatured(item.id, Number(item.is_featured) !== 1)}
+                      />
+                    ))}
+                    {columnTasks.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-slate-200/80 bg-white/45 px-3 py-7 text-center text-xs text-slate-400">
+                        {col.key === 'completed'
+                          ? 'As tarefas concluídas aparecem aqui automaticamente.'
+                          : 'Arraste um card para esta etapa.'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -1294,9 +865,9 @@ export default function Tasks() {
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h2 className="font-semibold text-slate-800">Tarefas e subtarefas — {dayTasks.day} de {MONTHS[month]}</h2>
-                {canCreateTasks && <button onClick={() => openNewTaskForDate(dayTasks.day)} className="mt-1 text-xs font-medium text-zebrazul-600 hover:underline inline-flex items-center gap-1">
+                <button onClick={() => openNewTaskForDate(dayTasks.day)} className="mt-1 text-xs font-medium text-zebrazul-600 hover:underline inline-flex items-center gap-1">
                   <Plus size={13} /> Adicionar tarefa neste dia
-                </button>}
+                </button>
               </div>
               <button onClick={() => setDayTasks(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
@@ -1306,7 +877,7 @@ export default function Tasks() {
                   key={t.id}
                   task={t}
                   onClick={() => { setDayTasks(null); openTask(t.id); }}
-                  onToggleFeatured={!canCreateTasks || t.parent_task_id ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)}
+                  onToggleFeatured={user?.role === 'client' || t.parent_task_id ? null : (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1)}
                 />
               ))}
             </div>
@@ -1314,34 +885,7 @@ export default function Tasks() {
         </ModalBackdrop>
       )}
 
-      {showRequestLink && selectedClient && (
-        <TaskRequestLinkModal client={selectedClient} onClose={() => setShowRequestLink(false)} />
-      )}
-
-
-      {canShareTaskCalendar && showCalendarShare && effectiveClientId && (
-        <TaskCalendarShareModal
-          clientId={effectiveClientId}
-          clientName={selectedClient?.name || user?.client_name || 'Cliente'}
-          year={year}
-          month={month}
-          hidePosted={hidePosted}
-          onClose={() => setShowCalendarShare(false)}
-        />
-      )}
-
-      {canImportTasks && showCsvImport && (
-        <TaskCsvModal
-          onClose={() => setShowCsvImport(false)}
-          onImported={async (data) => {
-            await loadTasks();
-            const created = Number(data?.counts?.created || 0) + Number(data?.counts?.subtasks_created || 0);
-            setCsvNotice(`Importação concluída com sucesso. ${created} tarefa(s) foram criadas.`);
-          }}
-        />
-      )}
-
-      {canCreateTasks && showForm && (
+      {showForm && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1353,7 +897,7 @@ export default function Tasks() {
         />
       )}
 
-      {canCreateTasks && showSubtaskForm && selectedTask && (
+      {showSubtaskForm && selectedTask && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1365,7 +909,7 @@ export default function Tasks() {
         />
       )}
 
-      {canCreateTasks && editingTask && (
+      {editingTask && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1381,7 +925,7 @@ export default function Tasks() {
         />
       )}
 
-      {canCreateTasks && editingSubtask && (
+      {editingSubtask && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1461,50 +1005,6 @@ export default function Tasks() {
                 <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
               </div>
             ) : selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
-            {!selectedTask.details_loading && selectedTask.client_request_id && (
-              <div className="mb-4 overflow-hidden rounded-2xl border border-violet-200 bg-violet-50/55">
-                <div className="flex items-center justify-between gap-3 border-b border-violet-100 px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-violet-800"><MessageSquareText size={15} /> Solicitação do cliente</div>
-                  {selectedTask.request_protocol && <span className="font-mono text-[10px] text-violet-500">{selectedTask.request_protocol}</span>}
-                </div>
-                <div className="grid gap-3 p-4 text-xs text-slate-600 sm:grid-cols-2">
-                  <p className="flex items-start gap-2"><UserRound size={13} className="mt-0.5 shrink-0 text-violet-500" /><span><strong className="block text-slate-700">Solicitado por</strong>{selectedTask.requester_name}{selectedTask.requester_email ? ` · ${selectedTask.requester_email}` : ''}{selectedTask.requester_phone ? ` · ${selectedTask.requester_phone}` : ''}</span></p>
-                  <p><strong className="block text-slate-700">Tipo</strong>{selectedTask.request_type || 'Outro'}</p>
-                  <p><strong className="block text-slate-700">Data desejada pelo cliente</strong>{selectedTask.requested_due_date ? formatTaskDate(selectedTask.requested_due_date) : 'Não informada'}</p>
-                  <p><strong className="block text-slate-700">Urgência percebida</strong><span className={selectedTask.request_urgency === 'urgent' ? 'font-semibold text-rose-600' : ''}>{selectedTask.request_urgency === 'urgent' ? 'Urgente' : 'Normal'}</span></p>
-                  {selectedTask.request_references && <p className="sm:col-span-2"><strong className="block text-slate-700">Links / referências</strong><span className="whitespace-pre-wrap break-words">{selectedTask.request_references}</span></p>}
-                  {selectedTask.request_notes && <p className="sm:col-span-2"><strong className="block text-slate-700">Observações</strong><span className="whitespace-pre-wrap">{selectedTask.request_notes}</span></p>}
-                </div>
-                {selectedTask.request_files?.length > 0 && (
-                  <div className="border-t border-violet-100 px-4 py-3">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-violet-600">Anexos</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedTask.request_files.map((file) => (
-                        <a key={file.id} href={file.file_url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-2 text-xs font-medium text-violet-700 hover:bg-violet-50"><Paperclip size={12} /><span className="truncate">{file.filename || 'Anexo'}</span></a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {selectedTask.request_events?.length > 0 && (
-                  <div className="border-t border-violet-100 px-4 py-3">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-violet-600">Histórico da solicitação</p>
-                    <div className="space-y-2">
-                      {selectedTask.request_events.map((event) => (
-                        <div key={event.id} className="flex gap-2 text-[11px] text-slate-500"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" /><span><strong className="font-medium text-slate-700">{event.user_name || 'Cliente'}</strong> · {event.message}</span></div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {!selectedTask.details_loading && (selectedTask.project_name || selectedTask.front_name || selectedTask.goal || selectedTask.priority) && (
-              <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                {selectedTask.project_name && <p><span className="font-semibold text-slate-700">Projeto:</span> {selectedTask.project_name}</p>}
-                {selectedTask.front_name && <p><span className="font-semibold text-slate-700">Frente:</span> {selectedTask.front_name}</p>}
-                {selectedTask.priority && <p><span className="font-semibold text-slate-700">Prioridade:</span> {priorityLabel(selectedTask.priority)}</p>}
-                {selectedTask.goal && <p><span className="font-semibold text-slate-700">Meta:</span> {selectedTask.goal}</p>}
-              </div>
-            )}
 
             {selectedTask.media_loading && selectedTask.has_attachment && (
               <div className="h-24 rounded-lg bg-slate-100 animate-pulse mb-3 flex items-center justify-center text-xs text-slate-400">Carregando mídia...</div>
@@ -1532,12 +1032,12 @@ export default function Tasks() {
             )}
             <div className="text-xs text-slate-500 space-y-1 mb-4">
               {selectedTask.content_type && <p>Tipo de conteúdo: {selectedTask.content_type}</p>}
-              {(selectedTask.due_date || selectedTask.deadline_label) && <p>Prazo: {selectedTask.due_date ? formatTaskDate(selectedTask.due_date) : selectedTask.deadline_label}</p>}
+              {selectedTask.due_date && <p>Data: {formatTaskDate(selectedTask.due_date)}</p>}
               {selectedTask.client_name && <p>Cliente: {selectedTask.client_name}</p>}
               {selectedTask.assignees && selectedTask.assignees.length > 0 && <p>Responsáveis: {selectedTask.assignees.map((a) => a.name).join(', ')}</p>}
             </div>
 
-            {canCreateTasks && <>
+            {user?.role !== 'client' && <>
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
             <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {STATUS_COLUMNS.map((col) => (
@@ -1552,7 +1052,7 @@ export default function Tasks() {
             </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
-              {canCreateTasks && selectedTask.client_id && (selectedTask.task_type === 'post' || subtasks.some((item) => item.task_type === 'post')) && (
+              {user?.role !== 'client' && !user?.is_commercial_team && selectedTask.client_id && (selectedTask.task_type === 'post' || subtasks.some((item) => item.task_type === 'post')) && (
                 <button
                   type="button"
                   onClick={addAllToFeed}
@@ -1562,7 +1062,7 @@ export default function Tasks() {
                   <Grid3x3 size={15} /> {addingAllToFeed ? 'Adicionando publicações...' : 'Adicionar todos à grade'}
                 </button>
               )}
-              {canCreateTasks && !selectedTask.parent_task_id && (
+              {user?.role !== 'client' && !selectedTask.parent_task_id && (
                 <button
                   onClick={() => toggleFeatured(selectedTask.id, Number(selectedTask.is_featured) !== 1)}
                   className={`col-span-2 flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
@@ -1580,12 +1080,12 @@ export default function Tasks() {
                   <Pencil size={14} /> {selectedTask.media_loading ? 'Preparando...' : 'Editar tarefa'}
                 </button>
               )}
-              {canCreateTasks && (
+              {user?.role !== 'client' && (
                 <button onClick={() => duplicateTask(selectedTask.id)} className="btn-secondary text-sm flex items-center justify-center gap-1.5">
                   <Copy size={14} /> Duplicar
                 </button>
               )}
-              {canCreateTasks && !selectedTask.parent_task_id && (
+              {user?.role !== 'client' && !selectedTask.parent_task_id && (
                 <button
                   onClick={openConvertToSubtask}
                   className="btn-secondary text-sm flex items-center justify-center gap-1.5"
@@ -1594,7 +1094,7 @@ export default function Tasks() {
                   <ListTree size={14} /> Tornar subtarefa
                 </button>
               )}
-              {canCreateTasks && selectedTask.task_type === 'post' && selectedTask.client_id && (
+              {user?.role !== 'client' && !user?.is_commercial_team && selectedTask.task_type === 'post' && selectedTask.client_id && (
                 Number(selectedTask.feed_post_visible) === 1 ? (
                   <div className="col-span-2 grid grid-cols-2 gap-2">
                     <Link to={`/feed?client_id=${selectedTask.client_id}`} className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
@@ -1628,7 +1128,7 @@ export default function Tasks() {
                 <p className="text-sm font-semibold text-slate-700">
                   Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => ['done', 'posted'].includes(s.status)).length}/{subtasks.length})</span>}
                 </p>
-                {canCreateTasks && (
+                {user?.role !== 'client' && (
                   <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
                     <ListPlus size={14} /> Adicionar
                   </button>
@@ -1639,7 +1139,7 @@ export default function Tasks() {
                 {subtasks.map((s) => (
                   <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
                     <button
-                      onClick={() => canCreateTasks && updateSubtaskStatus(s.id, nextStatus(s.status))}
+                      onClick={() => user?.role !== 'client' && updateSubtaskStatus(s.id, nextStatus(s.status))}
                       className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (s.status === 'posted' ? 'bg-indigo-500 border-indigo-500' : s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
                       title="Clique para avançar o status"
                     >
@@ -1649,9 +1149,9 @@ export default function Tasks() {
                       <p className={'text-sm truncate ' + (['done', 'posted'].includes(s.status) ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
-                        {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}
+                        {s.due_date && <span className="text-[11px] text-slate-400">· {formatTaskDate(s.due_date)}</span>}
                       </div>
-                      {canCreateTasks && s.task_type === 'post' && s.client_id && (
+                      {user?.role !== 'client' && !user?.is_commercial_team && s.task_type === 'post' && s.client_id && (
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                           {Number(s.feed_post_visible) === 1 ? (
                             <>
@@ -1680,15 +1180,7 @@ export default function Tasks() {
                         </div>
                       )}
                     </div>
-                    {canCreateTasks && (
-                      <InlineAssigneePicker
-                        task={s}
-                        teamUsers={teamUsers}
-                        updating={subtaskAssigneeUpdatingId === s.id}
-                        onChange={setSubtaskAssignee}
-                      />
-                    )}
-                    {canCreateTasks && (
+                    {(['admin', 'team'].includes(user?.role) || (user?.role === 'client' && Number(s.created_by) === Number(user.id) && s.status === 'pending')) && (
                       <>
                         <button
                           onClick={() => editSubtask(s.id)}
