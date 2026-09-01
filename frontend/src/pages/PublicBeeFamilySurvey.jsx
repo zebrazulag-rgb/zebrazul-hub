@@ -23,14 +23,6 @@ const initialData = {
   nps: null,
   trustStrength: "",
   improvement: "",
-  eventOverall: null,
-  eventOrganization: null,
-  eventTeam: null,
-  childExperience: null,
-  eventExpectations: "",
-  favoriteMoment: "",
-  eventImprovement: "",
-  continueEvents: "",
   contactRequested: false,
   website: "",
 };
@@ -102,41 +94,6 @@ const relationshipOptions = [
   { value: 1, label: "Gostaríamos de uma conversa individual com a equipe." },
 ];
 
-const eventExpectationOptions = [
-  "Superou minhas expectativas",
-  "Correspondeu às expectativas",
-  "Correspondeu parcialmente",
-  "Não correspondeu",
-];
-
-const continueEventOptions = ["Com certeza", "Sim", "Talvez", "Não"];
-
-function ChoiceQuestion({ number, question, options, value, onChange }) {
-  return (
-    <fieldset className="relationship-field">
-      <legend>
-        <span className="question-number">{number}</span>
-        <span>{question}</span>
-      </legend>
-      <div className="relationship-options" role="radiogroup" aria-label={question}>
-        {options.map((option) => (
-          <button
-            type="button"
-            key={option}
-            role="radio"
-            aria-checked={value === option}
-            className={value === option ? "relationship-option selected" : "relationship-option"}
-            onClick={() => onChange(option)}
-          >
-            <span className="radio-mark"><i /></span>
-            <span>{option}</span>
-          </button>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
 function ArrowIcon({ direction = "right" }) {
   return (
     <svg className={direction === "left" ? "rotate-180" : ""} width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -195,7 +152,7 @@ export default function PublicBeeFamilySurvey() {
     return () => { document.title = previousTitle; };
   }, []);
 
-  const progress = useMemo(() => (step / 4) * 100, [step]);
+  const progress = useMemo(() => (step / 3) * 100, [step]);
 
   function update(key, value) {
     setData((current) => ({ ...current, [key]: value }));
@@ -204,7 +161,7 @@ export default function PublicBeeFamilySurvey() {
 
   function validateCurrentStep() {
     if (step === 1) {
-      const required = [data.studentName, data.whatsapp, data.unit, data.school, data.classGroup];
+      const required = [data.responsibleName, data.studentName, data.whatsapp, data.unit, data.school, data.classGroup];
       if (required.some((value) => !String(value).trim())) {
         setError("Preencha os campos obrigatórios para continuar.");
         return false;
@@ -216,19 +173,7 @@ export default function PublicBeeFamilySurvey() {
       return false;
     }
 
-    if (step === 3) {
-      const eventRatings = [data.eventOverall, data.eventOrganization, data.eventTeam, data.childExperience];
-      if (eventRatings.some((value) => value == null)) {
-        setError("Responda as quatro avaliações do evento para continuar.");
-        return false;
-      }
-      if (!data.eventExpectations || !data.favoriteMoment.trim() || !data.eventImprovement.trim() || !data.continueEvents) {
-        setError("Responda todas as perguntas do Dia dos Pais para continuar.");
-        return false;
-      }
-    }
-
-    if (step === 4 && (data.relationship == null || data.nps == null)) {
+    if (step === 3 && (data.relationship == null || data.nps == null)) {
       setError("Selecione as duas avaliações obrigatórias antes de enviar.");
       return false;
     }
@@ -238,7 +183,7 @@ export default function PublicBeeFamilySurvey() {
 
   function nextStep() {
     if (!validateCurrentStep()) return;
-    setStep((current) => Math.min(4, current + 1));
+    setStep((current) => Math.min(3, current + 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -272,7 +217,7 @@ export default function PublicBeeFamilySurvey() {
         },
         body: JSON.stringify({
         submission_id: submissionId,
-        responsible_name: data.responsibleName.trim() || null,
+        responsible_name: data.responsibleName,
         student_name: data.studentName,
         whatsapp: data.whatsapp,
         email: data.email || null,
@@ -291,14 +236,6 @@ export default function PublicBeeFamilySurvey() {
         nps: data.nps,
         trust_strength: data.trustStrength || null,
         improvement: data.improvement || null,
-        event_overall: data.eventOverall,
-        event_organization: data.eventOrganization,
-        event_team: data.eventTeam,
-        child_experience: data.childExperience,
-        event_expectations: data.eventExpectations,
-        favorite_moment: data.favoriteMoment,
-        event_improvement: data.eventImprovement,
-        continue_events: data.continueEvents,
         contact_requested: data.contactRequested,
         created_at: new Date().toISOString(),
         }),
@@ -332,7 +269,7 @@ export default function PublicBeeFamilySurvey() {
 
           <div className="brand-points">
             <div><span><CheckIcon /></span><p><strong>Escuta individual</strong>As respostas serão analisadas com atenção.</p></div>
-            <div><span><CheckIcon /></span><p><strong>Pesquisa breve</strong>O preenchimento leva cerca de 5 minutos.</p></div>
+            <div><span><CheckIcon /></span><p><strong>Pesquisa breve</strong>O preenchimento leva cerca de 3 minutos.</p></div>
             <div><span><CheckIcon /></span><p><strong>Educação, fé e família</strong>Caminhando juntas todos os dias.</p></div>
           </div>
 
@@ -349,8 +286,8 @@ export default function PublicBeeFamilySurvey() {
             <>
               <header className="form-header">
                 <div className="step-meta">
-                  <span>Etapa {step} de 4</span>
-                  <span>{step === 1 ? "Sua família" : step === 2 ? "Experiência" : step === 3 ? "Dia dos Pais" : "Vínculo e confiança"}</span>
+                  <span>Etapa {step} de 3</span>
+                  <span>{step === 1 ? "Sua família" : step === 2 ? "Experiência" : "Vínculo e confiança"}</span>
                 </div>
                 <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
               </header>
@@ -365,7 +302,7 @@ export default function PublicBeeFamilySurvey() {
                     </div>
 
                     <div className="field-grid">
-                      <label className="field full"><span>Nome do responsável <small style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "#999287" }}>(opcional)</small></span><input value={data.responsibleName} onChange={(event) => update("responsibleName", event.target.value)} autoComplete="name" placeholder="Digite seu nome, se desejar" /></label>
+                      <label className="field full"><span>Nome do responsável <b>*</b></span><input value={data.responsibleName} onChange={(event) => update("responsibleName", event.target.value)} autoComplete="name" placeholder="Digite seu nome completo" /></label>
                       <label className="field full"><span>Nome do aluno <b>*</b></span><input value={data.studentName} onChange={(event) => update("studentName", event.target.value)} placeholder="Digite o nome do aluno" /></label>
                       <label className="field"><span>WhatsApp <b>*</b></span><input value={data.whatsapp} onChange={(event) => update("whatsapp", event.target.value)} inputMode="tel" autoComplete="tel" placeholder="(84) 99999-9999" /></label>
                       <label className="field"><span>E-mail</span><input value={data.email} onChange={(event) => update("email", event.target.value)} type="email" autoComplete="email" placeholder="seuemail@exemplo.com" /></label>
@@ -395,58 +332,13 @@ export default function PublicBeeFamilySurvey() {
                 {step === 3 && (
                   <section className="form-step" aria-labelledby="step-three-title">
                     <div className="step-heading">
-                      <p>Dia dos Pais · 22/08</p>
-                      <h2 id="step-three-title">Como foi a experiência no evento?</h2>
-                      <span>Queremos entender o que funcionou bem e o que podemos aprimorar nos próximos encontros com as famílias.</span>
-                    </div>
-
-                    <div className="rating-list">
-                      <RatingQuestion number="09" question="Como você avalia o evento de forma geral?" low="Ruim" high="Ótimo" value={data.eventOverall} onChange={(value) => update("eventOverall", value)} />
-                      <RatingQuestion number="10" question="Como você avalia a organização do evento?" low="Ruim" high="Ótimo" value={data.eventOrganization} onChange={(value) => update("eventOrganization", value)} />
-                      <RatingQuestion number="11" question="Como você avalia o acolhimento e atendimento da equipe?" low="Ruim" high="Ótimo" value={data.eventTeam} onChange={(value) => update("eventTeam", value)} />
-                      <RatingQuestion number="12" question="Como você avalia a experiência proporcionada ao seu filho?" low="Ruim" high="Ótimo" value={data.childExperience} onChange={(value) => update("childExperience", value)} />
-                    </div>
-
-                    <ChoiceQuestion
-                      number="13"
-                      question="O evento correspondeu às suas expectativas?"
-                      options={eventExpectationOptions}
-                      value={data.eventExpectations}
-                      onChange={(value) => update("eventExpectations", value)}
-                    />
-
-                    <div className="open-fields">
-                      <label className="field">
-                        <span><span className="question-number">14</span> Qual foi o momento que você mais gostou? <b>*</b></span>
-                        <textarea value={data.favoriteMoment} onChange={(event) => update("favoriteMoment", event.target.value)} rows={4} placeholder="Conte pra gente qual momento mais marcou sua família" />
-                      </label>
-
-                      <label className="field">
-                        <span><span className="question-number">15</span> O que você acha que poderia ser melhorado? <b>*</b></span>
-                        <textarea value={data.eventImprovement} onChange={(event) => update("eventImprovement", event.target.value)} rows={4} placeholder="Sua percepção vai nos ajudar a melhorar os próximos eventos" />
-                      </label>
-                    </div>
-
-                    <ChoiceQuestion
-                      number="16"
-                      question="Você recomendaria que a escola continuasse realizando eventos como este?"
-                      options={continueEventOptions}
-                      value={data.continueEvents}
-                      onChange={(value) => update("continueEvents", value)}
-                    />
-                  </section>
-                )}
-
-                {step === 4 && (
-                  <section className="form-step" aria-labelledby="step-four-title">
-                    <div className="step-heading">
                       <p>Para concluir</p>
-                      <h2 id="step-four-title">Vínculo, confiança e próximos cuidados.</h2>
+                      <h2 id="step-three-title">Vínculo, confiança e próximos cuidados.</h2>
                       <span>Este é o espaço para nos contar o que fortalece sua confiança e o que podemos aprimorar.</span>
                     </div>
 
                     <fieldset className="relationship-field">
-                      <legend><span className="question-number">17</span><span>Qual frase melhor representa a relação da sua família com a escola hoje?</span></legend>
+                      <legend><span className="question-number">09</span><span>Qual frase melhor representa a relação da sua família com a escola hoje?</span></legend>
                       <div className="relationship-options" role="radiogroup">
                         {relationshipOptions.map((option) => (
                           <button type="button" key={option.value} role="radio" aria-checked={data.relationship === option.value} className={data.relationship === option.value ? "relationship-option selected" : "relationship-option"} onClick={() => update("relationship", option.value)}>
@@ -457,7 +349,7 @@ export default function PublicBeeFamilySurvey() {
                     </fieldset>
 
                     <fieldset className="nps-field">
-                      <legend><span className="question-number">18</span><span>De 0 a 10, o quanto você recomendaria a Bee para uma família que compartilha valores semelhantes aos seus?</span></legend>
+                      <legend><span className="question-number">10</span><span>De 0 a 10, o quanto você recomendaria a Bee para uma família que compartilha valores semelhantes aos seus?</span></legend>
                       <div className="nps-scale" role="radiogroup">
                         {Array.from({ length: 11 }, (_, index) => index).map((option) => (
                           <button key={option} type="button" role="radio" aria-checked={data.nps === option} className={data.nps === option ? "nps-option selected" : "nps-option"} onClick={() => update("nps", option)}>{option}</button>
@@ -483,7 +375,7 @@ export default function PublicBeeFamilySurvey() {
 
                 <footer className="form-actions">
                   {step > 1 ? <button type="button" className="secondary-button" onClick={previousStep}><ArrowIcon direction="left" /> Voltar</button> : <span />}
-                  {step < 4 ? <button type="button" className="primary-button" onClick={nextStep}>Continuar <ArrowIcon /></button> : <button type="submit" className="primary-button" disabled={submitting}>{submitting ? "Enviando..." : "Enviar pesquisa"}{!submitting && <ArrowIcon />}</button>}
+                  {step < 3 ? <button type="button" className="primary-button" onClick={nextStep}>Continuar <ArrowIcon /></button> : <button type="submit" className="primary-button" disabled={submitting}>{submitting ? "Enviando..." : "Enviar pesquisa"}{!submitting && <ArrowIcon />}</button>}
                 </footer>
               </form>
 
