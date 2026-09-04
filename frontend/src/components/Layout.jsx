@@ -199,10 +199,11 @@ export default function Layout({ children }) {
 
   const clientPortalItems = [
     { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
-    { to: '/cliente/grade', label: 'Ver grade', mobileLabel: 'Grade', icon: Grid3x3 },
-    { to: '/cliente/aprovacao', label: 'Área de aprovação', mobileLabel: 'Aprovação', icon: CalendarCheck2 },
-    { to: '/cliente/relatorios', label: 'Ver relatórios', mobileLabel: 'Relatórios', icon: BarChart3 },
-    { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen },
+    { to: '/cliente/grade', label: 'Ver grade', mobileLabel: 'Grade', icon: Grid3x3, permission: 'social.feed' },
+    { to: '/cliente/aprovacao', label: 'Área de aprovação', mobileLabel: 'Aprovação', icon: CalendarCheck2, permission: 'tasks.approval' },
+    { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
+    { to: '/cliente/relatorios', label: 'Ver relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
+    { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
   ];
 
   const workspaceItems = [
@@ -220,19 +221,26 @@ export default function Layout({ children }) {
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
   const beeWorkspaceActive = isBeeClient(workspaceClient);
 
-  const visibleWorkspaceItems = isClientPortal ? clientPortalItems : workspaceItems.filter((item) => {
-    if (item.beeOnly && !beeWorkspaceActive) return false;
-    if (!hasPermission(user, item.permission)) return false;
-    if (item.permission === 'social.view') {
-      return anyPermission(user, ['social.feed', 'social.stories', 'social.reports']);
-    }
-    return true;
-  });
+  const visibleWorkspaceItems = isClientPortal
+    ? clientPortalItems.filter((item) => !item.permission || hasPermission(user, item.permission))
+    : workspaceItems.filter((item) => {
+        if (item.beeOnly && !beeWorkspaceActive) return false;
+        if (!hasPermission(user, item.permission)) return false;
+        if (item.permission === 'social.view') {
+          return anyPermission(user, ['social.feed', 'social.stories', 'social.reports']);
+        }
+        return true;
+      });
 
   const canSeeSettings = !isClientPortal && (!user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']));
 
-  const mobilePrimaryItems = isClientPortal ? clientPortalItems : visibleWorkspaceItems.filter((item) => ['/','/tarefas','/conversas','/social-media','/comercial'].includes(item.to));
-  const mobileMoreItems = visibleWorkspaceItems.filter((item) => ['/bussola','/rematriculas','/materiais'].includes(item.to));
+  const mobilePrimaryItems = isClientPortal
+    ? visibleWorkspaceItems.slice(0, 4)
+    : visibleWorkspaceItems.filter((item) => ['/','/tarefas','/conversas','/social-media','/comercial'].includes(item.to));
+
+  const mobileMoreItems = isClientPortal
+    ? visibleWorkspaceItems.slice(4)
+    : visibleWorkspaceItems.filter((item) => ['/bussola','/rematriculas','/materiais'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -474,7 +482,7 @@ export default function Layout({ children }) {
           {mobilePrimaryItems.map((item) => (
             <MobileNavLink key={item.to} item={item} agencyPrimary={agencyPrimary} />
           ))}
-          {!isClientPortal && <button
+          {mobileMoreItems.length > 0 && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
             className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/bussola','/rematriculas','/materiais','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
@@ -485,7 +493,7 @@ export default function Layout({ children }) {
         </div>
       </nav>
 
-      {!isClientPortal && mobileMoreOpen && (
+      {mobileMoreItems.length > 0 && mobileMoreOpen && (
         <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
           <button type="button" aria-label="Fechar menu" className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" onClick={() => setMobileMoreOpen(false)} />
           <div className="absolute inset-x-0 bottom-0 rounded-t-[28px] bg-white px-4 pb-[max(22px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-24px_70px_rgba(15,23,42,0.22)]">

@@ -43,14 +43,14 @@ function SocialMediaLegacyRedirect({ section }) {
 }
 
 function fallbackRoute(user) {
-  if (user?.role === 'client') return '/cliente/solicitar';
   if (hasPermission(user, 'dashboard.view')) return '/';
-  if (hasPermission(user, 'tasks.view')) return '/tarefas';
-  if (hasPermission(user, 'social.feed')) return '/social-media/feed';
+  if (hasPermission(user, 'tasks.view')) return user?.role === 'client' ? '/cliente/aprovacao' : '/tarefas';
+  if (hasPermission(user, 'social.feed')) return user?.role === 'client' ? '/cliente/grade' : '/social-media/feed';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
-  if (hasPermission(user, 'social.reports')) return '/social-media/relatorios';
+  if (hasPermission(user, 'social.reports')) return user?.role === 'client' ? '/cliente/relatorios' : '/social-media/relatorios';
   if (hasPermission(user, 'commercial.view')) return '/comercial';
-  if (hasPermission(user, 'materials.view')) return '/materiais';
+  if (hasPermission(user, 'materials.view')) return user?.role === 'client' ? '/cliente/materiais' : '/materiais';
+  if (user?.role === 'client') return '/cliente/solicitar';
   return '/configuracoes/aparencia';
 }
 
