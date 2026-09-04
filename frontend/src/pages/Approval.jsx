@@ -16,6 +16,7 @@ import {
   XCircle,
   Files,
   Video,
+  GripVertical,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -26,12 +27,11 @@ import InstagramPreview from '../components/InstagramPreview.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import PageHero from '../components/PageHero.jsx';
 
-const FILTERS = [
-  { key: 'all', label: 'Todos' },
-  { key: 'pending_approval', label: 'Aguardando aprovação' },
-  { key: 'approved', label: 'Aprovados' },
-  { key: 'rejected', label: 'Reprovados' },
-  { key: 'draft', label: 'Rascunhos' },
+const KANBAN_COLUMNS = [
+  { key: 'draft', label: 'Rascunhos', dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600' },
+  { key: 'pending_approval', label: 'Aguardando aprovação', dot: 'bg-amber-400', badge: 'bg-amber-100 text-amber-700' },
+  { key: 'approved', label: 'Aprovados', dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
+  { key: 'rejected', label: 'Reprovados', dot: 'bg-rose-500', badge: 'bg-rose-100 text-rose-700' },
 ];
 
 function normalizeGallery(value, fallbackData = null, fallbackMime = null) {
@@ -74,7 +74,6 @@ export default function Approval() {
   const { selectedClient } = useClientFilter();
   const [posts, setPosts] = useState([]);
   const [clients, setClients] = useState([]);
-  const [filter, setFilter] = useState('all');
   const [showEditor, setShowEditor] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [selectedPost, setSelectedPost] = useState(null);
@@ -82,6 +81,8 @@ export default function Approval() {
   const [commentText, setCommentText] = useState('');
   const [feedback, setFeedback] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [dragOverStatus, setDragOverStatus] = useState(null);
+  const [movingPostId, setMovingPostId] = useState(null);
 
   const loadPosts = useCallback(async () => {
     const params = selectedClient ? `?client_id=${selectedClient.id}` : '';
@@ -185,6 +186,39 @@ export default function Approval() {
     loadPosts();
   }
 
+  async function movePostStatus(postId, status) {
+    const post = posts.find((item) => Number(item.id) === Number(postId));
+    if (!post || post.status === status || user?.role === 'client') return;
+
+    const previous = posts;
+    setMovingPostId(post.id);
+    setPosts((items) => items.map((item) => Number(item.id) === Number(post.id) ? { ...item, status } : item));
+
+    try {
+      await api.put(`/posts/${post.id}`, { status });
+    } catch {
+      setPosts(previous);
+    } finally {
+      setMovingPostId(null);
+      setDragOverStatus(null);
+    }
+  }
+
+  function handlePostDragStart(event, post) {
+    if (user?.role === 'client') {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.setData('text/post-id', String(post.id));
+    event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handlePostDrop(event, status) {
+    event.preventDefault();
+    const postId = Number(event.dataTransfer.getData('text/post-id'));
+    if (postId) movePostStatus(postId, status);
+  }
+
   async function copyApprovalLink() {
     const { data } = await api.post(`/posts/${selectedPost.id}/share`);
     const url = `${window.location.origin}/aprovar/${data.token}`;
@@ -194,18 +228,18 @@ export default function Approval() {
   }
 
   const clientOfSelected = clients.find((client) => client.id === selectedPost?.client_id);
-  const filtered = filter === 'all' ? posts : posts.filter((post) => post.status === filter);
   const approvalStats = {
     total: posts.length,
     pending: posts.filter((post) => post.status === 'pending_approval').length,
     approved: posts.filter((post) => post.status === 'approved').length,
     rejected: posts.filter((post) => post.status === 'rejected').length,
+    draft: posts.filter((post) => post.status === 'draft').length,
   };
 
   return (
-    <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden">
+    <div className="space-y-4 min-w-0 max-w-full overflow-x-hidden">
       <PageHero
-        hideHeadingMobile
+        compact
         icon={CalendarCheck2}
         eyebrow={selectedClient?.name || 'Fluxo editorial'}
         title="Aprovação de conteúdo"
@@ -225,111 +259,142 @@ export default function Approval() {
             { label: 'Aprovados', value: approvalStats.approved, icon: CheckCircle2, color: 'text-emerald-300' },
             { label: 'Reprovados', value: approvalStats.rejected, icon: XCircle, color: 'text-rose-300' },
           ].map((item) => (
-            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
+            <div key={item.label} className="rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2.5">
               <div className="flex items-center gap-2 text-xs text-white/45"><item.icon size={14} className={item.color} /> {item.label}</div>
-              <p className="mt-1 text-2xl font-bold text-white">{item.value}</p>
+              <p className="mt-1 text-xl font-bold text-white">{item.value}</p>
             </div>
           ))}
         </div>
       </PageHero>
 
-      <div className="toolbar-panel flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="toolbar-panel flex items-center justify-between gap-3 py-2.5">
         <div className="segmented-control">
           <button className="segmented-control-button segmented-control-button-active">Publicações</button>
-          <button onClick={() => navigate('/tarefas?area=aprovacao&approval_view=videos')} className="segmented-control-button inline-flex items-center gap-2"><Video size={15} /> Vídeos</button>
+          <button onClick={() => navigate('/aprovacao/videos')} className="segmented-control-button inline-flex items-center gap-2"><Video size={15} /> Vídeos</button>
         </div>
-        <div className="flex flex-wrap gap-2">
-        {FILTERS.map((item) => (
-          <button
-            key={item.key}
-            onClick={() => setFilter(item.key)}
-            className={`rounded-xl px-3.5 py-2 text-sm font-medium transition ${
-              filter === item.key
-                ? 'bg-[#121620] text-white shadow-sm'
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-        </div>
+        {user?.role !== 'client' && (
+          <p className="hidden text-[11px] text-slate-400 md:block">Arraste os cards entre as etapas para atualizar o status.</p>
+        )}
       </div>
 
-      <div className="grid gap-3 min-w-0 max-w-full">
-        {filtered.length === 0 && (
-          <p className="text-sm text-slate-400 py-8 text-center">Nenhum conteúdo neste filtro.</p>
-        )}
+      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 xl:grid xl:grid-cols-4 xl:overflow-visible">
+        {KANBAN_COLUMNS.map((column) => {
+          const items = posts.filter((post) => post.status === column.key);
+          const activeDrop = dragOverStatus === column.key;
 
-        {filtered.map((post) => (
-          <div
-            key={post.id}
-            className="data-row flex w-full min-w-0 max-w-full flex-col gap-4 overflow-hidden p-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <button
-              onClick={() => openPost(post)}
-              className="w-full flex-1 flex items-center gap-3 text-left min-w-0 overflow-hidden"
+          return (
+            <section
+              key={column.key}
+              onDragOver={(event) => {
+                if (user?.role === 'client') return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setDragOverStatus(column.key);
+              }}
+              onDragLeave={(event) => {
+                if (event.currentTarget.contains(event.relatedTarget)) return;
+                setDragOverStatus((current) => current === column.key ? null : current);
+              }}
+              onDrop={(event) => handlePostDrop(event, column.key)}
+              className={`w-[82vw] max-w-[330px] shrink-0 snap-start rounded-[22px] border p-3 transition xl:w-auto xl:max-w-none ${
+                activeDrop
+                  ? 'border-blue-300 bg-blue-50/70 ring-4 ring-blue-100'
+                  : 'border-slate-200/80 bg-slate-50/65'
+              }`}
             >
-              {post.media_data && (
-                <div className="relative shrink-0">
-                  <img src={post.media_data} alt="" className="h-[84px] w-[68px] rounded-xl object-cover shadow-sm" />
-                  {post.media_gallery?.length > 1 && (
-                    <span className="absolute -right-1.5 -top-1.5 min-w-5 h-5 px-1 rounded-full bg-zebrazul-600 text-white text-[10px] font-bold flex items-center justify-center">
-                      {post.media_gallery.length}
-                    </span>
-                  )}
+              <header className="mb-3 flex items-center justify-between gap-2 rounded-2xl border border-slate-200/70 bg-white px-3 py-2.5 shadow-sm">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${column.dot}`} />
+                  <h2 className="truncate text-xs font-semibold text-slate-700">{column.label}</h2>
                 </div>
-              )}
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <div className="flex items-center gap-2 mb-1 min-w-0 flex-wrap">
-                  <span className="min-w-0 max-w-full break-words text-base font-semibold text-slate-900 [overflow-wrap:anywhere]">
-                    {post.title}
-                  </span>
-                  <StatusBadge status={post.status} />
-                </div>
-                <p className="max-w-full overflow-hidden line-clamp-2 break-words text-sm leading-6 text-slate-500 [overflow-wrap:anywhere]">
-                  {post.caption || 'Sem legenda ainda'}
-                </p>
-                {post.scheduled_at && (
-                  <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
-                    <Calendar size={12} />
-                    {new Date(post.scheduled_at).toLocaleString('pt-BR', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
-                  </p>
-                )}
-              </div>
-            </button>
+                <span className="flex h-6 min-w-6 items-center justify-center rounded-lg bg-slate-50 px-1.5 text-[10px] font-bold text-slate-500">{items.length}</span>
+              </header>
 
-            {user?.role !== 'client' && (
-              <div className="flex gap-2 shrink-0 w-full sm:w-auto">
-                {post.status === 'draft' && (
-                  <button
-                    onClick={() => sendForApproval(post)}
-                    className="btn-secondary text-sm flex-1 sm:flex-none"
+              <div className="min-h-[210px] space-y-2.5">
+                {items.map((post) => (
+                  <article
+                    key={post.id}
+                    draggable={user?.role !== 'client'}
+                    onDragStart={(event) => handlePostDragStart(event, post)}
+                    className={`group rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_7px_20px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 ${
+                      movingPostId === post.id ? 'opacity-60' : ''
+                    }`}
                   >
-                    Enviar p/ aprovação
-                  </button>
+                    <div className="flex items-start gap-2.5">
+                      {user?.role !== 'client' && <GripVertical size={14} className="mt-1 shrink-0 text-slate-300" />}
+                      {post.media_data ? (
+                        <button type="button" onClick={() => openPost(post)} className="relative shrink-0">
+                          <img src={post.media_data} alt="" className="h-[66px] w-[54px] rounded-xl object-cover" />
+                          {post.media_gallery?.length > 1 && (
+                            <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-zebrazul-600 px-1 text-[9px] font-bold text-white">
+                              {post.media_gallery.length}
+                            </span>
+                          )}
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => openPost(post)} className="flex h-[66px] w-[54px] shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                          <Files size={17} />
+                        </button>
+                      )}
+
+                      <button type="button" onClick={() => openPost(post)} className="min-w-0 flex-1 text-left">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <h3 className="min-w-0 flex-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-900">{post.title}</h3>
+                        </div>
+                        <p className="mt-1 line-clamp-3 text-[11px] leading-4 text-slate-500">{post.caption || 'Sem legenda ainda'}</p>
+                        {post.scheduled_at && (
+                          <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
+                            <Calendar size={10} />
+                            {new Date(post.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                          </p>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
+                      <StatusBadge status={post.status} />
+                      {user?.role !== 'client' && (
+                        <div className="flex items-center gap-1">
+                          {post.status === 'draft' && (
+                            <button
+                              type="button"
+                              onClick={() => sendForApproval(post)}
+                              className="rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-100"
+                            >
+                              Enviar
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openEditor(post)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                            title="Editar conteúdo"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deletePost(post)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 text-rose-500 hover:bg-rose-50"
+                            title="Apagar conteúdo"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                ))}
+
+                {items.length === 0 && (
+                  <div className="flex min-h-[170px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/65 px-4 text-center text-xs leading-5 text-slate-400">
+                    {user?.role === 'client' ? 'Nenhum conteúdo nesta etapa.' : 'Arraste um conteúdo para esta etapa.'}
+                  </div>
                 )}
-                <button
-                  onClick={() => openEditor(post)}
-                  className="btn-secondary text-sm flex items-center justify-center gap-1.5 flex-1 sm:flex-none"
-                  title="Editar conteúdo"
-                >
-                  <Pencil size={15} /> Editar
-                </button>
-                <button
-                  onClick={() => deletePost(post)}
-                  className="px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                  title="Apagar conteúdo"
-                  aria-label="Apagar conteúdo"
-                >
-                  <Trash2 size={16} />
-                </button>
               </div>
-            )}
-          </div>
-        ))}
+            </section>
+          );
+        })}
       </div>
 
       {showEditor && (
