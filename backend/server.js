@@ -47,6 +47,8 @@ const instagramStoriesWebhookRoutes = require('./routes/instagramStoriesWebhook'
 const instagramStoriesRoutes = require('./routes/instagramStories');
 const permissionsRoutes = require('./routes/permissions');
 const activityRoutes = require('./routes/activity');
+const audiovisualRoutes = require('./routes/audiovisual');
+const googleCalendarOAuthRoutes = require('./routes/googleCalendarOAuth');
 const { runMediaMigration } = require('./services/mediaMigration');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
@@ -99,6 +101,7 @@ app.get('/api/health', (req, res) => {
 // As demais rotas deste modulo aplicam authRequired internamente.
 app.use('/api/meta-oauth', metaOAuthRoutes);
 app.use('/api/instagram-oauth', instagramOAuthRoutes);
+app.use('/api/google-calendar-oauth', googleCalendarOAuthRoutes);
 
 // Camada central de permissões. Os links públicos e autenticação continuam
 // validados pelas próprias rotas; os demais recursos respeitam o cargo configurado
@@ -159,6 +162,7 @@ app.use('/api/planning-documents', planningDocumentRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
 app.use('/api/commercial', commercialRoutes);
+app.use('/api/audiovisual', audiovisualRoutes);
 app.use('/api/reenrollments', reenrollmentRoutes);
 app.use('/api/bee-campaign-briefing', beeCampaignBriefingRoutes);
 app.use('/api/bee-family-survey', beeFamilySurveyRoutes);

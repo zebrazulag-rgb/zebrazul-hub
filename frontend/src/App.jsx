@@ -11,6 +11,7 @@ import PublicSocialMediaFeed from './pages/PublicSocialMediaFeed.jsx';
 import PublicPost from './pages/PublicPost.jsx';
 import Finance from './pages/Finance.jsx';
 import Contracts from './pages/Contracts.jsx';
+import Audiovisual from './pages/Audiovisual.jsx';
 import PasswordVault from './pages/PasswordVault.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
@@ -44,6 +45,7 @@ function SocialMediaLegacyRedirect({ section }) {
 
 function fallbackRoute(user) {
   if (hasPermission(user, 'dashboard.view')) return '/';
+  if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
   if (hasPermission(user, 'tasks.view')) return user?.role === 'client' ? '/cliente/aprovacao' : '/tarefas';
   if (hasPermission(user, 'social.feed')) return user?.role === 'client' ? '/cliente/grade' : '/social-media/feed';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
@@ -109,6 +111,7 @@ export default function App() {
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
       <Route path="/stories" element={<ProtectedRoute permission="social.stories"><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
       <Route path="/tarefas" element={<ProtectedRoute permission="tasks.view"><Tasks /></ProtectedRoute>} />
+      <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
       <Route path="/bussola/dme" element={<ProtectedRoute permission="compass.view"><Diagnostics /></ProtectedRoute>} />
       <Route path="/bussola/diagnostico" element={<ProtectedRoute permission="compass.view"><StrategicDiagnosis /></ProtectedRoute>} />

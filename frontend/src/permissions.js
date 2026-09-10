@@ -3,11 +3,13 @@ const DEFAULTS = {
   operations_head: new Set([
     'dashboard.view','tasks.view','tasks.create','tasks.approval','tasks.import','tasks.export','tasks.share_calendar','compass.view',
     'social.view','social.feed','social.feed_create','social.feed_share','social.link_social_media','social.covers','social.published','social.compare','social.calendar','social.stories','social.reports','social.connections',
+    'audiovisual.view','audiovisual.manage','audiovisual.edit','audiovisual.publish','audiovisual.calendar',
     'reenrollments.view','materials.view','chat.view','activity.view_own','activity.view_team','activity.export','settings.clients'
   ]),
   team: new Set([
     'dashboard.view','tasks.view','tasks.create','tasks.approval','tasks.import','tasks.export','tasks.share_calendar','compass.view',
     'social.view','social.feed','social.feed_create','social.feed_share','social.link_social_media','social.covers','social.published','social.compare','social.calendar','social.stories','social.reports','social.connections',
+    'audiovisual.view','audiovisual.manage','audiovisual.edit','audiovisual.publish',
     'reenrollments.view','materials.view','chat.view','activity.view_own','settings.clients'
   ]),
   commercial_team: new Set(['dashboard.view','tasks.view','tasks.create','tasks.export','commercial.view','commercial.manage','commercial.import','reenrollments.view','activity.view_own']),
@@ -52,6 +54,9 @@ export function hasPermission(user, key) {
   }
   if (key.startsWith('commercial.') && key !== 'commercial.view') {
     return hasPermission(user, 'commercial.view');
+  }
+  if (key.startsWith('audiovisual.') && key !== 'audiovisual.view') {
+    return hasPermission(user, 'audiovisual.view');
   }
   return true;
 }

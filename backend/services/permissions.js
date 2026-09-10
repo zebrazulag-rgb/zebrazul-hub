@@ -24,6 +24,11 @@ const PERMISSION_CATALOG = [
   { key: 'commercial.view', group: 'Comercial', label: 'Comercial', description: 'Acessar o pipeline comercial.' },
   { key: 'commercial.manage', group: 'Comercial', label: 'Gerenciar pipeline', description: 'Criar/editar leads e organizar quadros.' },
   { key: 'commercial.import', group: 'Comercial', label: 'Importar leads', description: 'Importar listas de leads em CSV.' },
+  { key: 'audiovisual.view', group: 'Audiovisual', label: 'Acessar Audiovisual', description: 'Visualizar painel, agenda, produção e saúde audiovisual dos clientes.' },
+  { key: 'audiovisual.manage', group: 'Audiovisual', label: 'Gerenciar gravações', description: 'Criar, remarcar, concluir e cancelar gravações e configurar cadências.' },
+  { key: 'audiovisual.edit', group: 'Audiovisual', label: 'Gerenciar edições', description: 'Mover vídeos para edição e concluir edição com links finais.' },
+  { key: 'audiovisual.publish', group: 'Audiovisual', label: 'Agendar e postar vídeos', description: 'Registrar datas de publicação e marcar vídeos como postados.' },
+  { key: 'audiovisual.calendar', group: 'Audiovisual', label: 'Conectar Google Agenda', description: 'Conectar ou desconectar o Google Agenda usado nas gravações.' },
   { key: 'reenrollments.view', group: 'Rematrículas', label: 'Rematrículas', description: 'Acessar o CRM de rematrículas da Bee.' },
   { key: 'materials.view', group: 'Materiais', label: 'Materiais', description: 'Acessar biblioteca, links e rascunhos.' },
   { key: 'activity.view_own', group: 'Atividade', label: 'Ver própria atividade', description: 'Visualizar o próprio histórico de ações e presença recente.' },
@@ -45,12 +50,14 @@ const DEFAULTS = {
     'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
+    'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish', 'audiovisual.calendar',
     'reenrollments.view', 'materials.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
   ]),
   team: new Set([
     'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
+    'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish',
     'reenrollments.view', 'materials.view', 'activity.view_own', 'settings.clients',
   ]),
   commercial_team: new Set([
@@ -168,6 +175,9 @@ function hasPermission(user, permissionKey) {
   if (permissionKey.startsWith('commercial.') && permissionKey !== 'commercial.view') {
     return Boolean(map['commercial.view'] && map[permissionKey]);
   }
+  if (permissionKey.startsWith('audiovisual.') && permissionKey !== 'audiovisual.view') {
+    return Boolean(map['audiovisual.view'] && map[permissionKey]);
+  }
   return Boolean(map[permissionKey]);
 }
 
@@ -211,6 +221,7 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/meta-organic')) return ['social.reports', 'social.published'];
   if (path.startsWith('/meta-oauth') || path.startsWith('/instagram-oauth') || path.startsWith('/meta')) return 'social.connections';
   if (path.startsWith('/commercial')) return path.includes('import') ? 'commercial.import' : (method === 'GET' ? 'commercial.view' : 'commercial.manage');
+  if (path.startsWith('/audiovisual')) return method === 'GET' ? 'audiovisual.view' : ['audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish'];
   if (path.startsWith('/activity')) return ['activity.view_own', 'activity.view_team'];
   if (path.startsWith('/reenrollments')) return 'reenrollments.view';
   if (path.startsWith('/materials') || path.startsWith('/material-boards')) return 'materials.view';

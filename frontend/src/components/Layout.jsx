@@ -28,6 +28,7 @@ import {
   Send,
   CalendarCheck2,
   MessageCircle,
+  Clapperboard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -208,6 +209,7 @@ export default function Layout({ children }) {
 
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
+    { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view' },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
     { to: '/conversas', label: 'Conversas', icon: MessageCircle, permission: 'chat.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
@@ -236,7 +238,7 @@ export default function Layout({ children }) {
 
   const mobilePrimaryItems = isClientPortal
     ? visibleWorkspaceItems.slice(0, 4)
-    : visibleWorkspaceItems.filter((item) => ['/','/tarefas','/conversas','/social-media','/comercial'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/','/audiovisual','/tarefas','/conversas','/social-media'].includes(item.to));
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
@@ -254,6 +256,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/cliente/relatorios')) return 'Ver relatórios';
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
+    if (path.startsWith('/audiovisual')) return 'Audiovisual';
     if (path.startsWith('/tarefas')) return 'Tarefas';
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories') || path.startsWith('/relatorios')) return 'Social Media';
