@@ -24,7 +24,6 @@ import {
 import api from '../api';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { hasPermission } from '../permissions.js';
 
 const VIDEO_COLUMNS = [
@@ -107,8 +106,10 @@ function StatusPill({ status }) {
 
 export default function Audiovisual() {
   const { user } = useAuth();
-  const { selectedClient, setSelectedClient } = useClientFilter();
   const [tab, setTab] = useState('overview');
+  // Filtro próprio do Audiovisual. Ele começa em "todos" e não herda
+  // o cliente global selecionado no topo do ZebraHub.
+  const [operationalClientId, setOperationalClientId] = useState('');
   const [referenceMonth, setReferenceMonth] = useState(currentMonth());
   const [dashboard, setDashboard] = useState(null);
   const [recordings, setRecordings] = useState([]);
@@ -142,8 +143,8 @@ export default function Audiovisual() {
 
   const operationalParams = useMemo(() => ({
     month: referenceMonth,
-    ...(selectedClient?.id ? { client_id: selectedClient.id } : {}),
-  }), [referenceMonth, selectedClient?.id]);
+    ...(operationalClientId ? { client_id: operationalClientId } : {}),
+  }), [referenceMonth, operationalClientId]);
 
   const loadData = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoading(true);
@@ -152,7 +153,7 @@ export default function Audiovisual() {
       const [dashboardRes, recordingsRes, videosRes, calendarRes, clientSelectionRes] = await Promise.all([
         api.get('/audiovisual/dashboard', { params: dashboardParams }),
         api.get('/audiovisual/recordings', { params: operationalParams }),
-        api.get('/audiovisual/videos', { params: selectedClient?.id ? { client_id: selectedClient.id } : {} }),
+        api.get('/audiovisual/videos', { params: operationalClientId ? { client_id: operationalClientId } : {} }),
         api.get('/google-calendar-oauth/status'),
         api.get('/audiovisual/client-selection'),
       ]);
@@ -166,7 +167,7 @@ export default function Audiovisual() {
     } finally {
       setLoading(false);
     }
-  }, [dashboardParams, operationalParams, selectedClient?.id]);
+  }, [dashboardParams, operationalParams, operationalClientId]);
 
   useEffect(() => {
     loadData();
@@ -414,8 +415,8 @@ export default function Audiovisual() {
       await api.put('/audiovisual/client-selection', { client_ids: selectedIds });
       setClientSelectionModal(null);
 
-      if (selectedClient?.id && !selectedIds.includes(Number(selectedClient.id))) {
-        setSelectedClient(null);
+      if (operationalClientId && !selectedIds.includes(Number(operationalClientId))) {
+        setOperationalClientId('');
       }
 
       setNotice(`${selectedIds.length} cliente(s) definido(s) como clientes de gravação.`);
@@ -441,7 +442,7 @@ export default function Audiovisual() {
     const end = new Date(endDate.getTime() - endDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     setRecordingModal({
       id: null,
-      client_id: clientId || selectedClient?.id || dashboard?.clients?.[0]?.id || '',
+      client_id: clientId || operationalClientId || dashboard?.clients?.[0]?.id || '',
       title: '',
       scheduled_start: start,
       scheduled_end: end,
@@ -460,7 +461,7 @@ export default function Audiovisual() {
     }
     const today = localDateTimeInput(new Date()).slice(0, 10);
     setHistoricalModal({
-      client_id: clientId || selectedClient?.id || dashboard?.clients?.[0]?.id || '',
+      client_id: clientId || operationalClientId || dashboard?.clients?.[0]?.id || '',
       recorded_date: today,
       video_count: '',
       posted_count: '0',
@@ -495,16 +496,15 @@ export default function Audiovisual() {
   }
 
   const stats = dashboard?.stats || {};
+  const scheduledProgress = monthProgress(stats.clients_scheduled_month, stats.clients_total);
   const recordedProgress = monthProgress(stats.clients_recorded_month, stats.clients_total);
+  const clientsNotScheduledThisMonth = Math.max(0, Number(stats.clients_total || 0) - Number(stats.clients_scheduled_month || 0));
   const clientsMissingThisMonth = Math.max(0, Number(stats.clients_total || 0) - Number(stats.clients_recorded_month || 0));
   const currentDraggedVideo = videos.find((video) => Number(video.id) === Number(draggedVideoId));
   const recordingClientCount = clientCatalog.filter((client) => client.is_recording_client).length;
-  const selectedClientCatalogEntry = selectedClient?.id
-    ? clientCatalog.find((client) => Number(client.id) === Number(selectedClient.id))
+  const operationalClient = operationalClientId
+    ? clientCatalog.find((client) => Number(client.id) === Number(operationalClientId))
     : null;
-  const selectedClientNotRecording = Boolean(
-    selectedClient && selectedClientCatalogEntry && !selectedClientCatalogEntry.is_recording_client
-  );
 
   const tabs = [
     ['overview', 'Painel'],
@@ -526,7 +526,7 @@ export default function Audiovisual() {
               <Clapperboard size={15} /> Operação audiovisual
             </div>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Audiovisual</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Gravação, edição e postagem em um fluxo único — com o cliente mais atrasado aparecendo primeiro.</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Gravação, edição e postagem em um fluxo único. O Audiovisual usa filtro próprio e não é limitado pelo cliente selecionado no topo do ZebraHub.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canManage && (
@@ -536,11 +536,19 @@ export default function Audiovisual() {
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">{recordingClientCount}</span>
               </button>
             )}
-            {selectedClient && (
-              <button type="button" onClick={() => setSelectedClient(null)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                Ver todos os clientes
-              </button>
-            )}
+            <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+              <span className="text-slate-400">Operação</span>
+              <select
+                value={operationalClientId}
+                onChange={(event) => setOperationalClientId(event.target.value)}
+                className="max-w-[220px] bg-transparent font-bold text-slate-800 outline-none"
+              >
+                <option value="">Todos os clientes de gravação</option>
+                {(dashboard?.clients || []).map((client) => (
+                  <option key={client.id} value={client.id}>{client.name}</option>
+                ))}
+              </select>
+            </label>
             <label className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
               <span className="mr-2 text-slate-400">Mês</span>
               <input type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} className="bg-transparent outline-none" />
@@ -573,17 +581,15 @@ export default function Audiovisual() {
       {error && <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertTriangle className="mt-0.5 shrink-0" size={16} /> <span>{error}</span><button onClick={() => setError('')} className="ml-auto"><X size={15} /></button></div>}
       {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</div>}
 
-      {selectedClientNotRecording && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-amber-900">{selectedClient.name} não está marcado como cliente de gravação.</p>
-            <p className="mt-0.5 text-xs leading-5 text-amber-700">Ele não entra nos indicadores, no ranking de atraso nem nas sugestões do Audiovisual.</p>
-          </div>
-          {canManage && <button type="button" onClick={openClientSelection} className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-bold text-white">Gerenciar clientes</button>}
+      {operationalClient && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+          <strong>Filtro da operação:</strong>
+          <span>{operationalClient.name}</span>
+          <button type="button" onClick={() => setOperationalClientId('')} className="ml-auto rounded-lg bg-white px-2.5 py-1.5 font-bold text-blue-700 shadow-sm">Mostrar todos</button>
         </div>
       )}
 
-      {!selectedClient && clientCatalog.length > 0 && recordingClientCount === 0 && (
+      {clientCatalog.length > 0 && recordingClientCount === 0 && (
         <section className="rounded-[26px] border border-dashed border-blue-300 bg-blue-50/60 px-6 py-8 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm"><Users size={22} /></div>
           <h2 className="mt-4 text-lg font-bold text-slate-950">Escolha os clientes que realmente têm gravação</h2>
@@ -596,7 +602,9 @@ export default function Audiovisual() {
         <OverviewTab
           dashboard={dashboard}
           stats={stats}
-          progress={recordedProgress}
+          scheduledProgress={scheduledProgress}
+          recordedProgress={recordedProgress}
+          clientsNotScheduled={clientsNotScheduledThisMonth}
           clientsMissing={clientsMissingThisMonth}
           referenceMonth={referenceMonth}
           canManage={canManage}
@@ -709,7 +717,7 @@ export default function Audiovisual() {
   );
 }
 
-function OverviewTab({ dashboard, stats, progress, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, setTab }) {
+function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, clientsNotScheduled, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, setTab }) {
   const clients = dashboard?.clients || [];
   const urgent = clients.slice(0, 8);
   const overdue = dashboard?.overdue_recordings || [];
@@ -773,22 +781,52 @@ function OverviewTab({ dashboard, stats, progress, clientsMissing, referenceMont
           </div>
         </section>
 
-        <section className="relative overflow-hidden rounded-[26px] bg-slate-950 p-6 text-white shadow-sm">
-          <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-500/20 blur-3xl" />
-          <div className="relative">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-300">Indicador principal · {monthLabel}</p>
-            <h2 className="mt-2 text-sm font-semibold text-white/65">Clientes gravados no mês</h2>
-            <div className="mt-4 flex items-end gap-2">
-              <strong className="text-6xl font-black tracking-tight sm:text-7xl">{stats.clients_recorded_month || 0}</strong>
-              <span className="pb-2 text-xl font-bold text-white/35">/ {stats.clients_total || 0}</span>
+        <div className="grid gap-3">
+          <section className="relative overflow-hidden rounded-[26px] bg-blue-600 p-5 text-white shadow-sm">
+            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/15 blur-3xl" />
+            <div className="relative">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-100">Etapa 1 · Planejamento · {monthLabel}</p>
+                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white/80">Primeiro passo</span>
+              </div>
+              <h2 className="mt-2 text-sm font-semibold text-white/75">Clientes com gravação agendada</h2>
+              <div className="mt-2 flex items-end gap-2">
+                <strong className="text-5xl font-black tracking-tight sm:text-6xl">{stats.clients_scheduled_month || 0}</strong>
+                <span className="pb-1.5 text-lg font-bold text-white/45">/ {stats.clients_total || 0}</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
+                <div className="h-full rounded-full bg-white transition-all" style={{ width: `${scheduledProgress}%` }} />
+              </div>
+              <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px]">
+                <span className="font-black text-white">{scheduledProgress}% agendados</span>
+                <span className={clientsNotScheduled ? 'font-bold text-blue-100' : 'font-bold text-emerald-100'}>
+                  {clientsNotScheduled ? `${clientsNotScheduled} ainda precisam ser marcados` : 'Toda a carteira já está marcada ✓'}
+                </span>
+              </div>
             </div>
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${progress}%` }} /></div>
-            <div className="mt-3 flex items-center justify-between text-xs">
-              <span className="font-bold text-blue-300">{progress}% da carteira</span>
-              <span className={clientsMissing ? 'font-bold text-amber-300' : 'font-bold text-emerald-300'}>{clientsMissing ? `${clientsMissing} ainda não gravado(s)` : 'Todos gravados ✓'}</span>
+          </section>
+
+          <section className="relative overflow-hidden rounded-[26px] bg-slate-950 p-5 text-white shadow-sm">
+            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-500/20 blur-3xl" />
+            <div className="relative">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-300">Etapa 2 · Execução · {monthLabel}</p>
+              <h2 className="mt-2 text-sm font-semibold text-white/65">Clientes gravados no mês</h2>
+              <div className="mt-2 flex items-end gap-2">
+                <strong className="text-5xl font-black tracking-tight sm:text-6xl">{stats.clients_recorded_month || 0}</strong>
+                <span className="pb-1.5 text-lg font-bold text-white/35">/ {stats.clients_total || 0}</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${recordedProgress}%` }} />
+              </div>
+              <div className="mt-2.5 flex items-center justify-between gap-3 text-[11px]">
+                <span className="font-black text-blue-300">{recordedProgress}% gravados</span>
+                <span className={clientsMissing ? 'font-bold text-amber-300' : 'font-bold text-emerald-300'}>
+                  {clientsMissing ? `${clientsMissing} ainda não gravado(s)` : 'Todos gravados ✓'}
+                </span>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">

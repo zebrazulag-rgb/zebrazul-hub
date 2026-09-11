@@ -288,7 +288,7 @@ router.get('/dashboard', (req, res) => {
   if (!ids.length) {
     return res.json({
       reference_month: referenceMonth,
-      stats: { clients_recorded_month: 0, clients_total: 0, recordings_scheduled_month: 0, recordings_completed_month: 0, recordings_total: 0, videos_recorded_month: 0, editing: 0, edited_waiting_schedule: 0, posted_month: 0, overdue_recordings: 0 },
+      stats: { clients_scheduled_month: 0, clients_recorded_month: 0, clients_total: 0, recordings_scheduled_month: 0, recordings_completed_month: 0, recordings_total: 0, videos_recorded_month: 0, editing: 0, edited_waiting_schedule: 0, posted_month: 0, overdue_recordings: 0 },
       clients: [], upcoming_recordings: [], overdue_recordings: [],
     });
   }
@@ -311,6 +311,10 @@ router.get('/dashboard', (req, res) => {
     const recordingsMonth = Number(db.prepare(`
       SELECT COUNT(*) AS total FROM audiovisual_recordings
       WHERE agency_id = ? AND client_id = ? AND status = 'recorded' AND substr(COALESCE(recorded_at, scheduled_start), 1, 7) = ?
+    `).get(req.user.agency_id, client.id, referenceMonth)?.total || 0);
+    const scheduledInMonth = Number(db.prepare(`
+      SELECT COUNT(*) AS total FROM audiovisual_recordings
+      WHERE agency_id = ? AND client_id = ? AND status <> 'cancelled' AND substr(scheduled_start, 1, 7) = ?
     `).get(req.user.agency_id, client.id, referenceMonth)?.total || 0);
     const lastPosted = db.prepare(`
       SELECT MAX(posted_at) AS value FROM audiovisual_videos
@@ -340,6 +344,8 @@ router.get('/dashboard', (req, res) => {
       ...client,
       last_recorded_at: lastRecording,
       days_without_recording: daysWithout,
+      scheduled_in_reference_month: scheduledInMonth > 0,
+      scheduled_recordings_in_reference_month: scheduledInMonth,
       recorded_in_reference_month: recordingsMonth > 0,
       recordings_in_reference_month: recordingsMonth,
       last_posted_at: lastPosted,
@@ -366,6 +372,9 @@ router.get('/dashboard', (req, res) => {
   const scope = `agency_id = ? AND client_id IN (${placeholders})`;
   const params = [req.user.agency_id, ...ids];
   const stats = {
+    // Quantos CLIENTES únicos já têm ao menos uma gravação marcada no mês.
+    // Uma mesma empresa com duas ou mais sessões continua contando apenas uma vez.
+    clients_scheduled_month: health.filter((client) => client.scheduled_in_reference_month).length,
     clients_recorded_month: health.filter((client) => client.recorded_in_reference_month).length,
     clients_total: health.length,
     recordings_scheduled_month: scalar(`SELECT COUNT(*) AS total FROM audiovisual_recordings WHERE ${scope} AND status <> 'cancelled' AND substr(scheduled_start, 1, 7) = ?`, [...params, referenceMonth]),
