@@ -132,7 +132,14 @@ export default function Audiovisual() {
   const canPublish = canManage || hasPermission(user, 'audiovisual.publish');
   const canCalendar = hasPermission(user, 'audiovisual.calendar');
 
-  const queryParams = useMemo(() => ({
+  // O painel executivo é SEMPRE geral para todos os clientes marcados como
+  // "clientes de gravação". O seletor global de cliente serve apenas para
+  // detalhar a operação (Agenda e Produção), sem distorcer os KPIs principais.
+  const dashboardParams = useMemo(() => ({
+    month: referenceMonth,
+  }), [referenceMonth]);
+
+  const operationalParams = useMemo(() => ({
     month: referenceMonth,
     ...(selectedClient?.id ? { client_id: selectedClient.id } : {}),
   }), [referenceMonth, selectedClient?.id]);
@@ -142,8 +149,8 @@ export default function Audiovisual() {
     setError('');
     try {
       const [dashboardRes, recordingsRes, videosRes, calendarRes, clientSelectionRes] = await Promise.all([
-        api.get('/audiovisual/dashboard', { params: queryParams }),
-        api.get('/audiovisual/recordings', { params: queryParams }),
+        api.get('/audiovisual/dashboard', { params: dashboardParams }),
+        api.get('/audiovisual/recordings', { params: operationalParams }),
         api.get('/audiovisual/videos', { params: selectedClient?.id ? { client_id: selectedClient.id } : {} }),
         api.get('/google-calendar-oauth/status'),
         api.get('/audiovisual/client-selection'),
@@ -158,7 +165,7 @@ export default function Audiovisual() {
     } finally {
       setLoading(false);
     }
-  }, [queryParams, selectedClient?.id]);
+  }, [dashboardParams, operationalParams, selectedClient?.id]);
 
   useEffect(() => {
     loadData();
