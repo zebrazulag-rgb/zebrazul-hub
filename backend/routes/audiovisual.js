@@ -288,8 +288,8 @@ router.get('/dashboard', (req, res) => {
   if (!ids.length) {
     return res.json({
       reference_month: referenceMonth,
-      stats: { clients_recorded_month: 0, clients_total: 0, recordings_scheduled_month: 0, recordings_completed_month: 0, recordings_total: 0, videos_recorded_month: 0, editing: 0, edited_waiting_schedule: 0, posted_month: 0 },
-      clients: [], upcoming_recordings: [],
+      stats: { clients_recorded_month: 0, clients_total: 0, recordings_scheduled_month: 0, recordings_completed_month: 0, recordings_total: 0, videos_recorded_month: 0, editing: 0, edited_waiting_schedule: 0, posted_month: 0, overdue_recordings: 0 },
+      clients: [], upcoming_recordings: [], overdue_recordings: [],
     });
   }
 
@@ -316,14 +316,18 @@ router.get('/dashboard', (req, res) => {
       SELECT MAX(posted_at) AS value FROM audiovisual_videos
       WHERE agency_id = ? AND client_id = ? AND status = 'posted'
     `).get(req.user.agency_id, client.id)?.value || null;
-    const stock = Number(db.prepare(`
-      SELECT COUNT(*) AS total FROM audiovisual_videos
-      WHERE agency_id = ? AND client_id = ? AND status <> 'posted'
-    `).get(req.user.agency_id, client.id)?.total || 0);
-    const editedReady = Number(db.prepare(`
-      SELECT COUNT(*) AS total FROM audiovisual_videos
-      WHERE agency_id = ? AND client_id = ? AND status = 'edited'
-    `).get(req.user.agency_id, client.id)?.total || 0);
+    const stockBreakdown = db.prepare(`
+      SELECT
+        SUM(CASE WHEN status <> 'posted' THEN 1 ELSE 0 END) AS total,
+        SUM(CASE WHEN status = 'recorded' THEN 1 ELSE 0 END) AS recorded,
+        SUM(CASE WHEN status = 'editing' THEN 1 ELSE 0 END) AS editing,
+        SUM(CASE WHEN status = 'edited' THEN 1 ELSE 0 END) AS edited,
+        SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) AS scheduled
+      FROM audiovisual_videos
+      WHERE agency_id = ? AND client_id = ?
+    `).get(req.user.agency_id, client.id) || {};
+    const stock = Number(stockBreakdown.total || 0);
+    const editedReady = Number(stockBreakdown.edited || 0);
     const settings = formatSettings(getClientSettings(req.user.agency_id, client.id));
     const intervalDays = settings.cadence_period === 'month'
       ? Math.max(1, Math.round(30 / settings.videos_per_period))
@@ -340,6 +344,12 @@ router.get('/dashboard', (req, res) => {
       recordings_in_reference_month: recordingsMonth,
       last_posted_at: lastPosted,
       unposted_videos: stock,
+      stock_breakdown: {
+        raw: Number(stockBreakdown.recorded || 0),
+        editing: Number(stockBreakdown.editing || 0),
+        edited: Number(stockBreakdown.edited || 0),
+        scheduled: Number(stockBreakdown.scheduled || 0),
+      },
       edited_ready: editedReady,
       next_post_suggested: nextPost,
       next_recording_suggested: nextRecording,
@@ -371,6 +381,7 @@ router.get('/dashboard', (req, res) => {
     editing: scalar(`SELECT COUNT(*) AS total FROM audiovisual_videos WHERE ${scope} AND status = 'editing'`, params),
     edited_waiting_schedule: scalar(`SELECT COUNT(*) AS total FROM audiovisual_videos WHERE ${scope} AND status = 'edited'`, params),
     posted_month: scalar(`SELECT COUNT(*) AS total FROM audiovisual_videos WHERE ${scope} AND status = 'posted' AND substr(posted_at, 1, 7) = ?`, [...params, referenceMonth]),
+    overdue_recordings: scalar(`SELECT COUNT(*) AS total FROM audiovisual_recordings WHERE ${scope} AND status = 'scheduled' AND scheduled_start < ?`, [...params, `${todayKey()}T00:00:00`]),
   };
 
   const upcoming = db.prepare(`
@@ -383,7 +394,20 @@ router.get('/dashboard', (req, res) => {
     LIMIT 12
   `).all(req.user.agency_id, ...ids, `${todayKey()}T00:00`);
 
-  res.json({ reference_month: referenceMonth, stats, clients: health, upcoming_recordings: upcoming });
+  const overdue = db.prepare(`
+    SELECT r.*, c.name AS client_name, c.logo_color AS client_color
+    FROM audiovisual_recordings r
+    JOIN clients c ON c.id = r.client_id
+    WHERE r.agency_id = ? AND r.client_id IN (${placeholders}) AND r.status = 'scheduled'
+      AND r.scheduled_start < ?
+    ORDER BY r.scheduled_start ASC
+    LIMIT 12
+  `).all(req.user.agency_id, ...ids, `${todayKey()}T00:00:00`).map((row) => ({
+    ...row,
+    overdue_days: daysBetween(row.scheduled_start),
+  }));
+
+  res.json({ reference_month: referenceMonth, stats, clients: health, upcoming_recordings: upcoming, overdue_recordings: overdue });
 });
 
 router.get('/recordings', (req, res) => {
@@ -439,6 +463,113 @@ router.post('/recordings', requireAny(['audiovisual.manage']), async (req, res) 
   const calendarWarning = await syncRecordingQuietly(recording);
   recording = getRecording(info.lastInsertRowid, req.user.agency_id);
   res.status(201).json({ recording, calendar_warning: calendarWarning });
+});
+
+
+router.post('/recordings/historical', requireAny(['audiovisual.manage']), (req, res) => {
+  const client = ensureClient(req, res, req.body.client_id);
+  if (!client) return;
+  if (!isRecordingClient(req.user.agency_id, client.id)) {
+    return res.status(400).json({ error: 'Este cliente não está marcado como cliente de gravação.' });
+  }
+
+  const recordedDate = validDate(req.body.recorded_date);
+  if (!recordedDate) return res.status(400).json({ error: 'Informe a data em que a gravação aconteceu.' });
+
+  const videoCount = Math.max(0, Math.min(100, Math.floor(Number(req.body.video_count || 0))));
+  const postedCount = Math.max(0, Math.min(100, Math.floor(Number(req.body.posted_count || 0))));
+  const editedCount = Math.max(0, Math.min(100, Math.floor(Number(req.body.edited_count || 0))));
+  if (videoCount < 1) return res.status(400).json({ error: 'Informe quantos vídeos foram gravados.' });
+  if (postedCount + editedCount > videoCount) {
+    return res.status(400).json({ error: 'A soma de vídeos postados e editados não pode ultrapassar o total gravado.' });
+  }
+
+  const lastPostedDate = postedCount > 0 ? validDate(req.body.last_posted_date) : null;
+  if (postedCount > 0 && !lastPostedDate) {
+    return res.status(400).json({ error: 'Informe a data do último vídeo postado para manter as próximas sugestões corretas.' });
+  }
+
+  const rawLinks = normalizeLinks(req.body.raw_links);
+  const editedLinks = normalizeLinks(req.body.edited_links);
+  if (editedCount > 0 && editedLinks.length < editedCount) {
+    return res.status(400).json({ error: `Para registrar ${editedCount} vídeo(s) como editado(s), adicione pelo menos ${editedCount} link(s) final(is), um por vídeo.` });
+  }
+
+  const recordedAt = `${recordedDate}T12:00:00`;
+  const lastPostedAt = lastPostedDate ? `${lastPostedDate}T12:00:00` : null;
+
+  const createHistorical = db.transaction(() => {
+    const info = db.prepare(`
+      INSERT INTO audiovisual_recordings (
+        agency_id, client_id, created_by, title, scheduled_start, scheduled_end,
+        location, responsible_name, status, recorded_at, video_count, raw_links_json, notes
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 'recorded', ?, ?, ?, ?)
+    `).run(
+      req.user.agency_id,
+      client.id,
+      req.user.id,
+      normalizeText(req.body.title) || `Gravação realizada — ${client.name}`,
+      recordedAt,
+      normalizeText(req.body.location),
+      normalizeText(req.body.responsible_name),
+      recordedAt,
+      videoCount,
+      JSON.stringify(rawLinks),
+      normalizeText(req.body.notes),
+    );
+
+    const recordingId = Number(info.lastInsertRowid);
+    const insert = db.prepare(`
+      INSERT INTO audiovisual_videos (
+        agency_id, client_id, recording_id, video_number, title, status, created_by,
+        final_links_json, edited_at, posted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (let number = 1; number <= videoCount; number += 1) {
+      let status = 'recorded';
+      let finalLinksJson = '[]';
+      let editedAt = null;
+      let postedAt = null;
+
+      if (number <= postedCount) {
+        status = 'posted';
+        // Só precisamos de uma data confiável para representar o último post.
+        // Os demais vídeos importados continuam como postados, sem inventar datas.
+        postedAt = number === postedCount ? lastPostedAt : null;
+      } else if (number <= postedCount + editedCount) {
+        status = 'edited';
+        const link = editedLinks[number - postedCount - 1];
+        finalLinksJson = JSON.stringify(link ? [link] : []);
+        editedAt = recordedAt;
+      }
+
+      insert.run(
+        req.user.agency_id,
+        client.id,
+        recordingId,
+        number,
+        `${client.name} — Vídeo ${String(number).padStart(2, '0')}`,
+        status,
+        req.user.id,
+        finalLinksJson,
+        editedAt,
+        postedAt,
+      );
+    }
+
+    return recordingId;
+  });
+
+  const recordingId = createHistorical();
+  const recording = getRecording(recordingId, req.user.agency_id);
+  const videos = db.prepare('SELECT * FROM audiovisual_videos WHERE recording_id = ? ORDER BY video_number').all(recordingId);
+  res.status(201).json({
+    recording: { ...recording, raw_links: rawLinks },
+    videos,
+    stock_created: videoCount - postedCount,
+    historical: true,
+  });
 });
 
 router.put('/recordings/:id', requireAny(['audiovisual.manage']), async (req, res) => {

@@ -119,6 +119,7 @@ export default function Audiovisual() {
   const [notice, setNotice] = useState('');
   const [draggedVideoId, setDraggedVideoId] = useState(null);
   const [recordingModal, setRecordingModal] = useState(null);
+  const [historicalModal, setHistoricalModal] = useState(null);
   const [completeModal, setCompleteModal] = useState(null);
   const [editModal, setEditModal] = useState(null);
   const [scheduleModal, setScheduleModal] = useState(null);
@@ -223,6 +224,56 @@ export default function Audiovisual() {
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível salvar a gravação.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
+  async function saveHistoricalRecording(form) {
+    const videoCount = Number(form.video_count || 0);
+    const postedCount = Number(form.posted_count || 0);
+    const editedCount = Number(form.edited_count || 0);
+    const editedLinks = linksFromText(form.edited_links_text);
+
+    if (videoCount < 1) {
+      setError('Informe quantos vídeos foram gravados.');
+      return;
+    }
+    if (postedCount + editedCount > videoCount) {
+      setError('Postados + editados não pode ser maior que o total de vídeos gravados.');
+      return;
+    }
+    if (postedCount > 0 && !form.last_posted_date) {
+      setError('Informe a data do último vídeo postado para o cálculo das próximas datas.');
+      return;
+    }
+    if (editedCount > 0 && editedLinks.length < editedCount) {
+      setError(`Adicione ${editedCount} link(s) final(is), um para cada vídeo informado como editado.`);
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const { data } = await api.post('/audiovisual/recordings/historical', {
+        client_id: form.client_id,
+        recorded_date: form.recorded_date,
+        video_count: videoCount,
+        posted_count: postedCount,
+        edited_count: editedCount,
+        last_posted_date: form.last_posted_date || null,
+        raw_links: linksFromText(form.raw_links_text),
+        edited_links: editedLinks,
+        responsible_name: form.responsible_name,
+        location: form.location,
+        notes: form.notes,
+      });
+      setHistoricalModal(null);
+      setNotice(`Gravação histórica registrada. ${data.stock_created || 0} vídeo(s) entraram na gaveta.`);
+      await loadData({ quiet: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Não foi possível registrar a gravação realizada.');
     } finally {
       setSaving(false);
     }
@@ -400,6 +451,29 @@ export default function Audiovisual() {
     });
   }
 
+
+  function openHistoricalRecording(clientId = null) {
+    if (!clientId && !(dashboard?.clients || []).length) {
+      setError('Selecione pelo menos um cliente de gravação antes de registrar o histórico.');
+      openClientSelection();
+      return;
+    }
+    const today = localDateTimeInput(new Date()).slice(0, 10);
+    setHistoricalModal({
+      client_id: clientId || selectedClient?.id || dashboard?.clients?.[0]?.id || '',
+      recorded_date: today,
+      video_count: '',
+      posted_count: '0',
+      edited_count: '0',
+      last_posted_date: '',
+      raw_links_text: '',
+      edited_links_text: '',
+      responsible_name: '',
+      location: '',
+      notes: '',
+    });
+  }
+
   function openComplete(recording) {
     setCompleteModal({
       id: recording.id,
@@ -472,6 +546,11 @@ export default function Audiovisual() {
               <input type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} className="bg-transparent outline-none" />
             </label>
             {canManage && (
+              <button type="button" onClick={() => openHistoricalRecording()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                <Clock3 size={14} /> Registrar realizada
+              </button>
+            )}
+            {canManage && (
               <button type="button" onClick={() => openNewRecording()} className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">
                 <Plus size={15} /> Nova gravação
               </button>
@@ -522,6 +601,8 @@ export default function Audiovisual() {
           referenceMonth={referenceMonth}
           canManage={canManage}
           openNewRecording={openNewRecording}
+          openComplete={openComplete}
+          openHistoricalRecording={openHistoricalRecording}
           setTab={setTab}
         />
       )}
@@ -535,6 +616,7 @@ export default function Audiovisual() {
           connectCalendar={connectCalendar}
           disconnectCalendar={disconnectCalendar}
           openNewRecording={openNewRecording}
+          openHistoricalRecording={openHistoricalRecording}
           openComplete={openComplete}
           onDelete={async (recording) => {
             if (!window.confirm(`Excluir a gravação de ${recording.client_name}?`)) return;
@@ -570,6 +652,7 @@ export default function Audiovisual() {
           canManage={canManage}
           openSettings={openSettings}
           openNewRecording={openNewRecording}
+          openHistoricalRecording={openHistoricalRecording}
           openClientSelection={openClientSelection}
         />
       )}
@@ -582,6 +665,17 @@ export default function Audiovisual() {
           saving={saving}
           onClose={() => setRecordingModal(null)}
           onSave={saveRecording}
+        />
+      )}
+
+      {historicalModal && (
+        <HistoricalRecordingModal
+          form={historicalModal}
+          setForm={setHistoricalModal}
+          clients={dashboard?.clients || []}
+          saving={saving}
+          onClose={() => setHistoricalModal(null)}
+          onSave={saveHistoricalRecording}
         />
       )}
 
@@ -615,12 +709,37 @@ export default function Audiovisual() {
   );
 }
 
-function OverviewTab({ dashboard, stats, progress, clientsMissing, referenceMonth, canManage, openNewRecording, setTab }) {
+function OverviewTab({ dashboard, stats, progress, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, setTab }) {
   const clients = dashboard?.clients || [];
   const urgent = clients.slice(0, 8);
+  const overdue = dashboard?.overdue_recordings || [];
   const monthLabel = formatMonthLabel(referenceMonth);
   return (
     <div className="space-y-4">
+      {overdue.length > 0 && (
+        <section className="overflow-hidden rounded-[24px] border border-amber-300 bg-amber-50 shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-amber-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-amber-700"><Clock3 size={14} /> Gravação passada ainda aberta</div>
+              <h2 className="mt-1 text-base font-bold text-slate-950">{overdue.length} gravação(ões) precisam ser encerradas</h2>
+              <p className="mt-1 text-xs text-amber-800/75">Enquanto não forem concluídas, elas não atualizam a última gravação nem criam os vídeos da gaveta.</p>
+            </div>
+            <button type="button" onClick={() => setTab('agenda')} className="text-xs font-bold text-amber-800">Abrir agenda <ChevronRight className="inline" size={14} /></button>
+          </div>
+          <div className="grid gap-2 p-3 lg:grid-cols-2">
+            {overdue.slice(0, 6).map((recording) => (
+              <div key={recording.id} className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-900">{recording.client_name}</p>
+                  <p className="mt-1 text-xs text-slate-500">Marcada para {formatDate(recording.scheduled_start, { year: true })} · <strong className="text-amber-700">{recording.overdue_days || 1}d pendente</strong></p>
+                </div>
+                {canManage && <button type="button" onClick={() => openComplete(recording)} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white">Concluir agora</button>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
         <section className="overflow-hidden rounded-[26px] border border-red-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-red-100 bg-red-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -645,6 +764,7 @@ function OverviewTab({ dashboard, stats, progress, clientsMissing, referenceMont
                   </div>
                   <div className="flex items-center gap-2 sm:w-[310px] sm:justify-end">
                     <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${tone === 'red' ? 'bg-red-50 text-red-700' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{daysLabel(client)}</span>
+                    {canManage && client.days_without_recording == null && <button type="button" onClick={() => openHistoricalRecording(client.id)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:bg-slate-50">Registrar antiga</button>}
                     {canManage && <button type="button" onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">Marcar</button>}
                   </div>
                 </div>
@@ -671,7 +791,8 @@ function OverviewTab({ dashboard, stats, progress, clientsMissing, referenceMont
         </section>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
+        <Metric icon={Clapperboard} label="Vídeos na gaveta" value={clients.reduce((sum, client) => sum + Number(client.unposted_videos || 0), 0)} />
         <Metric icon={CalendarDays} label="Marcadas no mês" value={stats.recordings_scheduled_month || 0} />
         <Metric icon={CheckCircle2} label="Concluídas" value={stats.recordings_completed_month || 0} />
         <Metric icon={Video} label="Vídeos gravados" value={stats.videos_recorded_month || 0} />
@@ -711,7 +832,7 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
-function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connectCalendar, disconnectCalendar, openNewRecording, openComplete, onDelete }) {
+function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connectCalendar, disconnectCalendar, openNewRecording, openHistoricalRecording, openComplete, onDelete }) {
   const connected = Boolean(calendarStatus?.connection?.connected);
   const configured = Boolean(calendarStatus?.oauth?.configured);
   return (
@@ -729,6 +850,7 @@ function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connect
           <div className="flex flex-wrap gap-2">
             {canCalendar && !connected && <button type="button" disabled={!configured} onClick={connectCalendar} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">Conectar Google Agenda</button>}
             {canCalendar && connected && <button type="button" onClick={disconnectCalendar} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600"><Unlink size={14} /> Desconectar</button>}
+            {canManage && <button type="button" onClick={() => openHistoricalRecording()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600"><Clock3 size={14} /> Registrar realizada</button>}
             {canManage && <button type="button" onClick={() => openNewRecording()} className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white"><Plus size={14} /> Nova gravação</button>}
           </div>
         </div>
@@ -737,8 +859,10 @@ function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connect
       <section className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-bold text-slate-900">Agenda do mês</h2><p className="mt-1 text-xs text-slate-400">A data da gravação fica registrada aqui e, quando conectado, também no Google Agenda.</p></div>
         <div className="divide-y divide-slate-100">
-          {recordings.map((recording) => (
-            <div key={recording.id} className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center">
+          {recordings.map((recording) => {
+            const isOverdue = recording.status === 'scheduled' && String(recording.scheduled_start || '').slice(0, 10) < localDateTimeInput(new Date()).slice(0, 10);
+            return (
+            <div key={recording.id} className={`flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center ${isOverdue ? 'bg-amber-50/50' : ''}`}>
               <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl bg-slate-950 text-white">
                 <strong className="text-lg leading-none">{String(recording.scheduled_start || '').slice(8, 10)}</strong>
                 <span className="mt-1 text-[9px] font-bold uppercase text-white/50">{formatDate(recording.scheduled_start).slice(3, 5)}</span>
@@ -753,8 +877,10 @@ function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connect
                 {canManage && recording.status === 'scheduled' && <button type="button" onClick={() => openComplete(recording)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white">Concluir gravação</button>}
                 {canManage && recording.status !== 'recorded' && <button type="button" onClick={() => onDelete(recording)} className="rounded-xl p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>}
               </div>
+              {isOverdue && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">Pendente</span>}
             </div>
-          ))}
+            );
+          })}
           {!recordings.length && <p className="px-5 py-14 text-center text-sm text-slate-400">Nenhuma gravação neste mês.</p>}
         </div>
       </section>
@@ -834,7 +960,7 @@ function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDragged
   );
 }
 
-function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewRecording }) {
+function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewRecording, openHistoricalRecording, openClientSelection }) {
   return (
     <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-bold text-slate-900">Saúde audiovisual por cliente</h2><p className="mt-1 text-xs text-slate-400">Ordenado automaticamente por quem está há mais tempo sem gravar.</p></div>
@@ -851,12 +977,15 @@ function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewR
                   <td className="px-5 py-3.5"><div className="font-bold text-slate-900">{client.name}</div><div className="mt-0.5 text-[10px] text-slate-400">Última gravação: {client.last_recorded_at ? formatDate(client.last_recorded_at, { year: true }) : '—'}</div></td>
                   <td className="px-3 py-3.5"><span className={`rounded-full px-2.5 py-1 font-bold ${tone === 'red' ? 'bg-red-50 text-red-700' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{client.days_without_recording == null ? 'Nunca' : `${client.days_without_recording}d`}</span></td>
                   <td className="px-3 py-3.5">{client.recorded_in_reference_month ? <span className="font-bold text-emerald-600">Sim ✓</span> : <span className="font-bold text-red-600">Não</span>}</td>
-                  <td className="px-3 py-3.5"><strong className="text-slate-900">{client.unposted_videos || 0}</strong> <span className="text-slate-400">vídeos</span></td>
+                  <td className="px-3 py-3.5">
+                    <strong className="text-slate-900">{client.unposted_videos || 0}</strong> <span className="text-slate-400">vídeos</span>
+                    <div className="mt-1 whitespace-nowrap text-[9px] text-slate-400">{client.stock_breakdown?.raw || 0} brutos · {client.stock_breakdown?.editing || 0} edição · {client.stock_breakdown?.edited || 0} prontos · {client.stock_breakdown?.scheduled || 0} agend.</div>
+                  </td>
                   <td className="px-3 py-3.5 text-slate-500">{formatDate(client.last_posted_at)}</td>
                   <td className="px-3 py-3.5 font-semibold text-slate-700">{formatDate(client.next_post_suggested)}</td>
                   <td className="px-3 py-3.5">{client.next_recording_suggested ? <span className={client.recording_delay_days > 0 ? 'font-bold text-red-600' : 'font-semibold text-blue-600'}>{formatDate(client.next_recording_suggested)}{client.recording_delay_days > 0 ? ` · ${client.recording_delay_days}d atrasado` : ''}</span> : <span className="text-slate-400">Sem histórico</span>}</td>
                   <td className="px-3 py-3.5 text-slate-500">{client.settings?.videos_per_period || 2} vídeo(s) / {client.settings?.cadence_period === 'month' ? 'mês' : 'semana'}</td>
-                  <td className="px-5 py-3.5"><div className="flex justify-end gap-1.5">{canManage && <button onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 px-2 py-1.5 font-bold text-blue-600">Gravar</button>}{canManage && <button onClick={() => openSettings(client)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><Settings2 size={14} /></button>}</div></td>
+                  <td className="px-5 py-3.5"><div className="flex justify-end gap-1.5">{canManage && <button onClick={() => openHistoricalRecording(client.id)} className="rounded-lg border border-slate-200 px-2 py-1.5 font-bold text-slate-500">Histórico</button>}{canManage && <button onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 px-2 py-1.5 font-bold text-blue-600">Gravar</button>}{canManage && <button onClick={() => openSettings(client)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><Settings2 size={14} /></button>}</div></td>
                 </tr>
               );
             })}
@@ -917,6 +1046,44 @@ function ClientSelectionModal({ form, setForm, clients, saving, onClose, onSave 
       </div>
 
       <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Salvar clientes" />
+    </ModalShell>
+  );
+}
+
+
+function HistoricalRecordingModal({ form, setForm, clients, saving, onClose, onSave }) {
+  const postedCount = Math.max(0, Number(form.posted_count || 0));
+  const editedCount = Math.max(0, Number(form.edited_count || 0));
+  const total = Math.max(0, Number(form.video_count || 0));
+  const stock = Math.max(0, total - postedCount);
+  const rawCount = Math.max(0, total - postedCount - editedCount);
+
+  return (
+    <ModalShell title="Registrar gravação já realizada" subtitle="Use para lançar gravações anteriores e trazer a gaveta real do cliente para o ZebraHub. Não cria evento retroativo no Google Agenda." onClose={onClose} saving={saving}>
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        <div className="rounded-2xl bg-slate-950 px-3 py-3 text-white"><span className="block text-[9px] font-bold uppercase tracking-wide text-white/45">Total gravado</span><strong className="mt-1 block text-xl">{total}</strong></div>
+        <div className="rounded-2xl bg-blue-50 px-3 py-3 text-blue-900"><span className="block text-[9px] font-bold uppercase tracking-wide text-blue-500">Na gaveta</span><strong className="mt-1 block text-xl">{stock}</strong></div>
+        <div className="rounded-2xl bg-slate-50 px-3 py-3 text-slate-900"><span className="block text-[9px] font-bold uppercase tracking-wide text-slate-400">Ainda brutos</span><strong className="mt-1 block text-xl">{rawCount}</strong></div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Select label="Cliente" value={form.client_id} onChange={(value) => setForm({ ...form, client_id: value })} options={clients.map((client) => [client.id, client.name])} />
+        <Input label="Data da gravação *" type="date" value={form.recorded_date} onChange={(value) => setForm({ ...form, recorded_date: value })} />
+        <Input label="Quantos vídeos foram gravados? *" type="number" min="1" value={form.video_count} onChange={(value) => setForm({ ...form, video_count: value })} />
+        <Input label="Quantos já foram postados?" type="number" min="0" value={form.posted_count} onChange={(value) => setForm({ ...form, posted_count: value })} />
+        <Input label="Quantos estão editados?" type="number" min="0" value={form.edited_count} onChange={(value) => setForm({ ...form, edited_count: value })} />
+        {postedCount > 0 && <Input label="Data do último post *" type="date" value={form.last_posted_date} onChange={(value) => setForm({ ...form, last_posted_date: value })} />}
+        <Input label="Responsável pela gravação" value={form.responsible_name} onChange={(value) => setForm({ ...form, responsible_name: value })} placeholder="Ex.: Kennedy" />
+        <Input label="Local" value={form.location} onChange={(value) => setForm({ ...form, location: value })} placeholder="Clínica, escritório, externa..." />
+        <div className="sm:col-span-2"><TextArea label="Links dos arquivos brutos" value={form.raw_links_text} onChange={(value) => setForm({ ...form, raw_links_text: value })} placeholder="Um link por linha — Drive, Frame.io, Dropbox..." rows={3} /></div>
+        {editedCount > 0 && <div className="sm:col-span-2"><TextArea label={`Links finais dos ${editedCount} vídeo(s) editado(s) *`} value={form.edited_links_text} onChange={(value) => setForm({ ...form, edited_links_text: value })} placeholder="Um link por linha, na mesma quantidade de vídeos editados" rows={Math.min(6, Math.max(3, editedCount))} /></div>}
+        <div className="sm:col-span-2"><TextArea label="Observações" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} placeholder="Contexto da gravação histórica..." rows={3} /></div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+        <strong>Gaveta = tudo que ainda não foi postado.</strong> Vídeos brutos, em edição, editados ou agendados continuam contando no estoque até a publicação.
+      </div>
+      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Registrar gravação realizada" />
     </ModalShell>
   );
 }
