@@ -769,7 +769,11 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
             <div>
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-red-600"><AlertTriangle size={14} /> Resolver primeiro</div>
               <h2 className="mt-1 text-lg font-bold text-slate-950">Fila de gravações por prioridade</h2>
-              <p className="mt-1 text-xs text-slate-500">Sem gravação marcada ficam no topo. Clientes já agendados descem e aparecem em amarelo.</p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-bold text-slate-500">
+                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-red-500" /> Sem gravação marcada</span>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Gravação marcada</span>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Gravado no mês</span>
+              </div>
             </div>
             <button type="button" onClick={() => setTab('clients')} className="text-xs font-bold text-red-700 hover:text-red-900">Ver todos <ChevronRight className="inline" size={14} /></button>
           </div>
@@ -798,16 +802,7 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
                             : 'bg-slate-100 text-slate-500'
                     }`}>{index + 1}</span>
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-bold text-slate-900">{client.name}</p>
-                        {recorded ? (
-                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">Gravado no mês</span>
-                        ) : scheduled ? (
-                          <span className="rounded-full bg-amber-200 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-800">Gravação marcada</span>
-                        ) : (
-                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-red-600">Sem gravação marcada</span>
-                        )}
-                      </div>
+                      <p className="truncate text-sm font-bold text-slate-900">{client.name}</p>
                       <p className="mt-0.5 text-xs text-slate-400">Última: {client.last_recorded_at ? formatDate(client.last_recorded_at, { year: true }) : 'sem histórico'}</p>
                     </div>
                   </div>
@@ -816,13 +811,6 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
                     {!scheduled && !recorded && (
                       <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${tone === 'red' ? 'bg-red-50 text-red-700' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{daysLabel(client)}</span>
                     )}
-                    {scheduled && !recorded && (
-                      <span className="rounded-full border border-amber-200 bg-white/80 px-3 py-1.5 text-xs font-bold text-amber-700">1º passo resolvido ✓</span>
-                    )}
-                    {recorded && (
-                      <span className="rounded-full border border-emerald-200 bg-white/80 px-3 py-1.5 text-xs font-bold text-emerald-700">Gravação concluída ✓</span>
-                    )}
-
                     {canManage && client.days_without_recording == null && !scheduled && !recorded && (
                       <button type="button" onClick={() => openHistoricalRecording(client.id)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:bg-slate-50">Registrar antiga</button>
                     )}
