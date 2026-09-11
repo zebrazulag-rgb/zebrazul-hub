@@ -719,7 +719,22 @@ export default function Audiovisual() {
 
 function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, clientsNotScheduled, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, setTab }) {
   const clients = dashboard?.clients || [];
-  const urgent = clients.slice(0, 8);
+  const priorityClients = [...clients].sort((a, b) => {
+    const stage = (client) => {
+      if (client.recorded_in_reference_month) return 2;
+      if (client.scheduled_in_reference_month) return 1;
+      return 0;
+    };
+
+    const stageDifference = stage(a) - stage(b);
+    if (stageDifference !== 0) return stageDifference;
+
+    const aDays = a.days_without_recording == null ? Number.MAX_SAFE_INTEGER : Number(a.days_without_recording || 0);
+    const bDays = b.days_without_recording == null ? Number.MAX_SAFE_INTEGER : Number(b.days_without_recording || 0);
+    if (aDays !== bDays) return bDays - aDays;
+
+    return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+  });
   const overdue = dashboard?.overdue_recordings || [];
   const monthLabel = formatMonthLabel(referenceMonth);
   return (
@@ -753,27 +768,72 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
           <div className="flex flex-col gap-3 border-b border-red-100 bg-red-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-red-600"><AlertTriangle size={14} /> Resolver primeiro</div>
-              <h2 className="mt-1 text-lg font-bold text-slate-950">Clientes há mais tempo sem gravação</h2>
+              <h2 className="mt-1 text-lg font-bold text-slate-950">Fila de gravações por prioridade</h2>
+              <p className="mt-1 text-xs text-slate-500">Sem gravação marcada ficam no topo. Clientes já agendados descem e aparecem em amarelo.</p>
             </div>
             <button type="button" onClick={() => setTab('clients')} className="text-xs font-bold text-red-700 hover:text-red-900">Ver todos <ChevronRight className="inline" size={14} /></button>
           </div>
-          <div className="divide-y divide-slate-100">
-            {urgent.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-400">Nenhum cliente disponível nesta visão.</p>}
-            {urgent.map((client, index) => {
+          <div className="max-h-[650px] divide-y divide-slate-100 overflow-y-auto">
+            {priorityClients.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-400">Nenhum cliente disponível nesta visão.</p>}
+            {priorityClients.map((client, index) => {
               const tone = urgencyTone(client);
+              const scheduled = Boolean(client.scheduled_in_reference_month);
+              const recorded = Boolean(client.recorded_in_reference_month);
+              const rowClass = recorded
+                ? 'bg-emerald-50/55'
+                : scheduled
+                  ? 'bg-amber-50/75'
+                  : 'bg-white';
+
               return (
-                <div key={client.id} className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center">
+                <div key={client.id} className={`flex flex-col gap-3 px-5 py-3.5 transition sm:flex-row sm:items-center ${rowClass}`}>
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black ${index === 0 ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{index + 1}</span>
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black ${
+                      recorded
+                        ? 'bg-emerald-500 text-white'
+                        : scheduled
+                          ? 'bg-amber-400 text-amber-950'
+                          : index === 0
+                            ? 'bg-red-600 text-white'
+                            : 'bg-slate-100 text-slate-500'
+                    }`}>{index + 1}</span>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-900">{client.name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-bold text-slate-900">{client.name}</p>
+                        {recorded ? (
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">Gravado no mês</span>
+                        ) : scheduled ? (
+                          <span className="rounded-full bg-amber-200 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-800">Gravação marcada</span>
+                        ) : (
+                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-red-600">Sem gravação marcada</span>
+                        )}
+                      </div>
                       <p className="mt-0.5 text-xs text-slate-400">Última: {client.last_recorded_at ? formatDate(client.last_recorded_at, { year: true }) : 'sem histórico'}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 sm:w-[310px] sm:justify-end">
-                    <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${tone === 'red' ? 'bg-red-50 text-red-700' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{daysLabel(client)}</span>
-                    {canManage && client.days_without_recording == null && <button type="button" onClick={() => openHistoricalRecording(client.id)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:bg-slate-50">Registrar antiga</button>}
-                    {canManage && <button type="button" onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">Marcar</button>}
+
+                  <div className="flex flex-wrap items-center gap-2 sm:w-[360px] sm:justify-end">
+                    {!scheduled && !recorded && (
+                      <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${tone === 'red' ? 'bg-red-50 text-red-700' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{daysLabel(client)}</span>
+                    )}
+                    {scheduled && !recorded && (
+                      <span className="rounded-full border border-amber-200 bg-white/80 px-3 py-1.5 text-xs font-bold text-amber-700">1º passo resolvido ✓</span>
+                    )}
+                    {recorded && (
+                      <span className="rounded-full border border-emerald-200 bg-white/80 px-3 py-1.5 text-xs font-bold text-emerald-700">Gravação concluída ✓</span>
+                    )}
+
+                    {canManage && client.days_without_recording == null && !scheduled && !recorded && (
+                      <button type="button" onClick={() => openHistoricalRecording(client.id)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:bg-slate-50">Registrar antiga</button>
+                    )}
+
+                    {canManage && !scheduled && !recorded && (
+                      <button type="button" onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">Marcar</button>
+                    )}
+
+                    {canManage && scheduled && !recorded && (
+                      <button type="button" onClick={() => setTab('agenda')} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50">Ver agenda</button>
+                    )}
                   </div>
                 </div>
               );
