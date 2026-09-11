@@ -966,6 +966,7 @@ CREATE TABLE IF NOT EXISTS audiovisual_client_settings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
   client_id INTEGER NOT NULL,
+  is_recording_client INTEGER DEFAULT 0 CHECK(is_recording_client IN (0,1)),
   videos_per_period INTEGER DEFAULT 2,
   cadence_period TEXT DEFAULT 'week' CHECK(cadence_period IN ('week','month')),
   recording_lead_days INTEGER DEFAULT 7,
@@ -1093,6 +1094,50 @@ tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');
 tryAddColumn('action_plans', 'annual_plan_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'annual_plan_progress', 'INTEGER DEFAULT 0');
+
+tryAddColumn('audiovisual_client_settings', 'is_recording_client', 'INTEGER DEFAULT 0');
+
+// Migração única da V1 do Audiovisual:
+// - clientes que já tinham cadência configurada continuam ativos;
+// - clientes que já possuíam gravações continuam ativos;
+// - clientes sem relação audiovisual começam desmarcados.
+try {
+  const migrationKey = 'audiovisual_client_selection_v2';
+  const alreadyMigrated = db.prepare('SELECT value FROM system_meta WHERE key = ?').get(migrationKey);
+
+  if (!alreadyMigrated) {
+    db.prepare(`
+      UPDATE audiovisual_client_settings
+      SET is_recording_client = 1
+    `).run();
+
+    db.prepare(`
+      INSERT OR IGNORE INTO audiovisual_client_settings (
+        agency_id, client_id, is_recording_client
+      )
+      SELECT DISTINCT agency_id, client_id, 1
+      FROM audiovisual_recordings
+    `).run();
+
+    db.prepare(`
+      UPDATE audiovisual_client_settings
+      SET is_recording_client = 1
+      WHERE EXISTS (
+        SELECT 1
+        FROM audiovisual_recordings r
+        WHERE r.agency_id = audiovisual_client_settings.agency_id
+          AND r.client_id = audiovisual_client_settings.client_id
+      )
+    `).run();
+
+    db.prepare(`
+      INSERT OR REPLACE INTO system_meta (key, value, updated_at)
+      VALUES (?, 'done', datetime('now'))
+    `).run(migrationKey);
+  }
+} catch (error) {
+  console.warn('[AUDIOVISUAL] Migração da seleção de clientes:', error.message);
+}
 
 // Migração do módulo financeiro para bancos criados nas primeiras versões.
 // A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual

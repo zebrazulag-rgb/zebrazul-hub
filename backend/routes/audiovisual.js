@@ -54,17 +54,39 @@ function accessibleClientIds(user) {
   return (Array.isArray(user.client_ids) ? user.client_ids : []).map(Number).filter(Boolean);
 }
 
+function recordingClientIds(user) {
+  const available = accessibleClientIds(user);
+  if (!available.length) return [];
+  const placeholders = available.map(() => '?').join(',');
+  return db.prepare(`
+    SELECT client_id
+    FROM audiovisual_client_settings
+    WHERE agency_id = ?
+      AND is_recording_client = 1
+      AND client_id IN (${placeholders})
+  `).all(user.agency_id, ...available).map((row) => Number(row.client_id));
+}
+
+function isRecordingClient(agencyId, clientId) {
+  return Boolean(db.prepare(`
+    SELECT 1
+    FROM audiovisual_client_settings
+    WHERE agency_id = ? AND client_id = ? AND is_recording_client = 1
+  `).get(agencyId, Number(clientId)));
+}
+
 function selectedClientIds(req, res) {
   const available = accessibleClientIds(req.user);
+  const enabled = recordingClientIds(req.user);
   const requested = Number(req.query.client_id || req.body?.client_id || 0);
   if (requested) {
     if (!available.includes(requested) || !canAccessClient(req.user, requested)) {
       res.status(403).json({ error: 'Você não possui acesso a este cliente.' });
       return null;
     }
-    return [requested];
+    return enabled.includes(requested) ? [requested] : [];
   }
-  return available;
+  return enabled;
 }
 
 function monthKey(value) {
@@ -142,6 +164,7 @@ function getClientSettings(agencyId, clientId) {
     cadence_period: 'week',
     recording_lead_days: 7,
     preferred_days_json: '[]',
+    is_recording_client: 0,
   };
 }
 
@@ -151,7 +174,35 @@ function formatSettings(row) {
     cadence_period: row?.cadence_period === 'month' ? 'month' : 'week',
     recording_lead_days: Math.max(0, Number(row?.recording_lead_days ?? 7)),
     preferred_days: parseJsonArray(row?.preferred_days_json),
+    is_recording_client: Boolean(Number(row?.is_recording_client || 0)),
   };
+}
+
+function clientSelectionRows(user) {
+  const available = accessibleClientIds(user);
+  if (!available.length) return [];
+  const placeholders = available.map(() => '?').join(',');
+  return db.prepare(`
+    SELECT
+      c.id,
+      c.name,
+      c.logo_color,
+      c.avatar_data,
+      COALESCE(s.is_recording_client, 0) AS is_recording_client,
+      COALESCE(s.videos_per_period, 2) AS videos_per_period,
+      COALESCE(s.cadence_period, 'week') AS cadence_period,
+      COALESCE(s.recording_lead_days, 7) AS recording_lead_days
+    FROM clients c
+    LEFT JOIN audiovisual_client_settings s
+      ON s.agency_id = c.agency_id AND s.client_id = c.id
+    WHERE c.agency_id = ?
+      AND c.status = 'active'
+      AND c.id IN (${placeholders})
+    ORDER BY c.name COLLATE NOCASE
+  `).all(user.agency_id, ...available).map((row) => ({
+    ...row,
+    is_recording_client: Boolean(Number(row.is_recording_client || 0)),
+  }));
 }
 
 function getRecording(id, agencyId) {
@@ -186,6 +237,49 @@ async function syncRecordingQuietly(recording) {
     return error.message || 'Não foi possível sincronizar com o Google Agenda.';
   }
 }
+
+
+router.get('/client-selection', requireAny(['audiovisual.view']), (req, res) => {
+  res.json({ clients: clientSelectionRows(req.user) });
+});
+
+router.put('/client-selection', requireAny(['audiovisual.manage']), (req, res) => {
+  const available = accessibleClientIds(req.user);
+  const requested = Array.isArray(req.body.client_ids)
+    ? [...new Set(req.body.client_ids.map(Number).filter(Boolean))]
+    : [];
+  const selected = requested.filter((id) => available.includes(id) && canAccessClient(req.user, id));
+  const invalid = requested.filter((id) => !available.includes(id) || !canAccessClient(req.user, id));
+
+  if (invalid.length) {
+    return res.status(403).json({ error: 'A seleção contém cliente(s) que você não possui permissão para gerenciar.' });
+  }
+
+  const selectedSet = new Set(selected);
+  const upsert = db.prepare(`
+    INSERT INTO audiovisual_client_settings (
+      agency_id, client_id, is_recording_client, videos_per_period, cadence_period,
+      recording_lead_days, preferred_days_json, updated_by, updated_at
+    ) VALUES (?, ?, ?, 2, 'week', 7, '[]', ?, datetime('now'))
+    ON CONFLICT(agency_id, client_id) DO UPDATE SET
+      is_recording_client = excluded.is_recording_client,
+      updated_by = excluded.updated_by,
+      updated_at = datetime('now')
+  `);
+
+  const save = db.transaction(() => {
+    available.forEach((clientId) => {
+      upsert.run(req.user.agency_id, clientId, selectedSet.has(clientId) ? 1 : 0, req.user.id);
+    });
+  });
+  save();
+
+  res.json({
+    ok: true,
+    selected_count: selected.length,
+    clients: clientSelectionRows(req.user),
+  });
+});
 
 router.get('/dashboard', (req, res) => {
   const ids = selectedClientIds(req, res);
@@ -316,6 +410,9 @@ router.get('/recordings', (req, res) => {
 router.post('/recordings', requireAny(['audiovisual.manage']), async (req, res) => {
   const client = ensureClient(req, res, req.body.client_id);
   if (!client) return;
+  if (!isRecordingClient(req.user.agency_id, client.id)) {
+    return res.status(400).json({ error: 'Este cliente não está marcado como cliente de gravação. Inclua-o em “Clientes de gravação” antes de agendar.' });
+  }
   const scheduledStart = validDateTime(req.body.scheduled_start);
   if (!scheduledStart) return res.status(400).json({ error: 'Informe a data e o horário da gravação.' });
   const scheduledEnd = req.body.scheduled_end ? validDateTime(req.body.scheduled_end) : null;
@@ -631,8 +728,8 @@ router.put('/clients/:clientId/settings', requireAny(['audiovisual.manage']), (r
     : [];
   db.prepare(`
     INSERT INTO audiovisual_client_settings (
-      agency_id, client_id, videos_per_period, cadence_period, recording_lead_days, preferred_days_json, updated_by, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      agency_id, client_id, is_recording_client, videos_per_period, cadence_period, recording_lead_days, preferred_days_json, updated_by, updated_at
+    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(agency_id, client_id) DO UPDATE SET
       videos_per_period = excluded.videos_per_period,
       cadence_period = excluded.cadence_period,

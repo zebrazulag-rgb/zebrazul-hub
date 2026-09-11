@@ -123,6 +123,8 @@ export default function Audiovisual() {
   const [editModal, setEditModal] = useState(null);
   const [scheduleModal, setScheduleModal] = useState(null);
   const [settingsModal, setSettingsModal] = useState(null);
+  const [clientSelectionModal, setClientSelectionModal] = useState(null);
+  const [clientCatalog, setClientCatalog] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const canManage = hasPermission(user, 'audiovisual.manage');
@@ -139,16 +141,18 @@ export default function Audiovisual() {
     if (!quiet) setLoading(true);
     setError('');
     try {
-      const [dashboardRes, recordingsRes, videosRes, calendarRes] = await Promise.all([
+      const [dashboardRes, recordingsRes, videosRes, calendarRes, clientSelectionRes] = await Promise.all([
         api.get('/audiovisual/dashboard', { params: queryParams }),
         api.get('/audiovisual/recordings', { params: queryParams }),
         api.get('/audiovisual/videos', { params: selectedClient?.id ? { client_id: selectedClient.id } : {} }),
         api.get('/google-calendar-oauth/status'),
+        api.get('/audiovisual/client-selection'),
       ]);
       setDashboard(dashboardRes.data);
       setRecordings(recordingsRes.data?.recordings || []);
       setVideos(videosRes.data?.videos || []);
       setCalendarStatus(calendarRes.data || null);
+      setClientCatalog(clientSelectionRes.data?.clients || []);
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível carregar a operação audiovisual.');
     } finally {
@@ -336,7 +340,42 @@ export default function Audiovisual() {
     }
   }
 
+  function openClientSelection() {
+    setClientSelectionModal({
+      selected_ids: clientCatalog
+        .filter((client) => client.is_recording_client)
+        .map((client) => Number(client.id)),
+    });
+  }
+
+  async function saveClientSelection(form) {
+    setSaving(true);
+    setError('');
+    try {
+      const selectedIds = (form.selected_ids || []).map(Number).filter(Boolean);
+      await api.put('/audiovisual/client-selection', { client_ids: selectedIds });
+      setClientSelectionModal(null);
+
+      if (selectedClient?.id && !selectedIds.includes(Number(selectedClient.id))) {
+        setSelectedClient(null);
+      }
+
+      setNotice(`${selectedIds.length} cliente(s) definido(s) como clientes de gravação.`);
+      await loadData({ quiet: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Não foi possível atualizar os clientes de gravação.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function openNewRecording(clientId = null) {
+    if (!clientId && !(dashboard?.clients || []).length) {
+      setError('Selecione pelo menos um cliente de gravação antes de marcar uma nova gravação.');
+      openClientSelection();
+      return;
+    }
+
     const now = new Date(Date.now() + 86400000);
     now.setHours(9, 0, 0, 0);
     const start = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -378,6 +417,13 @@ export default function Audiovisual() {
   const recordedProgress = monthProgress(stats.clients_recorded_month, stats.clients_total);
   const clientsMissingThisMonth = Math.max(0, Number(stats.clients_total || 0) - Number(stats.clients_recorded_month || 0));
   const currentDraggedVideo = videos.find((video) => Number(video.id) === Number(draggedVideoId));
+  const recordingClientCount = clientCatalog.filter((client) => client.is_recording_client).length;
+  const selectedClientCatalogEntry = selectedClient?.id
+    ? clientCatalog.find((client) => Number(client.id) === Number(selectedClient.id))
+    : null;
+  const selectedClientNotRecording = Boolean(
+    selectedClient && selectedClientCatalogEntry && !selectedClientCatalogEntry.is_recording_client
+  );
 
   const tabs = [
     ['overview', 'Painel'],
@@ -402,6 +448,13 @@ export default function Audiovisual() {
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Gravação, edição e postagem em um fluxo único — com o cliente mais atrasado aparecendo primeiro.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {canManage && (
+              <button type="button" onClick={openClientSelection} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                <Users size={14} />
+                Clientes de gravação
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">{recordingClientCount}</span>
+              </button>
+            )}
             {selectedClient && (
               <button type="button" onClick={() => setSelectedClient(null)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                 Ver todos os clientes
@@ -433,6 +486,25 @@ export default function Audiovisual() {
 
       {error && <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertTriangle className="mt-0.5 shrink-0" size={16} /> <span>{error}</span><button onClick={() => setError('')} className="ml-auto"><X size={15} /></button></div>}
       {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</div>}
+
+      {selectedClientNotRecording && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-amber-900">{selectedClient.name} não está marcado como cliente de gravação.</p>
+            <p className="mt-0.5 text-xs leading-5 text-amber-700">Ele não entra nos indicadores, no ranking de atraso nem nas sugestões do Audiovisual.</p>
+          </div>
+          {canManage && <button type="button" onClick={openClientSelection} className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-bold text-white">Gerenciar clientes</button>}
+        </div>
+      )}
+
+      {!selectedClient && clientCatalog.length > 0 && recordingClientCount === 0 && (
+        <section className="rounded-[26px] border border-dashed border-blue-300 bg-blue-50/60 px-6 py-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm"><Users size={22} /></div>
+          <h2 className="mt-4 text-lg font-bold text-slate-950">Escolha os clientes que realmente têm gravação</h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">Somente os clientes selecionados entrarão no KPI “clientes gravados no mês”, no ranking de dias sem gravar e nas sugestões de próxima gravação.</p>
+          {canManage && <button type="button" onClick={openClientSelection} className="mt-4 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white">Selecionar clientes de gravação</button>}
+        </section>
+      )}
 
       {tab === 'overview' && (
         <OverviewTab
@@ -491,6 +563,7 @@ export default function Audiovisual() {
           canManage={canManage}
           openSettings={openSettings}
           openNewRecording={openNewRecording}
+          openClientSelection={openClientSelection}
         />
       )}
 
@@ -519,6 +592,17 @@ export default function Audiovisual() {
 
       {settingsModal && (
         <SettingsModal form={settingsModal} setForm={setSettingsModal} saving={saving} onClose={() => setSettingsModal(null)} onSave={saveClientSettings} />
+      )}
+
+      {clientSelectionModal && (
+        <ClientSelectionModal
+          form={clientSelectionModal}
+          setForm={setClientSelectionModal}
+          clients={clientCatalog}
+          saving={saving}
+          onClose={() => setClientSelectionModal(null)}
+          onSave={saveClientSelection}
+        />
       )}
     </div>
   );
@@ -774,6 +858,59 @@ function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewR
       </div>
       {!clients.length && <p className="px-5 py-12 text-center text-sm text-slate-400">Nenhum cliente disponível.</p>}
     </section>
+  );
+}
+
+
+function ClientSelectionModal({ form, setForm, clients, saving, onClose, onSave }) {
+  const selectedIds = (form.selected_ids || []).map(Number);
+
+  function toggleClient(clientId) {
+    const id = Number(clientId);
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter((value) => value !== id)
+      : [...selectedIds, id];
+    setForm({ ...form, selected_ids: next });
+  }
+
+  return (
+    <ModalShell
+      title="Clientes de gravação"
+      subtitle="Escolha quem realmente faz parte da operação audiovisual. Essa seleção define os indicadores e o ranking de atraso."
+      onClose={onClose}
+      saving={saving}
+    >
+      <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+        <strong>{selectedIds.length} cliente(s) selecionado(s).</strong> Clientes desmarcados deixam de entrar no KPI “clientes gravados no mês”, nos dias sem gravar e nas sugestões. O histórico existente não é apagado.
+      </div>
+
+      <div className="mb-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => setForm({ ...form, selected_ids: clients.map((client) => Number(client.id)) })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Selecionar todos</button>
+        <button type="button" onClick={() => setForm({ ...form, selected_ids: [] })} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50">Limpar seleção</button>
+      </div>
+
+      <div className="max-h-[430px] space-y-2 overflow-y-auto pr-1">
+        {clients.map((client) => {
+          const active = selectedIds.includes(Number(client.id));
+          return (
+            <label key={client.id} className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition ${active ? 'border-blue-200 bg-blue-50/70' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+              <input type="checkbox" checked={active} onChange={() => toggleClient(client.id)} className="h-4 w-4 accent-blue-600" />
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black text-white" style={{ backgroundColor: client.logo_color || '#0969ff' }}>
+                {client.name?.trim()?.[0]?.toUpperCase() || '?'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <strong className="block truncate text-sm text-slate-900">{client.name}</strong>
+                <small className="mt-0.5 block text-[11px] text-slate-400">{active ? 'Incluído na gestão de gravações' : 'Fora da gestão de gravações'}</small>
+              </span>
+              {active && <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white"><Check size={14} /></span>}
+            </label>
+          );
+        })}
+        {!clients.length && <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400">Nenhum cliente ativo disponível para sua conta.</p>}
+      </div>
+
+      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Salvar clientes" />
+    </ModalShell>
   );
 }
 
