@@ -56,6 +56,7 @@ function normalizePost(post) {
     ...post,
     media_gallery: parseGallery(post.media_gallery, post.media_data, post.media_mime),
     feed_visible: post.feed_visible == null ? 1 : Number(post.feed_visible),
+    is_pinned: Number(post.is_pinned || 0),
   };
 }
 
@@ -136,20 +137,20 @@ router.get('/:id/gallery', (req, res) => {
 });
 
 router.post('/', requireRole('admin', 'team'), (req, res) => {
-  const { client_id, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status } = req.body;
+  const { client_id, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status, is_pinned } = req.body;
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title sao obrigatorios' });
   if (!ensureClientAccess(req, res, client_id)) return;
 
   const info = db.prepare(
-    `INSERT INTO posts (agency_id, client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO posts (agency_id, client_id, created_by, title, caption, content_type, platforms, media_url, media_data, media_mime, media_gallery, scheduled_at, status, is_pinned)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     req.user.agency_id, client_id, req.user.id, title, caption || '', content_type || 'feed',
     JSON.stringify(platforms || []), media_url || null,
     persistMedia(media_data || media_gallery?.[0]?.data || null, media_mime || media_gallery?.[0]?.mime || 'image/jpeg'),
     media_mime || media_gallery?.[0]?.mime || null,
     serializeGallery(media_gallery, media_data, media_mime),
-    scheduled_at || null, status || 'draft'
+    scheduled_at || null, status || 'draft', is_pinned ? 1 : 0
   );
   res.status(201).json({ id: info.lastInsertRowid });
 });
@@ -166,9 +167,9 @@ router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
   const info = db.prepare(`
     INSERT INTO posts (
       agency_id, client_id, created_by, title, caption, content_type, platforms,
-      media_url, media_data, media_mime, media_gallery, scheduled_at, status, feed_visible
+      media_url, media_data, media_mime, media_gallery, scheduled_at, status, feed_visible, is_pinned
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     req.user.agency_id,
     post.client_id,
@@ -183,7 +184,8 @@ router.post('/:id/duplicate', requireRole('admin', 'team'), (req, res) => {
     post.media_gallery || null,
     requestedScheduledAt,
     'draft',
-    post.feed_visible == null ? 1 : Number(post.feed_visible)
+    post.feed_visible == null ? 1 : Number(post.feed_visible),
+    0
   );
 
   const duplicatedPost = db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?')
@@ -280,6 +282,7 @@ router.put('/:id', (req, res) => {
     'status',
     'client_feedback',
     'feed_visible',
+    'is_pinned',
   ];
 
   const updates = [];
@@ -295,6 +298,8 @@ router.put('/:id', (req, res) => {
       values.push(persistMedia(req.body.media_data, req.body.media_mime || post.media_mime || 'image/jpeg'));
     } else if (field === 'title') {
       values.push(String(req.body.title).trim());
+    } else if (field === 'is_pinned') {
+      values.push(req.body[field] ? 1 : 0);
     } else {
       values.push(req.body[field] === '' ? null : req.body[field]);
     }

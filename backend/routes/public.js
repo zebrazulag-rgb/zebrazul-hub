@@ -164,10 +164,11 @@ router.get('/feed/:token', (req, res) => {
   if (!client) return res.status(404).json({ error: 'Link invalido ou expirado' });
 
   const posts = db.prepare(`
-    SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status
+    SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status,
+           COALESCE(is_pinned, 0) AS is_pinned
     FROM posts
     WHERE client_id = ? AND COALESCE(feed_visible, 1) = 1 AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','scheduled','draft')
-    ORDER BY scheduled_at DESC
+    ORDER BY COALESCE(is_pinned, 0) DESC, scheduled_at DESC, id DESC
   `).all(client.id);
 
   res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: posts.map(normalizePost) });
@@ -183,13 +184,13 @@ router.get('/social-media/:token', (req, res) => {
 
   const posts = db.prepare(`
     SELECT id, title, caption, content_type, media_data, media_mime, media_gallery,
-           scheduled_at, status, updated_at
+           scheduled_at, status, updated_at, COALESCE(is_pinned, 0) AS is_pinned
     FROM posts
     WHERE client_id = ?
       AND COALESCE(feed_visible, 1) = 1
       AND scheduled_at IS NOT NULL
       AND status IN ('pending_approval','approved','scheduled','draft','published','posted')
-    ORDER BY scheduled_at DESC, id DESC
+    ORDER BY COALESCE(is_pinned, 0) DESC, scheduled_at DESC, id DESC
   `).all(client.id);
 
   res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: posts.map(normalizePost) });

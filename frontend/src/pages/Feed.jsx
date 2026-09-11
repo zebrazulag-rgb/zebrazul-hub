@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -118,7 +118,11 @@ export default function Feed() {
     const res = await api.get(`/posts?client_id=${targetClientId}`);
     const upcoming = res.data.posts
       .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(post.status))
-      .sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at));
+      .sort((a, b) => {
+        const pinDifference = Number(b.is_pinned || 0) - Number(a.is_pinned || 0);
+        if (pinDifference !== 0) return pinDifference;
+        return new Date(b.scheduled_at) - new Date(a.scheduled_at);
+      });
     setPosts(upcoming.filter((post) => Number(post.feed_visible ?? 1) !== 0));
     setHiddenPosts(upcoming.filter((post) => Number(post.feed_visible ?? 1) === 0));
   }
@@ -513,6 +517,22 @@ export default function Feed() {
       setCalendarRefreshKey((current) => current + 1);
     } catch (err) {
       setPostActionError(err.response?.data?.error || 'Não foi possível atualizar a exibição do post.');
+    } finally {
+      setPostActionLoading(null);
+    }
+  }
+
+  async function updatePostPin(post, pinned) {
+    if (!post?.id) return;
+    setPostActionLoading(`pin-${post.id}`);
+    setPostActionError('');
+    try {
+      await api.put(`/posts/${post.id}`, { is_pinned: pinned ? 1 : 0 });
+      const updatedPost = { ...post, is_pinned: pinned ? 1 : 0 };
+      setOpenPost(updatedPost);
+      await loadPosts(clientId);
+    } catch (err) {
+      setPostActionError(err.response?.data?.error || 'Não foi possível atualizar o post fixado.');
     } finally {
       setPostActionLoading(null);
     }
@@ -927,6 +947,11 @@ export default function Feed() {
                 <h2 className="font-semibold text-slate-800 break-words">{openPost.title}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <StatusBadge status={openPost.status} />
+                  {Number(openPost.is_pinned || 0) === 1 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                      <Pin size={11} /> Fixado
+                    </span>
+                  )}
                 </div>
               </div>
               <button onClick={() => setOpenPost(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0" aria-label="Fechar">×</button>
@@ -961,6 +986,24 @@ export default function Feed() {
                       : String(postLinkCopiedId) === String(openPost.id)
                         ? <Check size={17} />
                         : <Link2 size={17} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updatePostPin(openPost, Number(openPost.is_pinned || 0) !== 1)}
+                    disabled={Boolean(postActionLoading)}
+                    title={Number(openPost.is_pinned || 0) === 1 ? 'Desfixar do topo' : 'Fixar no topo'}
+                    aria-label={Number(openPost.is_pinned || 0) === 1 ? 'Desfixar do topo' : 'Fixar no topo'}
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition disabled:opacity-50 ${
+                      Number(openPost.is_pinned || 0) === 1
+                        ? 'border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
+                    }`}
+                  >
+                    {postActionLoading === `pin-${openPost.id}`
+                      ? <Loader2 size={16} className="animate-spin" />
+                      : Number(openPost.is_pinned || 0) === 1
+                        ? <PinOff size={17} />
+                        : <Pin size={17} />}
                   </button>
                   <button
                     type="button"

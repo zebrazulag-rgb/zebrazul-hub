@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ImagePlus, Trash2, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ImagePlus, Trash2, GripVertical, ChevronLeft, ChevronRight, Pin } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
@@ -64,6 +64,7 @@ function emptyForm(defaultClientId) {
     platforms: ['instagram'],
     scheduled_at: '',
     status: 'draft',
+    is_pinned: false,
     media_gallery: [],
   };
 }
@@ -78,6 +79,7 @@ function postToForm(post, defaultClientId) {
     platforms: parsePlatforms(post.platforms),
     scheduled_at: toLocalDateTimeInput(post.scheduled_at),
     status: post.status || 'draft',
+    is_pinned: Boolean(Number(post.is_pinned || 0)),
     media_gallery: parseGallery(post),
   };
 }
@@ -457,6 +459,28 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
                 ))}
               </select>
             </div>
+
+            <label className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${
+              form.is_pinned
+                ? 'border-amber-200 bg-amber-50'
+                : 'border-slate-200 bg-white hover:bg-slate-50'
+            }`}>
+              <input
+                type="checkbox"
+                checked={Boolean(form.is_pinned)}
+                onChange={(event) => setForm({ ...form, is_pinned: event.target.checked })}
+                className="h-4 w-4 accent-amber-500"
+              />
+              <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                form.is_pinned ? 'bg-amber-400 text-amber-950' : 'bg-slate-100 text-slate-400'
+              }`}>
+                <Pin size={16} />
+              </span>
+              <span className="min-w-0">
+                <strong className="block text-sm text-slate-800">Fixar no topo do feed</strong>
+                <small className="mt-0.5 block text-xs leading-5 text-slate-500">O post aparece antes dos demais, independentemente da data agendada.</small>
+              </span>
+            </label>
 
             {error && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">

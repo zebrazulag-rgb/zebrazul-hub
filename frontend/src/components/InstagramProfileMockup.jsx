@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, Grid3x3, Images, Link2, MoreVertical, SquareUserRound, UserPlus } from 'lucide-react';
+import {ArrowLeft, Bell, Grid3x3, Images, Link2, MoreVertical, SquareUserRound, UserPlus, Pin} from 'lucide-react';
 import { coverAnalysisKey, coverStatusMeta, isVideoContent } from './FeedCoverDashboard.jsx';
 
 function formatMetric(value) {
@@ -114,6 +114,11 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
             return (
               <button key={`${sourceType}-${sourceId}`} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100 text-left">
                 {mediaSrc ? <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /> : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
+                {Number(post.is_pinned || 0) === 1 && (
+                  <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-amber-950 shadow" title="Fixado no topo">
+                    <Pin size={13} fill="currentColor" />
+                  </span>
+                )}
                 {galleryCount > 1 && (
                   <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white shadow">
                     <Images size={13} /> {galleryCount}

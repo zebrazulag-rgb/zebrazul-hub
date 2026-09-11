@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS posts (
   status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_approval','approved','rejected','scheduled','published')),
   client_feedback TEXT,
   feed_visible INTEGER DEFAULT 1,
+  is_pinned INTEGER DEFAULT 0 CHECK(is_pinned IN (0,1)),
   share_token TEXT UNIQUE,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
@@ -894,134 +895,6 @@ CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id, ta
 CREATE INDEX IF NOT EXISTS idx_user_client_access_client ON user_client_access(client_id, user_id);
 `);
 
-
-// Audiovisual: gravações, vídeos, agenda editorial e integração com Google Agenda.
-db.exec(`
-CREATE TABLE IF NOT EXISTS audiovisual_recordings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  created_by INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  scheduled_start TEXT NOT NULL,
-  scheduled_end TEXT,
-  location TEXT,
-  responsible_name TEXT,
-  status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled','recorded','cancelled')),
-  recorded_at TEXT,
-  video_count INTEGER DEFAULT 0,
-  raw_links_json TEXT DEFAULT '[]',
-  notes TEXT,
-  google_event_id TEXT,
-  google_event_link TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS audiovisual_videos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  recording_id INTEGER NOT NULL,
-  video_number INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  status TEXT DEFAULT 'recorded' CHECK(status IN ('recorded','editing','edited','scheduled','posted')),
-  created_by INTEGER,
-  editor_user_id INTEGER,
-  final_links_json TEXT DEFAULT '[]',
-  edit_notes TEXT,
-  edited_at TEXT,
-  posted_at TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (recording_id) REFERENCES audiovisual_recordings(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (editor_user_id) REFERENCES users(id) ON DELETE SET NULL,
-  UNIQUE(recording_id, video_number)
-);
-
-CREATE TABLE IF NOT EXISTS audiovisual_video_schedules (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  video_id INTEGER NOT NULL,
-  platform TEXT DEFAULT 'instagram',
-  scheduled_at TEXT NOT NULL,
-  status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled','posted','cancelled')),
-  post_url TEXT,
-  posted_at TEXT,
-  created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (video_id) REFERENCES audiovisual_videos(id) ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS audiovisual_client_settings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL,
-  client_id INTEGER NOT NULL,
-  is_recording_client INTEGER DEFAULT 0 CHECK(is_recording_client IN (0,1)),
-  videos_per_period INTEGER DEFAULT 2,
-  cadence_period TEXT DEFAULT 'week' CHECK(cadence_period IN ('week','month')),
-  recording_lead_days INTEGER DEFAULT 7,
-  preferred_days_json TEXT DEFAULT '[]',
-  updated_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
-  UNIQUE(agency_id, client_id)
-);
-
-CREATE TABLE IF NOT EXISTS google_calendar_connections (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agency_id INTEGER NOT NULL UNIQUE,
-  google_email TEXT,
-  google_user_id TEXT,
-  calendar_id TEXT DEFAULT 'primary',
-  access_token_encrypted TEXT,
-  refresh_token_encrypted TEXT,
-  token_expires_at TEXT,
-  scopes_json TEXT DEFAULT '[]',
-  status TEXT DEFAULT 'connected' CHECK(status IN ('connected','error','disconnected')),
-  last_error TEXT,
-  connected_by INTEGER,
-  connected_at TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (connected_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS google_calendar_oauth_states (
-  nonce TEXT PRIMARY KEY,
-  agency_id INTEGER NOT NULL,
-  user_id INTEGER NOT NULL,
-  frontend_origin TEXT NOT NULL,
-  redirect_uri TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  used_at TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_av_recordings_client_date ON audiovisual_recordings(agency_id, client_id, scheduled_start, status);
-CREATE INDEX IF NOT EXISTS idx_av_recordings_recorded ON audiovisual_recordings(agency_id, client_id, recorded_at);
-CREATE INDEX IF NOT EXISTS idx_av_videos_status ON audiovisual_videos(agency_id, client_id, status, updated_at);
-CREATE INDEX IF NOT EXISTS idx_av_videos_recording ON audiovisual_videos(recording_id, video_number);
-CREATE INDEX IF NOT EXISTS idx_av_schedules_video_date ON audiovisual_video_schedules(agency_id, video_id, scheduled_at, status);
-CREATE INDEX IF NOT EXISTS idx_av_settings_client ON audiovisual_client_settings(agency_id, client_id);
-CREATE INDEX IF NOT EXISTS idx_google_calendar_state_expiry ON google_calendar_oauth_states(expires_at, used_at);
-`);
-
 // Migração leve: adiciona colunas novas em bancos já existentes (não falha se já existirem)
 function tryAddColumn(table, column, definition) {
   try {
@@ -1059,6 +932,7 @@ tryAddColumn('tasks', 'task_type', "TEXT DEFAULT 'basic'");
 tryAddColumn('tasks', 'video_link', 'TEXT');
 tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('posts', 'feed_visible', 'INTEGER DEFAULT 1');
+tryAddColumn('posts', 'is_pinned', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
@@ -1094,50 +968,6 @@ tryAddColumn('action_plans', 'strategic_diagnosis_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'strategic_diagnosis_progress', 'INTEGER DEFAULT 0');
 tryAddColumn('action_plans', 'annual_plan_json', "TEXT DEFAULT '{}'");
 tryAddColumn('action_plans', 'annual_plan_progress', 'INTEGER DEFAULT 0');
-
-tryAddColumn('audiovisual_client_settings', 'is_recording_client', 'INTEGER DEFAULT 0');
-
-// Migração única da V1 do Audiovisual:
-// - clientes que já tinham cadência configurada continuam ativos;
-// - clientes que já possuíam gravações continuam ativos;
-// - clientes sem relação audiovisual começam desmarcados.
-try {
-  const migrationKey = 'audiovisual_client_selection_v2';
-  const alreadyMigrated = db.prepare('SELECT value FROM system_meta WHERE key = ?').get(migrationKey);
-
-  if (!alreadyMigrated) {
-    db.prepare(`
-      UPDATE audiovisual_client_settings
-      SET is_recording_client = 1
-    `).run();
-
-    db.prepare(`
-      INSERT OR IGNORE INTO audiovisual_client_settings (
-        agency_id, client_id, is_recording_client
-      )
-      SELECT DISTINCT agency_id, client_id, 1
-      FROM audiovisual_recordings
-    `).run();
-
-    db.prepare(`
-      UPDATE audiovisual_client_settings
-      SET is_recording_client = 1
-      WHERE EXISTS (
-        SELECT 1
-        FROM audiovisual_recordings r
-        WHERE r.agency_id = audiovisual_client_settings.agency_id
-          AND r.client_id = audiovisual_client_settings.client_id
-      )
-    `).run();
-
-    db.prepare(`
-      INSERT OR REPLACE INTO system_meta (key, value, updated_at)
-      VALUES (?, 'done', datetime('now'))
-    `).run(migrationKey);
-  }
-} catch (error) {
-  console.warn('[AUDIOVISUAL] Migração da seleção de clientes:', error.message);
-}
 
 // Migração do módulo financeiro para bancos criados nas primeiras versões.
 // A primeira estrutura usava `type = revenue` e `is_recurring`. A versão atual
@@ -1459,7 +1289,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '30', datetime('now'))
+   VALUES ('schema_version', '29', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

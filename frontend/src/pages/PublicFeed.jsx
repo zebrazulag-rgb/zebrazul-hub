@@ -22,7 +22,11 @@ export default function PublicFeed() {
       .then((res) => {
         setClient(res.data.client);
         setHighlights(res.data.highlights || []);
-        setPosts([...(res.data.posts || [])].sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at)));
+        setPosts([...(res.data.posts || [])].sort((a, b) => {
+          const pinDifference = Number(b.is_pinned || 0) - Number(a.is_pinned || 0);
+          if (pinDifference !== 0) return pinDifference;
+          return new Date(b.scheduled_at) - new Date(a.scheduled_at);
+        }));
       })
       .catch(() => setError('Este link não é válido ou expirou.'))
       .finally(() => setLoading(false));
