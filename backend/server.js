@@ -47,8 +47,6 @@ const instagramStoriesWebhookRoutes = require('./routes/instagramStoriesWebhook'
 const instagramStoriesRoutes = require('./routes/instagramStories');
 const permissionsRoutes = require('./routes/permissions');
 const activityRoutes = require('./routes/activity');
-const audiovisualRoutes = require('./routes/audiovisual');
-const googleCalendarOAuthRoutes = require('./routes/googleCalendarOAuth');
 const { runMediaMigration } = require('./services/mediaMigration');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
@@ -74,10 +72,11 @@ seedBuiltInMaterials();
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '30mb';
 
 app.use(cors());
 app.use(express.json({
-  limit: '15mb',
+  limit: JSON_BODY_LIMIT,
   verify: (req, res, buffer) => {
     req.rawBody = Buffer.from(buffer);
   },
@@ -101,7 +100,6 @@ app.get('/api/health', (req, res) => {
 // As demais rotas deste modulo aplicam authRequired internamente.
 app.use('/api/meta-oauth', metaOAuthRoutes);
 app.use('/api/instagram-oauth', instagramOAuthRoutes);
-app.use('/api/google-calendar-oauth', googleCalendarOAuthRoutes);
 
 // Camada central de permissões. Os links públicos e autenticação continuam
 // validados pelas próprias rotas; os demais recursos respeitam o cargo configurado
@@ -162,7 +160,6 @@ app.use('/api/planning-documents', planningDocumentRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
 app.use('/api/commercial', commercialRoutes);
-app.use('/api/audiovisual', audiovisualRoutes);
 app.use('/api/reenrollments', reenrollmentRoutes);
 app.use('/api/bee-campaign-briefing', beeCampaignBriefingRoutes);
 app.use('/api/bee-family-survey', beeFamilySurveyRoutes);
@@ -174,6 +171,18 @@ app.use('/api/video-reviews', videoReviewRoutes);
 app.use('/api/instagram-stories', instagramStoriesRoutes);
 
 app.use((err, req, res, next) => {
+  if (err?.type === 'entity.too.large' || err?.status === 413 || err?.statusCode === 413) {
+    console.warn(`[HTTP] Payload excedeu o limite (${JSON_BODY_LIMIT}):`, {
+      path: req.originalUrl,
+      length: err.length || null,
+      limit: err.limit || null,
+    });
+    return res.status(413).json({
+      error: `Arquivo muito grande para envio. Limite atual: ${JSON_BODY_LIMIT}.`,
+      code: 'PAYLOAD_TOO_LARGE',
+    });
+  }
+
   console.error('[HTTP] Erro nao tratado:', err);
   res.status(500).json({ error: 'Erro interno do servidor' });
 });
