@@ -29,6 +29,8 @@ import {
   CalendarCheck2,
   MessageCircle,
   Clapperboard,
+  Code2,
+  Bug,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -209,6 +211,7 @@ export default function Layout({ children }) {
 
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
+    { to: '/produto', label: 'Produto', icon: Code2, permission: 'product.view' },
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view' },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
     { to: '/conversas', label: 'Conversas', icon: MessageCircle, permission: 'chat.view' },
@@ -242,7 +245,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/bussola','/rematriculas','/materiais'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/produto','/bussola','/rematriculas','/materiais'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -257,6 +260,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
     if (path.startsWith('/audiovisual')) return 'Audiovisual';
+    if (path.startsWith('/produto')) return 'Produto';
     if (path.startsWith('/tarefas')) return 'Tarefas';
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories') || path.startsWith('/relatorios')) return 'Social Media';
@@ -474,6 +478,17 @@ export default function Layout({ children }) {
               )}
             </div>
           )}
+          {!isClientPortal && hasPermission(user, 'product.create') && (
+            <button
+              type="button"
+              onClick={() => navigate(`/produto?novo=1&origem=${encodeURIComponent(location.pathname + location.search)}`)}
+              title="Reportar para Produto"
+              aria-label="Reportar problema ou melhoria para Produto"
+              className="hidden h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 sm:flex"
+            >
+              <Bug size={16} />
+            </button>
+          )}
           <NotificationBell />
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
@@ -488,7 +503,7 @@ export default function Layout({ children }) {
           {mobileMoreItems.length > 0 && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
-            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/bussola','/rematriculas','/materiais','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
+            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/produto','/bussola','/rematriculas','/materiais','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
             <span>Mais</span>

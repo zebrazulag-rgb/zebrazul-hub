@@ -58,6 +58,9 @@ export function hasPermission(user, key) {
   if (key.startsWith('audiovisual.') && key !== 'audiovisual.view') {
     return hasPermission(user, 'audiovisual.view');
   }
+  if (key.startsWith('product.') && key !== 'product.view') {
+    return hasPermission(user, 'product.view');
+  }
   return true;
 }
 

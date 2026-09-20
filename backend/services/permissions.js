@@ -29,6 +29,11 @@ const PERMISSION_CATALOG = [
   { key: 'audiovisual.edit', group: 'Audiovisual', label: 'Gerenciar edições', description: 'Mover vídeos para edição e concluir edição com links finais.' },
   { key: 'audiovisual.publish', group: 'Audiovisual', label: 'Agendar e postar vídeos', description: 'Registrar datas de publicação e marcar vídeos como postados.' },
   { key: 'audiovisual.calendar', group: 'Audiovisual', label: 'Conectar Google Agenda', description: 'Conectar ou desconectar o Google Agenda usado nas gravações.' },
+  { key: 'product.view', group: 'Produto', label: 'Acessar Produto', description: 'Visualizar painel, backlog, desenvolvimento, QA e releases do ZebraHub.' },
+  { key: 'product.create', group: 'Produto', label: 'Criar demandas', description: 'Criar bugs, melhorias, novas funções e débitos técnicos.' },
+  { key: 'product.manage', group: 'Produto', label: 'Gerenciar desenvolvimento', description: 'Editar demandas, responsáveis, prioridades, status e releases em preparação.' },
+  { key: 'product.qa', group: 'Produto', label: 'Executar QA', description: 'Preencher o checklist de testes antes da validação final.' },
+  { key: 'product.release', group: 'Produto', label: 'Aprovar produção', description: 'Aprovar demandas e confirmar deploys em produção.', admin_only: true },
   { key: 'reenrollments.view', group: 'Rematrículas', label: 'Rematrículas', description: 'Acessar o CRM de rematrículas da Bee.' },
   { key: 'materials.view', group: 'Materiais', label: 'Materiais', description: 'Acessar biblioteca, links e rascunhos.' },
   { key: 'activity.view_own', group: 'Atividade', label: 'Ver própria atividade', description: 'Visualizar o próprio histórico de ações e presença recente.' },
@@ -178,6 +183,9 @@ function hasPermission(user, permissionKey) {
   if (permissionKey.startsWith('audiovisual.') && permissionKey !== 'audiovisual.view') {
     return Boolean(map['audiovisual.view'] && map[permissionKey]);
   }
+  if (permissionKey.startsWith('product.') && permissionKey !== 'product.view') {
+    return Boolean(map['product.view'] && map[permissionKey]);
+  }
   return Boolean(map[permissionKey]);
 }
 
@@ -222,6 +230,9 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/meta-oauth') || path.startsWith('/instagram-oauth') || path.startsWith('/meta')) return 'social.connections';
   if (path.startsWith('/commercial')) return path.includes('import') ? 'commercial.import' : (method === 'GET' ? 'commercial.view' : 'commercial.manage');
   if (path.startsWith('/audiovisual')) return method === 'GET' ? 'audiovisual.view' : ['audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish'];
+  if (path.startsWith('/product')) return method === 'GET'
+    ? 'product.view'
+    : ['product.create', 'product.manage', 'product.qa', 'product.release'];
   if (path.startsWith('/activity')) return ['activity.view_own', 'activity.view_team'];
   if (path.startsWith('/reenrollments')) return 'reenrollments.view';
   if (path.startsWith('/materials') || path.startsWith('/material-boards')) return 'materials.view';

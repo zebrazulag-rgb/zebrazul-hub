@@ -856,6 +856,115 @@ CREATE TABLE IF NOT EXISTS instagram_story_webhook_events (
   processed_at TEXT
 );
 
+
+CREATE TABLE IF NOT EXISTS product_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'improvement' CHECK(type IN ('bug','improvement','feature','tech_debt')),
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('critical','high','medium','low')),
+  module TEXT,
+  problem TEXT,
+  current_behavior TEXT,
+  expected_behavior TEXT,
+  proposed_solution TEXT,
+  acceptance_criteria TEXT,
+  status TEXT NOT NULL DEFAULT 'backlog' CHECK(status IN ('backlog','analysis','ready','development','testing','awaiting_owner','ready_production','done')),
+  assignee_id INTEGER,
+  requester_id INTEGER,
+  due_date TEXT,
+  origin_url TEXT,
+  links_text TEXT,
+  affected_files TEXT,
+  environment TEXT DEFAULT 'local' CHECK(environment IN ('local','staging','production')),
+  branch_name TEXT,
+  commit_ref TEXT,
+  pr_url TEXT,
+  testing_notes TEXT,
+  blocked_reason TEXT,
+  high_risk INTEGER DEFAULT 0 CHECK(high_risk IN (0,1)),
+  rejection_notes TEXT,
+  approved_by INTEGER,
+  approved_at TEXT,
+  published_at TEXT,
+  sort_order INTEGER DEFAULT 0,
+  archived_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_qa_checks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL,
+  check_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  checked INTEGER DEFAULT 0 CHECK(checked IN (0,1)),
+  checked_by INTEGER,
+  checked_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(item_id, check_key),
+  FOREIGN KEY (item_id) REFERENCES product_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (checked_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_item_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL,
+  user_id INTEGER,
+  event_type TEXT NOT NULL,
+  message TEXT,
+  data_json TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (item_id) REFERENCES product_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_releases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  version TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','ready','production','rolled_back')),
+  notes TEXT,
+  files_changed TEXT,
+  migration_required INTEGER DEFAULT 0 CHECK(migration_required IN (0,1)),
+  env_vars TEXT,
+  rollback_plan TEXT,
+  created_by INTEGER,
+  approved_by INTEGER,
+  approved_at TEXT,
+  deployed_by INTEGER,
+  deployed_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(agency_id, version),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (deployed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_release_items (
+  release_id INTEGER NOT NULL,
+  item_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (release_id, item_id),
+  FOREIGN KEY (release_id) REFERENCES product_releases(id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id) REFERENCES product_items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_items_agency_status ON product_items(agency_id, status, priority, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_product_items_assignee ON product_items(agency_id, assignee_id, status);
+CREATE INDEX IF NOT EXISTS idx_product_items_risk ON product_items(agency_id, high_risk, status);
+CREATE INDEX IF NOT EXISTS idx_product_qa_item ON product_qa_checks(item_id, checked);
+CREATE INDEX IF NOT EXISTS idx_product_events_item ON product_item_events(item_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_product_releases_agency ON product_releases(agency_id, status, updated_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_video_reviews_scope ON video_reviews(agency_id, client_id, status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_video_versions_review ON video_review_versions(review_id, version_number DESC);
 CREATE INDEX IF NOT EXISTS idx_video_comments_review ON video_review_comments(review_id, version_id, status, created_at);
