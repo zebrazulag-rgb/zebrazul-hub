@@ -12,6 +12,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
+import CompassSectionNav from '../components/CompassSectionNav.jsx';
 import { isBeeClient } from '../utils/beeClientAccess.js';
 
 const EMPTY_STATUS = {
@@ -152,6 +153,8 @@ export default function CompassPage() {
 
   return (
     <div className="space-y-6">
+      <CompassSectionNav />
+
       <PageHero
         icon={Compass}
         eyebrow={clientName || 'Metodologia Zebrazul'}

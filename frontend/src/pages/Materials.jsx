@@ -22,6 +22,7 @@ import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import MaterialsDrafts from '../components/MaterialsDrafts.jsx';
 import MaterialLinks from '../components/MaterialLinks.jsx';
+import CompassSectionNav from '../components/CompassSectionNav.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
@@ -270,6 +271,8 @@ export default function Materials() {
 
   return (
     <div className="space-y-7">
+      {user?.role !== 'client' && <CompassSectionNav />}
+
       <PageHero
         icon={FolderOpen}
         eyebrow="Biblioteca e criação"
@@ -395,7 +398,7 @@ export default function Materials() {
                   <span>{formatDate(material.created_at)}</span>
                 </div>
                 <div className="mt-4 grid grid-cols-[1fr_auto_auto] gap-2">
-                  <button onClick={() => navigate(`/materiais/${material.id}`)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#121620] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"><FolderOpen size={16} /> Abrir</button>
+                  <button onClick={() => navigate(user?.role === 'client' ? `/cliente/materiais/${material.id}` : `/bussola/materiais/${material.id}`)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#121620] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"><FolderOpen size={16} /> Abrir</button>
                   <button onClick={() => openStandalone(material)} title="Abrir em nova aba" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0969ff]"><ExternalLink size={16} /></button>
                   <button onClick={() => downloadMaterial(material)} title="Baixar HTML" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0969ff]"><Download size={16} /></button>
                 </div>

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Download, ExternalLink, FileCode2, Loader2, RefreshCw } from 'lucide-react';
 import api from '../api';
 
 export default function MaterialViewer() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -30,7 +31,7 @@ export default function MaterialViewer() {
     <div className="flex min-h-[calc(100vh-64px)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.12)]">
       <header className="flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <button onClick={() => navigate('/materiais')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" title="Voltar para materiais"><ArrowLeft size={18} /></button>
+          <button onClick={() => navigate(location.pathname.startsWith('/cliente/') ? '/cliente/materiais' : '/bussola/materiais')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" title="Voltar para materiais"><ArrowLeft size={18} /></button>
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#0969ff]"><FileCode2 size={20} /></span>
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#0969ff]">Material interativo</p>

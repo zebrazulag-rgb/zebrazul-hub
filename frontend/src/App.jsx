@@ -52,7 +52,7 @@ function fallbackRoute(user) {
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
   if (hasPermission(user, 'social.reports')) return user?.role === 'client' ? '/cliente/relatorios' : '/social-media/relatorios';
   if (hasPermission(user, 'commercial.view')) return '/comercial';
-  if (hasPermission(user, 'materials.view')) return user?.role === 'client' ? '/cliente/materiais' : '/materiais';
+  if (hasPermission(user, 'materials.view')) return user?.role === 'client' ? '/cliente/materiais' : '/bussola/materiais';
   if (user?.role === 'client') return '/cliente/solicitar';
   return '/configuracoes/aparencia';
 }
@@ -99,6 +99,7 @@ export default function App() {
       <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><Tasks /></ProtectedRoute>} />
       <Route path="/cliente/relatorios" element={<ProtectedRoute roles={["client"]} permission="social.reports"><SocialMedia section="relatorios" /></ProtectedRoute>} />
       <Route path="/cliente/materiais" element={<ProtectedRoute roles={["client"]} permission="materials.view"><Materials /></ProtectedRoute>} />
+      <Route path="/cliente/materiais/:id" element={<ProtectedRoute roles={["client"]} permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/conversas" element={<Navigate to="/" replace />} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao" replace /></ProtectedRoute>} />
@@ -119,6 +120,8 @@ export default function App() {
       <Route path="/bussola/diagnostico" element={<ProtectedRoute permission="compass.view"><StrategicDiagnosis /></ProtectedRoute>} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />
       <Route path="/bussola/pesquisa-familias-bee" element={<ProtectedRoute permission="compass.view"><BeeFamilySurvey /></ProtectedRoute>} />
+      <Route path="/bussola/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
+      <Route path="/bussola/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/bussola/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
       <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
@@ -136,7 +139,7 @@ export default function App() {
 
       <Route path="/rematriculas" element={<ProtectedRoute permission="reenrollments.view"><BeeRematriculas /></ProtectedRoute>} />
       <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
-      <Route path="/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
+      <Route path="/materiais" element={<Navigate to="/bussola/materiais" replace />} />
       <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/senhas" element={<Navigate to="/configuracoes/senhas" replace />} />
       <Route path="/financeiro" element={<ProtectedRoute permission="finance.view"><Finance /></ProtectedRoute>} />
