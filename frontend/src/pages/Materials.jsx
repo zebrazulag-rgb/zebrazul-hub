@@ -10,7 +10,6 @@ import {
   Link2,
   MoreHorizontal,
   Pencil,
-  PencilRuler,
   Plus,
   Search,
   Trash2,
@@ -20,7 +19,6 @@ import {
 import api from '../api';
 import PageHero from '../components/PageHero.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
-import MaterialsDrafts from '../components/MaterialsDrafts.jsx';
 import MaterialLinks from '../components/MaterialLinks.jsx';
 import CompassSectionNav from '../components/CompassSectionNav.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -277,7 +275,7 @@ export default function Materials() {
         icon={FolderOpen}
         eyebrow="Biblioteca e criação"
         title="Materiais"
-        description="Centralize arquivos, links e rascunhos do cliente em um único espaço de trabalho."
+        description="Centralize arquivos e links do cliente em um único espaço de trabalho."
         actions={activeSection === 'library' && user?.role === 'admin' ? (
           <button onClick={() => setFormState({ mode: 'create' })} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-[#121620] shadow-lg transition hover:-translate-y-0.5">
             <Plus size={18} /> Novo material
@@ -295,7 +293,7 @@ export default function Materials() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3">
             <p className="text-xs text-white/45">Formato</p>
-            <p className="mt-1 text-sm font-semibold">{activeSection === 'drafts' ? 'Canvas visual' : activeSection === 'links' ? 'Links rápidos' : 'HTML interativo'}</p>
+            <p className="mt-1 text-sm font-semibold">{activeSection === 'links' ? 'Links rápidos' : 'HTML interativo'}</p>
           </div>
         </div>
       </PageHero>
@@ -310,7 +308,6 @@ export default function Materials() {
             {[
               { key: 'library', label: 'Biblioteca', icon: FolderOpen, hint: 'Arquivos HTML' },
               { key: 'links', label: 'Links', icon: Link2, hint: 'Atalhos e acessos' },
-              { key: 'drafts', label: 'Rascunhos', icon: PencilRuler, hint: 'Canvas visual' },
             ].map((item) => (
               <button
                 key={item.key}
@@ -335,9 +332,7 @@ export default function Materials() {
         </aside>
 
         <div className="min-w-0 space-y-5">
-          {activeSection === 'drafts' ? (
-            <MaterialsDrafts clients={clients} />
-          ) : activeSection === 'links' ? (
+          {activeSection === 'links' ? (
             <MaterialLinks clients={clients} selectedClient={selectedClient} user={user} />
           ) : (
             <>
