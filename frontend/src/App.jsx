@@ -36,7 +36,6 @@ import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
 import ClientDemand from './pages/ClientDemand.jsx';
-import TeamChat from './pages/TeamChat.jsx';
 import { hasPermission } from './permissions.js';
 
 function SocialMediaLegacyRedirect({ section }) {
@@ -100,7 +99,7 @@ export default function App() {
       <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><Tasks /></ProtectedRoute>} />
       <Route path="/cliente/relatorios" element={<ProtectedRoute roles={["client"]} permission="social.reports"><SocialMedia section="relatorios" /></ProtectedRoute>} />
       <Route path="/cliente/materiais" element={<ProtectedRoute roles={["client"]} permission="materials.view"><Materials /></ProtectedRoute>} />
-      <Route path="/conversas" element={<ProtectedRoute permission="chat.view"><TeamChat /></ProtectedRoute>} />
+      <Route path="/conversas" element={<Navigate to="/" replace />} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao" replace /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao&approval_view=videos" replace /></ProtectedRoute>} />
