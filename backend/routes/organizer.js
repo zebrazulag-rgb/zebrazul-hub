@@ -254,4 +254,193 @@ router.delete('/checklist/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+
+// Financeiro pessoal do Meu Espaço. Cada usuário enxerga apenas os próprios lançamentos.
+function normalizePersonalFinanceEntry(entry) {
+  if (!entry) return entry;
+  const today = new Date().toISOString().slice(0, 10);
+  const computedStatus = entry.status === 'pending' && entry.due_date < today ? 'overdue' : entry.status;
+  return { ...entry, status: computedStatus, recurring: Boolean(entry.recurring) };
+}
+
+function personalFinanceFilters(query, agencyId, userId) {
+  const clauses = ['agency_id = ?', 'user_id = ?'];
+  const params = [agencyId, userId];
+
+  if (query.month && /^\d{4}-\d{2}$/.test(String(query.month))) {
+    clauses.push("substr(due_date, 1, 7) = ?");
+    params.push(String(query.month));
+  }
+
+  if (query.type && ['income', 'expense'].includes(query.type)) {
+    clauses.push('type = ?');
+    params.push(query.type);
+  }
+
+  if (query.status && ['pending', 'paid', 'overdue', 'cancelled'].includes(query.status)) {
+    if (query.status === 'overdue') {
+      clauses.push("status = 'pending' AND due_date < date('now')");
+    } else if (query.status === 'pending') {
+      clauses.push("status = 'pending' AND due_date >= date('now')");
+    } else {
+      clauses.push('status = ?');
+      params.push(query.status);
+    }
+  }
+
+  return { where: `WHERE ${clauses.join(' AND ')}`, params };
+}
+
+router.get('/finance', (req, res) => {
+  const { where, params } = personalFinanceFilters(req.query, req.user.agency_id, req.user.id);
+  const rows = db.prepare(`
+    SELECT * FROM organizer_financial_entries
+    ${where}
+    ORDER BY due_date ASC, id DESC
+  `).all(...params).map(normalizePersonalFinanceEntry);
+
+  const summary = rows.reduce((acc, item) => {
+    if (item.status === 'cancelled') return acc;
+    const amount = Number(item.amount || 0);
+    if (item.type === 'income') {
+      acc.income_total += amount;
+      if (item.status === 'paid') acc.income_paid += amount;
+      else acc.income_pending += amount;
+    } else {
+      acc.expense_total += amount;
+      if (item.status === 'paid') acc.expense_paid += amount;
+      else acc.expense_pending += amount;
+    }
+    return acc;
+  }, {
+    income_total: 0,
+    income_paid: 0,
+    income_pending: 0,
+    expense_total: 0,
+    expense_paid: 0,
+    expense_pending: 0,
+  });
+
+  summary.balance_realized = summary.income_paid - summary.expense_paid;
+  summary.balance_projected = summary.income_total - summary.expense_total;
+  res.json({ entries: rows, summary });
+});
+
+router.post('/finance', (req, res) => {
+  const type = ['income', 'expense'].includes(req.body?.type) ? req.body.type : null;
+  const category = cleanText(req.body?.category, 120);
+  const description = cleanText(req.body?.description, 240);
+  const amount = Number(req.body?.amount || 0);
+  const dueDate = normalizeDate(req.body?.due_date);
+  const status = ['pending', 'paid', 'cancelled'].includes(req.body?.status) ? req.body.status : 'pending';
+  const paymentMethod = cleanText(req.body?.payment_method, 80);
+  const notes = cleanText(req.body?.notes, 6000);
+  const recurring = req.body?.recurring ? 1 : 0;
+  const paidDate = status === 'paid'
+    ? (normalizeDate(req.body?.paid_date) || new Date().toISOString().slice(0, 10))
+    : null;
+
+  if (!type) return res.status(400).json({ error: 'Selecione receita ou despesa.' });
+  if (!description) return res.status(400).json({ error: 'Informe a descrição.' });
+  if (!category) return res.status(400).json({ error: 'Informe uma categoria.' });
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Informe um valor válido.' });
+  if (!dueDate) return res.status(400).json({ error: 'Informe a data do lançamento.' });
+
+  const info = db.prepare(`
+    INSERT INTO organizer_financial_entries (
+      agency_id, user_id, type, category, description, amount, due_date,
+      paid_date, status, payment_method, recurring, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.user.agency_id,
+    req.user.id,
+    type,
+    category,
+    description,
+    amount,
+    dueDate,
+    paidDate,
+    status,
+    paymentMethod,
+    recurring,
+    notes,
+  );
+
+  const entry = db.prepare(`
+    SELECT * FROM organizer_financial_entries
+    WHERE id = ? AND agency_id = ? AND user_id = ?
+  `).get(info.lastInsertRowid, req.user.agency_id, req.user.id);
+
+  res.status(201).json({ entry: normalizePersonalFinanceEntry(entry) });
+});
+
+router.put('/finance/:id', (req, res) => {
+  const current = db.prepare(`
+    SELECT * FROM organizer_financial_entries
+    WHERE id = ? AND agency_id = ? AND user_id = ?
+  `).get(Number(req.params.id), req.user.agency_id, req.user.id);
+
+  if (!current) return res.status(404).json({ error: 'Lançamento não encontrado.' });
+
+  const next = {
+    type: req.body?.type ?? current.type,
+    category: req.body?.category === undefined ? current.category : cleanText(req.body.category, 120),
+    description: req.body?.description === undefined ? current.description : cleanText(req.body.description, 240),
+    amount: req.body?.amount === undefined ? Number(current.amount) : Number(req.body.amount),
+    due_date: req.body?.due_date === undefined ? current.due_date : normalizeDate(req.body.due_date),
+    paid_date: req.body?.paid_date === undefined ? current.paid_date : normalizeDate(req.body.paid_date),
+    status: req.body?.status ?? current.status,
+    payment_method: req.body?.payment_method === undefined ? current.payment_method : cleanText(req.body.payment_method, 80),
+    recurring: req.body?.recurring === undefined ? Number(current.recurring) : (req.body.recurring ? 1 : 0),
+    notes: req.body?.notes === undefined ? current.notes : cleanText(req.body.notes, 6000),
+  };
+
+  if (!['income', 'expense'].includes(next.type)) return res.status(400).json({ error: 'Tipo financeiro inválido.' });
+  if (!next.description) return res.status(400).json({ error: 'Informe a descrição.' });
+  if (!next.category) return res.status(400).json({ error: 'Informe uma categoria.' });
+  if (!Number.isFinite(next.amount) || next.amount <= 0) return res.status(400).json({ error: 'Informe um valor válido.' });
+  if (!next.due_date) return res.status(400).json({ error: 'Informe a data do lançamento.' });
+  if (!['pending', 'paid', 'cancelled'].includes(next.status)) next.status = 'pending';
+  if (next.status === 'paid' && !next.paid_date) next.paid_date = new Date().toISOString().slice(0, 10);
+  if (next.status !== 'paid') next.paid_date = null;
+
+  db.prepare(`
+    UPDATE organizer_financial_entries
+    SET type = ?, category = ?, description = ?, amount = ?, due_date = ?,
+        paid_date = ?, status = ?, payment_method = ?, recurring = ?, notes = ?,
+        updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ? AND user_id = ?
+  `).run(
+    next.type,
+    next.category,
+    next.description,
+    next.amount,
+    next.due_date,
+    next.paid_date,
+    next.status,
+    next.payment_method,
+    next.recurring,
+    next.notes,
+    current.id,
+    req.user.agency_id,
+    req.user.id,
+  );
+
+  const entry = db.prepare(`
+    SELECT * FROM organizer_financial_entries
+    WHERE id = ? AND agency_id = ? AND user_id = ?
+  `).get(current.id, req.user.agency_id, req.user.id);
+  res.json({ entry: normalizePersonalFinanceEntry(entry) });
+});
+
+router.delete('/finance/:id', (req, res) => {
+  const info = db.prepare(`
+    DELETE FROM organizer_financial_entries
+    WHERE id = ? AND agency_id = ? AND user_id = ?
+  `).run(Number(req.params.id), req.user.agency_id, req.user.id);
+
+  if (!info.changes) return res.status(404).json({ error: 'Lançamento não encontrado.' });
+  res.json({ ok: true });
+});
+
 module.exports = router;

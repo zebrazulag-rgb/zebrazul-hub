@@ -1326,10 +1326,31 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS organizer_financial_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('income','expense')),
+    category TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL DEFAULT 0,
+    due_date TEXT NOT NULL,
+    paid_date TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
+    payment_method TEXT,
+    recurring INTEGER DEFAULT 0,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_organizer_events_agency_date ON organizer_events(agency_id, start_at, visibility);
   CREATE INDEX IF NOT EXISTS idx_organizer_events_user_date ON organizer_events(user_id, start_at);
   CREATE INDEX IF NOT EXISTS idx_organizer_notes_user ON organizer_notes(agency_id, user_id, pinned, updated_at);
   CREATE INDEX IF NOT EXISTS idx_organizer_checklist_date ON organizer_checklist_items(agency_id, user_id, item_date, completed, position);
+  CREATE INDEX IF NOT EXISTS idx_organizer_finance_user_date ON organizer_financial_entries(agency_id, user_id, due_date, status);
 `);
 
 // Posts antigos devem continuar visíveis na grade após a criação da coluna.

@@ -38,8 +38,7 @@ import {
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
-import Finance from './Finance.jsx';
-import { hasPermission } from '../permissions.js';
+import PersonalFinance from './PersonalFinance.jsx';
 
 const EVENT_TYPES = {
   post: { label: 'Postagem', icon: Send, chip: 'bg-blue-50 text-blue-700 border-blue-100', dot: 'bg-blue-500' },
@@ -194,7 +193,6 @@ export default function Organizer() {
   const selectedEvents = eventsByDay.get(selectedDateIso) || [];
   const pendingChecklist = checklist.filter((item) => !Number(item.completed)).length;
   const completedChecklist = checklist.length - pendingChecklist;
-  const canViewFinance = hasPermission(user, 'finance.view');
 
   function openCreateEvent(type = 'post') {
     const base = newEventForm(selectedDate);
@@ -352,11 +350,9 @@ export default function Organizer() {
             <button type="button" onClick={() => setActiveSection('agenda')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${activeSection === 'agenda' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <CalendarDays size={15} /> Agenda
             </button>
-            {canViewFinance && (
-              <button type="button" onClick={() => setActiveSection('finance')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${activeSection === 'finance' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                <WalletCards size={15} /> Financeiro
-              </button>
-            )}
+            <button type="button" onClick={() => setActiveSection('finance')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${activeSection === 'finance' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              <WalletCards size={15} /> Financeiro
+            </button>
           </div>
           {activeSection === 'agenda' && (
             <>
@@ -371,8 +367,8 @@ export default function Organizer() {
         </div>
       </section>
 
-      {activeSection === 'finance' && canViewFinance ? (
-        <Finance />
+      {activeSection === 'finance' ? (
+        <PersonalFinance />
       ) : (
         <>
           <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
