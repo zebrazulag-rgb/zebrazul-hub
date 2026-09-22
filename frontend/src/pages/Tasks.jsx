@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, CalendarCheck2, SlidersHorizontal } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -9,8 +9,6 @@ import TaskCsvModal from '../components/TaskCsvModal.jsx';
 import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
-import Approval from './Approval.jsx';
-import VideoApprovals from './VideoApprovals.jsx';
 import { hasPermission } from '../permissions.js';
 
 const STATUS_COLUMNS = [
@@ -227,7 +225,6 @@ export default function Tasks() {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
   const canCreateTasks = hasPermission(user, 'tasks.create');
-  const canApproval = hasPermission(user, 'tasks.approval');
   const isAdminUser = user?.role === 'admin' || Number(user?.is_platform_owner) === 1 || user?.is_platform_owner === true;
   const canImportTasks = isAdminUser || hasPermission(user, 'tasks.import');
   const canExportTasks = isAdminUser || hasPermission(user, 'tasks.export');
@@ -319,17 +316,6 @@ export default function Tasks() {
     const shouldShow = searchParams.get('atrasadas') === '1';
     setShowOverdueOnly(shouldShow);
   }, [searchParams]);
-
-  const operationalArea = user?.role === 'client' ? 'approval' : (searchParams.get('area') === 'aprovacao' && canApproval ? 'approval' : 'tasks');
-  const approvalView = searchParams.get('approval_view') === 'videos' ? 'videos' : 'posts';
-
-  function setOperationalArea(nextArea) {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('task_id');
-    if (nextArea === 'approval') nextParams.set('area', 'aprovacao');
-    else nextParams.delete('area');
-    setSearchParams(nextParams);
-  }
 
   const effectiveClientId = user?.role === 'client'
     ? (user.client_id ? String(user.client_id) : null)
@@ -941,25 +927,6 @@ export default function Tasks() {
     setSearchParams(nextParams);
   }
 
-  const areaSwitcher = (
-    <div className="segmented-control">
-      {user?.role !== 'client' && <button
-        type="button"
-        onClick={() => setOperationalArea('tasks')}
-        className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'tasks' ? 'segmented-control-button-active' : '')}
-      >
-        <ListChecks size={15} /> Tarefas
-      </button>}
-      {canApproval && <button
-        type="button"
-        onClick={() => setOperationalArea('approval')}
-        className={'segmented-control-button inline-flex items-center gap-2 ' + (operationalArea === 'approval' ? 'segmented-control-button-active' : '')}
-      >
-        <CalendarCheck2 size={15} /> Aprovação
-      </button>}
-    </div>
-  );
-
   const taskActionControls = (
     <div className="flex shrink-0 items-center gap-2">
       {canCreateTasks && <button
@@ -1042,63 +1009,49 @@ export default function Tasks() {
 
   const taskCommandBar = (
     <div className="toolbar-panel flex flex-wrap items-center gap-2.5 py-3">
-      <div className="shrink-0">{areaSwitcher}</div>
+      <button
+        type="button"
+        onClick={() => setMobileFiltersOpen((open) => !open)}
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+          mobileFiltersOpen || hasActiveFilters
+            ? 'border-blue-200 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+        }`}
+      >
+        <SlidersHorizontal size={14} />
+        Filtros{hasActiveFilters ? ' ativos' : ''}
+        <ChevronDown size={13} className={`transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`} />
+      </button>
 
-      {operationalArea === 'tasks' && (
-        <>
-          <button
-            type="button"
-            onClick={() => setMobileFiltersOpen((open) => !open)}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-              mobileFiltersOpen || hasActiveFilters
-                ? 'border-blue-200 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <SlidersHorizontal size={14} />
-            Filtros{hasActiveFilters ? ' ativos' : ''}
-            <ChevronDown size={13} className={`transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5">
-            {[
-              { key: '7d', label: '7 dias' },
-              { key: 'month', label: 'Esse mês' },
-              { key: '30d', label: 'Últimos 30 dias' },
-              { key: 'total', label: 'Total' },
-            ].map((period) => {
-              const active = quickPeriodIsActive(period.key);
-              return (
-                <button
-                  key={period.key}
-                  type="button"
-                  onClick={() => applyQuickPeriod(period.key)}
-                  className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                    active
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {period.label}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5">
+        {[
+          { key: '7d', label: '7 dias' },
+          { key: 'month', label: 'Esse mês' },
+          { key: '30d', label: 'Últimos 30 dias' },
+          { key: 'total', label: 'Total' },
+        ].map((period) => {
+          const active = quickPeriodIsActive(period.key);
+          return (
+            <button
+              key={period.key}
+              type="button"
+              onClick={() => applyQuickPeriod(period.key)}
+              className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                active
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {period.label}
+            </button>
+          );
+        })}
+      </div>
 
       <div className="ml-auto">{taskActionControls}</div>
     </div>
   );
 
-  if (operationalArea === 'approval') {
-    return (
-      <div className="space-y-5">
-        {taskCommandBar}
-        {approvalView === 'videos' ? <VideoApprovals /> : <Approval />}
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">

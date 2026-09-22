@@ -4,7 +4,7 @@ const PERMISSION_CATALOG = [
   { key: 'dashboard.view', group: 'Geral', label: 'Painel', description: 'Visualizar o painel principal.' },
   { key: 'tasks.view', group: 'Tarefas', label: 'Visualizar tarefas', description: 'Acessar Kanban, calendário e tarefas dos clientes permitidos.' },
   { key: 'tasks.create', group: 'Tarefas', label: 'Criar e editar tarefas', description: 'Criar tarefas, editar conteúdo e atualizar status.' },
-  { key: 'tasks.approval', group: 'Tarefas', label: 'Aprovação', description: 'Visualizar a área de aprovação dentro de Tarefas.' },
+  { key: 'tasks.approval', group: 'Social Media', label: 'Aprovação na grade', description: 'Registrar decisões e feedbacks de aprovação nos conteúdos exibidos na grade.' },
   { key: 'tasks.import', group: 'Tarefas', label: 'Importar CSV', description: 'Importar tarefas e subtarefas em massa.' },
   { key: 'tasks.export', group: 'Tarefas', label: 'Exportar CSV', description: 'Exportar tarefas filtradas.' },
   { key: 'tasks.share_calendar', group: 'Tarefas', label: 'Compartilhar calendário', description: 'Gerar links públicos do calendário mensal.' },

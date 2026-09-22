@@ -125,8 +125,13 @@ router.get('/posts/:token', (req, res) => {
 
 // Cliente aprova ou reprova pelo link público, com feedback opcional
 router.put('/posts/:token', (req, res) => {
-  const post = db.prepare('SELECT * FROM posts WHERE share_token = ?').get(req.params.token);
-  if (!post) return res.status(404).json({ error: 'Link inválido ou expirado' });
+  const post = db.prepare(`
+    SELECT * FROM posts
+    WHERE share_token = ?
+      AND COALESCE(feed_visible, 1) = 1
+      AND scheduled_at IS NOT NULL
+  `).get(req.params.token);
+  if (!post) return res.status(404).json({ error: 'Este conteúdo não está disponível na grade para aprovação' });
 
   const { status, client_feedback } = req.body;
   if (!['approved', 'rejected'].includes(status)) {
@@ -164,14 +169,67 @@ router.get('/feed/:token', (req, res) => {
   if (!client) return res.status(404).json({ error: 'Link invalido ou expirado' });
 
   const posts = db.prepare(`
-    SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status,
+    SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status, client_feedback,
            COALESCE(is_pinned, 0) AS is_pinned
     FROM posts
-    WHERE client_id = ? AND COALESCE(feed_visible, 1) = 1 AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','scheduled','draft')
+    WHERE client_id = ? AND COALESCE(feed_visible, 1) = 1 AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','rejected','scheduled','draft')
     ORDER BY COALESCE(is_pinned, 0) DESC, scheduled_at DESC, id DESC
   `).all(client.id);
 
   res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: posts.map(normalizePost) });
+});
+
+// A aprovação agora acontece diretamente na grade compartilhada do cliente.
+// O token do feed limita a decisão aos conteúdos visíveis e agendados daquele cliente.
+router.put('/feed/:token/posts/:postId', (req, res) => {
+  const client = db.prepare(`
+    SELECT id, agency_id, name
+    FROM clients
+    WHERE feed_share_token = ?
+    LIMIT 1
+  `).get(req.params.token);
+  if (!client) return res.status(404).json({ error: 'Link inválido ou expirado' });
+
+  const status = String(req.body?.status || '');
+  const clientFeedback = String(req.body?.client_feedback || '').trim() || null;
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Status inválido' });
+  }
+
+  const post = db.prepare(`
+    SELECT id, title, status
+    FROM posts
+    WHERE id = ?
+      AND client_id = ?
+      AND agency_id = ?
+      AND COALESCE(feed_visible, 1) = 1
+      AND scheduled_at IS NOT NULL
+    LIMIT 1
+  `).get(Number(req.params.postId), Number(client.id), Number(client.agency_id));
+  if (!post) return res.status(404).json({ error: 'Conteúdo não encontrado nesta grade' });
+
+  db.prepare(`
+    UPDATE posts
+    SET status = ?, client_feedback = ?, updated_at = datetime('now')
+    WHERE id = ? AND client_id = ? AND agency_id = ?
+  `).run(status, clientFeedback, Number(post.id), Number(client.id), Number(client.agency_id));
+
+  recordActivity({
+    agencyId: client.agency_id,
+    actorName: 'CLIENTE · GRADE',
+    clientId: client.id,
+    module: 'social',
+    action: status === 'approved' ? 'approved' : 'changes_requested',
+    entityType: 'post',
+    entityId: post.id,
+    entityLabel: post.title,
+    summary: status === 'approved' ? 'Aprovou um conteúdo pela grade' : 'Solicitou ajustes em um conteúdo pela grade',
+    details: { source: 'public_feed', previous_status: post.status, new_status: status, client_feedback: clientFeedback },
+    path: `/public/feed/${req.params.token}/posts/${post.id}`,
+    method: 'PUT',
+  });
+
+  res.json({ ok: true, post_id: Number(post.id), status, client_feedback: clientFeedback });
 });
 
 

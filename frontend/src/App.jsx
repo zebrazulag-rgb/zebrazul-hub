@@ -25,6 +25,7 @@ import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
 import SocialMedia from './pages/SocialMedia.jsx';
+import Reports from './pages/Reports.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import DataDeletion from './pages/DataDeletion.jsx';
@@ -47,10 +48,10 @@ function fallbackRoute(user) {
   if (hasPermission(user, 'dashboard.view')) return '/';
   if (hasPermission(user, 'product.view')) return '/produto';
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
-  if (hasPermission(user, 'tasks.view')) return user?.role === 'client' ? '/cliente/aprovacao' : '/tarefas';
+  if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/tarefas';
   if (hasPermission(user, 'social.feed')) return user?.role === 'client' ? '/cliente/grade' : '/social-media/feed';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
-  if (hasPermission(user, 'social.reports')) return user?.role === 'client' ? '/cliente/relatorios' : '/social-media/relatorios';
+  if (hasPermission(user, 'social.reports')) return user?.role === 'client' ? '/cliente/relatorios' : '/relatorios';
   if (hasPermission(user, 'commercial.view')) return '/comercial';
   if (hasPermission(user, 'materials.view')) return user?.role === 'client' ? '/cliente/materiais' : '/bussola/materiais';
   if (user?.role === 'client') return '/cliente/solicitar';
@@ -96,23 +97,23 @@ export default function App() {
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
       <Route path="/cliente/solicitar" element={<ProtectedRoute roles={["client"]}><ClientDemand /></ProtectedRoute>} />
       <Route path="/cliente/grade" element={<ProtectedRoute roles={["client"]} permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
-      <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><Tasks /></ProtectedRoute>} />
-      <Route path="/cliente/relatorios" element={<ProtectedRoute roles={["client"]} permission="social.reports"><SocialMedia section="relatorios" /></ProtectedRoute>} />
+      <Route path="/cliente/aprovacao" element={<Navigate to="/cliente/grade" replace />} />
+      <Route path="/cliente/relatorios" element={<ProtectedRoute roles={["client"]} permission="social.reports"><Reports /></ProtectedRoute>} />
       <Route path="/cliente/materiais" element={<ProtectedRoute roles={["client"]} permission="materials.view"><Materials /></ProtectedRoute>} />
       <Route path="/cliente/materiais/:id" element={<ProtectedRoute roles={["client"]} permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/conversas" element={<Navigate to="/" replace />} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
-      <Route path="/aprovacao" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao" replace /></ProtectedRoute>} />
-      <Route path="/aprovacao/videos" element={<ProtectedRoute permission="tasks.approval"><Navigate to="/tarefas?area=aprovacao&approval_view=videos" replace /></ProtectedRoute>} />
-      <Route path="/aprovacao/videos/:id" element={<ProtectedRoute permission="tasks.approval"><VideoReviewWorkspace /></ProtectedRoute>} />
+      <Route path="/aprovacao" element={<Navigate to="/social-media/feed" replace />} />
+      <Route path="/aprovacao/videos" element={<Navigate to="/social-media/feed" replace />} />
+      <Route path="/aprovacao/videos/:id" element={<Navigate to="/social-media/feed" replace />} />
       <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />
       <Route path="/social-media" element={<Navigate to="/social-media/feed" replace />} />
       <Route path="/social-media/feed" element={<ProtectedRoute permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
       <Route path="/social-media/stories" element={<ProtectedRoute permission="social.stories"><SocialMedia section="stories" /></ProtectedRoute>} />
-      <Route path="/social-media/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMedia section="relatorios" /></ProtectedRoute>} />
+      <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
       <Route path="/stories" element={<ProtectedRoute permission="social.stories"><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
-      <Route path="/tarefas" element={<ProtectedRoute permission="tasks.view"><Tasks /></ProtectedRoute>} />
+      <Route path="/tarefas" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
@@ -138,7 +139,7 @@ export default function App() {
       <Route path="/contratos" element={<Navigate to="/comercial/contratos" replace />} />
 
       <Route path="/rematriculas" element={<ProtectedRoute permission="reenrollments.view"><BeeRematriculas /></ProtectedRoute>} />
-      <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><SocialMediaLegacyRedirect section="relatorios" /></ProtectedRoute>} />
+      <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><Reports /></ProtectedRoute>} />
       <Route path="/materiais" element={<Navigate to="/bussola/materiais" replace />} />
       <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/senhas" element={<Navigate to="/configuracoes/senhas" replace />} />

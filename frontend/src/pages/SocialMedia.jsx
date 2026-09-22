@@ -1,9 +1,8 @@
 import { Navigate, NavLink } from 'react-router-dom';
-import { BarChart3, Grid3x3, Instagram } from 'lucide-react';
+import { Grid3x3, Instagram } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import Feed from './Feed.jsx';
 import StoryHub from './StoryHub.jsx';
-import Reports from './Reports.jsx';
 import { hasPermission } from '../permissions.js';
 
 const SECTIONS = {
@@ -20,13 +19,6 @@ const SECTIONS = {
     icon: Instagram,
     path: '/social-media/stories',
     permission: 'social.stories',
-  },
-  relatorios: {
-    label: 'Relatórios',
-    description: 'Desempenho orgânico, Meta Ads e conexões do cliente.',
-    icon: BarChart3,
-    path: '/social-media/relatorios',
-    permission: 'social.reports',
   },
 };
 
@@ -81,7 +73,6 @@ export default function SocialMedia({ section = 'feed' }) {
 
       {section === 'feed' && <Feed />}
       {section === 'stories' && <StoryHub />}
-      {section === 'relatorios' && <Reports />}
     </div>
   );
 }

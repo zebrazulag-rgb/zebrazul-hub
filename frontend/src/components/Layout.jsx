@@ -26,7 +26,6 @@ import {
   RefreshCw,
   MoreHorizontal,
   Send,
-  CalendarCheck2,
   Clapperboard,
   Code2,
   Bug,
@@ -202,9 +201,8 @@ export default function Layout({ children }) {
   const clientPortalItems = [
     { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
     { to: '/cliente/grade', label: 'Ver grade', mobileLabel: 'Grade', icon: Grid3x3, permission: 'social.feed' },
-    { to: '/cliente/aprovacao', label: 'Área de aprovação', mobileLabel: 'Aprovação', icon: CalendarCheck2, permission: 'tasks.approval' },
     { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
-    { to: '/cliente/relatorios', label: 'Ver relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
+    { to: '/cliente/relatorios', label: 'Relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
   ];
 
@@ -215,6 +213,7 @@ export default function Layout({ children }) {
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
+    { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
     { to: '/financeiro', label: 'Financeiro', icon: WalletCards, permission: 'finance.view' },
@@ -231,7 +230,7 @@ export default function Layout({ children }) {
           if (!anyPermission(user, ['compass.view', 'materials.view'])) return false;
         } else if (!hasPermission(user, item.permission)) return false;
         if (item.permission === 'social.view') {
-          return anyPermission(user, ['social.feed', 'social.stories', 'social.reports']);
+          return anyPermission(user, ['social.feed', 'social.stories']);
         }
         return true;
       });
@@ -244,7 +243,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/produto','/bussola','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/produto','/bussola','/relatorios','/rematriculas'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -254,15 +253,15 @@ export default function Layout({ children }) {
     const path = location.pathname;
     if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
     if (path.startsWith('/cliente/grade')) return 'Ver grade';
-    if (path.startsWith('/cliente/aprovacao')) return 'Área de aprovação';
-    if (path.startsWith('/cliente/relatorios')) return 'Ver relatórios';
+    if (path.startsWith('/cliente/relatorios')) return 'Relatórios';
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
     if (path.startsWith('/audiovisual')) return 'Audiovisual';
     if (path.startsWith('/produto')) return 'Produto';
     if (path.startsWith('/tarefas')) return 'Tarefas';
     if (path.startsWith('/conversas')) return 'Conversas';
-    if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories') || path.startsWith('/relatorios')) return 'Social Media';
+    if (path.startsWith('/relatorios')) return 'Relatórios';
+    if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
     if (path.startsWith('/bussola')) return 'Bússola';
     if (path.startsWith('/rematriculas')) return 'Rematrículas';
@@ -502,7 +501,7 @@ export default function Layout({ children }) {
           {mobileMoreItems.length > 0 && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
-            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/produto','/bussola','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
+            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/produto','/bussola','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
             <span>Mais</span>

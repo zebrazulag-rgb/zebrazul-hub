@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff, CheckCircle2, XCircle, Clock3, MessageSquareText } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -47,6 +47,9 @@ export default function Feed() {
   const [showHiddenPosts, setShowHiddenPosts] = useState(false);
   const [postActionLoading, setPostActionLoading] = useState(null);
   const [postActionError, setPostActionError] = useState('');
+  const [approvalFeedback, setApprovalFeedback] = useState('');
+  const [approvalActionLoading, setApprovalActionLoading] = useState(false);
+  const [approvalNotice, setApprovalNotice] = useState('');
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({});
   const initialProfileDraftRef = useRef({});
@@ -117,7 +120,7 @@ export default function Feed() {
 
     const res = await api.get(`/posts?client_id=${targetClientId}`);
     const upcoming = res.data.posts
-      .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'scheduled', 'draft'].includes(post.status))
+      .filter((post) => post.scheduled_at && ['pending_approval', 'approved', 'rejected', 'scheduled', 'draft'].includes(post.status))
       .sort((a, b) => {
         const pinDifference = Number(b.is_pinned || 0) - Number(a.is_pinned || 0);
         if (pinDifference !== 0) return pinDifference;
@@ -354,6 +357,8 @@ export default function Feed() {
     setReorderingPost(false);
     setGalleryDraft([]);
     setGalleryOrderError('');
+    setApprovalFeedback(post?.client_feedback || '');
+    setApprovalNotice('');
     // Abre imediatamente com os dados já disponíveis na grade.
     const listGallery = galleryFromPost(post);
     setOpenPost({ ...post, media_gallery: listGallery });
@@ -375,14 +380,57 @@ export default function Feed() {
       const richestGallery = [listGallery, detailedGallery, endpointGallery]
         .reduce((best, current) => (current.length > best.length ? current : best), []);
 
-      setOpenPost({
+      const hydratedPost = {
         ...post,
         ...(detailedPost || {}),
         media_gallery: richestGallery,
         media_data: richestGallery[0]?.data || detailedPost?.media_data || post.media_data || null,
-      });
+      };
+      setOpenPost(hydratedPost);
+      setApprovalFeedback(hydratedPost.client_feedback || '');
     } catch {
       // Mantém a prévia aberta com os dados da listagem.
+    }
+  }
+
+  async function updateGridApproval(post, status) {
+    if (!post?.id || !['approved', 'rejected'].includes(status)) return;
+    setApprovalActionLoading(true);
+    setApprovalNotice('');
+    setPostActionError('');
+    try {
+      await api.put(`/posts/${post.id}`, {
+        status,
+        client_feedback: approvalFeedback.trim() || null,
+      });
+      const updated = { ...post, status, client_feedback: approvalFeedback.trim() || null };
+      setOpenPost(updated);
+      setApprovalNotice(status === 'approved' ? 'Conteúdo aprovado.' : 'Ajustes solicitados.');
+      await loadPosts(clientId);
+      setCalendarRefreshKey((current) => current + 1);
+    } catch (err) {
+      setPostActionError(err.response?.data?.error || 'Não foi possível registrar a aprovação.');
+    } finally {
+      setApprovalActionLoading(false);
+    }
+  }
+
+  async function sendGridPostForApproval(post) {
+    if (!post?.id) return;
+    setApprovalActionLoading(true);
+    setApprovalNotice('');
+    setPostActionError('');
+    try {
+      await api.put(`/posts/${post.id}`, { status: 'pending_approval' });
+      const updated = { ...post, status: 'pending_approval' };
+      setOpenPost(updated);
+      setApprovalNotice('Conteúdo sinalizado na grade como aguardando aprovação.');
+      await loadPosts(clientId);
+      setCalendarRefreshKey((current) => current + 1);
+    } catch (err) {
+      setPostActionError(err.response?.data?.error || 'Não foi possível enviar o conteúdo para aprovação.');
+    } finally {
+      setApprovalActionLoading(false);
     }
   }
 
@@ -557,6 +605,13 @@ export default function Feed() {
     }
   }
 
+  const approvalCounts = posts.reduce((acc, post) => {
+    if (post.status === 'pending_approval') acc.pending += 1;
+    if (post.status === 'approved') acc.approved += 1;
+    if (post.status === 'rejected') acc.rejected += 1;
+    return acc;
+  }, { pending: 0, approved: 0, rejected: 0 });
+
   const publishedClient = currentClient ? {
     ...currentClient,
     instagram_username: publishedConnection?.instagram_username || currentClient.instagram_username,
@@ -663,6 +718,15 @@ export default function Feed() {
         </button>
         )}
       </div>
+
+      {clientId && activeView === 'grid' && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
+          <span className="mr-1 font-semibold text-slate-500">Aprovação na grade:</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700"><Clock3 size={13} /> Aguardando {approvalCounts.pending}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700"><CheckCircle2 size={13} /> Aprovados {approvalCounts.approved}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 font-semibold text-rose-700"><XCircle size={13} /> Ajustes {approvalCounts.rejected}</span>
+        </div>
+      )}
 
       {!clientId && (
         <p className="text-sm text-slate-400 py-12 text-center">Selecione um cliente para visualizar o feed.</p>
@@ -1117,6 +1181,70 @@ export default function Feed() {
               caption={openPost.caption}
               contentType={openPost.content_type}
             />
+
+            <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Aprovação na grade</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">
+                    {openPost.status === 'pending_approval' && 'Aguardando decisão do cliente'}
+                    {openPost.status === 'approved' && 'Conteúdo aprovado'}
+                    {openPost.status === 'rejected' && 'Ajustes solicitados'}
+                    {!['pending_approval', 'approved', 'rejected'].includes(openPost.status) && 'Ainda não enviado para aprovação'}
+                  </p>
+                </div>
+                <StatusBadge status={openPost.status} />
+              </div>
+
+              {openPost.client_feedback && user?.role !== 'client' && (
+                <div className="mt-3 flex gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  <MessageSquareText size={15} className="mt-0.5 shrink-0 text-slate-400" />
+                  <span>{openPost.client_feedback}</span>
+                </div>
+              )}
+
+              {user?.role === 'client' ? (
+                <div className="mt-3 space-y-3">
+                  <textarea
+                    value={approvalFeedback}
+                    onChange={(event) => setApprovalFeedback(event.target.value)}
+                    rows={3}
+                    placeholder="Comentário ou ajuste (opcional)"
+                    className="input-field resize-none text-sm"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateGridApproval(openPost, 'rejected')}
+                      disabled={approvalActionLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                    >
+                      {approvalActionLoading ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={16} />} Solicitar ajustes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateGridApproval(openPost, 'approved')}
+                      disabled={approvalActionLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {approvalActionLoading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={16} />} Aprovar
+                    </button>
+                  </div>
+                </div>
+              ) : canFeedCreate && ['draft', 'rejected'].includes(openPost.status) ? (
+                <button
+                  type="button"
+                  onClick={() => sendGridPostForApproval(openPost)}
+                  disabled={approvalActionLoading}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 py-2.5 text-sm font-bold text-slate-950 hover:bg-amber-500 disabled:opacity-50"
+                >
+                  {approvalActionLoading ? <Loader2 size={15} className="animate-spin" /> : <Clock3 size={16} />} Enviar para aprovação
+                </button>
+              ) : null}
+
+              {approvalNotice && <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{approvalNotice}</p>}
+            </section>
+
             <p className="text-xs text-slate-400 text-center mt-3">
               Programado para {new Date(openPost.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' })}
             </p>

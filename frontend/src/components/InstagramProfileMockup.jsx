@@ -1,5 +1,13 @@
-import {ArrowLeft, Bell, Grid3x3, Images, Link2, MoreVertical, SquareUserRound, UserPlus, Pin} from 'lucide-react';
+import {ArrowLeft, Bell, Grid3x3, Images, Link2, MoreVertical, SquareUserRound, UserPlus, Pin, CheckCircle2, Clock3, XCircle} from 'lucide-react';
 import { coverAnalysisKey, coverStatusMeta, isVideoContent } from './FeedCoverDashboard.jsx';
+
+
+function approvalStatusMeta(status) {
+  if (status === 'pending_approval') return { label: 'Aguardando', className: 'bg-amber-400 text-slate-950', icon: Clock3 };
+  if (status === 'approved') return { label: 'Aprovado', className: 'bg-emerald-500 text-white', icon: CheckCircle2 };
+  if (status === 'rejected') return { label: 'Ajustes', className: 'bg-rose-500 text-white', icon: XCircle };
+  return null;
+}
 
 function formatMetric(value) {
   const number = Number(value || 0);
@@ -111,6 +119,8 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
               slate: 'bg-slate-900/75 text-white',
             }[status.tone] || 'bg-slate-900/75 text-white';
             const mediaSrc = post.media_data || post.thumbnail_url || null;
+            const approvalStatus = sourceType === 'planned' ? approvalStatusMeta(post.status) : null;
+            const ApprovalIcon = approvalStatus?.icon || null;
             return (
               <button key={`${sourceType}-${sourceId}`} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100 text-left">
                 {mediaSrc ? <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /> : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
@@ -130,6 +140,14 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                     title={analysis?.summary || status.label}
                   >
                     {status.short || status.label}
+                  </span>
+                )}
+                {approvalStatus && (
+                  <span
+                    className={`absolute bottom-2 right-2 inline-flex max-w-[82%] items-center gap-1 truncate rounded-full px-2 py-1 text-[9px] font-black tracking-[0.03em] shadow ${approvalStatus.className}`}
+                    title={`Aprovação: ${approvalStatus.label}`}
+                  >
+                    <ApprovalIcon size={10} /> {approvalStatus.label}
                   </span>
                 )}
               </button>
