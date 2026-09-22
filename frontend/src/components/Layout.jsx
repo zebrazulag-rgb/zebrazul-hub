@@ -209,10 +209,10 @@ export default function Layout({ children }) {
 
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
+    { to: '/organizacao', label: 'Meu Espaço', icon: CalendarDays, permission: 'organizer.view' },
+    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
     { to: '/produto', label: 'Produto', icon: Code2, permission: 'product.view' },
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view' },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
-    { to: '/organizacao', label: 'Organização', icon: CalendarDays, permission: 'organizer.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
@@ -263,7 +263,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/tarefas')) return 'Tarefas';
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/relatorios')) return 'Relatórios';
-    if (path.startsWith('/organizacao')) return 'Organização';
+    if (path.startsWith('/organizacao')) return 'Meu Espaço';
     if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
     if (path.startsWith('/bussola')) return 'Bússola';

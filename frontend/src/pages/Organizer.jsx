@@ -32,11 +32,14 @@ import {
   Trash2,
   Users,
   Video,
+  WalletCards,
   X,
 } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import Finance from './Finance.jsx';
+import { hasPermission } from '../permissions.js';
 
 const EVENT_TYPES = {
   post: { label: 'Postagem', icon: Send, chip: 'bg-blue-50 text-blue-700 border-blue-100', dot: 'bg-blue-500' },
@@ -102,6 +105,8 @@ export default function Organizer() {
   const [eventForm, setEventForm] = useState(() => newEventForm());
   const [eventError, setEventError] = useState('');
   const [savingEvent, setSavingEvent] = useState(false);
+  const [activeSection, setActiveSection] = useState('agenda');
+  const [hoveredEvent, setHoveredEvent] = useState(null);
 
   const [notes, setNotes] = useState([]);
   const [noteForm, setNoteForm] = useState({ id: null, title: '', content: '', pinned: false });
@@ -189,6 +194,7 @@ export default function Organizer() {
   const selectedEvents = eventsByDay.get(selectedDateIso) || [];
   const pendingChecklist = checklist.filter((item) => !Number(item.completed)).length;
   const completedChecklist = checklist.length - pendingChecklist;
+  const canViewFinance = hasPermission(user, 'finance.view');
 
   function openCreateEvent(type = 'post') {
     const base = newEventForm(selectedDate);
@@ -337,26 +343,44 @@ export default function Organizer() {
     <div className="space-y-5">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-500">Organização da equipe</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Agenda, notas e checklist.</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">Centralize datas de postagem, gravações, compromissos pessoais e o que precisa ser feito no dia.</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-500">Meu espaço</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Sua rotina em um só lugar.</h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">Agenda, notas, checklist e os atalhos pessoais para organizar o seu dia.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => openCreateEvent('post')} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700">
-            <Plus size={17} /> Novo compromisso
-          </button>
-          <button onClick={() => openNote()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
-            <FileText size={16} /> Nova nota
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <button type="button" onClick={() => setActiveSection('agenda')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${activeSection === 'agenda' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+              <CalendarDays size={15} /> Agenda
+            </button>
+            {canViewFinance && (
+              <button type="button" onClick={() => setActiveSection('finance')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${activeSection === 'finance' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                <WalletCards size={15} /> Financeiro
+              </button>
+            )}
+          </div>
+          {activeSection === 'agenda' && (
+            <>
+              <button onClick={() => openCreateEvent('post')} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700">
+                <Plus size={17} /> Novo compromisso
+              </button>
+              <button onClick={() => openNote()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+                <FileText size={16} /> Nova nota
+              </button>
+            </>
+          )}
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Metric label="Compromissos no dia" value={selectedEvents.length} icon={CalendarDays} />
-        <Metric label="Checklist pendente" value={pendingChecklist} icon={CheckSquare} />
-        <Metric label="Concluídos no dia" value={completedChecklist} icon={CheckCircle2} />
-        <Metric label="Notas pessoais" value={notes.length} icon={FileText} />
-      </section>
+      {activeSection === 'finance' && canViewFinance ? (
+        <Finance />
+      ) : (
+        <>
+          <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Metric label="Compromissos no dia" value={selectedEvents.length} icon={CalendarDays} />
+            <Metric label="Checklist pendente" value={pendingChecklist} icon={CheckSquare} />
+            <Metric label="Concluídos no dia" value={completedChecklist} icon={CheckCircle2} />
+            <Metric label="Notas pessoais" value={notes.length} icon={FileText} />
+          </section>
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_370px]">
         <div className="min-w-0 space-y-5">
@@ -391,11 +415,13 @@ export default function Organizer() {
                 const selected = isSameDay(day, selectedDate);
                 const today = isSameDay(day, todayDate());
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={key}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedDate(day)}
-                    className={`min-h-[112px] border-b border-r border-slate-100 p-2 text-left align-top transition hover:bg-blue-50/30 ${!isSameMonth(day, month) ? 'bg-slate-50/70 text-slate-300' : 'bg-white'} ${selected ? 'ring-2 ring-inset ring-blue-400' : ''}`}
+                    onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedDate(day); }}
+                    className={`min-h-[112px] cursor-pointer border-b border-r border-slate-100 p-2 text-left align-top transition hover:bg-blue-50/30 ${!isSameMonth(day, month) ? 'bg-slate-50/70 text-slate-300' : 'bg-white'} ${selected ? 'ring-2 ring-inset ring-blue-400' : ''}`}
                   >
                     <div className="mb-2 flex items-center justify-between">
                       <span className={`grid h-7 w-7 place-items-center rounded-full text-xs font-bold ${today ? 'bg-blue-600 text-white' : selected ? 'bg-blue-50 text-blue-700' : 'text-slate-600'}`}>{format(day, 'd')}</span>
@@ -405,14 +431,28 @@ export default function Organizer() {
                       {dayEvents.slice(0, 3).map((event) => {
                         const type = EVENT_TYPES[event.event_type] || EVENT_TYPES.other;
                         return (
-                          <div key={event.id} className="flex min-w-0 items-center gap-1.5 rounded-md bg-slate-50 px-1.5 py-1">
+                          <button
+                            type="button"
+                            key={event.id}
+                            onClick={(clickEvent) => {
+                              clickEvent.stopPropagation();
+                              setSelectedDate(day);
+                              setHoveredEvent(null);
+                              openEditEvent(event);
+                            }}
+                            onMouseEnter={() => setHoveredEvent(event)}
+                            onMouseLeave={() => setHoveredEvent(null)}
+                            className="flex w-full min-w-0 items-center gap-1.5 rounded-md bg-slate-50 px-1.5 py-1 text-left transition hover:bg-slate-100 hover:shadow-sm"
+                            title={event.title}
+                          >
+                            <EventUserAvatar event={event} />
                             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${type.dot}`} />
                             <span className="min-w-0 flex-1 truncate text-[10px] font-semibold text-slate-700">{event.title}</span>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -432,7 +472,7 @@ export default function Organizer() {
               <EmptyState icon={CalendarDays} title="Dia livre" text="Nenhum compromisso marcado para esta data." />
             ) : (
               <div className="space-y-2">
-                {selectedEvents.map((event) => <EventRow key={event.id} event={event} currentUserId={user?.id} onOpen={() => openEditEvent(event)} />)}
+                {selectedEvents.map((event) => <EventRow key={event.id} event={event} currentUserId={user?.id} onOpen={() => openEditEvent(event)} onHover={setHoveredEvent} />)}
               </div>
             )}
           </section>
@@ -495,8 +535,14 @@ export default function Organizer() {
           </section>
         </aside>
       </div>
+        </>
+      )}
 
-      {eventModalOpen && (
+      {hoveredEvent && activeSection === 'agenda' && (
+        <EventHoverPanel event={hoveredEvent} />
+      )}
+
+      {activeSection === 'agenda' && eventModalOpen && (
         <ModalBackdrop onClose={() => !savingEvent && setEventModalOpen(false)} disabled={savingEvent}>
           <form onSubmit={saveEvent} className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
@@ -575,7 +621,7 @@ export default function Organizer() {
         </ModalBackdrop>
       )}
 
-      {noteEditorOpen && (
+      {activeSection === 'agenda' && noteEditorOpen && (
         <ModalBackdrop onClose={() => !savingNote && setNoteEditorOpen(false)} disabled={savingNote}>
           <form onSubmit={saveNote} className="w-full max-w-lg rounded-3xl border border-slate-200 bg-[#fffdf4] p-5 shadow-2xl sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -604,13 +650,88 @@ function Metric({ label, value, icon: Icon }) {
   );
 }
 
-function EventRow({ event, currentUserId, onOpen }) {
+function EventUserAvatar({ event, sizeClass = 'h-4 w-4' }) {
+  const initials = String(event?.user_name || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join('')
+    .toUpperCase() || '?';
+
+  if (event?.user_avatar) {
+    return <img src={event.user_avatar} alt={event.user_name || ''} className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-white`} />;
+  }
+
+  return (
+    <span
+      className={`${sizeClass} grid shrink-0 place-items-center rounded-full text-[7px] font-black text-white ring-1 ring-white`}
+      style={{ backgroundColor: event?.user_avatar_color || '#2563eb' }}
+      aria-label={event?.user_name || 'Responsável'}
+    >
+      {initials}
+    </span>
+  );
+}
+
+function EventHoverPanel({ event }) {
+  const type = EVENT_TYPES[event?.event_type] || EVENT_TYPES.other;
+  const Icon = type.icon;
+  const description = String(event?.notes || '').trim() || 'Sem descrição adicionada para este compromisso.';
+
+  return (
+    <aside className="pointer-events-none fixed right-5 top-[76px] z-[70] w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.24)]">
+      <div className="border-b border-slate-100 bg-slate-50/80 p-4">
+        <div className="flex items-start gap-3">
+          <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${type.chip}`}><Icon size={17} /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Compromisso</p>
+            <h3 className="mt-1 break-words text-base font-black leading-5 text-slate-900">{event?.title}</h3>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-4 p-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Descrição</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{description}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="font-bold text-slate-400">Horário</p>
+            <p className="mt-1 font-semibold text-slate-700">{timeLabel(event)}</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="font-bold text-slate-400">Cliente</p>
+            <p className="mt-1 truncate font-semibold text-slate-700">{event?.client_name || 'Sem cliente'}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-slate-100 p-3">
+          <EventUserAvatar event={event} sizeClass="h-7 w-7" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Adicionado por</p>
+            <p className="truncate text-xs font-bold text-slate-700">{event?.user_name || 'Equipe'}</p>
+          </div>
+        </div>
+        <p className="text-[10px] font-medium text-slate-400">Clique no compromisso para abrir os detalhes.</p>
+      </div>
+    </aside>
+  );
+}
+
+function EventRow({ event, currentUserId, onOpen, onHover }) {
   const type = EVENT_TYPES[event.event_type] || EVENT_TYPES.other;
   const Icon = type.icon;
   const editable = Number(event.user_id) === Number(currentUserId);
   return (
-    <button type="button" onClick={onOpen} className="group flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-left transition hover:border-slate-200 hover:bg-white hover:shadow-sm">
+    <button
+      type="button"
+      onClick={onOpen}
+      onMouseEnter={() => onHover?.(event)}
+      onMouseLeave={() => onHover?.(null)}
+      className="group flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-left transition hover:border-slate-200 hover:bg-white hover:shadow-sm"
+    >
       <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${type.chip}`}><Icon size={17} /></div>
+      <EventUserAvatar event={event} sizeClass="h-7 w-7" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2"><p className="truncate text-sm font-bold text-slate-800">{event.title}</p>{event.visibility === 'private' && <Lock size={11} className="shrink-0 text-slate-400" />}</div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
