@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ImagePlus, Video, Trash2, GripVertical, ChevronLeft, ChevronRight, Pin } from 'lucide-react';
+import { X, ImagePlus, Video, Trash2, GripVertical, ChevronLeft, ChevronRight, Pin, Instagram, Send, CalendarClock, Link2, LoaderCircle } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
@@ -92,6 +92,9 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const [error, setError] = useState('');
   const [isUploadDropActive, setIsUploadDropActive] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [instagramConnection, setInstagramConnection] = useState(null);
+  const [instagramLoading, setInstagramLoading] = useState(false);
+  const [publicationAction, setPublicationAction] = useState('');
   const uploadDragDepthRef = useRef(0);
   const draggedMediaIndexRef = useRef(null);
 
@@ -101,6 +104,39 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
     setForm(nextForm);
   }, [post, defaultClientId]);
 
+
+  async function loadInstagramConnection(targetClientId = form.client_id) {
+    if (!targetClientId) { setInstagramConnection(null); return; }
+    try {
+      const { data } = await api.get(`/instagram-oauth/status/${targetClientId}`, { params: { _ts: Date.now() } });
+      setInstagramConnection(data.connection || null);
+    } catch { setInstagramConnection(null); }
+  }
+
+  useEffect(() => { loadInstagramConnection(form.client_id); }, [form.client_id]);
+
+  useEffect(() => {
+    function onMessage(event) {
+      const payload = event.data;
+      if (!payload || payload.type !== 'zebrahub-instagram-oauth') return;
+      if (Number(payload.clientId) !== Number(form.client_id)) return;
+      setInstagramLoading(false);
+      if (payload.ok) loadInstagramConnection(form.client_id);
+      else setError(payload.message || 'Não foi possível conectar o Instagram.');
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [form.client_id]);
+
+  async function connectInstagram() {
+    if (!form.client_id) return setError('Selecione o cliente antes de conectar o Instagram.');
+    try {
+      setInstagramLoading(true); setError('');
+      const { data } = await api.post(`/instagram-oauth/start/${form.client_id}`, { origin: window.location.origin });
+      const popup = window.open(data.authorization_url, 'zebrahub-instagram-oauth', 'width=620,height=760,resizable=yes,scrollbars=yes');
+      if (!popup) { setInstagramLoading(false); setError('O navegador bloqueou a janela do Instagram. Libere pop-ups e tente novamente.'); }
+    } catch (err) { setInstagramLoading(false); setError(err.response?.data?.error || 'Não foi possível iniciar a conexão com o Instagram.'); }
+  }
 
   function togglePlatform(platform) {
     setForm((current) => ({
@@ -240,10 +276,11 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
 
       if (isEditing) {
         await api.put(`/posts/${post.id}`, payload);
+        return post.id;
       } else {
-        await api.post('/posts', payload);
+        const { data } = await api.post('/posts', payload);
+        return data.id;
       }
-      return true;
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar o conteúdo.');
       return false;
@@ -254,8 +291,8 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const saved = await persistPost();
-    if (saved) onSaved?.();
+    const savedId = await persistPost();
+    if (savedId) onSaved?.();
   }
 
   async function handleRequestClose() {
@@ -264,10 +301,35 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
       return;
     }
 
-    const saved = await persistPost();
-    if (saved) onSaved?.();
+    const savedId = await persistPost();
+    if (savedId) onSaved?.();
   }
 
+
+  async function publishInstagramNow() {
+    if (!instagramConnection || instagramConnection.status !== 'connected') return setError('Conecte o Instagram profissional deste cliente primeiro.');
+    setPublicationAction('publish'); setError('');
+    try {
+      const postId = await persistPost();
+      if (!postId) return;
+      await api.post(`/posts/${postId}/publish-instagram`);
+      onSaved?.();
+    } catch (err) { setError(err.response?.data?.error || 'Não foi possível publicar no Instagram.'); }
+    finally { setPublicationAction(''); }
+  }
+
+  async function scheduleInstagram() {
+    if (!instagramConnection || instagramConnection.status !== 'connected') return setError('Conecte o Instagram profissional deste cliente primeiro.');
+    if (!form.scheduled_at) return setError('Escolha a data e o horário para agendar.');
+    setPublicationAction('schedule'); setError('');
+    try {
+      const postId = await persistPost();
+      if (!postId) return;
+      await api.post(`/posts/${postId}/schedule-instagram`, { scheduled_at: new Date(form.scheduled_at).toISOString() });
+      onSaved?.();
+    } catch (err) { setError(err.response?.data?.error || 'Não foi possível agendar no Instagram.'); }
+    finally { setPublicationAction(''); }
+  }
 
   const selectedClient = clients.find((client) => String(client.id) === String(form.client_id));
 
@@ -446,6 +508,19 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
               </div>
             </div>
 
+            <div className={`rounded-xl border p-4 ${instagramConnection?.status === 'connected' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${instagramConnection?.status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-pink-600'}`}><Instagram size={19} /></span>
+                  <div className="min-w-0">
+                    <strong className="block text-sm text-slate-800">Instagram</strong>
+                    <span className="block truncate text-xs text-slate-500">{instagramConnection?.status === 'connected' ? `@${instagramConnection.username || 'conta conectada'} • conectado` : 'Conecte uma vez para publicar e agendar pelo ZebraHub'}</span>
+                  </div>
+                </div>
+                {instagramConnection?.status !== 'connected' && <button type="button" onClick={connectInstagram} disabled={instagramLoading} className="btn-secondary shrink-0 text-xs">{instagramLoading ? <LoaderCircle size={15} className="animate-spin" /> : <Link2 size={15} />} {instagramLoading ? 'Abrindo...' : 'Conectar'}</button>}
+              </div>
+            </div>
+
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Status</label>
               <select
@@ -487,11 +562,17 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
               </p>
             )}
 
-            <div className="flex gap-3 pt-2">
-              <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
-              <button type="submit" disabled={saving} className="btn-primary flex-1">
-                {saving ? 'Salvando...' : isEditing ? 'Salvar alterações' : 'Salvar conteúdo'}
-              </button>
+            <div className="space-y-2 pt-2">
+              {form.platforms.includes('instagram') && form.content_type !== 'story' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={scheduleInstagram} disabled={saving || Boolean(publicationAction)} className="btn-secondary flex items-center justify-center gap-2"><CalendarClock size={16} /> {publicationAction === 'schedule' ? 'Agendando...' : 'Agendar no Instagram'}</button>
+                  <button type="button" onClick={publishInstagramNow} disabled={saving || Boolean(publicationAction)} className="btn-primary flex items-center justify-center gap-2"><Send size={16} /> {publicationAction === 'publish' ? 'Publicando...' : 'Publicar agora'}</button>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
+                <button type="submit" disabled={saving || Boolean(publicationAction)} className="btn-secondary flex-1">{saving ? 'Salvando...' : isEditing ? 'Salvar alterações' : 'Salvar rascunho'}</button>
+              </div>
             </div>
           </form>
 

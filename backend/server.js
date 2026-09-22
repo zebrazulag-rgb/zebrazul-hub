@@ -52,6 +52,7 @@ const audiovisualRoutes = require('./routes/audiovisual');
 const googleCalendarOAuthRoutes = require('./routes/googleCalendarOAuth');
 const productDevelopmentRoutes = require('./routes/productDevelopment');
 const { runMediaMigration } = require('./services/mediaMigration');
+const { publishDuePosts } = require('./services/instagramPublishing');
 const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
@@ -295,6 +296,14 @@ app.listen(PORT, async () => {
     console.warn('[META] Sincronizacao automatica desativada por configuracao.');
   }
 
+
+  // Publicador do Instagram: verifica a fila a cada minuto no backend.
+  try { await publishDuePosts(); } catch (error) { console.error('[INSTAGRAM PUBLISH] Falha ao processar fila no startup:', error.message); }
+  const instagramPublishInterval = setInterval(async () => {
+    try { await publishDuePosts(); } catch (error) { console.error('[INSTAGRAM PUBLISH] Falha ao processar fila:', error.message); }
+  }, 60 * 1000);
+  instagramPublishInterval.unref();
+  console.log('[INSTAGRAM PUBLISH] Agendamento ativo: verificação a cada 1 minuto.');
 
   if (String(process.env.META_ORGANIC_AUTO_SYNC_ON_START || process.env.META_AUTO_SYNC_ON_START || 'false').toLowerCase() === 'true') {
     await runAutomaticOrganicSync('startup');
