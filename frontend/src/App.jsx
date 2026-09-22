@@ -26,6 +26,7 @@ import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
 import SocialMedia from './pages/SocialMedia.jsx';
 import Reports from './pages/Reports.jsx';
+import Organizer from './pages/Organizer.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import DataDeletion from './pages/DataDeletion.jsx';
@@ -114,6 +115,7 @@ export default function App() {
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
       <Route path="/stories" element={<ProtectedRoute permission="social.stories"><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
       <Route path="/tarefas" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks /></ProtectedRoute>} />
+      <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />

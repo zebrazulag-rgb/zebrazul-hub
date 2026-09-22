@@ -36,6 +36,7 @@ const PERMISSION_CATALOG = [
   { key: 'product.release', group: 'Produto', label: 'Aprovar produção', description: 'Aprovar demandas e confirmar deploys em produção.', admin_only: true },
   { key: 'reenrollments.view', group: 'Rematrículas', label: 'Rematrículas', description: 'Acessar o CRM de rematrículas da Bee.' },
   { key: 'materials.view', group: 'Materiais', label: 'Materiais', description: 'Acessar biblioteca, links e rascunhos.' },
+  { key: 'organizer.view', group: 'Organização', label: 'Agenda, notas e checklist', description: 'Acessar a organização diária da equipe.' },
   { key: 'activity.view_own', group: 'Atividade', label: 'Ver própria atividade', description: 'Visualizar o próprio histórico de ações e presença recente.' },
   { key: 'activity.view_team', group: 'Atividade', label: 'Ver atividade da equipe', description: 'Visualizar histórico, presença e filtros de todos os usuários da agência.' },
   { key: 'activity.export', group: 'Atividade', label: 'Exportar histórico', description: 'Baixar o histórico filtrado da equipe em CSV.' },
@@ -56,17 +57,17 @@ const DEFAULTS = {
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish', 'audiovisual.calendar',
-    'reenrollments.view', 'materials.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
+    'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
   ]),
   team: new Set([
     'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish',
-    'reenrollments.view', 'materials.view', 'activity.view_own', 'settings.clients',
+    'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'settings.clients',
   ]),
   commercial_team: new Set([
-    'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.export', 'commercial.view', 'commercial.manage', 'commercial.import', 'reenrollments.view', 'activity.view_own',
+    'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.export', 'commercial.view', 'commercial.manage', 'commercial.import', 'reenrollments.view', 'organizer.view', 'activity.view_own',
   ]),
   client: new Set([
     'tasks.view', 'tasks.approval', 'social.view', 'social.feed', 'social.calendar', 'social.reports',
@@ -233,6 +234,7 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/product')) return method === 'GET'
     ? 'product.view'
     : ['product.create', 'product.manage', 'product.qa', 'product.release'];
+  if (path.startsWith('/organizer')) return 'organizer.view';
   if (path.startsWith('/activity')) return ['activity.view_own', 'activity.view_team'];
   if (path.startsWith('/reenrollments')) return 'reenrollments.view';
   if (path.startsWith('/materials') || path.startsWith('/material-boards')) return 'materials.view';

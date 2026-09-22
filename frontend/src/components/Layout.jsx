@@ -29,6 +29,7 @@ import {
   Clapperboard,
   Code2,
   Bug,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -211,6 +212,7 @@ export default function Layout({ children }) {
     { to: '/produto', label: 'Produto', icon: Code2, permission: 'product.view' },
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view' },
     { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
+    { to: '/organizacao', label: 'Organização', icon: CalendarDays, permission: 'organizer.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
@@ -239,7 +241,7 @@ export default function Layout({ children }) {
 
   const mobilePrimaryItems = isClientPortal
     ? visibleWorkspaceItems.slice(0, 4)
-    : visibleWorkspaceItems.filter((item) => ['/','/audiovisual','/tarefas','/conversas','/social-media'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/','/audiovisual','/tarefas','/organizacao','/social-media'].includes(item.to));
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
@@ -261,6 +263,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/tarefas')) return 'Tarefas';
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/relatorios')) return 'Relatórios';
+    if (path.startsWith('/organizacao')) return 'Organização';
     if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
     if (path.startsWith('/bussola')) return 'Bússola';

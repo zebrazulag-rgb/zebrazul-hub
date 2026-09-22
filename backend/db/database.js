@@ -1277,6 +1277,61 @@ function migrateFinancialEntries() {
 migrateTaskStatuses();
 migrateFinancialEntries();
 
+// Organização diária da equipe: agenda, notas e checklist pessoal.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS organizer_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    client_id INTEGER,
+    title TEXT NOT NULL,
+    event_type TEXT NOT NULL DEFAULT 'other' CHECK(event_type IN ('post','recording','meeting','personal','other')),
+    start_at TEXT NOT NULL,
+    end_at TEXT,
+    all_day INTEGER DEFAULT 0,
+    visibility TEXT NOT NULL DEFAULT 'team' CHECK(visibility IN ('team','private')),
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS organizer_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT 'Nota',
+    content TEXT DEFAULT '',
+    pinned INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS organizer_checklist_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    item_date TEXT NOT NULL,
+    title TEXT NOT NULL,
+    completed INTEGER DEFAULT 0,
+    position INTEGER DEFAULT 0,
+    completed_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_organizer_events_agency_date ON organizer_events(agency_id, start_at, visibility);
+  CREATE INDEX IF NOT EXISTS idx_organizer_events_user_date ON organizer_events(user_id, start_at);
+  CREATE INDEX IF NOT EXISTS idx_organizer_notes_user ON organizer_notes(agency_id, user_id, pinned, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_organizer_checklist_date ON organizer_checklist_items(agency_id, user_id, item_date, completed, position);
+`);
+
 // Posts antigos devem continuar visíveis na grade após a criação da coluna.
 if (tableHasColumn('posts', 'feed_visible')) {
   db.exec('UPDATE posts SET feed_visible = 1 WHERE feed_visible IS NULL');
@@ -1398,7 +1453,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '29', datetime('now'))
+   VALUES ('schema_version', '30', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

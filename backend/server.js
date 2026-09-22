@@ -47,6 +47,7 @@ const instagramStoriesWebhookRoutes = require('./routes/instagramStoriesWebhook'
 const instagramStoriesRoutes = require('./routes/instagramStories');
 const permissionsRoutes = require('./routes/permissions');
 const activityRoutes = require('./routes/activity');
+const organizerRoutes = require('./routes/organizer');
 const audiovisualRoutes = require('./routes/audiovisual');
 const googleCalendarOAuthRoutes = require('./routes/googleCalendarOAuth');
 const productDevelopmentRoutes = require('./routes/productDevelopment');
@@ -148,6 +149,7 @@ app.use('/api/public/video-reviews', publicVideoReviewRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/permissions', permissionsRoutes);
 app.use('/api/activity', activityRoutes);
+app.use('/api/organizer', organizerRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/reports', reportRoutes);
