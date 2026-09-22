@@ -1,11 +1,37 @@
 const express = require('express');
+const multer = require('multer');
 const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
-const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
+const { persistMedia, persistMediaBuffer, externalizeGallery } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
+
+const postMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 80 * 1024 * 1024, files: 1 },
+  fileFilter(req, file, callback) {
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (!mime.startsWith('video/') && !mime.startsWith('image/')) {
+      return callback(new Error('Envie uma imagem ou vídeo válido.'));
+    }
+    callback(null, true);
+  },
+});
+
+// Upload binário para posts. Evita transformar vídeos em base64 e gravá-los no banco.
+router.post('/upload-media', requireRole('admin', 'team'), (req, res) => {
+  postMediaUpload.single('file')(req, res, (error) => {
+    if (error) {
+      if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'O vídeo deve ter no máximo 80 MB.' });
+      return res.status(400).json({ error: error.message || 'Não foi possível enviar o arquivo.' });
+    }
+    if (!req.file?.buffer) return res.status(400).json({ error: 'Selecione um arquivo.' });
+    const url = persistMediaBuffer(req.file.buffer, req.file.mimetype || 'application/octet-stream');
+    return res.status(201).json({ url, mime: req.file.mimetype, filename: req.file.originalname || '' });
+  });
+});
 
 function parseGallery(value, fallbackData = null, fallbackMime = null) {
   let source = value;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ImagePlus, Trash2, GripVertical, ChevronLeft, ChevronRight, Pin } from 'lucide-react';
+import { X, ImagePlus, Video, Trash2, GripVertical, ChevronLeft, ChevronRight, Pin } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
@@ -91,6 +91,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [isUploadDropActive, setIsUploadDropActive] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const uploadDragDepthRef = useRef(0);
   const draggedMediaIndexRef = useRef(null);
 
@@ -110,70 +111,68 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
     }));
   }
 
-  async function addImageFiles(fileList) {
+  async function addMediaFiles(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
 
-    const invalidFile = files.find((file) => !file.type?.startsWith('image/'));
+    const wantsVideo = form.content_type === 'reels';
+    const invalidFile = files.find((file) => wantsVideo ? !file.type?.startsWith('video/') : !file.type?.startsWith('image/'));
     if (invalidFile) {
-      setError(`O arquivo “${invalidFile.name}” não é uma imagem válida.`);
+      setError(wantsVideo ? `O arquivo “${invalidFile.name}” não é um vídeo válido.` : `O arquivo “${invalidFile.name}” não é uma imagem válida.`);
+      return;
+    }
+    if (wantsVideo && files.length > 1) {
+      setError('Adicione um vídeo por Reel.');
       return;
     }
 
-    const tooLarge = files.find((file) => file.size > 8 * 1024 * 1024);
+    const tooLarge = files.find((file) => file.size > (wantsVideo ? 80 : 8) * 1024 * 1024);
     if (tooLarge) {
-      setError(`A imagem “${tooLarge.name}” ultrapassa 8MB.`);
+      setError(`${wantsVideo ? 'O vídeo' : 'A imagem'} “${tooLarge.name}” ultrapassa ${wantsVideo ? 80 : 8}MB.`);
       return;
     }
 
     try {
-      const converted = await Promise.all(files.map(async (file) => ({
-        data: await fileToBase64(file),
-        mime: file.type,
-        filename: file.name,
-      })));
-
+      setUploadingMedia(true);
+      let converted;
+      if (wantsVideo) {
+        const body = new FormData();
+        body.append('file', files[0]);
+        const { data } = await api.post('/posts/upload-media', body, { headers: { 'Content-Type': 'multipart/form-data' } });
+        converted = [{ data: data.url, mime: data.mime || files[0].type, filename: data.filename || files[0].name }];
+      } else {
+        converted = await Promise.all(files.map(async (file) => ({
+          data: await fileToBase64(file), mime: file.type, filename: file.name,
+        })));
+      }
       setForm((current) => ({
         ...current,
-        media_gallery: [...current.media_gallery, ...converted],
+        media_gallery: wantsVideo ? converted : [...current.media_gallery, ...converted],
       }));
       setError('');
-    } catch {
-      setError('Não foi possível carregar uma das imagens. Tente novamente.');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível carregar o arquivo. Tente novamente.');
+    } finally {
+      setUploadingMedia(false);
     }
   }
 
   async function handleFileChange(event) {
-    await addImageFiles(event.target.files);
+    await addMediaFiles(event.target.files);
     event.target.value = '';
   }
 
   function handleUploadDragEnter(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    uploadDragDepthRef.current += 1;
-    setIsUploadDropActive(true);
+    event.preventDefault(); event.stopPropagation(); uploadDragDepthRef.current += 1; setIsUploadDropActive(true);
   }
-
-  function handleUploadDragOver(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = 'copy';
-  }
-
+  function handleUploadDragOver(event) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; }
   function handleUploadDragLeave(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    uploadDragDepthRef.current = Math.max(0, uploadDragDepthRef.current - 1);
+    event.preventDefault(); event.stopPropagation(); uploadDragDepthRef.current = Math.max(0, uploadDragDepthRef.current - 1);
     if (uploadDragDepthRef.current === 0) setIsUploadDropActive(false);
   }
-
   async function handleUploadDrop(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    uploadDragDepthRef.current = 0;
-    setIsUploadDropActive(false);
-    await addImageFiles(event.dataTransfer.files);
+    event.preventDefault(); event.stopPropagation(); uploadDragDepthRef.current = 0; setIsUploadDropActive(false);
+    await addMediaFiles(event.dataTransfer.files);
   }
 
   function removeMedia(index) {
@@ -325,7 +324,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Imagens do conteúdo</label>
+              <label className="text-sm font-medium text-slate-700 block mb-1">{form.content_type === 'reels' ? 'Vídeo do Reel' : 'Imagens do conteúdo'}</label>
               <label
                 onDragEnter={handleUploadDragEnter}
                 onDragOver={handleUploadDragOver}
@@ -337,12 +336,12 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
                     : 'border-slate-300 text-slate-500 hover:border-zebrazul-400 hover:bg-slate-50'
                 }`}
               >
-                <ImagePlus size={20} />
+                {form.content_type === 'reels' ? <Video size={20} /> : <ImagePlus size={20} />}
                 <span className="font-medium">
-                  {isUploadDropActive ? 'Solte as imagens aqui' : 'Arraste as imagens para cá'}
+                  {isUploadDropActive ? (form.content_type === 'reels' ? 'Solte o vídeo aqui' : 'Solte as imagens aqui') : (form.content_type === 'reels' ? 'Arraste o vídeo para cá' : 'Arraste as imagens para cá')}
                 </span>
                 <span className="text-xs text-slate-400">ou clique para escolher no computador</span>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+                <input type="file" accept={form.content_type === 'reels' ? 'video/mp4,video/webm,video/quicktime,video/x-m4v' : 'image/*'} multiple={form.content_type !== 'reels'} className="hidden" onChange={handleFileChange} disabled={uploadingMedia} />
               </label>
               {form.media_gallery.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
@@ -355,7 +354,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
                       onDrop={(event) => handleMediaDrop(event, index)}
                       className="relative aspect-[4/5] cursor-grab overflow-hidden rounded-lg bg-slate-100 shadow-sm group active:cursor-grabbing"
                     >
-                      <img src={item.data} alt={`Slide ${index + 1}`} className="w-full h-full object-cover" />
+                      {item.mime?.startsWith('video/') ? <video src={item.data} className="w-full h-full object-cover bg-black" muted playsInline /> : <img src={item.data} alt={`Slide ${index + 1}`} className="w-full h-full object-cover" />}
                       <span className="absolute left-1.5 top-1.5 flex h-7 items-center gap-1 rounded-full bg-slate-950/70 px-2 text-[10px] font-semibold text-white">
                         <GripVertical size={12} /> {index + 1}
                       </span>
@@ -391,7 +390,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-400 mt-2">Arraste as imagens ou use as setas para mudar a ordem. A primeira será a capa na grade.</p>
+              <p className="text-xs text-slate-400 mt-2">{form.content_type === 'reels' ? (uploadingMedia ? 'Enviando vídeo...' : 'MP4, WebM, MOV ou M4V, até 80 MB. O vídeo fica armazenado fora do banco de dados.') : 'Arraste as imagens ou use as setas para mudar a ordem. A primeira será a capa na grade.'}</p>
             </div>
 
             <div>

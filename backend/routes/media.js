@@ -25,12 +25,28 @@ function sendMedia(req, res, includeBody = true) {
   const mime = detectMimeFromFile(located.filePath);
   const stat = fs.statSync(located.filePath);
   res.setHeader('Content-Type', mime);
-  res.setHeader('Content-Length', String(stat.size));
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Accept-Ranges', 'bytes');
   if (located.repaired) res.setHeader('X-Zebrahub-Media-Repaired', '1');
 
+  const range = req.headers.range;
+  if (includeBody && range && String(mime).startsWith('video/')) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (match) {
+      const start = match[1] ? Number(match[1]) : 0;
+      const end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
+      if (Number.isFinite(start) && Number.isFinite(end) && start <= end && start < stat.size) {
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+        res.setHeader('Content-Length', String(end - start + 1));
+        return fs.createReadStream(located.filePath, { start, end }).pipe(res);
+      }
+    }
+  }
+
+  res.setHeader('Content-Length', String(stat.size));
   if (!includeBody) return res.status(200).end();
   return res.sendFile(path.resolve(located.filePath));
 }

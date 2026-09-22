@@ -89,7 +89,9 @@ export default function InstagramPreview({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [gallery.length]);
 
-  const activeImage = gallery[activeIndex]?.data;
+  const activeItem = gallery[activeIndex];
+  const activeImage = activeItem?.data;
+  const activeIsVideo = String(activeItem?.mime || '').startsWith('video/');
   const hasPrevious = activeIndex > 0;
   const hasNext = activeIndex < gallery.length - 1;
 
@@ -150,7 +152,7 @@ export default function InstagramPreview({
         onPointerCancel={() => { pointerStartX.current = null; }}
       >
         {activeImage ? (
-          <img src={activeImage} alt={`Slide ${activeIndex + 1} do post`} className="w-full h-full object-contain bg-black" draggable="false" />
+          activeIsVideo ? <video src={activeImage} className="w-full h-full object-contain bg-black" controls playsInline preload="metadata" /> : <img src={activeImage} alt={`Slide ${activeIndex + 1} do post`} className="w-full h-full object-contain bg-black" draggable="false" />
         ) : (
           <div className="text-center px-6">
             <p className="text-sm text-slate-400">Nenhuma imagem anexada ainda</p>

@@ -123,7 +123,7 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
             const ApprovalIcon = approvalStatus?.icon || null;
             return (
               <button key={`${sourceType}-${sourceId}`} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100 text-left">
-                {mediaSrc ? <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" /> : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
+                {mediaSrc ? (video && String(post.media_mime || post.media_gallery?.[0]?.mime || '').startsWith('video/') ? <video src={mediaSrc} className="h-full w-full object-cover bg-black" muted playsInline preload="metadata" /> : <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />) : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
                 {Number(post.is_pinned || 0) === 1 && (
                   <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-amber-950 shadow" title="Fixado no topo">
                     <Pin size={13} fill="currentColor" />
