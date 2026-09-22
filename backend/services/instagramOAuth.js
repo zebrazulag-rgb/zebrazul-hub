@@ -315,7 +315,12 @@ function tokenExpiresAt(expiresIn) {
 }
 
 async function fetchInstagramProfile(accessToken, tokenUserId = null) {
+  // Tenta primeiro o conjunto completo suportado pela Instagram API. Os fallbacks
+  // mantem a conexao funcional caso algum campo ainda nao esteja liberado no app.
   const fieldSets = [
+    'id,username,name,account_type,profile_picture_url,followers_count,follows_count,media_count,biography,website',
+    'id,username,name,account_type,profile_picture_url,followers_count,follows_count,media_count,biography',
+    'id,username,name,account_type,profile_picture_url,followers_count,follows_count,media_count',
     'id,username,name,account_type,profile_picture_url',
     'id,username,name,account_type',
     'id,username',
@@ -330,16 +335,73 @@ async function fetchInstagramProfile(accessToken, tokenUserId = null) {
         name: profile.name || profile.username || null,
         accountType: profile.account_type || null,
         profilePictureUrl: profile.profile_picture_url || null,
+        followersCount: Number.isFinite(Number(profile.followers_count)) ? Number(profile.followers_count) : null,
+        followsCount: Number.isFinite(Number(profile.follows_count)) ? Number(profile.follows_count) : null,
+        mediaCount: Number.isFinite(Number(profile.media_count)) ? Number(profile.media_count) : null,
+        biography: typeof profile.biography === 'string' ? profile.biography : null,
+        website: typeof profile.website === 'string' ? profile.website : null,
       };
     } catch (error) {
       lastError = error;
     }
   }
-  // Nao aceite apenas o user_id devolvido na troca do token como prova de que a
-  // conexao esta operacional. A versao anterior salvava a conta mesmo quando /me
-  // falhava; por isso o ZebraHub exibia "Ativo" e depois quebrava na sincronizacao.
   if (lastError) throw lastError;
   throw new InstagramOAuthError('Não foi possível identificar a conta profissional do Instagram.', { status: 502 });
+}
+
+function applyInstagramProfileToClient(clientId, agencyId, profile) {
+  db.prepare(`
+    UPDATE clients SET
+      instagram_username = COALESCE(?, instagram_username),
+      instagram_display_name = COALESCE(?, instagram_display_name),
+      avatar_data = COALESCE(?, avatar_data),
+      avatar_mime = CASE WHEN ? IS NOT NULL THEN 'image/jpeg' ELSE avatar_mime END,
+      instagram_posts_count = COALESCE(?, instagram_posts_count),
+      instagram_followers_count = COALESCE(?, instagram_followers_count),
+      instagram_following_count = COALESCE(?, instagram_following_count),
+      bio = COALESCE(?, bio),
+      instagram_link = COALESCE(?, instagram_link)
+    WHERE id = ? AND agency_id = ?
+  `).run(
+    profile.username,
+    profile.name,
+    profile.profilePictureUrl,
+    profile.profilePictureUrl,
+    profile.mediaCount,
+    profile.followersCount,
+    profile.followsCount,
+    profile.biography,
+    profile.website,
+    clientId,
+    agencyId
+  );
+}
+
+async function syncInstagramProfile(clientId, agencyId) {
+  const bundle = getClientTokenBundle(clientId, agencyId);
+  if (!bundle) throw new InstagramOAuthError('Conecte o Instagram deste cliente primeiro.', { status: 404 });
+  const profile = await fetchInstagramProfile(bundle.accessToken, bundle.instagramUserId);
+  applyInstagramProfileToClient(clientId, agencyId, profile);
+  db.prepare(`
+    UPDATE instagram_oauth_connections SET
+      username = COALESCE(?, username),
+      display_name = COALESCE(?, display_name),
+      profile_picture_url = COALESCE(?, profile_picture_url),
+      account_type = COALESCE(?, account_type),
+      last_error = NULL,
+      status = 'connected',
+      updated_at = datetime('now')
+    WHERE client_id = ? AND agency_id = ?
+  `).run(profile.username, profile.name, profile.profilePictureUrl, profile.accountType, clientId, agencyId);
+  db.prepare(`
+    UPDATE meta_organic_accounts SET
+      instagram_username = COALESCE(?, instagram_username),
+      instagram_name = COALESCE(?, instagram_name),
+      instagram_picture_url = COALESCE(?, instagram_picture_url),
+      updated_at = datetime('now')
+    WHERE client_id = ? AND agency_id = ?
+  `).run(profile.username, profile.name, profile.profilePictureUrl, clientId, agencyId);
+  return profile;
 }
 
 async function saveOAuthConnection({ stateRow, token }) {
@@ -455,12 +517,7 @@ async function saveOAuthConnection({ stateRow, token }) {
       instagramConnection.id
     );
 
-    db.prepare(`
-      UPDATE clients SET
-        instagram_username = COALESCE(?, instagram_username),
-        instagram_display_name = COALESCE(?, instagram_display_name)
-      WHERE id = ? AND agency_id = ?
-    `).run(profile.username, profile.name, stateRow.client_id, stateRow.agency_id);
+    applyInstagramProfileToClient(stateRow.client_id, stateRow.agency_id, profile);
 
     db.prepare(`
       INSERT INTO instagram_story_settings (agency_id, client_id, subscribed_at, last_error)
@@ -594,6 +651,7 @@ module.exports = {
   exchangeCodeForToken,
   saveOAuthConnection,
   getConnectionStatus,
+  syncInstagramProfile,
   getClientTokenBundle,
   findConnectionByInstagramUserId,
   instagramGraphRequest,

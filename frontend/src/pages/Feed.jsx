@@ -146,6 +146,22 @@ export default function Feed() {
 
   const currentClient = clients.find((client) => String(client.id) === String(clientId));
 
+  // Mantem o cabecalho do mockup sincronizado com o Instagram conectado.
+  // Uma chamada por troca de cliente; se nao houver conexao, o perfil manual permanece intacto.
+  useEffect(() => {
+    if (!clientId || !canConnections) return;
+    let cancelled = false;
+    api.post(`/instagram-oauth/sync-profile/${clientId}`)
+      .then(({ data }) => {
+        if (cancelled || !data?.client) return;
+        setClients((previous) => previous.map((client) => (
+          String(client.id) === String(clientId) ? { ...client, ...data.client } : client
+        )));
+      })
+      .catch(() => { /* Sem conexao: mantem os dados manuais do feed. */ });
+    return () => { cancelled = true; };
+  }, [clientId, canConnections]);
+
   async function loadPublishedFeed(targetClientId = clientId) {
     if (!targetClientId) {
       setPublishedPosts([]);

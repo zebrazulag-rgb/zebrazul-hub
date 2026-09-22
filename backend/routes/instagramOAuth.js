@@ -11,6 +11,7 @@ const {
   exchangeCodeForToken,
   saveOAuthConnection,
   getConnectionStatus,
+  syncInstagramProfile,
   disconnectOAuth,
   popupHtml,
 } = require('../services/instagramOAuth');
@@ -99,6 +100,20 @@ router.get('/status/:clientId', (req, res) => {
     connection: getConnectionStatus(clientId, req.user.agency_id),
     client: { id: client.id, name: client.name },
   });
+});
+
+router.post('/sync-profile/:clientId', async (req, res) => {
+  const clientId = Number(req.params.clientId);
+  const client = ensureAccess(req, res, clientId);
+  if (!client) return;
+  try {
+    const profile = await syncInstagramProfile(clientId, req.user.agency_id);
+    const updatedClient = db.prepare('SELECT * FROM clients WHERE id = ? AND agency_id = ?').get(clientId, req.user.agency_id);
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, profile, client: updatedClient });
+  } catch (error) {
+    apiError(res, error);
+  }
 });
 
 router.post('/start/:clientId', (req, res) => {
