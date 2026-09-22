@@ -148,6 +148,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
       setError('');
       await api.delete(`/instagram-oauth/client/${form.client_id}`);
       setInstagramConnection(null);
+      window.dispatchEvent(new CustomEvent('zebrahub-instagram-connection-changed', { detail: { clientId: form.client_id } }));
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível desconectar o Instagram.');
     } finally {

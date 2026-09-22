@@ -53,6 +53,8 @@ export default function Layout({ children }) {
   const [roleClientRecord, setRoleClientRecord] = useState(null);
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
+  const [instagramHeaderConnection, setInstagramHeaderConnection] = useState(null);
+  const [instagramHeaderLoading, setInstagramHeaderLoading] = useState(false);
   const clientPickerRef = useRef(null);
   const [showProfile, setShowProfile] = useState(false);
   const [profileName, setProfileName] = useState(user?.name || '');
@@ -136,6 +138,47 @@ export default function Layout({ children }) {
     });
     return () => { active = false; };
   }, [user?.id, user?.role, user?.is_commercial_team, user?.client_ids?.join(','), selectedClient?.id, setSelectedClient]);
+
+  useEffect(() => {
+    const clientId = user?.role === 'client' ? user?.client_id : selectedClient?.id;
+    if (!clientId || !hasPermission(user, 'social.connections')) {
+      setInstagramHeaderConnection(null);
+      setInstagramHeaderLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    const loadConnection = async () => {
+      setInstagramHeaderLoading(true);
+      try {
+        const { data } = await api.get(`/instagram-oauth/status/${clientId}`, { params: { _ts: Date.now() } });
+        if (active) setInstagramHeaderConnection(data.connection || null);
+      } catch {
+        if (active) setInstagramHeaderConnection(null);
+      } finally {
+        if (active) setInstagramHeaderLoading(false);
+      }
+    };
+
+    const onInstagramMessage = (event) => {
+      const payload = event.data;
+      if (payload?.type === 'zebrahub-instagram-oauth' && Number(payload.clientId) === Number(clientId) && payload.ok) {
+        loadConnection();
+      }
+    };
+    const onInstagramChanged = (event) => {
+      if (!event.detail?.clientId || Number(event.detail.clientId) === Number(clientId)) loadConnection();
+    };
+
+    loadConnection();
+    window.addEventListener('message', onInstagramMessage);
+    window.addEventListener('zebrahub-instagram-connection-changed', onInstagramChanged);
+    return () => {
+      active = false;
+      window.removeEventListener('message', onInstagramMessage);
+      window.removeEventListener('zebrahub-instagram-connection-changed', onInstagramChanged);
+    };
+  }, [user?.id, user?.role, user?.client_id, selectedClient?.id]);
 
   useEffect(() => {
     if (!user?.id || user?.role === 'client') return undefined;
@@ -399,6 +442,22 @@ export default function Layout({ children }) {
               >
                 <Bug size={16} />
               </button>
+            )}
+
+            {(user?.role === 'client' ? user?.client_id : selectedClient?.id) && hasPermission(user, 'social.connections') && (
+              <div
+                className={`hidden min-w-0 items-center gap-2 rounded-xl border px-3 py-2 sm:flex ${instagramHeaderConnection?.status === 'connected' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}
+                title={instagramHeaderConnection?.status === 'connected' ? `Instagram conectado: @${instagramHeaderConnection.username || 'conta conectada'}` : 'Instagram não conectado para este cliente'}
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${instagramHeaderConnection?.status === 'connected' ? 'bg-emerald-500' : instagramHeaderLoading ? 'bg-amber-400 animate-pulse' : 'bg-slate-300'}`} />
+                <Instagram size={15} className={instagramHeaderConnection?.status === 'connected' ? 'text-emerald-600' : 'text-slate-400'} />
+                <div className="min-w-0">
+                  <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${instagramHeaderConnection?.status === 'connected' ? 'text-emerald-600' : 'text-slate-400'}`}>Instagram</p>
+                  <p className={`max-w-[170px] truncate text-[11px] font-semibold ${instagramHeaderConnection?.status === 'connected' ? 'text-emerald-800' : 'text-slate-500'}`}>
+                    {instagramHeaderLoading ? 'Verificando...' : instagramHeaderConnection?.status === 'connected' ? `@${instagramHeaderConnection.username || 'conectado'}` : 'Não conectado'}
+                  </p>
+                </div>
+              </div>
             )}
 
             {user?.role === 'client' ? (
