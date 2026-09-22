@@ -40,7 +40,7 @@ const PERMISSION_CATALOG = [
   { key: 'activity.view_own', group: 'Atividade', label: 'Ver própria atividade', description: 'Visualizar o próprio histórico de ações e presença recente.' },
   { key: 'activity.view_team', group: 'Atividade', label: 'Ver atividade da equipe', description: 'Visualizar histórico, presença e filtros de todos os usuários da agência.' },
   { key: 'activity.export', group: 'Atividade', label: 'Exportar histórico', description: 'Baixar o histórico filtrado da equipe em CSV.' },
-  { key: 'finance.view', group: 'Financeiro', label: 'Financeiro', description: 'Acessar entradas, saídas e indicadores financeiros.', admin_only: true },
+  { key: 'finance.view', group: 'Financeiro', label: 'Financeiro', description: 'Acessar entradas, saídas e indicadores financeiros.' },
   { key: 'vault.view', group: 'Senhas', label: 'Cofre de senhas', description: 'Acessar credenciais criptografadas.', admin_only: true },
   { key: 'settings.clients', group: 'Configurações', label: 'Clientes', description: 'Gerenciar clientes da agência.' },
   { key: 'settings.users', group: 'Configurações', label: 'Usuários', description: 'Criar e editar usuários.', admin_only: true },
@@ -151,8 +151,9 @@ function getPermissionSetForUser(user) {
   ALL_KEYS.forEach((key) => {
     if (ownerOnly[key] && !isOwner) map[key] = false;
   });
-  // Financeiro é uma área de Super Administrador: administrador comum nunca recebe acesso.
-  map['finance.view'] = Boolean(user.is_platform_owner);
+  // Financeiro fica dentro de Meu Espaço e é liberado para todas as contas internas da equipe.
+  // O portal de cliente permanece sem acesso.
+  map['finance.view'] = Boolean(user && user.role !== 'client');
   return map;
 }
 

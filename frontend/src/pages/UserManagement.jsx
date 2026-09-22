@@ -344,7 +344,7 @@ export default function UserManagement({ embedded = false }) {
         <div className="mb-5"><p className="section-kicker">Níveis de permissão</p><h2 className="section-title mt-1">Papéis disponíveis</h2></div>
         <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4 text-sm">
           <RoleDescription icon={Shield} title="Administrador" description="Acesso total, incluindo criar, editar e apagar usuários." />
-          <RoleDescription icon={BriefcaseBusiness} title="Head de Operação" description="Visualiza e gerencia todas as tarefas, subtarefas, clientes e responsáveis da operação, sem acesso ao Financeiro." />
+          <RoleDescription icon={BriefcaseBusiness} title="Head de Operação" description="Visualiza e gerencia todas as tarefas, subtarefas, clientes e responsáveis da operação. O Financeiro fica disponível dentro de Meu Espaço." />
           <RoleDescription icon={UsersIcon} title={`Equipe ${agency?.name || ""}`.trim()} description="Acessa somente os clientes e áreas operacionais definidos pelo administrador." />
           <RoleDescription icon={Handshake} title="Equipe Comercial" description="Acessa apenas Painel, Tarefas e Comercial dos clientes liberados pelo administrador." />
           <RoleDescription icon={Building2} title="Cliente" description="Só vê e aprova o conteúdo do próprio cliente vinculado." />
@@ -605,7 +605,7 @@ function UserFormModal({
           )}
           {form.role === 'operations_head' && (
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-              Este perfil poderá visualizar e gerenciar todas as tarefas e subtarefas da equipe, além de acessar todos os clientes da agência. O Financeiro e as configurações administrativas continuam restritos.
+              Este perfil poderá visualizar e gerenciar todas as tarefas e subtarefas da equipe, além de acessar todos os clientes da agência. O Financeiro fica disponível dentro de Meu Espaço; as configurações administrativas continuam restritas.
             </div>
           )}
           {form.role === 'commercial_team' && (

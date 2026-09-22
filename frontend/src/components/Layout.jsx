@@ -218,7 +218,6 @@ export default function Layout({ children }) {
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
-    { to: '/financeiro', label: 'Financeiro', icon: WalletCards, permission: 'finance.view' },
   ];
 
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
