@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ImagePlus, Video, Trash2, GripVertical, ChevronLeft, ChevronRight, Pin, Instagram, Send, CalendarClock, Link2, LoaderCircle } from 'lucide-react';
+import { X, ImagePlus, Video, Trash2, GripVertical, ChevronLeft, ChevronRight, Pin, Instagram, Send, CalendarClock, Link2, LoaderCircle, Unlink } from 'lucide-react';
 import api from '../api';
 import InstagramPreview from './InstagramPreview.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
@@ -94,6 +94,7 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [instagramConnection, setInstagramConnection] = useState(null);
   const [instagramLoading, setInstagramLoading] = useState(false);
+  const [instagramDisconnecting, setInstagramDisconnecting] = useState(false);
   const [publicationAction, setPublicationAction] = useState('');
   const uploadDragDepthRef = useRef(0);
   const draggedMediaIndexRef = useRef(null);
@@ -136,6 +137,22 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
       const popup = window.open(data.authorization_url, 'zebrahub-instagram-oauth', 'width=620,height=760,resizable=yes,scrollbars=yes');
       if (!popup) { setInstagramLoading(false); setError('O navegador bloqueou a janela do Instagram. Libere pop-ups e tente novamente.'); }
     } catch (err) { setInstagramLoading(false); setError(err.response?.data?.error || 'Não foi possível iniciar a conexão com o Instagram.'); }
+  }
+
+  async function disconnectInstagram() {
+    if (!form.client_id || instagramConnection?.status !== 'connected') return;
+    const username = instagramConnection.username ? `@${instagramConnection.username}` : 'esta conta';
+    if (!window.confirm(`Desconectar ${username} deste cliente? Os posts e arquivos do ZebraHub serão preservados.`)) return;
+    try {
+      setInstagramDisconnecting(true);
+      setError('');
+      await api.delete(`/instagram-oauth/client/${form.client_id}`);
+      setInstagramConnection(null);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível desconectar o Instagram.');
+    } finally {
+      setInstagramDisconnecting(false);
+    }
   }
 
   function togglePlatform(platform) {
@@ -517,7 +534,14 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
                     <span className="block truncate text-xs text-slate-500">{instagramConnection?.status === 'connected' ? `@${instagramConnection.username || 'conta conectada'} • conectado` : 'Conecte uma vez para publicar e agendar pelo ZebraHub'}</span>
                   </div>
                 </div>
-                {instagramConnection?.status !== 'connected' && <button type="button" onClick={connectInstagram} disabled={instagramLoading} className="btn-secondary shrink-0 text-xs">{instagramLoading ? <LoaderCircle size={15} className="animate-spin" /> : <Link2 size={15} />} {instagramLoading ? 'Abrindo...' : 'Conectar'}</button>}
+                {instagramConnection?.status === 'connected' ? (
+                  <button type="button" onClick={disconnectInstagram} disabled={instagramDisconnecting} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60">
+                    {instagramDisconnecting ? <LoaderCircle size={15} className="animate-spin" /> : <Unlink size={15} />}
+                    {instagramDisconnecting ? 'Desconectando...' : 'Desconectar'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={connectInstagram} disabled={instagramLoading} className="btn-secondary shrink-0 text-xs">{instagramLoading ? <LoaderCircle size={15} className="animate-spin" /> : <Link2 size={15} />} {instagramLoading ? 'Abrindo...' : 'Conectar'}</button>
+                )}
               </div>
             </div>
 
