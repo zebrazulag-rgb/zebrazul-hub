@@ -380,114 +380,119 @@ export default function Layout({ children }) {
       </aside>
 
       <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-        <div className="sticky top-0 z-20 flex min-h-[62px] items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:px-6 md:px-8 xl:px-10">
+        <div className="sticky top-0 z-20 flex min-h-[62px] items-center gap-2 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:px-6 md:px-8 xl:px-10">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
             <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
           </div>
-          {user?.role === 'client' ? (
-            <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <ClientAvatar client={workspaceClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
-              <div className="min-w-0 text-left">
-                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
-                <p className="max-w-[260px] truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="relative min-w-0" ref={clientPickerRef}>
+
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            {!isClientPortal && hasPermission(user, 'product.create') && (
               <button
                 type="button"
-                aria-label="Selecionar cliente"
-                aria-haspopup="listbox"
-                aria-expanded={clientPickerOpen}
-                onClick={() => setClientPickerOpen((open) => !open)}
-                className="flex min-w-[150px] max-w-[190px] sm:min-w-[210px] sm:max-w-[280px] md:min-w-[230px] md:max-w-[330px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                onClick={() => navigate(`/produto?novo=1&origem=${encodeURIComponent(location.pathname + location.search)}`)}
+                title="Reportar para Produto"
+                aria-label="Reportar problema ou melhoria para Produto"
+                className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 sm:flex"
               >
-                <ClientAvatar client={selectedClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
-                  <p className="truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
-                </div>
-                <ChevronDown size={15} className={`shrink-0 text-slate-400 transition-transform ${clientPickerOpen ? 'rotate-180' : ''}`} />
+                <Bug size={16} />
               </button>
+            )}
 
-              {clientPickerOpen && (
-                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[min(340px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
-                  <div className="border-b border-slate-100 p-3">
-                    <div className="relative">
-                      <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        autoFocus
-                        value={clientSearch}
-                        onChange={(event) => setClientSearch(event.target.value)}
-                        placeholder="Buscar cliente..."
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                      />
-                    </div>
+            {user?.role === 'client' ? (
+              <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <ClientAvatar client={workspaceClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
+                <div className="min-w-0 text-left">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
+                  <p className="max-w-[260px] truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="relative min-w-0" ref={clientPickerRef}>
+                <button
+                  type="button"
+                  aria-label="Selecionar cliente"
+                  aria-haspopup="listbox"
+                  aria-expanded={clientPickerOpen}
+                  onClick={() => setClientPickerOpen((open) => !open)}
+                  className="flex min-w-[150px] max-w-[190px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100 sm:min-w-[210px] sm:max-w-[280px] md:min-w-[230px] md:max-w-[330px]"
+                >
+                  <ClientAvatar client={selectedClient} allClientsColor={agencyPrimary} sizeClass="h-8 w-8" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cliente</p>
+                    <p className="truncate text-xs font-semibold text-slate-700">{topbarClient}</p>
                   </div>
+                  <ChevronDown size={15} className={`shrink-0 text-slate-400 transition-transform ${clientPickerOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-                  <div className="max-h-[min(440px,60vh)] overflow-y-auto p-2" role="listbox">
-                    {!normalizedClientSearch && (
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={!selectedClient}
-                        onClick={() => chooseClient(null)}
-                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${!selectedClient ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
-                      >
-                        <ClientAvatar allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-slate-800">Todos os clientes</p>
-                          <p className="truncate text-[11px] text-slate-400">Visão consolidada da operação</p>
-                        </div>
-                        {!selectedClient && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
-                      </button>
-                    )}
+                {clientPickerOpen && (
+                  <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[min(340px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)]">
+                    <div className="border-b border-slate-100 p-3">
+                      <div className="relative">
+                        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          autoFocus
+                          value={clientSearch}
+                          onChange={(event) => setClientSearch(event.target.value)}
+                          placeholder="Buscar cliente..."
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                        />
+                      </div>
+                    </div>
 
-                    {filteredClients.map((client) => {
-                      const isSelected = selectedClient?.id === client.id;
-                      return (
+                    <div className="max-h-[min(440px,60vh)] overflow-y-auto p-2" role="listbox">
+                      {!normalizedClientSearch && (
                         <button
-                          key={client.id}
                           type="button"
                           role="option"
-                          aria-selected={isSelected}
-                          onClick={() => chooseClient(client)}
-                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                          aria-selected={!selectedClient}
+                          onClick={() => chooseClient(null)}
+                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${!selectedClient ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
                         >
-                          <ClientAvatar client={client} allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
+                          <ClientAvatar allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-slate-800">{client.name}</p>
-                            {client.segment && <p className="truncate text-[11px] text-slate-400">{client.segment}</p>}
+                            <p className="truncate text-sm font-semibold text-slate-800">Todos os clientes</p>
+                            <p className="truncate text-[11px] text-slate-400">Visão consolidada da operação</p>
                           </div>
-                          {isSelected && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
+                          {!selectedClient && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
                         </button>
-                      );
-                    })}
+                      )}
 
-                    {filteredClients.length === 0 && (
-                      <div className="px-3 py-8 text-center">
-                        <p className="text-sm font-medium text-slate-600">Nenhum cliente encontrado</p>
-                        <p className="mt-1 text-xs text-slate-400">Tente buscar por outro nome.</p>
-                      </div>
-                    )}
+                      {filteredClients.map((client) => {
+                        const isSelected = selectedClient?.id === client.id;
+                        return (
+                          <button
+                            key={client.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            onClick={() => chooseClient(client)}
+                            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                          >
+                            <ClientAvatar client={client} allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-slate-800">{client.name}</p>
+                              {client.segment && <p className="truncate text-[11px] text-slate-400">{client.segment}</p>}
+                            </div>
+                            {isSelected && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
+                          </button>
+                        );
+                      })}
+
+                      {filteredClients.length === 0 && (
+                        <div className="px-3 py-8 text-center">
+                          <p className="text-sm font-medium text-slate-600">Nenhum cliente encontrado</p>
+                          <p className="mt-1 text-xs text-slate-400">Tente buscar por outro nome.</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-          {!isClientPortal && hasPermission(user, 'product.create') && (
-            <button
-              type="button"
-              onClick={() => navigate(`/produto?novo=1&origem=${encodeURIComponent(location.pathname + location.search)}`)}
-              title="Reportar para Produto"
-              aria-label="Reportar problema ou melhoria para Produto"
-              className="hidden h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 sm:flex"
-            >
-              <Bug size={16} />
-            </button>
-          )}
-          <NotificationBell />
+                )}
+              </div>
+            )}
+
+            <NotificationBell />
+          </div>
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-[62px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
         <div className={`relative mx-auto w-full max-w-[1320px] min-w-0 px-4 pb-28 pt-5 sm:px-6 ${isNativeApp ? '' : 'md:px-8 md:py-8 xl:px-10'}`}>{children}</div>
