@@ -37,15 +37,7 @@ export default function SocialMedia({ section = 'feed' }) {
       <section className="rounded-[22px] border border-slate-200/80 bg-white px-4 py-3 shadow-[0_8px_30px_rgba(15,23,42,0.035)] sm:px-5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="hidden min-w-0 sm:block">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
-                <Instagram size={17} />
-              </span>
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Central</p>
-                <h1 className="truncate text-xl font-bold tracking-tight text-slate-900">Social Media</h1>
-              </div>
-            </div>
+            <h1 className="truncate text-2xl font-bold tracking-tight text-slate-900">Social Media</h1>
           </div>
 
           <nav className="flex w-full gap-1 overflow-x-auto rounded-2xl bg-slate-100 p-1 xl:w-auto" aria-label="Áreas de Social Media">
@@ -68,7 +60,6 @@ export default function SocialMedia({ section = 'feed' }) {
             })}
           </nav>
         </div>
-        <p className="mt-3 hidden text-sm text-slate-500 sm:ml-[46px] sm:block">{current.description}</p>
       </section>
 
       {section === 'feed' && <Feed />}

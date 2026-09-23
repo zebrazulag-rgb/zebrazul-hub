@@ -431,16 +431,10 @@ export default function ProductDevelopment() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <section className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">
-              <Code2 size={15} /> Produto · Desenvolvimento
-            </div>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Centro de evolução do ZebraHub</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Backlog, desenvolvimento, QA, validação e releases em um único fluxo — do problema relatado até produção.
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 lg:text-[28px]">Produto</h1>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -463,7 +457,7 @@ export default function ProductDevelopment() {
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
           {[
             ['overview', 'Painel'],
             ['backlog', 'Backlog'],

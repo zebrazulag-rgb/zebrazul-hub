@@ -341,9 +341,7 @@ export default function Organizer() {
     <div className="space-y-5">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-500">Meu espaço</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Sua rotina em um só lugar.</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">Agenda, notas, checklist e os atalhos pessoais para organizar o seu dia.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950 lg:text-[28px]">Meu Espaço</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">

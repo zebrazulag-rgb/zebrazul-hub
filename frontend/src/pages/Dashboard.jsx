@@ -267,13 +267,8 @@ export default function Dashboard() {
       <section className="py-2">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 lg:text-4xl">Olá, {user?.name?.split(' ')[0]}.</h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500 lg:text-base">
-              {isCommercialTeam
-                ? 'Acompanhe o pipeline de vendas e as tarefas comerciais dos clientes liberados para você.'
-                : 'Tudo que precisa da sua atenção está organizado aqui. Acompanhe tarefas, aprovações e publicações em um único lugar.'}
-            </p>
-            <p className="mt-4 text-xs font-medium capitalize tracking-wide text-slate-400">{formatDate(new Date())}</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 lg:text-[28px]">Painel</h1>
+            <p className="mt-1 text-xs font-medium capitalize tracking-wide text-slate-400">{formatDate(new Date())}</p>
           </div>
 
           <div className="flex flex-wrap gap-2.5">

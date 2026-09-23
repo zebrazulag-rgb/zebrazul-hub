@@ -95,7 +95,7 @@ html[data-zebrahub-theme="dark"] .app-main {
 .page-hero-heading {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
 }
 
 @media (min-width: 1024px) {
@@ -117,7 +117,7 @@ html[data-zebrahub-theme="dark"] .app-main {
 .page-hero-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
 }
 
 .page-hero-actions > :is(button, a)[class*="bg-white"] {
@@ -134,7 +134,7 @@ html[data-zebrahub-theme="dark"] .app-main {
 }
 
 .page-hero-metrics {
-  margin-top: 22px;
+  margin-top: 12px;
 }
 
 .page-hero-metrics [class*="border-white"] {
