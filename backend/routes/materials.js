@@ -269,6 +269,71 @@ router.get('/:id', (req, res) => {
   res.json({ material });
 });
 
+router.post('/compass', requireRole('admin', 'team'), uploadSingle, (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Selecione um arquivo HTML.' });
+
+  const clientId = normalizeOptionalClientId(req.body.client_id);
+  if (Number.isNaN(clientId) || !clientId) {
+    removeStoredFile(req.file.filename);
+    return res.status(400).json({ error: 'Cliente inválido.' });
+  }
+  if (!canAccessClient(req.user, clientId)) {
+    removeStoredFile(req.file.filename);
+    return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  }
+
+  const stageId = String(req.body.stage_id || '').trim().toLowerCase();
+  if (!/^[a-z0-9-]{2,60}$/.test(stageId)) {
+    removeStoredFile(req.file.filename);
+    return res.status(400).json({ error: 'Etapa da Bússola inválida.' });
+  }
+
+  const title = String(req.body.title || '').trim();
+  if (!title) {
+    removeStoredFile(req.file.filename);
+    return res.status(400).json({ error: 'Informe o item da Bússola.' });
+  }
+
+  const stageTitle = String(req.body.stage_title || '').trim();
+  try {
+    const info = db.prepare(`
+      INSERT INTO materials (
+        agency_id, client_id, title, description, category, original_name,
+        stored_name, mime_type, file_size, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'text/html', ?, ?)
+    `).run(
+      req.user.agency_id,
+      clientId,
+      title,
+      stageTitle ? `Arquivo vinculado à etapa ${stageTitle} da Bússola.` : 'Arquivo vinculado à Bússola.',
+      `Bússola / ${stageId}`,
+      path.basename(String(req.file.originalname || 'material.html')),
+      req.file.filename,
+      Number(req.file.size || 0),
+      req.user.id
+    );
+    res.status(201).json({ id: Number(info.lastInsertRowid) });
+  } catch (error) {
+    removeStoredFile(req.file.filename);
+    console.error('[BÚSSOLA] Erro ao salvar HTML:', error);
+    res.status(500).json({ error: 'Não foi possível salvar o arquivo HTML na Bússola.' });
+  }
+});
+
+router.delete('/compass/:id', requireRole('admin', 'team'), (req, res) => {
+  const material = fetchMaterial(req.params.id, req.user.agency_id);
+  if (!material || Number(material.is_active) !== 1 || !String(material.category || '').startsWith('Bússola / ')) {
+    return res.status(404).json({ error: 'Arquivo da Bússola não encontrado.' });
+  }
+  if (!material.client_id || !canAccessClient(req.user, material.client_id)) {
+    return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  }
+
+  db.prepare('DELETE FROM materials WHERE id = ? AND agency_id = ?').run(material.id, req.user.agency_id);
+  removeStoredFile(material.stored_name);
+  res.json({ ok: true });
+});
+
 router.post('/', requireRole('admin'), uploadSingle, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Selecione um arquivo HTML.' });
 

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  CalendarClock, Check, ChevronDown, ChevronRight, Circle, Compass, Flag,
-  FolderOpen, PackageCheck, RefreshCcw, Rocket, UsersRound,
+  CalendarClock, Check, ChevronDown, ChevronRight, Circle, Compass, ExternalLink, FileCode2, Flag,
+  FolderOpen, Loader2, PackageCheck, RefreshCcw, Rocket, Trash2, UploadCloud, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import CompassSectionNav from '../components/CompassSectionNav.jsx';
+import api from '../api.js';
+
+const COMPASS_CATEGORY_PREFIX = 'Bússola / ';
 
 const JOURNEY = [
   {
@@ -53,6 +56,10 @@ export default function CompassPage() {
   const storageKey = `zebrahub:compass-journey:${clientId || 'none'}`;
   const [progress, setProgress] = useState(emptyProgress);
   const [openStage, setOpenStage] = useState('onboarding');
+  const [materials, setMaterials] = useState([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [fileAction, setFileAction] = useState('');
+  const [fileError, setFileError] = useState('');
 
   useEffect(() => {
     if (!clientId) return setProgress(emptyProgress());
@@ -61,6 +68,100 @@ export default function CompassPage() {
       setProgress(saved && typeof saved === 'object' ? { ...emptyProgress(), ...saved } : emptyProgress());
     } catch { setProgress(emptyProgress()); }
   }, [clientId, storageKey]);
+
+  async function loadCompassFiles() {
+    if (!clientId) {
+      setMaterials([]);
+      return;
+    }
+    setFilesLoading(true);
+    setFileError('');
+    try {
+      const { data } = await api.get(`/materials?client_id=${clientId}`);
+      setMaterials((data.materials || []).filter((material) =>
+        Number(material.client_id) === Number(clientId) &&
+        String(material.category || '').startsWith(COMPASS_CATEGORY_PREFIX)
+      ));
+    } catch (requestError) {
+      setMaterials([]);
+      setFileError(requestError.response?.data?.error || 'Não foi possível carregar os arquivos da Bússola.');
+    } finally {
+      setFilesLoading(false);
+    }
+  }
+
+  useEffect(() => { loadCompassFiles(); }, [clientId]);
+
+  const materialMap = useMemo(() => {
+    const map = new Map();
+    materials.forEach((material) => {
+      const stageId = String(material.category || '').slice(COMPASS_CATEGORY_PREFIX.length);
+      map.set(`${stageId}::${material.title}`, material);
+    });
+    return map;
+  }, [materials]);
+
+  function materialFor(stageId, item) {
+    return materialMap.get(`${stageId}::${item}`) || null;
+  }
+
+  async function openMaterial(material) {
+    if (!material) return;
+    setFileError('');
+    try {
+      const { data } = await api.get(`/materials/${material.id}/access`);
+      window.open(data.view_url, '_blank', 'noopener,noreferrer');
+    } catch (requestError) {
+      setFileError(requestError.response?.data?.error || 'Não foi possível abrir o arquivo HTML.');
+    }
+  }
+
+  async function uploadMaterial(stage, item, file) {
+    if (!file || !clientId || !canEdit) return;
+    const extension = String(file.name || '').split('.').pop()?.toLowerCase();
+    if (!['html', 'htm'].includes(extension)) {
+      setFileError('Envie um arquivo .html ou .htm.');
+      return;
+    }
+
+    const actionKey = `${stage.id}::${item}`;
+    const previous = materialFor(stage.id, item);
+    setFileAction(actionKey);
+    setFileError('');
+    try {
+      const payload = new FormData();
+      payload.append('client_id', String(clientId));
+      payload.append('stage_id', stage.id);
+      payload.append('stage_title', stage.title);
+      payload.append('title', item);
+      payload.append('file', file);
+      await api.post('/materials/compass', payload);
+      if (previous?.id) {
+        try { await api.delete(`/materials/compass/${previous.id}`); } catch {}
+      }
+      await loadCompassFiles();
+    } catch (requestError) {
+      setFileError(requestError.response?.data?.error || 'Não foi possível salvar o arquivo HTML.');
+    } finally {
+      setFileAction('');
+    }
+  }
+
+  async function removeMaterial(stage, item, material) {
+    if (!material || !canEdit) return;
+    if (!window.confirm(`Remover o HTML salvo em “${item}”?`)) return;
+    const actionKey = `${stage.id}::${item}`;
+    setFileAction(actionKey);
+    setFileError('');
+    try {
+      await api.delete(`/materials/compass/${material.id}`);
+      await loadCompassFiles();
+    } catch (requestError) {
+      setFileError(requestError.response?.data?.error || 'Não foi possível remover o arquivo HTML.');
+    } finally {
+      setFileAction('');
+    }
+  }
 
   const stageProgress = useMemo(() => Object.fromEntries(JOURNEY.map((stage) => {
     const done = stage.items.filter((item) => progress?.[stage.id]?.[item]).length;
@@ -157,15 +258,54 @@ export default function CompassPage() {
                   </button>
                   {opened && <div className="px-5 pb-5 pl-[76px]">
                     <p className="mb-4 max-w-2xl text-sm leading-6 text-slate-500">{stage.description}</p>
+                    {fileError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600">{fileError}</div>}
                     <div className="grid gap-2 sm:grid-cols-2">
                       {stage.items.map((item) => {
                         const checked = !!progress?.[stage.id]?.[item];
-                        return <button key={item} type="button" disabled={!canEdit} onClick={() => toggle(stage.id, item)} className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left text-sm transition ${checked ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900' : 'border-slate-200 bg-slate-50/60 text-slate-700 hover:border-blue-200'} ${!canEdit ? 'cursor-default' : ''}`}>
-                          <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white text-transparent'}`}>{checked ? <Check size={13} strokeWidth={3} /> : <Circle size={8} />}</span>
-                          <span className="font-medium">{item}</span>
-                        </button>;
+                        const material = materialFor(stage.id, item);
+                        const actionKey = `${stage.id}::${item}`;
+                        const busy = fileAction === actionKey;
+                        return <div key={item} className={`rounded-xl border p-3 transition ${checked ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50/60'}`}>
+                          <div className="flex items-start gap-3">
+                            <button type="button" disabled={!canEdit} onClick={() => toggle(stage.id, item)} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white text-transparent'} ${!canEdit ? 'cursor-default' : ''}`} title={checked ? 'Marcar como pendente' : 'Marcar como concluído'}>
+                              {checked ? <Check size={13} strokeWidth={3} /> : <Circle size={8} />}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-semibold ${checked ? 'text-emerald-900' : 'text-slate-800'}`}>{item}</p>
+                              {material ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <button type="button" onClick={() => openMaterial(material)} className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50" title="Abrir HTML">
+                                    <FileCode2 size={15} className="shrink-0" />
+                                    <span className="max-w-[190px] truncate">{material.original_name || 'Arquivo HTML'}</span>
+                                    <ExternalLink size={13} className="shrink-0" />
+                                  </button>
+                                  {canEdit && (
+                                    <>
+                                      <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
+                                        {busy ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />} Trocar
+                                        <input type="file" accept=".html,.htm,text/html" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) uploadMaterial(stage, item, file); }} />
+                                      </label>
+                                      <button type="button" onClick={() => removeMaterial(stage, item, material)} disabled={busy} className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50" title="Remover HTML">
+                                        {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              ) : canEdit ? (
+                                <label className={`mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
+                                  {busy ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                                  {busy ? 'Salvando...' : 'Anexar HTML'}
+                                  <input type="file" accept=".html,.htm,text/html" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) uploadMaterial(stage, item, file); }} />
+                                </label>
+                              ) : (
+                                <p className="mt-1.5 text-xs text-slate-400">Nenhum HTML salvo.</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>;
                       })}
                     </div>
+                    {filesLoading && <div className="mt-3 flex items-center gap-2 text-xs font-medium text-slate-400"><Loader2 size={13} className="animate-spin" /> Carregando arquivos...</div>}
                   </div>}
                 </div>;
               })}
