@@ -119,21 +119,21 @@ export default function App() {
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
-      <Route path="/bussola/dme" element={<ProtectedRoute permission="compass.view"><Diagnostics /></ProtectedRoute>} />
-      <Route path="/bussola/diagnostico" element={<ProtectedRoute permission="compass.view"><StrategicDiagnosis /></ProtectedRoute>} />
+      <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
+      <Route path="/bussola/diagnostico" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />
       <Route path="/bussola/pesquisa-familias-bee" element={<ProtectedRoute permission="compass.view"><BeeFamilySurvey /></ProtectedRoute>} />
       <Route path="/bussola/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
       <Route path="/bussola/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
-      <Route path="/bussola/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/plano-de-acao" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/diagnostico-estrategico" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/diagnosticos" element={<Navigate to="/bussola/dme" replace />} />
-      <Route path="/plano-anual" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/ciclo-90-dias" element={<Navigate to="/bussola/diagnostico" replace />} />
-      <Route path="/planejamento-mensal" element={<Navigate to="/bussola/diagnostico" replace />} />
+      <Route path="/bussola/plano-anual" element={<Navigate to="/bussola" replace />} />
+      <Route path="/bussola/ciclo-90-dias" element={<Navigate to="/bussola" replace />} />
+      <Route path="/bussola/planejamento-mensal" element={<Navigate to="/bussola" replace />} />
+      <Route path="/plano-de-acao" element={<Navigate to="/bussola" replace />} />
+      <Route path="/diagnostico-estrategico" element={<Navigate to="/bussola" replace />} />
+      <Route path="/diagnosticos" element={<Navigate to="/bussola" replace />} />
+      <Route path="/plano-anual" element={<Navigate to="/bussola" replace />} />
+      <Route path="/ciclo-90-dias" element={<Navigate to="/bussola" replace />} />
+      <Route path="/planejamento-mensal" element={<Navigate to="/bussola" replace />} />
 
       <Route path="/comercial" element={<ProtectedRoute permission="commercial.view"><CommercialPage><Sales /></CommercialPage></ProtectedRoute>} />
       <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view"><CommercialPage><CommercialFunnel /></CommercialPage></ProtectedRoute>} />
