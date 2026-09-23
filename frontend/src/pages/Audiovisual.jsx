@@ -29,8 +29,9 @@ import { hasPermission } from '../permissions.js';
 const VIDEO_COLUMNS = [
   { key: 'recorded', label: 'Gravado', description: 'Saiu da captação' },
   { key: 'editing', label: 'Em edição', description: 'Na mão do editor' },
-  { key: 'edited', label: 'Editado', description: 'Pronto para agendar' },
-  { key: 'scheduled', label: 'Agendado', description: 'Com data de publicação' },
+  { key: 'approved', label: 'Aprovado', description: 'Vídeo final aprovado' },
+  { key: 'dated', label: 'Datado', description: 'Enviado para a grade' },
+  { key: 'scheduled', label: 'Agendado', description: 'Programado para publicar' },
   { key: 'posted', label: 'Postado', description: 'Publicado' },
 ];
 
@@ -302,7 +303,7 @@ export default function Audiovisual() {
 
   async function setVideoStatus(video, status) {
     if (!video || video.status === status) return;
-    if (status === 'edited') {
+    if (status === 'approved') {
       setEditModal({
         id: video.id,
         title: video.title,
@@ -311,7 +312,7 @@ export default function Audiovisual() {
       });
       return;
     }
-    if (status === 'scheduled') {
+    if (status === 'dated') {
       const tomorrow = new Date(Date.now() + 86400000);
       const local = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
       setScheduleModal({ id: video.id, title: video.title, scheduled_at: local, platform: 'instagram' });
@@ -339,12 +340,12 @@ export default function Audiovisual() {
     setSaving(true);
     try {
       await api.put(`/audiovisual/videos/${form.id}/status`, {
-        status: 'edited',
+        status: 'approved',
         final_links: finalLinks,
         edit_notes: form.edit_notes,
       });
       setEditModal(null);
-      setNotice('Edição concluída com link final registrado.');
+      setNotice('Vídeo final registrado e aprovado.');
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível concluir a edição.');
@@ -362,7 +363,7 @@ export default function Audiovisual() {
         platform: form.platform,
       });
       setScheduleModal(null);
-      setNotice('Data de publicação registrada.');
+      setNotice('Vídeo datado e enviado para a grade.');
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível agendar o vídeo.');
@@ -883,7 +884,7 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
         <Metric icon={CheckCircle2} label="Concluídas" value={stats.recordings_completed_month || 0} />
         <Metric icon={Video} label="Vídeos gravados" value={stats.videos_recorded_month || 0} />
         <Metric icon={Film} label="Em edição" value={stats.editing || 0} />
-        <Metric icon={Check} label="Editados" value={stats.edited_waiting_schedule || 0} />
+        <Metric icon={Check} label="Aprovados" value={stats.edited_waiting_schedule || 0} />
         <Metric icon={Sparkles} label="Postados no mês" value={stats.posted_month || 0} />
         <Metric icon={Clapperboard} label="Gravações totais" value={stats.recordings_total || 0} />
       </div>
@@ -976,12 +977,13 @@ function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connect
 
 function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDraggedVideoId, currentDraggedVideo, setVideoStatus, setScheduleModal, deleteSchedule }) {
   function canDrag(video) {
-    if (['recorded', 'editing', 'edited'].includes(video.status)) return canEdit;
+    if (['recorded', 'editing', 'approved'].includes(video.status)) return canEdit;
+    if (['dated', 'scheduled', 'posted'].includes(video.status)) return canPublish;
     return canPublish || canEdit;
   }
   return (
     <div className="overflow-x-auto pb-3">
-      <div className="grid min-w-[1320px] grid-cols-5 gap-3">
+      <div className="grid min-w-[1580px] grid-cols-6 gap-3">
         {VIDEO_COLUMNS.map((column) => {
           const items = videos.filter((video) => video.status === column.key);
           return (
@@ -1030,8 +1032,9 @@ function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDragged
 
                     <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
                       {canEdit && video.status === 'recorded' && <button type="button" onClick={() => setVideoStatus(video, 'editing')} className="rounded-lg bg-slate-950 px-2.5 py-1.5 text-[10px] font-bold text-white">Iniciar edição</button>}
-                      {canEdit && video.status === 'editing' && <button type="button" onClick={() => setVideoStatus(video, 'edited')} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-bold text-white">Concluir edição</button>}
-                      {canPublish && ['edited', 'scheduled'].includes(video.status) && <button type="button" onClick={() => setScheduleModal({ id: video.id, title: video.title, scheduled_at: localDateTimeInput(new Date(Date.now() + 86400000)), platform: 'instagram' })} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700">+ Data</button>}
+                      {canEdit && video.status === 'editing' && <button type="button" onClick={() => setVideoStatus(video, 'approved')} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-bold text-white">Concluir e aprovar</button>}
+                      {canPublish && video.status === 'approved' && <button type="button" onClick={() => setScheduleModal({ id: video.id, title: video.title, scheduled_at: localDateTimeInput(new Date(Date.now() + 86400000)), platform: 'instagram' })} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700">Enviar pra grade</button>}
+                      {canPublish && video.status === 'dated' && <button type="button" onClick={() => setVideoStatus(video, 'scheduled')} className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[10px] font-bold text-indigo-700">Marcar agendado</button>}
                       {canPublish && video.status === 'scheduled' && <button type="button" onClick={() => setVideoStatus(video, 'posted')} className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-[10px] font-bold text-white">Marcar postado</button>}
                     </div>
                   </article>
@@ -1206,25 +1209,25 @@ function CompleteRecordingModal({ form, setForm, saving, onClose, onSave }) {
 function EditCompleteModal({ form, setForm, saving, onClose, onSave }) {
   return (
     <ModalShell title="Concluir edição" subtitle={form.title} onClose={onClose} saving={saving}>
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">O link final é obrigatório. O vídeo só entra em “Editado” depois que o editor registrar pelo menos um arquivo.</div>
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">O link final é obrigatório. O vídeo só entra em “Aprovado” depois que o editor registrar pelo menos um arquivo final.</div>
       <div className="mt-4 space-y-3">
         <TextArea label="Links dos vídeos finais *" value={form.final_links_text} onChange={(value) => setForm({ ...form, final_links_text: value })} placeholder="Um link por linha" rows={4} />
         <TextArea label="Observação da edição" value={form.edit_notes} onChange={(value) => setForm({ ...form, edit_notes: value })} placeholder="Versão final, observações, ajustes feitos..." rows={3} />
       </div>
-      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Marcar como editado" />
+      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Concluir e aprovar" />
     </ModalShell>
   );
 }
 
 function ScheduleModal({ form, setForm, saving, onClose, onSave }) {
   return (
-    <ModalShell title="Agendar publicação" subtitle={form.title} onClose={onClose} saving={saving}>
+    <ModalShell title="Enviar para a grade" subtitle={form.title} onClose={onClose} saving={saving}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input label="Data e horário *" type="datetime-local" value={form.scheduled_at} onChange={(value) => setForm({ ...form, scheduled_at: value })} />
         <Select label="Canal" value={form.platform} onChange={(value) => setForm({ ...form, platform: value })} options={Object.entries(PLATFORM_LABELS)} />
       </div>
-      <p className="mt-3 text-xs leading-5 text-slate-400">Você pode adicionar mais de uma data ao mesmo vídeo depois. Todas aparecem no card da produção.</p>
-      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Salvar data" />
+      <p className="mt-3 text-xs leading-5 text-slate-400">Ao salvar, o vídeo entra em Datado e fica pronto para a grade de conteúdo. Depois do agendamento na plataforma, marque-o como Agendado.</p>
+      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Enviar pra grade" />
     </ModalShell>
   );
 }

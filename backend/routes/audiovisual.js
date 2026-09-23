@@ -7,7 +7,7 @@ const { syncRecordingEvent, deleteRecordingEvent } = require('../services/google
 const router = express.Router();
 router.use(authRequired);
 
-const VIDEO_STATUSES = new Set(['recorded', 'editing', 'edited', 'scheduled', 'posted']);
+const VIDEO_STATUSES = new Set(['recorded', 'editing', 'approved', 'dated', 'scheduled', 'posted']);
 const RECORDING_STATUSES = new Set(['scheduled', 'recorded', 'cancelled']);
 
 function normalizeText(value) {
@@ -325,7 +325,7 @@ router.get('/dashboard', (req, res) => {
         SUM(CASE WHEN status <> 'posted' THEN 1 ELSE 0 END) AS total,
         SUM(CASE WHEN status = 'recorded' THEN 1 ELSE 0 END) AS recorded,
         SUM(CASE WHEN status = 'editing' THEN 1 ELSE 0 END) AS editing,
-        SUM(CASE WHEN status = 'edited' THEN 1 ELSE 0 END) AS edited,
+        SUM(CASE WHEN status IN ('approved','edited') THEN 1 ELSE 0 END) AS edited,
         SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) AS scheduled
       FROM audiovisual_videos
       WHERE agency_id = ? AND client_id = ?
@@ -388,7 +388,7 @@ router.get('/dashboard', (req, res) => {
         AND substr(COALESCE(r.recorded_at, r.scheduled_start), 1, 7) = ?
     `, [req.user.agency_id, ...ids, referenceMonth]),
     editing: scalar(`SELECT COUNT(*) AS total FROM audiovisual_videos WHERE ${scope} AND status = 'editing'`, params),
-    edited_waiting_schedule: scalar(`SELECT COUNT(*) AS total FROM audiovisual_videos WHERE ${scope} AND status = 'edited'`, params),
+    edited_waiting_schedule: scalar(`SELECT COUNT(*) AS total FROM audiovisual_videos WHERE ${scope} AND status IN ('approved','edited')`, params),
     posted_month: scalar(`SELECT COUNT(*) AS total FROM audiovisual_videos WHERE ${scope} AND status = 'posted' AND substr(posted_at, 1, 7) = ?`, [...params, referenceMonth]),
     overdue_recordings: scalar(`SELECT COUNT(*) AS total FROM audiovisual_recordings WHERE ${scope} AND status = 'scheduled' AND scheduled_start < ?`, [...params, `${todayKey()}T00:00:00`]),
   };
@@ -547,7 +547,7 @@ router.post('/recordings/historical', requireAny(['audiovisual.manage']), (req, 
         // Os demais vídeos importados continuam como postados, sem inventar datas.
         postedAt = number === postedCount ? lastPostedAt : null;
       } else if (number <= postedCount + editedCount) {
-        status = 'edited';
+        status = 'approved';
         const link = editedLinks[number - postedCount - 1];
         finalLinksJson = JSON.stringify(link ? [link] : []);
         editedAt = recordedAt;
@@ -701,7 +701,7 @@ router.get('/videos', (req, res) => {
     JOIN audiovisual_recordings r ON r.id = v.recording_id
     LEFT JOIN users u ON u.id = v.editor_user_id
     WHERE v.agency_id = ? AND v.client_id IN (${placeholders})${statusSql}
-    ORDER BY CASE v.status WHEN 'recorded' THEN 1 WHEN 'editing' THEN 2 WHEN 'edited' THEN 3 WHEN 'scheduled' THEN 4 ELSE 5 END,
+    ORDER BY CASE v.status WHEN 'recorded' THEN 1 WHEN 'editing' THEN 2 WHEN 'edited' THEN 3 WHEN 'approved' THEN 3 WHEN 'dated' THEN 4 WHEN 'scheduled' THEN 5 ELSE 6 END,
              r.scheduled_start DESC, v.video_number ASC
   `).all(...params);
 
@@ -725,6 +725,7 @@ router.get('/videos', (req, res) => {
   res.json({
     videos: videos.map((video) => ({
       ...video,
+      status: video.status === 'edited' ? 'approved' : video.status,
       final_links: parseJsonArray(video.final_links_json),
       raw_links: parseJsonArray(video.raw_links_json),
       schedules: scheduleMap.get(Number(video.id)) || [],
@@ -743,8 +744,8 @@ router.put('/videos/:id/status', (req, res) => {
   const status = String(req.body.status || '').trim();
   if (!VIDEO_STATUSES.has(status)) return res.status(400).json({ error: 'Status de vídeo inválido.' });
 
-  const editingAction = ['recorded', 'editing', 'edited'].includes(status);
-  const publishingAction = ['scheduled', 'posted'].includes(status);
+  const editingAction = ['recorded', 'editing', 'approved'].includes(status);
+  const publishingAction = ['dated', 'scheduled', 'posted'].includes(status);
   if (editingAction && !hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit'])) {
     return res.status(403).json({ error: 'Você não possui permissão para gerenciar a edição.' });
   }
@@ -757,7 +758,7 @@ router.put('/videos/:id/status', (req, res) => {
   if (status === 'editing') {
     updates.push('editor_user_id = ?'); values.push(req.user.id);
   }
-  if (status === 'edited') {
+  if (status === 'approved') {
     const finalLinks = normalizeLinks(req.body.final_links?.length ? req.body.final_links : parseJsonArray(video.final_links_json));
     if (!finalLinks.length) return res.status(400).json({ error: 'Adicione pelo menos um link do vídeo final para concluir a edição.' });
     updates.push('final_links_json = ?'); values.push(JSON.stringify(finalLinks));
@@ -765,12 +766,18 @@ router.put('/videos/:id/status', (req, res) => {
     updates.push('editor_user_id = ?'); values.push(req.user.id);
     updates.push("edited_at = datetime('now')");
   }
-  if (status === 'scheduled') {
-    if (!['edited', 'scheduled'].includes(video.status) || !parseJsonArray(video.final_links_json).length) {
-      return res.status(400).json({ error: 'Conclua a edição e registre o link final antes de agendar o vídeo.' });
+  if (status === 'dated') {
+    if (!['approved', 'edited'].includes(video.status) || !parseJsonArray(video.final_links_json).length) {
+      return res.status(400).json({ error: 'O vídeo precisa estar aprovado antes de receber uma data.' });
     }
-    const totalSchedules = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status = 'scheduled'").get(video.id)?.total || 0);
-    if (!totalSchedules) return res.status(400).json({ error: 'Adicione uma data de publicação antes de mover o vídeo para Agendado.' });
+  }
+  if (status === 'scheduled') {
+    if (video.status !== 'dated') {
+      return res.status(400).json({ error: 'O vídeo precisa estar Datado antes de ser marcado como Agendado.' });
+    }
+    const totalSchedules = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status IN ('dated','scheduled')").get(video.id)?.total || 0);
+    if (!totalSchedules) return res.status(400).json({ error: 'Envie o vídeo para a grade e defina a data antes de marcar como Agendado.' });
+    db.prepare("UPDATE audiovisual_video_schedules SET status = 'scheduled', updated_at = datetime('now') WHERE video_id = ? AND status = 'dated'").run(video.id);
   }
   if (status === 'posted') {
     if (video.status !== 'scheduled') return res.status(400).json({ error: 'O vídeo precisa estar agendado antes de ser marcado como postado.' });
@@ -795,17 +802,17 @@ router.post('/videos/:id/schedules', (req, res) => {
   const video = db.prepare('SELECT * FROM audiovisual_videos WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!video) return res.status(404).json({ error: 'Vídeo não encontrado.' });
   if (!ensureClient(req, res, video.client_id)) return;
-  if (!['edited', 'scheduled'].includes(video.status) || !parseJsonArray(video.final_links_json).length) {
-    return res.status(400).json({ error: 'Conclua a edição e registre o link final antes de agendar a publicação.' });
+  if (!['approved', 'edited'].includes(video.status) || !parseJsonArray(video.final_links_json).length) {
+    return res.status(400).json({ error: 'O vídeo precisa estar aprovado antes de ser enviado para a grade.' });
   }
   const scheduledAt = validDateTime(req.body.scheduled_at);
   if (!scheduledAt) return res.status(400).json({ error: 'Informe a data e o horário do agendamento.' });
   const platform = normalizeText(req.body.platform) || 'instagram';
   const info = db.prepare(`
     INSERT INTO audiovisual_video_schedules (agency_id, video_id, platform, scheduled_at, status, created_by)
-    VALUES (?, ?, ?, ?, 'scheduled', ?)
+    VALUES (?, ?, ?, ?, 'dated', ?)
   `).run(req.user.agency_id, video.id, platform.slice(0, 40), scheduledAt, req.user.id);
-  db.prepare("UPDATE audiovisual_videos SET status = 'scheduled', updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+  db.prepare("UPDATE audiovisual_videos SET status = 'dated', updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
     .run(video.id, req.user.agency_id);
   const schedule = db.prepare('SELECT * FROM audiovisual_video_schedules WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json({ schedule });
@@ -820,9 +827,9 @@ router.delete('/videos/:videoId/schedules/:scheduleId', (req, res) => {
   if (!ensureClient(req, res, video.client_id)) return;
   db.prepare("UPDATE audiovisual_video_schedules SET status = 'cancelled', updated_at = datetime('now') WHERE id = ? AND video_id = ? AND agency_id = ?")
     .run(req.params.scheduleId, video.id, req.user.agency_id);
-  const remaining = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status = 'scheduled'").get(video.id)?.total || 0);
-  if (!remaining && video.status === 'scheduled') {
-    db.prepare("UPDATE audiovisual_videos SET status = 'edited', updated_at = datetime('now') WHERE id = ? AND agency_id = ?").run(video.id, req.user.agency_id);
+  const remaining = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status IN ('dated','scheduled')").get(video.id)?.total || 0);
+  if (!remaining && ['dated', 'scheduled'].includes(video.status)) {
+    db.prepare("UPDATE audiovisual_videos SET status = 'approved', updated_at = datetime('now') WHERE id = ? AND agency_id = ?").run(video.id, req.user.agency_id);
   }
   res.json({ ok: true });
 });
@@ -843,7 +850,7 @@ router.post('/videos/:id/post', (req, res) => {
       SET status = 'posted', posted_at = ?, post_url = ?, updated_at = datetime('now')
       WHERE id = ? AND video_id = ? AND agency_id = ?
     `).run(postedAt, postUrl, scheduleId, video.id, req.user.agency_id);
-    const remaining = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status = 'scheduled'").get(video.id)?.total || 0);
+    const remaining = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status IN ('dated','scheduled')").get(video.id)?.total || 0);
     if (!remaining) {
       db.prepare("UPDATE audiovisual_videos SET status = 'posted', posted_at = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
         .run(postedAt, video.id, req.user.agency_id);
