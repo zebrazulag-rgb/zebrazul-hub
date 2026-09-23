@@ -404,53 +404,117 @@ async function syncInstagramProfile(clientId, agencyId) {
   return profile;
 }
 
-async function saveOAuthConnection({ stateRow, token }) {
-  const profile = await fetchInstagramProfile(token.access_token, token.user_id);
-  if (!profile.id) throw new InstagramOAuthError('O Instagram não retornou o ID da conta profissional.', { status: 502 });
+function connectionIsActive(status, tokenExpiresAtValue) {
+  if (String(status || '').toLowerCase() !== 'connected') return false;
+  if (!tokenExpiresAtValue) return true;
+  const expiresAt = Date.parse(tokenExpiresAtValue);
+  return !Number.isFinite(expiresAt) || expiresAt > Date.now();
+}
 
-  // meta_organic_accounts also stores historical reporting data. A disconnected
-  // Instagram must not keep blocking the same professional account from being
-  // connected to another client. Only treat the organic row as a conflict when
-  // it is backed by an active OAuth connection.
-  const conflictingClient = db.prepare(`
-    SELECT c.id, c.name
+function releaseStaleInstagramOwnership({ agencyId, clientId, instagramUserId }) {
+  const instagramId = String(instagramUserId || '').trim();
+  if (!instagramId) return null;
+
+  // meta_organic_accounts guarda historico/metricas mesmo depois de uma desconexao.
+  // Portanto instagram_account_id sozinho NAO significa que a conta ainda esta ativa.
+  // Aqui so bloqueamos quando existe uma autorizacao realmente ativa apontando para
+  // o mesmo Instagram. Caso contrario, liberamos apenas a identidade/vinculo, sem
+  // apagar o registro organico nem suas metricas historicas.
+  const organicRows = db.prepare(`
+    SELECT
+      moa.id,
+      moa.client_id,
+      moa.asset_key,
+      moa.instagram_oauth_connection_id,
+      moa.oauth_connection_id,
+      c.name AS client_name,
+      ioc.status AS instagram_status,
+      ioc.token_expires_at AS instagram_token_expires_at,
+      moc.status AS meta_status,
+      moc.token_expires_at AS meta_token_expires_at,
+      moc.selected_instagram_account_id AS meta_selected_instagram_account_id
     FROM meta_organic_accounts moa
     JOIN clients c ON c.id = moa.client_id
-    LEFT JOIN instagram_oauth_connections ioc
-      ON ioc.id = moa.instagram_oauth_connection_id AND ioc.status = 'connected'
-    LEFT JOIN meta_oauth_connections moc
-      ON moc.id = moa.oauth_connection_id AND moc.status = 'connected'
+    LEFT JOIN instagram_oauth_connections ioc ON ioc.id = moa.instagram_oauth_connection_id
+    LEFT JOIN meta_oauth_connections moc ON moc.id = moa.oauth_connection_id
     WHERE moa.agency_id = ?
       AND moa.client_id <> ?
       AND moa.instagram_account_id = ?
-      AND (ioc.id IS NOT NULL OR moc.id IS NOT NULL)
-    LIMIT 1
-  `).get(stateRow.agency_id, stateRow.client_id, profile.id);
-  if (conflictingClient) {
-    throw new InstagramOAuthError(`Este Instagram já está vinculado ao cliente ${conflictingClient.name}.`, { status: 409 });
+  `).all(agencyId, clientId, instagramId);
+
+  for (const row of organicRows) {
+    const directActive = Boolean(row.instagram_oauth_connection_id)
+      && connectionIsActive(row.instagram_status, row.instagram_token_expires_at);
+    const metaActive = Boolean(row.oauth_connection_id)
+      && connectionIsActive(row.meta_status, row.meta_token_expires_at)
+      && String(row.meta_selected_instagram_account_id || '') === instagramId;
+
+    if (directActive || metaActive) {
+      return { id: row.client_id, name: row.client_name };
+    }
+
+    db.prepare(`
+      UPDATE meta_organic_accounts SET
+        asset_key = CASE
+          WHEN asset_key LIKE 'instagram:%' THEN 'detached:instagram:' || id || ':' || strftime('%s','now')
+          ELSE asset_key
+        END,
+        instagram_account_id = NULL,
+        instagram_username = NULL,
+        instagram_name = NULL,
+        instagram_picture_url = NULL,
+        instagram_oauth_connection_id = NULL,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(row.id);
   }
 
-  // Antes de gravar, detecta se a mesma conta profissional ja esta associada
-  // diretamente a outro cliente da mesma agencia. Sem esta verificacao, o SQLite
-  // devolvia apenas "UNIQUE constraint failed", sem indicar onde estava o vinculo.
-  const directConflict = db.prepare(`
-    SELECT ioc.client_id, ioc.status, ioc.username, c.name AS client_name
+  // Tambem remove conexoes diretas antigas/inativas que ainda carreguem o mesmo
+  // instagram_user_id e, por causa do indice UNIQUE, impediriam a nova associacao.
+  const directRows = db.prepare(`
+    SELECT ioc.id, ioc.client_id, ioc.status, ioc.token_expires_at, ioc.username,
+           c.name AS client_name
     FROM instagram_oauth_connections ioc
     JOIN clients c ON c.id = ioc.client_id
     WHERE ioc.agency_id = ?
       AND ioc.client_id <> ?
       AND ioc.instagram_user_id = ?
-    LIMIT 1
-  `).get(stateRow.agency_id, stateRow.client_id, String(profile.id));
+  `).all(agencyId, clientId, instagramId);
 
-  if (directConflict) {
-    const accountLabel = profile.username || directConflict.username
-      ? `@${profile.username || directConflict.username}`
-      : 'esta conta do Instagram';
+  for (const row of directRows) {
+    if (connectionIsActive(row.status, row.token_expires_at)) {
+      return { id: row.client_id, name: row.client_name, username: row.username };
+    }
+
+    db.prepare(`
+      UPDATE meta_organic_accounts SET
+        instagram_oauth_connection_id = NULL,
+        updated_at = datetime('now')
+      WHERE instagram_oauth_connection_id = ?
+    `).run(row.id);
+    db.prepare('DELETE FROM instagram_oauth_connections WHERE id = ?').run(row.id);
+  }
+
+  return null;
+}
+
+async function saveOAuthConnection({ stateRow, token }) {
+  const profile = await fetchInstagramProfile(token.access_token, token.user_id);
+  if (!profile.id) throw new InstagramOAuthError('O Instagram não retornou o ID da conta profissional.', { status: 502 });
+
+  const activeOwner = releaseStaleInstagramOwnership({
+    agencyId: stateRow.agency_id,
+    clientId: stateRow.client_id,
+    instagramUserId: profile.id,
+  });
+
+  if (activeOwner) {
+    const accountLabel = profile.username || activeOwner.username
+      ? `@${profile.username || activeOwner.username}`
+      : 'Este Instagram';
     throw new InstagramOAuthError(
-      `${accountLabel} ja esta conectado ao cliente ${directConflict.client_name}. ` +
-      'Se essa e a conta correta para este cliente, desconecte-a do cliente anterior primeiro. ' +
-      'Se nao for, volte ao login e entre com o Instagram correto.',
+      `${accountLabel} já está conectado ao cliente ${activeOwner.name}. ` +
+      'Desconecte a conta do cliente anterior antes de vinculá-la a outro cliente.',
       { status: 409 }
     );
   }
@@ -615,23 +679,51 @@ function disconnectOAuth(clientId, agencyId) {
   const row = getConnectionRow(clientId, agencyId);
   if (!row) return false;
   const disconnect = db.transaction(() => {
-    // Preserve historical metrics, but release the Instagram identity when the
-    // direct Instagram OAuth connection is the only source for this client.
-    // This prevents an orphaned meta_organic_accounts row from reserving the
-    // account ID/asset_key after the UI already shows the client as disconnected.
-    db.prepare(`
-      UPDATE meta_organic_accounts SET
-        instagram_oauth_connection_id = NULL,
-        instagram_account_id = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_account_id END,
-        instagram_username = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_username END,
-        instagram_name = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_name END,
-        instagram_picture_url = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_picture_url END,
-        asset_key = CASE WHEN oauth_connection_id IS NULL THEN 'client:' || client_id ELSE asset_key END,
-        last_sync_status = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_status ELSE 'error' END,
-        last_sync_error = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_error ELSE 'Instagram direto desconectado' END,
-        updated_at = datetime('now')
-      WHERE client_id = ? AND agency_id = ? AND instagram_oauth_connection_id = ?
-    `).run(clientId, agencyId, row.id);
+    const organic = db.prepare(`
+      SELECT moa.id, moa.asset_key, moa.instagram_account_id, moa.oauth_connection_id,
+             moc.status AS meta_status, moc.token_expires_at AS meta_token_expires_at,
+             moc.selected_instagram_account_id AS meta_selected_instagram_account_id
+      FROM meta_organic_accounts moa
+      LEFT JOIN meta_oauth_connections moc ON moc.id = moa.oauth_connection_id
+      WHERE moa.client_id = ? AND moa.agency_id = ?
+      LIMIT 1
+    `).get(clientId, agencyId);
+
+    const metaStillOwnsInstagram = Boolean(
+      organic?.oauth_connection_id
+      && connectionIsActive(organic.meta_status, organic.meta_token_expires_at)
+      && String(organic.meta_selected_instagram_account_id || '') === String(row.instagram_user_id || '')
+    );
+
+    if (metaStillOwnsInstagram) {
+      // Existe outra autorizacao Meta ativa para o mesmo Instagram. Nesse caso,
+      // removemos apenas o login direto do Instagram e preservamos o ativo organico.
+      db.prepare(`
+        UPDATE meta_organic_accounts SET
+          instagram_oauth_connection_id = NULL,
+          updated_at = datetime('now')
+        WHERE client_id = ? AND agency_id = ? AND instagram_oauth_connection_id = ?
+      `).run(clientId, agencyId, row.id);
+    } else {
+      // Sem outra autorizacao ativa, libera completamente a identidade do Instagram
+      // para que possa ser conectada a outro cliente. O registro/metricas permanecem.
+      db.prepare(`
+        UPDATE meta_organic_accounts SET
+          asset_key = CASE
+            WHEN asset_key LIKE 'instagram:%' THEN 'detached:instagram:' || id || ':' || strftime('%s','now')
+            ELSE asset_key
+          END,
+          instagram_account_id = NULL,
+          instagram_username = NULL,
+          instagram_name = NULL,
+          instagram_picture_url = NULL,
+          instagram_oauth_connection_id = NULL,
+          last_sync_status = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_status ELSE 'error' END,
+          last_sync_error = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_error ELSE 'Instagram direto desconectado' END,
+          updated_at = datetime('now')
+        WHERE client_id = ? AND agency_id = ? AND instagram_oauth_connection_id = ?
+      `).run(clientId, agencyId, row.id);
+    }
 
     db.prepare('DELETE FROM instagram_oauth_connections WHERE id = ?').run(row.id);
     db.prepare(`
