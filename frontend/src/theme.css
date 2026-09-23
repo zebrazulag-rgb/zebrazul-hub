@@ -95,7 +95,7 @@ html[data-zebrahub-theme="dark"] .app-main {
 .page-hero-heading {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 @media (min-width: 1024px) {
@@ -134,7 +134,7 @@ html[data-zebrahub-theme="dark"] .app-main {
 }
 
 .page-hero-metrics {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .page-hero-metrics [class*="border-white"] {

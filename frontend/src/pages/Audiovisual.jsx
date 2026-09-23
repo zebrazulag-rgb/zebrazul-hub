@@ -519,31 +519,31 @@ export default function Audiovisual() {
   }
 
   return (
-    <div className="space-y-5 pb-10">
-      <header className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <div className="space-y-4 pb-10">
+      <header className="rounded-[20px] border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-3.5">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Audiovisual</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-[22px]">Audiovisual</h1>
           <div className="flex items-center gap-1.5">
             {canManage && (
-              <button type="button" onClick={() => openHistoricalRecording()} title="Registrar gravação realizada" aria-label="Registrar gravação realizada" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
+              <button type="button" onClick={() => openHistoricalRecording()} title="Registrar gravação realizada" aria-label="Registrar gravação realizada" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
                 <Clock3 size={15} />
               </button>
             )}
             {canManage && (
-              <button type="button" onClick={() => openNewRecording()} title="Nova gravação" aria-label="Nova gravação" className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#0969ff] text-white hover:bg-blue-700">
+              <button type="button" onClick={() => openNewRecording()} title="Nova gravação" aria-label="Nova gravação" className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#0969ff] text-white hover:bg-blue-700">
                 <Plus size={16} />
               </button>
             )}
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+        <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-slate-100 pt-2.5">
           {tabs.map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-xl px-3.5 py-2 text-xs font-semibold transition ${tab === key ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
+            <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${tab === key ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
               {label}
             </button>
           ))}
-          <button type="button" onClick={() => loadData({ quiet: true })} title="Atualizar" aria-label="Atualizar" className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-50">
+          <button type="button" onClick={() => loadData({ quiet: true })} title="Atualizar" aria-label="Atualizar" className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50">
             <RefreshCw size={14} />
           </button>
         </div>
