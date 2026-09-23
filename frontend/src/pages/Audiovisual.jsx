@@ -521,60 +521,30 @@ export default function Audiovisual() {
   return (
     <div className="space-y-5 pb-10">
       <header className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">
-              <Clapperboard size={15} /> Operação audiovisual
-            </div>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Audiovisual</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Gravação, edição e postagem em um fluxo único. O Audiovisual usa filtro próprio e não é limitado pelo cliente selecionado no topo do ZebraHub.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Audiovisual</h1>
+          <div className="flex items-center gap-1.5">
             {canManage && (
-              <button type="button" onClick={openClientSelection} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                <Users size={14} />
-                Clientes de gravação
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">{recordingClientCount}</span>
-              </button>
-            )}
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-              <span className="text-slate-400">Operação</span>
-              <select
-                value={operationalClientId}
-                onChange={(event) => setOperationalClientId(event.target.value)}
-                className="max-w-[220px] bg-transparent font-bold text-slate-800 outline-none"
-              >
-                <option value="">Todos os clientes de gravação</option>
-                {(dashboard?.clients || []).map((client) => (
-                  <option key={client.id} value={client.id}>{client.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-              <span className="mr-2 text-slate-400">Mês</span>
-              <input type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} className="bg-transparent outline-none" />
-            </label>
-            {canManage && (
-              <button type="button" onClick={() => openHistoricalRecording()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                <Clock3 size={14} /> Registrar realizada
+              <button type="button" onClick={() => openHistoricalRecording()} title="Registrar gravação realizada" aria-label="Registrar gravação realizada" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
+                <Clock3 size={15} />
               </button>
             )}
             {canManage && (
-              <button type="button" onClick={() => openNewRecording()} className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700">
-                <Plus size={15} /> Nova gravação
+              <button type="button" onClick={() => openNewRecording()} title="Nova gravação" aria-label="Nova gravação" className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#0969ff] text-white hover:bg-blue-700">
+                <Plus size={16} />
               </button>
             )}
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
           {tabs.map(([key, label]) => (
             <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-xl px-3.5 py-2 text-xs font-semibold transition ${tab === key ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
               {label}
             </button>
           ))}
-          <button type="button" onClick={() => loadData({ quiet: true })} className="ml-auto inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50">
-            <RefreshCw size={13} /> Atualizar
+          <button type="button" onClick={() => loadData({ quiet: true })} title="Atualizar" aria-label="Atualizar" className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-50">
+            <RefreshCw size={14} />
           </button>
         </div>
       </header>
@@ -746,9 +716,9 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
             <div>
               <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-amber-700"><Clock3 size={14} /> Gravação passada ainda aberta</div>
               <h2 className="mt-1 text-base font-bold text-slate-950">{overdue.length} gravação(ões) precisam ser encerradas</h2>
-              <p className="mt-1 text-xs text-amber-800/75">Enquanto não forem concluídas, elas não atualizam a última gravação nem criam os vídeos da gaveta.</p>
+
             </div>
-            <button type="button" onClick={() => setTab('agenda')} className="text-xs font-bold text-amber-800">Abrir agenda <ChevronRight className="inline" size={14} /></button>
+            <button type="button" onClick={() => setTab('agenda')} title="Abrir agenda" aria-label="Abrir agenda" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-amber-800 hover:bg-amber-100"><ChevronRight size={16} /></button>
           </div>
           <div className="grid gap-2 p-3 lg:grid-cols-2">
             {overdue.slice(0, 6).map((recording) => (
@@ -757,7 +727,7 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
                   <p className="truncate text-sm font-bold text-slate-900">{recording.client_name}</p>
                   <p className="mt-1 text-xs text-slate-500">Marcada para {formatDate(recording.scheduled_start, { year: true })} · <strong className="text-amber-700">{recording.overdue_days || 1}d pendente</strong></p>
                 </div>
-                {canManage && <button type="button" onClick={() => openComplete(recording)} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white">Concluir agora</button>}
+                {canManage && <button type="button" onClick={() => openComplete(recording)} title="Concluir gravação" aria-label="Concluir gravação" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-600 text-white hover:bg-amber-700"><Check size={17} strokeWidth={2.5} /></button>}
               </div>
             ))}
           </div>
