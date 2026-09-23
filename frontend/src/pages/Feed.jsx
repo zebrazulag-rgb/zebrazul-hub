@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff, CheckCircle2, XCircle, Clock3, MessageSquareText } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff, CheckCircle2, XCircle, Clock3, MessageSquareText, Instagram } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -66,6 +66,9 @@ export default function Feed() {
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [publishedPosts, setPublishedPosts] = useState([]);
   const [publishedConnection, setPublishedConnection] = useState(null);
+  const [instagramConnection, setInstagramConnection] = useState(null);
+  const [instagramConnectionLoading, setInstagramConnectionLoading] = useState(false);
+  const [instagramConnectError, setInstagramConnectError] = useState('');
   const [publishedLoading, setPublishedLoading] = useState(false);
   const [publishedError, setPublishedError] = useState('');
   const [syncingPublished, setSyncingPublished] = useState(false);
@@ -145,6 +148,64 @@ export default function Feed() {
   }, [clientId]);
 
   const currentClient = clients.find((client) => String(client.id) === String(clientId));
+
+  async function loadInstagramConnection(targetClientId = clientId) {
+    if (!targetClientId || !canConnections) {
+      setInstagramConnection(null);
+      setInstagramConnectionLoading(false);
+      return;
+    }
+    setInstagramConnectionLoading(true);
+    try {
+      const { data } = await api.get(`/instagram-oauth/status/${targetClientId}`, { params: { _ts: Date.now() } });
+      setInstagramConnection(data.connection || null);
+    } catch {
+      setInstagramConnection(null);
+    } finally {
+      setInstagramConnectionLoading(false);
+    }
+  }
+
+  async function connectInstagramFromFeed() {
+    if (!clientId) return;
+    try {
+      setInstagramConnectError('');
+      setInstagramConnectionLoading(true);
+      const { data } = await api.post(`/instagram-oauth/start/${clientId}`, { origin: window.location.origin });
+      const popup = window.open(data.authorization_url, 'zebrahub-instagram-oauth', 'width=620,height=760,resizable=yes,scrollbars=yes');
+      if (!popup) {
+        setInstagramConnectError('O navegador bloqueou a janela do Instagram. Libere pop-ups e tente novamente.');
+        setInstagramConnectionLoading(false);
+      }
+    } catch (err) {
+      setInstagramConnectError(err.response?.data?.error || 'Não foi possível iniciar a conexão com o Instagram.');
+      setInstagramConnectionLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadInstagramConnection(clientId);
+    const onInstagramMessage = (event) => {
+      const payload = event.data;
+      if (payload?.type !== 'zebrahub-instagram-oauth' || Number(payload.clientId) !== Number(clientId)) return;
+      setInstagramConnectionLoading(false);
+      if (payload.ok) {
+        loadInstagramConnection(clientId);
+        window.dispatchEvent(new CustomEvent('zebrahub-instagram-connection-changed', { detail: { clientId } }));
+      } else {
+        setInstagramConnectError(payload.message || 'Não foi possível conectar o Instagram.');
+      }
+    };
+    const onInstagramChanged = (event) => {
+      if (!event.detail?.clientId || Number(event.detail.clientId) === Number(clientId)) loadInstagramConnection(clientId);
+    };
+    window.addEventListener('message', onInstagramMessage);
+    window.addEventListener('zebrahub-instagram-connection-changed', onInstagramChanged);
+    return () => {
+      window.removeEventListener('message', onInstagramMessage);
+      window.removeEventListener('zebrahub-instagram-connection-changed', onInstagramChanged);
+    };
+  }, [clientId, canConnections]);
 
   // Mantem o cabecalho do mockup sincronizado com o Instagram conectado.
   // Uma chamada por troca de cliente; se nao houver conexao, o perfil manual permanece intacto.
@@ -816,15 +877,41 @@ export default function Feed() {
 
       {clientId && activeView === 'grid' && (
         <div className="instagram-preview-stage flex justify-center">
-          <InstagramProfileMockup
-            client={currentClient}
-            highlights={highlights}
-            posts={posts}
-            onPostClick={openFeedPost}
-            editable={canFeedCreate}
-            onEdit={startEditProfile}
-            showCoverBadges={false}
-          />
+          {canConnections && instagramConnectionLoading && !instagramConnection ? (
+            <div className="w-full max-w-[620px] rounded-[28px] border border-slate-200 bg-white px-6 py-16 text-center shadow-xl">
+              <Loader2 className="mx-auto h-7 w-7 animate-spin text-zebrazul-600" />
+              <p className="mt-3 text-sm font-semibold text-slate-600">Verificando conexão com o Instagram...</p>
+            </div>
+          ) : canConnections && instagramConnection?.status !== 'connected' ? (
+            <div className="w-full max-w-[620px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl">
+              <div className="flex min-h-[430px] flex-col items-center justify-center px-6 py-12 text-center sm:px-10">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                  <Instagram size={30} />
+                </div>
+                <span className="mt-5 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Instagram não conectado</span>
+                <h3 className="mt-4 text-xl font-bold text-slate-900">Conecte a conta profissional deste cliente</h3>
+                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Os dados do perfil do Instagram só aparecem aqui após a autorização oficial da conta. O planejamento criado no ZebraHub permanece preservado.</p>
+                <button type="button" onClick={connectInstagramFromFeed} disabled={instagramConnectionLoading} className="btn-primary mt-6 inline-flex items-center gap-2 disabled:opacity-60">
+                  {instagramConnectionLoading ? <Loader2 size={17} className="animate-spin" /> : <Instagram size={17} />}
+                  {instagramConnectionLoading ? 'Abrindo Instagram...' : 'Conectar Instagram'}
+                </button>
+                {instagramConnectError && <p className="mt-4 max-w-md text-xs font-medium text-rose-600">{instagramConnectError}</p>}
+                <div className="mt-8 w-full border-t border-slate-100 pt-5">
+                  <p className="text-xs font-semibold text-slate-400">Prévia de planejamento disponível após conectar • nenhum dado do Instagram está sendo exibido neste estado</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <InstagramProfileMockup
+              client={currentClient}
+              highlights={highlights}
+              posts={posts}
+              onPostClick={openFeedPost}
+              editable={canFeedCreate}
+              onEdit={startEditProfile}
+              showCoverBadges={false}
+            />
+          )}
         </div>
       )}
 
