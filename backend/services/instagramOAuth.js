@@ -408,11 +408,22 @@ async function saveOAuthConnection({ stateRow, token }) {
   const profile = await fetchInstagramProfile(token.access_token, token.user_id);
   if (!profile.id) throw new InstagramOAuthError('O Instagram não retornou o ID da conta profissional.', { status: 502 });
 
+  // meta_organic_accounts also stores historical reporting data. A disconnected
+  // Instagram must not keep blocking the same professional account from being
+  // connected to another client. Only treat the organic row as a conflict when
+  // it is backed by an active OAuth connection.
   const conflictingClient = db.prepare(`
     SELECT c.id, c.name
     FROM meta_organic_accounts moa
     JOIN clients c ON c.id = moa.client_id
-    WHERE moa.agency_id = ? AND moa.client_id <> ? AND moa.instagram_account_id = ?
+    LEFT JOIN instagram_oauth_connections ioc
+      ON ioc.id = moa.instagram_oauth_connection_id AND ioc.status = 'connected'
+    LEFT JOIN meta_oauth_connections moc
+      ON moc.id = moa.oauth_connection_id AND moc.status = 'connected'
+    WHERE moa.agency_id = ?
+      AND moa.client_id <> ?
+      AND moa.instagram_account_id = ?
+      AND (ioc.id IS NOT NULL OR moc.id IS NOT NULL)
     LIMIT 1
   `).get(stateRow.agency_id, stateRow.client_id, profile.id);
   if (conflictingClient) {
@@ -604,9 +615,18 @@ function disconnectOAuth(clientId, agencyId) {
   const row = getConnectionRow(clientId, agencyId);
   if (!row) return false;
   const disconnect = db.transaction(() => {
+    // Preserve historical metrics, but release the Instagram identity when the
+    // direct Instagram OAuth connection is the only source for this client.
+    // This prevents an orphaned meta_organic_accounts row from reserving the
+    // account ID/asset_key after the UI already shows the client as disconnected.
     db.prepare(`
       UPDATE meta_organic_accounts SET
         instagram_oauth_connection_id = NULL,
+        instagram_account_id = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_account_id END,
+        instagram_username = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_username END,
+        instagram_name = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_name END,
+        instagram_picture_url = CASE WHEN oauth_connection_id IS NULL THEN NULL ELSE instagram_picture_url END,
+        asset_key = CASE WHEN oauth_connection_id IS NULL THEN 'client:' || client_id ELSE asset_key END,
         last_sync_status = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_status ELSE 'error' END,
         last_sync_error = CASE WHEN oauth_connection_id IS NOT NULL THEN last_sync_error ELSE 'Instagram direto desconectado' END,
         updated_at = datetime('now')
