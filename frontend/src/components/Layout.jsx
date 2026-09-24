@@ -431,6 +431,8 @@ export default function Layout({ children }) {
             <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
           </div>
 
+          <div id="zebrahub-topbar-tools" className="ml-3 hidden min-w-0 flex-1 items-center gap-2 overflow-x-auto lg:flex" />
+
           <div className="ml-auto flex min-w-0 items-center gap-2">
             {!isClientPortal && hasPermission(user, 'product.create') && (
               <button

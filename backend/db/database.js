@@ -1004,6 +1004,133 @@ CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id, ta
 CREATE INDEX IF NOT EXISTS idx_user_client_access_client ON user_client_access(client_id, user_id);
 `);
 
+// Estrutura persistente do módulo Audiovisual e da integração com Google Agenda.
+// Estas tabelas precisam existir também em instalações antigas, nas quais o
+// código do módulo pode ter sido publicado antes da migração do banco.
+db.exec(`
+CREATE TABLE IF NOT EXISTS audiovisual_client_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  is_recording_client INTEGER DEFAULT 0 CHECK(is_recording_client IN (0,1)),
+  videos_per_period INTEGER DEFAULT 2,
+  cadence_period TEXT DEFAULT 'week' CHECK(cadence_period IN ('week','month')),
+  recording_lead_days INTEGER DEFAULT 7,
+  preferred_days_json TEXT DEFAULT '[]',
+  updated_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE(agency_id, client_id)
+);
+
+CREATE TABLE IF NOT EXISTS audiovisual_recordings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  created_by INTEGER,
+  title TEXT NOT NULL,
+  scheduled_start TEXT NOT NULL,
+  scheduled_end TEXT,
+  location TEXT,
+  responsible_name TEXT,
+  status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled','recorded','cancelled')),
+  recorded_at TEXT,
+  video_count INTEGER DEFAULT 0,
+  raw_links_json TEXT DEFAULT '[]',
+  notes TEXT,
+  google_event_id TEXT,
+  google_event_link TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS audiovisual_videos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  recording_id INTEGER NOT NULL,
+  video_number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT DEFAULT 'recorded' CHECK(status IN ('recorded','editing','edited','approved','dated','scheduled','posted')),
+  created_by INTEGER,
+  editor_user_id INTEGER,
+  final_links_json TEXT DEFAULT '[]',
+  edit_notes TEXT,
+  edited_at TEXT,
+  posted_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (recording_id) REFERENCES audiovisual_recordings(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (editor_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE(recording_id, video_number)
+);
+
+CREATE TABLE IF NOT EXISTS audiovisual_video_schedules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  video_id INTEGER NOT NULL,
+  platform TEXT DEFAULT 'instagram',
+  scheduled_at TEXT NOT NULL,
+  status TEXT DEFAULT 'dated' CHECK(status IN ('dated','scheduled','posted','cancelled')),
+  created_by INTEGER,
+  posted_at TEXT,
+  post_url TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (video_id) REFERENCES audiovisual_videos(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS google_calendar_connections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL UNIQUE,
+  google_email TEXT,
+  google_user_id TEXT,
+  calendar_id TEXT DEFAULT 'primary',
+  access_token_encrypted TEXT,
+  refresh_token_encrypted TEXT,
+  token_expires_at TEXT,
+  scopes_json TEXT DEFAULT '[]',
+  status TEXT DEFAULT 'connected' CHECK(status IN ('connected','disconnected','error')),
+  last_error TEXT,
+  connected_by INTEGER,
+  connected_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (connected_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS google_calendar_oauth_states (
+  nonce TEXT PRIMARY KEY,
+  agency_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  frontend_origin TEXT,
+  redirect_uri TEXT,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_av_settings_agency_client ON audiovisual_client_settings(agency_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_av_recordings_scope ON audiovisual_recordings(agency_id, client_id, scheduled_start, status);
+CREATE INDEX IF NOT EXISTS idx_av_videos_scope ON audiovisual_videos(agency_id, client_id, status, recording_id);
+CREATE INDEX IF NOT EXISTS idx_av_schedules_video ON audiovisual_video_schedules(agency_id, video_id, status, scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_google_calendar_oauth_expiry ON google_calendar_oauth_states(expires_at, used_at);
+`);
+
 // Migração leve: adiciona colunas novas em bancos já existentes (não falha se já existirem)
 function tryAddColumn(table, column, definition) {
   try {
@@ -1012,6 +1139,19 @@ function tryAddColumn(table, column, definition) {
     // coluna já existe — ignora
   }
 }
+tryAddColumn('audiovisual_recordings', 'google_event_id', 'TEXT');
+tryAddColumn('audiovisual_recordings', 'google_event_link', 'TEXT');
+tryAddColumn('audiovisual_recordings', 'raw_links_json', "TEXT DEFAULT '[]'");
+tryAddColumn('audiovisual_recordings', 'recorded_at', 'TEXT');
+tryAddColumn('audiovisual_recordings', 'video_count', 'INTEGER DEFAULT 0');
+tryAddColumn('audiovisual_videos', 'editor_user_id', 'INTEGER REFERENCES users(id)');
+tryAddColumn('audiovisual_videos', 'final_links_json', "TEXT DEFAULT '[]'");
+tryAddColumn('audiovisual_videos', 'edit_notes', 'TEXT');
+tryAddColumn('audiovisual_videos', 'edited_at', 'TEXT');
+tryAddColumn('audiovisual_videos', 'posted_at', 'TEXT');
+tryAddColumn('audiovisual_video_schedules', 'posted_at', 'TEXT');
+tryAddColumn('audiovisual_video_schedules', 'post_url', 'TEXT');
+
 tryAddColumn('posts', 'media_data', 'TEXT');
 tryAddColumn('posts', 'media_mime', 'TEXT');
 tryAddColumn('posts', 'share_token', 'TEXT');

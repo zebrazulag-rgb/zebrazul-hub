@@ -379,20 +379,6 @@ export default function CompassPage() {
     <div className="space-y-4">
       <CompassSectionNav />
 
-      <section className="rounded-[26px] border border-slate-200 bg-white px-5 py-4 shadow-sm sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-600"><Compass size={14} /> Bússola</div>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Jornada estratégica</h1>
-            <p className="mt-1 text-sm text-slate-500">{clientName || 'Selecione um cliente para acompanhar a jornada.'}</p>
-          </div>
-          {clientId && <div className="min-w-[190px] rounded-2xl bg-slate-50 px-4 py-3">
-            <div className="flex items-end justify-between gap-3"><span className="text-xs font-semibold text-slate-500">Progresso geral</span><strong className="text-xl text-slate-950">{overall}%</strong></div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${overall}%` }} /></div>
-          </div>}
-        </div>
-      </section>
-
       {!clientId ? (
         <section className="rounded-[26px] border border-dashed border-slate-300 bg-white p-10 text-center">
           <Compass className="mx-auto text-blue-600" size={28} />
@@ -401,33 +387,42 @@ export default function CompassPage() {
         </section>
       ) : (
         <>
-          <section className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-white px-4 py-7 shadow-sm sm:px-7">
-            <div className="mb-6 flex items-center justify-between gap-3">
-              <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Mapa da jornada</p><h2 className="mt-1 text-lg font-bold text-slate-900">Do onboarding à renovação da rota</h2></div>
-              <div className="hidden items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 sm:flex"><Flag size={14} /> Agora: {currentStage.title}</div>
+          <section className="relative rounded-[26px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Mapa da jornada</p>
+                <h2 className="mt-0.5 text-base font-bold text-slate-900">Do onboarding à renovação da rota</h2>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="hidden min-w-[150px] sm:block">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400"><span>Progresso</span><strong className="text-slate-700">{overall}%</strong></div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${overall}%` }} /></div>
+                </div>
+                <div className="hidden items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700 md:flex"><Flag size={12} /> Agora: {currentStage.title}</div>
+              </div>
             </div>
 
-            <div className="relative overflow-x-auto pb-2">
-              <div className="relative min-w-[980px] px-6 py-8">
-                <svg className="pointer-events-none absolute inset-x-0 top-[42px] h-[160px] w-full" viewBox="0 0 1000 160" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M25 118 C90 18,145 18,205 98 S315 170,375 54 S490 0,545 95 S665 165,720 48 S835 4,975 68" fill="none" stroke="#e2e8f0" strokeWidth="7" strokeLinecap="round" />
-                  <path d="M25 118 C90 18,145 18,205 98 S315 170,375 54 S490 0,545 95 S665 165,720 48 S835 4,975 68" fill="none" stroke="#2563eb" strokeWidth="7" strokeLinecap="round" strokeDasharray="1000" strokeDashoffset={1000 - (overall * 10)} className="transition-all duration-700" />
+            <div className="relative w-full pb-1">
+              <div className="relative w-full px-1 py-7 sm:px-2">
+                <svg className="pointer-events-none absolute inset-x-0 top-[30px] h-[132px] w-full" viewBox="0 0 1000 150" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M18 110 C85 18,145 18,205 92 S315 155,375 50 S490 4,545 88 S665 150,720 45 S835 5,982 65" fill="none" stroke="#e2e8f0" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M18 110 C85 18,145 18,205 92 S315 155,375 50 S490 4,545 88 S665 150,720 45 S835 5,982 65" fill="none" stroke="#2563eb" strokeWidth="6" strokeLinecap="round" strokeDasharray="1000" strokeDashoffset={1000 - (overall * 10)} className="transition-all duration-700" />
                 </svg>
-                <div className="relative grid grid-cols-6 gap-5">
+                <div className="relative grid w-full grid-cols-6 gap-1.5 sm:gap-2 lg:gap-3">
                   {JOURNEY.map((stage, index) => {
                     const stat = stageProgress[stage.id];
                     const completed = stat.percent === 100;
                     const active = currentStage.id === stage.id;
                     const Icon = stage.icon;
-                    const offsets = ['mt-16','mt-0','mt-20','mt-3','mt-16','mt-0'];
-                    return <button key={stage.id} type="button" onClick={() => setOpenStage(stage.id)} className={`${offsets[index]} group text-left`}>
-                      <div className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full border-4 border-white shadow-lg transition group-hover:scale-105 ${completed ? 'bg-emerald-500 text-white' : active ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-100 text-slate-500'}`}>
-                        {completed ? <Check size={22} strokeWidth={3} /> : <Icon size={21} />}
+                    const offsets = ['mt-12','mt-0','mt-14','mt-1','mt-11','mt-0'];
+                    return <button key={stage.id} type="button" onClick={() => setOpenStage(stage.id)} className={`${offsets[index]} group min-w-0 text-left`}>
+                      <div className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-white shadow-md transition group-hover:scale-105 sm:h-11 sm:w-11 ${completed ? 'bg-emerald-500 text-white' : active ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-100 text-slate-500'}`}>
+                        {completed ? <Check size={17} strokeWidth={3} /> : <Icon size={16} />}
                       </div>
-                      <div className={`mx-auto mt-3 max-w-[150px] rounded-2xl border bg-white p-3 shadow-sm transition ${openStage === stage.id ? 'border-blue-300 shadow-blue-950/10' : 'border-slate-200'}`}>
-                        <span className="text-[10px] font-black tracking-[0.14em] text-blue-600">ETAPA {stage.number}</span>
-                        <p className="mt-1 text-sm font-bold leading-tight text-slate-900">{stage.title}</p>
-                        <p className="mt-1 text-[11px] text-slate-400">{stat.done}/{stat.total} concluídos</p>
+                      <div className={`mx-auto mt-2 min-h-[88px] w-full max-w-[138px] rounded-xl border bg-white p-2 shadow-sm transition sm:p-2.5 ${openStage === stage.id ? 'border-blue-300 shadow-blue-950/10' : 'border-slate-200'}`}>
+                        <span className="text-[8px] font-black tracking-[0.10em] text-blue-600 sm:text-[9px]">ETAPA {stage.number}</span>
+                        <p className="mt-1 break-words text-[10px] font-bold leading-[1.18] text-slate-900 sm:text-[11px] lg:text-xs">{stage.title}</p>
+                        <p className="mt-1 text-[9px] text-slate-400 sm:text-[10px]">{stat.done}/{stat.total} concluídos</p>
                       </div>
                     </button>;
                   })}

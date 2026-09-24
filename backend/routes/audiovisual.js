@@ -1,14 +1,26 @@
 const express = require('express');
+const multer = require('multer');
 const db = require('../db/database');
 const { authRequired, canAccessClient } = require('../middleware/auth');
 const { hasPermission } = require('../services/permissions');
 const { syncRecordingEvent, deleteRecordingEvent } = require('../services/googleCalendar');
+const { persistMediaBuffer } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
 
 const VIDEO_STATUSES = new Set(['recorded', 'editing', 'approved', 'dated', 'scheduled', 'posted']);
 const RECORDING_STATUSES = new Set(['scheduled', 'recorded', 'cancelled']);
+
+const finalVideoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 120 * 1024 * 1024, files: 1 },
+  fileFilter(req, file, callback) {
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (!mime.startsWith('video/')) return callback(new Error('Envie um arquivo de vídeo válido.'));
+    callback(null, true);
+  },
+});
 
 function normalizeText(value) {
   const text = String(value ?? '').trim();
@@ -730,6 +742,57 @@ router.get('/videos', (req, res) => {
       raw_links: parseJsonArray(video.raw_links_json),
       schedules: scheduleMap.get(Number(video.id)) || [],
     })),
+  });
+});
+
+router.post('/videos/:id/final-upload', (req, res) => {
+  if (!hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit'])) {
+    return res.status(403).json({ error: 'Você não possui permissão para concluir a edição.' });
+  }
+
+  finalVideoUpload.single('file')(req, res, (uploadError) => {
+    if (uploadError) {
+      if (uploadError.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'Para envio direto, o vídeo deve ter no máximo 120 MB. Para arquivos maiores, use a opção de link do Drive.' });
+      }
+      return res.status(400).json({ error: uploadError.message || 'Não foi possível enviar o vídeo.' });
+    }
+
+    const video = db.prepare(`
+      SELECT v.*, c.name AS client_name FROM audiovisual_videos v
+      JOIN clients c ON c.id = v.client_id
+      WHERE v.id = ? AND v.agency_id = ?
+    `).get(req.params.id, req.user.agency_id);
+    if (!video) return res.status(404).json({ error: 'Vídeo não encontrado.' });
+    if (!ensureClient(req, res, video.client_id)) return;
+    if (!req.file?.buffer) return res.status(400).json({ error: 'Selecione um arquivo de vídeo.' });
+
+    try {
+      const mediaUrl = persistMediaBuffer(req.file.buffer, req.file.mimetype || 'video/mp4');
+      if (!mediaUrl) return res.status(500).json({ error: 'Não foi possível salvar o vídeo no armazenamento.' });
+
+      // O arquivo local ocupa a mesma posição lógica dos links externos. Assim
+      // toda a produção antiga continua compatível sem criar uma segunda fonte
+      // de verdade para o vídeo final.
+      const providedLinks = normalizeLinks(req.body.final_links_text);
+      const existing = parseJsonArray(video.final_links_json).filter((value) => !String(value || '').includes('/api/media/'));
+      const finalLinks = [...new Set([mediaUrl, ...providedLinks, ...existing])].slice(0, 30);
+      db.prepare(`
+        UPDATE audiovisual_videos
+        SET status = 'approved', final_links_json = ?, edit_notes = ?, editor_user_id = ?,
+            edited_at = datetime('now'), updated_at = datetime('now')
+        WHERE id = ? AND agency_id = ?
+      `).run(JSON.stringify(finalLinks), normalizeText(req.body.edit_notes), req.user.id, video.id, req.user.agency_id);
+
+      const updated = db.prepare('SELECT * FROM audiovisual_videos WHERE id = ? AND agency_id = ?').get(video.id, req.user.agency_id);
+      return res.status(201).json({
+        video: { ...updated, final_links: parseJsonArray(updated.final_links_json) },
+        media: { url: mediaUrl, mime: req.file.mimetype, filename: req.file.originalname || '' },
+      });
+    } catch (error) {
+      console.error('[AUDIOVISUAL] upload final:', error);
+      return res.status(500).json({ error: 'Não foi possível salvar o vídeo enviado.' });
+    }
   });
 });
 

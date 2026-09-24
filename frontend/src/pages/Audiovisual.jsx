@@ -19,10 +19,12 @@ import {
   Unlink,
   Users,
   Video,
+  UploadCloud,
   X,
 } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import TopbarPortal from '../components/TopbarPortal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
 
@@ -75,6 +77,10 @@ function formatMonthLabel(value) {
 
 function linksFromText(value) {
   return String(value || '').split(/\r?\n|,/g).map((item) => item.trim()).filter(Boolean);
+}
+
+function isManagedVideo(value) {
+  return typeof value === 'string' && value.includes('/api/media/');
 }
 
 function monthProgress(recorded, total) {
@@ -155,7 +161,9 @@ export default function Audiovisual() {
         api.get('/audiovisual/dashboard', { params: dashboardParams }),
         api.get('/audiovisual/recordings', { params: operationalParams }),
         api.get('/audiovisual/videos', { params: operationalClientId ? { client_id: operationalClientId } : {} }),
-        api.get('/google-calendar-oauth/status'),
+        // O Google Agenda é opcional. Uma falha nessa integração não pode
+        // derrubar toda a tela de Produção/Audiovisual.
+        api.get('/google-calendar-oauth/status').catch(() => ({ data: null })),
         api.get('/audiovisual/client-selection'),
       ]);
       setDashboard(dashboardRes.data);
@@ -307,7 +315,8 @@ export default function Audiovisual() {
       setEditModal({
         id: video.id,
         title: video.title,
-        final_links_text: (video.final_links || []).join('\n'),
+        final_links_text: (video.final_links || []).filter((link) => !isManagedVideo(link)).join('\n'),
+        final_file: null,
         edit_notes: video.edit_notes || '',
       });
       return;
@@ -333,25 +342,33 @@ export default function Audiovisual() {
 
   async function finishEditing(form) {
     const finalLinks = linksFromText(form.final_links_text);
-    if (!finalLinks.length) {
-      setError('O editor precisa adicionar pelo menos um link do vídeo final.');
+    if (!form.final_file && !finalLinks.length) {
+      setError('Envie o vídeo final diretamente ou informe pelo menos um link do Drive.');
       return;
     }
     setSaving(true);
+    setError('');
     try {
-      await api.put(`/audiovisual/videos/${form.id}/status`, {
-        status: 'approved',
-        final_links: finalLinks,
-        edit_notes: form.edit_notes,
-      });
+      if (form.final_file) {
+        const payload = new FormData();
+        payload.append('file', form.final_file);
+        payload.append('edit_notes', form.edit_notes || '');
+        payload.append('final_links_text', form.final_links_text || '');
+        await api.post(`/audiovisual/videos/${form.id}/final-upload`, payload);
+      } else {
+        await api.put(`/audiovisual/videos/${form.id}/status`, {
+          status: 'approved',
+          final_links: finalLinks,
+          edit_notes: form.edit_notes,
+        });
+      }
       setEditModal(null);
-      setNotice('Vídeo final registrado e aprovado.');
+      setNotice(form.final_file ? 'Vídeo enviado, salvo e aprovado.' : 'Link do vídeo final registrado e aprovado.');
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível concluir a edição.');
     } finally {
       setSaving(false);
-      setDraggedVideoId(null);
     }
   }
 
@@ -520,34 +537,38 @@ export default function Audiovisual() {
 
   return (
     <div className="space-y-4 pb-10">
-      <header className="rounded-[20px] border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-3.5">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-xl font-bold tracking-tight text-slate-950 sm:text-[22px]">Audiovisual</h1>
-          <div className="flex items-center gap-1.5">
-            {canManage && (
-              <button type="button" onClick={() => openHistoricalRecording()} title="Registrar gravação realizada" aria-label="Registrar gravação realizada" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
-                <Clock3 size={15} />
+      <TopbarPortal>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+            {tabs.map(([key, label]) => (
+              <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-lg px-3 py-2 text-[11px] font-semibold transition ${tab === key ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white/70 hover:text-slate-800'}`}>
+                {label}
               </button>
-            )}
-            {canManage && (
-              <button type="button" onClick={() => openNewRecording()} title="Nova gravação" aria-label="Nova gravação" className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#0969ff] text-white hover:bg-blue-700">
-                <Plus size={16} />
-              </button>
-            )}
+            ))}
           </div>
-        </div>
-
-        <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-slate-100 pt-2.5">
-          {tabs.map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setTab(key)} className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${tab === key ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
-              {label}
-            </button>
-          ))}
-          <button type="button" onClick={() => loadData({ quiet: true })} title="Atualizar" aria-label="Atualizar" className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50">
+          <button type="button" onClick={() => loadData({ quiet: true })} title="Atualizar" aria-label="Atualizar" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50">
             <RefreshCw size={14} />
           </button>
+          {canManage && (
+            <button type="button" onClick={() => openHistoricalRecording()} title="Registrar gravação realizada" aria-label="Registrar gravação realizada" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0969ff] text-white shadow-sm transition hover:bg-blue-700">
+              <Clock3 size={15} />
+            </button>
+          )}
+          {canManage && (
+            <button type="button" onClick={() => openNewRecording()} title="Nova gravação" aria-label="Nova gravação" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0969ff] text-white shadow-sm transition hover:bg-blue-700">
+              <Plus size={16} />
+            </button>
+          )}
         </div>
-      </header>
+      </TopbarPortal>
+
+      <div className="flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm lg:hidden">
+        {tabs.map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setTab(key)} className={`min-w-max rounded-lg px-3 py-2 text-[11px] font-semibold transition ${tab === key ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-500'}`}>{label}</button>
+        ))}
+        <button type="button" onClick={() => loadData({ quiet: true })} className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500"><RefreshCw size={14} /></button>
+        {canManage && <button type="button" onClick={() => openNewRecording()} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0969ff] text-white"><Plus size={15} /></button>}
+      </div>
 
       {error && <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertTriangle className="mt-0.5 shrink-0" size={16} /> <span>{error}</span><button onClick={() => setError('')} className="ml-auto"><X size={15} /></button></div>}
       {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</div>}
@@ -945,6 +966,45 @@ function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connect
   );
 }
 
+function FinalVideoAsset({ links = [] }) {
+  const direct = links.find((link) => isManagedVideo(link));
+  const external = links.find((link) => !isManagedVideo(link));
+
+  if (!direct && !external) return null;
+
+  return (
+    <div className="mt-3 space-y-2">
+      {direct ? (
+        <video
+          src={direct}
+          controls
+          preload="metadata"
+          playsInline
+          className="aspect-video w-full rounded-xl bg-black object-contain"
+        >
+          Seu navegador não suporta vídeo HTML5.
+        </video>
+      ) : (
+        <a
+          href={external}
+          target="_blank"
+          rel="noreferrer"
+          className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-black text-white transition hover:opacity-90"
+          title="Abrir vídeo no Drive"
+        >
+          <span className="text-sm font-black tracking-[0.28em]">VÍDEO</span>
+          <ExternalLink size={14} className="absolute right-3 top-3 text-white/65" />
+        </a>
+      )}
+      {direct && external && (
+        <a href={external} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-blue-600">
+          <Link2 size={12} /> Abrir link externo
+        </a>
+      )}
+    </div>
+  );
+}
+
 function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDraggedVideoId, currentDraggedVideo, setVideoStatus, setScheduleModal, deleteSchedule }) {
   function canDrag(video) {
     if (['recorded', 'editing', 'approved'].includes(video.status)) return canEdit;
@@ -986,7 +1046,7 @@ function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDragged
                     <p className="mt-2 text-[11px] text-slate-400">Gravado em {formatDate(video.recording_date)}</p>
 
                     {(video.raw_links || []).length > 0 && <a href={video.raw_links[0]} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-600"><Link2 size={12} /> Arquivos brutos</a>}
-                    {(video.final_links || []).length > 0 && <a href={video.final_links[0]} target="_blank" rel="noreferrer" className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600"><CheckCircle2 size={12} /> Vídeo final</a>}
+                    <FinalVideoAsset links={video.final_links || []} />
 
                     {(video.schedules || []).length > 0 && (
                       <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-2.5">
@@ -1179,12 +1239,26 @@ function CompleteRecordingModal({ form, setForm, saving, onClose, onSave }) {
 function EditCompleteModal({ form, setForm, saving, onClose, onSave }) {
   return (
     <ModalShell title="Concluir edição" subtitle={form.title} onClose={onClose} saving={saving}>
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">O link final é obrigatório. O vídeo só entra em “Aprovado” depois que o editor registrar pelo menos um arquivo final.</div>
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+        Envie o vídeo diretamente para ele ficar disponível no card. Se o arquivo for maior ou estiver no Drive, mantenha a opção de link.
+      </div>
       <div className="mt-4 space-y-3">
-        <TextArea label="Links dos vídeos finais *" value={form.final_links_text} onChange={(value) => setForm({ ...form, final_links_text: value })} placeholder="Um link por linha" rows={4} />
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-bold text-slate-600">Vídeo final direto</span>
+          <span className={`flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed px-4 py-4 transition ${form.final_file ? 'border-emerald-300 bg-emerald-50' : 'border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-blue-50'}`}>
+            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${form.final_file ? 'bg-emerald-600 text-white' : 'bg-white text-blue-600 shadow-sm'}`}><UploadCloud size={18} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-bold text-slate-800">{form.final_file?.name || 'Selecionar vídeo'}</span>
+              <span className="mt-0.5 block text-[11px] text-slate-400">MP4, MOV, WebM etc. · até 120 MB</span>
+            </span>
+            <input type="file" accept="video/*" className="hidden" disabled={saving} onChange={(event) => { const file = event.target.files?.[0] || null; setForm({ ...form, final_file: file }); }} />
+          </span>
+        </label>
+        <div className="flex items-center gap-3"><div className="h-px flex-1 bg-slate-200" /><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">ou use link</span><div className="h-px flex-1 bg-slate-200" /></div>
+        <TextArea label="Link do vídeo (Drive, Frame.io, Dropbox...)" value={form.final_links_text} onChange={(value) => setForm({ ...form, final_links_text: value })} placeholder="Cole um link por linha" rows={3} />
         <TextArea label="Observação da edição" value={form.edit_notes} onChange={(value) => setForm({ ...form, edit_notes: value })} placeholder="Versão final, observações, ajustes feitos..." rows={3} />
       </div>
-      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Concluir e aprovar" />
+      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel={saving ? 'Enviando...' : 'Concluir e aprovar'} />
     </ModalShell>
   );
 }
