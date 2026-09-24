@@ -11,6 +11,27 @@ const { ensureMaterialsDirectory, safeStoredPath, removeStoredFile } = require('
 const router = express.Router();
 router.use(authRequired);
 
+// Conteúdos estruturados da Bússola (links e textos) precisam ser compartilhados
+// entre toda a equipe. A tabela é criada de forma idempotente ao iniciar o backend.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS compass_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    stage_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    value TEXT NOT NULL DEFAULT '',
+    created_by INTEGER,
+    updated_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (agency_id, client_id, stage_id, item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_compass_entries_client
+    ON compass_entries (agency_id, client_id);
+`);
+
 const storage = multer.diskStorage({
   destination(req, file, callback) {
     callback(null, ensureMaterialsDirectory());
@@ -259,6 +280,82 @@ router.delete('/links/:id', requireRole('admin'), (req, res) => {
   db.prepare("UPDATE material_links SET is_active = 0, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
     .run(link.id, req.user.agency_id);
   res.json({ ok: true });
+});
+
+router.get('/compass/entries', (req, res) => {
+  const clientId = normalizeOptionalClientId(req.query.client_id);
+  if (Number.isNaN(clientId) || !clientId) return res.status(400).json({ error: 'Cliente inválido.' });
+  if (!canAccessClient(req.user, clientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+
+  const entries = db.prepare(`
+    SELECT id, client_id, stage_id, item_id, kind, value, created_at, updated_at
+    FROM compass_entries
+    WHERE agency_id = ? AND client_id = ?
+    ORDER BY stage_id, item_id
+  `).all(req.user.agency_id, clientId);
+
+  res.json({ entries });
+});
+
+router.put('/compass/entry', requireRole('admin', 'team'), (req, res) => {
+  const clientId = normalizeOptionalClientId(req.body.client_id);
+  if (Number.isNaN(clientId) || !clientId) return res.status(400).json({ error: 'Cliente inválido.' });
+  if (!canAccessClient(req.user, clientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+
+  const stageId = String(req.body.stage_id || '').trim().toLowerCase();
+  const itemId = String(req.body.item_id || '').trim().toLowerCase();
+  const kind = String(req.body.kind || '').trim().toLowerCase();
+  let value = String(req.body.value || '').trim();
+
+  if (!/^[a-z0-9-]{2,60}$/.test(stageId)) return res.status(400).json({ error: 'Etapa da Bússola inválida.' });
+  if (!/^[a-z0-9-]{2,80}$/.test(itemId)) return res.status(400).json({ error: 'Item da Bússola inválido.' });
+  if (!['link', 'text'].includes(kind)) return res.status(400).json({ error: 'Tipo de conteúdo inválido.' });
+  if (value.length > 30000) return res.status(400).json({ error: 'O conteúdo é muito grande.' });
+
+  if (kind === 'link' && value) {
+    try {
+      value = normalizeExternalUrl(value);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  }
+
+  if (!value) {
+    db.prepare(`
+      DELETE FROM compass_entries
+      WHERE agency_id = ? AND client_id = ? AND stage_id = ? AND item_id = ?
+    `).run(req.user.agency_id, clientId, stageId, itemId);
+    return res.json({ entry: null });
+  }
+
+  db.prepare(`
+    INSERT INTO compass_entries (
+      agency_id, client_id, stage_id, item_id, kind, value, created_by, updated_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(agency_id, client_id, stage_id, item_id)
+    DO UPDATE SET
+      kind = excluded.kind,
+      value = excluded.value,
+      updated_by = excluded.updated_by,
+      updated_at = datetime('now')
+  `).run(
+    req.user.agency_id,
+    clientId,
+    stageId,
+    itemId,
+    kind,
+    value,
+    req.user.id,
+    req.user.id
+  );
+
+  const entry = db.prepare(`
+    SELECT id, client_id, stage_id, item_id, kind, value, created_at, updated_at
+    FROM compass_entries
+    WHERE agency_id = ? AND client_id = ? AND stage_id = ? AND item_id = ?
+  `).get(req.user.agency_id, clientId, stageId, itemId);
+
+  res.json({ entry });
 });
 
 router.get('/:id', (req, res) => {

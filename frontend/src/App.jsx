@@ -17,6 +17,7 @@ import PasswordVault from './pages/PasswordVault.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
 import CompassPage from './pages/Compass.jsx';
+import CompetitorAnalysis from './pages/CompetitorAnalysis.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
 import CommercialFunnel from './pages/CommercialFunnel.jsx';
@@ -119,6 +120,7 @@ export default function App() {
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
+      <Route path="/bussola/concorrencia" element={<ProtectedRoute permission="compass.view"><CompetitorAnalysis /></ProtectedRoute>} />
       <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/diagnostico" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />

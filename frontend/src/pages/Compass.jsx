@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarClock, Check, ChevronDown, ChevronRight, Circle, Compass, ExternalLink, FileCode2, Flag,
-  FolderOpen, Loader2, PackageCheck, RefreshCcw, Rocket, Trash2, UploadCloud, UsersRound,
+  FolderOpen, Link2, Loader2, PackageCheck, RefreshCcw, Rocket, Save, Search, Trash2, UploadCloud, UsersRound,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import CompassSectionNav from '../components/CompassSectionNav.jsx';
@@ -14,40 +15,77 @@ const JOURNEY = [
   {
     id: 'onboarding', number: '01', title: 'Onboarding', short: 'Começar juntos', icon: UsersRound,
     description: 'Alinhar o início da parceria e colocar cliente e equipe no mesmo ponto de partida.',
-    items: ['Reunião de onboarding', 'Criar grupo e apresentar o time'],
+    items: [
+      { id: 'reuniao-onboarding', title: 'Reunião de onboarding', type: 'check' },
+      { id: 'criar-grupo', title: 'Criar grupo e apresentar o time', type: 'check' },
+    ],
   },
   {
     id: 'coleta', number: '02', title: 'Coleta de informações', short: 'Conhecer o negócio', icon: FolderOpen,
     description: 'Reunir a base necessária para compreender a empresa antes de definir qualquer direção.',
-    items: ['Acessos', 'Logo', 'Fotos / banco de imagens', 'Serviços / produtos', 'História', 'Público-alvo', 'Propósito, missão, visão e valores', 'Análise dos concorrentes'],
+    items: [
+      { id: 'acessos', title: 'Acessos', type: 'check' },
+      { id: 'logo', title: 'Logo', type: 'link' },
+      { id: 'fotos-banco', title: 'Fotos / banco de imagens', type: 'link' },
+      { id: 'servicos-produtos', title: 'Serviços / produtos', type: 'text' },
+      { id: 'historia', title: 'História', type: 'text' },
+      { id: 'publico-alvo', title: 'Público-alvo', type: 'text' },
+      { id: 'proposito-missao-visao-valores', title: 'Propósito, missão, visão e valores', type: 'text' },
+      { id: 'analise-concorrentes', title: 'Análise dos concorrentes', type: 'competition' },
+    ],
   },
   {
     id: 'primeiras-entregas', number: '03', title: 'Primeiras entregas', short: 'Construir a direção', icon: PackageCheck,
     description: 'Transformar a coleta em entregas estratégicas com prazo e direção clara para a operação.',
-    items: ['Manual de posicionamento', 'Branding, quando necessário', 'Plano de ação do ano'],
+    items: [
+      { id: 'manual-posicionamento', title: 'Manual de posicionamento', type: 'html' },
+      { id: 'branding', title: 'Branding, quando necessário', type: 'html' },
+      { id: 'plano-acao-ano', title: 'Plano de ação do ano', type: 'html' },
+    ],
   },
   {
     id: 'execucao', number: '04', title: 'Execução', short: 'Colocar em movimento', icon: Rocket,
     description: 'Com a base pronta, o cliente entra na rotina de execução da agência.',
-    items: ['Base estratégica concluída', 'Operação liberada para execução'],
+    items: [
+      { id: 'base-estrategica', title: 'Base estratégica concluída', type: 'html' },
+      { id: 'operacao-liberada', title: 'Operação liberada para execução', type: 'html' },
+    ],
   },
   {
     id: 'checkpoint-6m', number: '05', title: 'Checkpoint · 6 meses', short: 'Recalibrar', icon: RefreshCcw,
     description: 'Renovar informações, entender mudanças e registrar o que funcionou e o que precisa evoluir.',
-    items: ['Atualizar informações do negócio', 'Revisar o que deu certo', 'Revisar o que não deu certo', 'Registrar novos desafios e oportunidades'],
+    items: [
+      { id: 'atualizar-negocio', title: 'Atualizar informações do negócio', type: 'html' },
+      { id: 'revisar-certos', title: 'Revisar o que deu certo', type: 'html' },
+      { id: 'revisar-erros', title: 'Revisar o que não deu certo', type: 'html' },
+      { id: 'novos-desafios', title: 'Registrar novos desafios e oportunidades', type: 'html' },
+    ],
   },
   {
     id: 'checkpoint-anual', number: '06', title: 'Virada do ano', short: 'Renovar a rota', icon: CalendarClock,
     description: 'Fechar o ciclo, atualizar o cenário e preparar a direção estratégica do próximo ano.',
-    items: ['Atualizar informações estratégicas', 'Revisar aprendizados do ano', 'Atualizar prioridades', 'Preparar o próximo plano anual'],
+    items: [
+      { id: 'atualizar-estrategia', title: 'Atualizar informações estratégicas', type: 'html' },
+      { id: 'aprendizados-ano', title: 'Revisar aprendizados do ano', type: 'html' },
+      { id: 'atualizar-prioridades', title: 'Atualizar prioridades', type: 'html' },
+      { id: 'proximo-plano-anual', title: 'Preparar o próximo plano anual', type: 'html' },
+    ],
   },
 ];
 
 function emptyProgress() {
-  return Object.fromEntries(JOURNEY.map((stage) => [stage.id, Object.fromEntries(stage.items.map((item) => [item, false]))]));
+  return Object.fromEntries(JOURNEY.map((stage) => [
+    stage.id,
+    Object.fromEntries(stage.items.map((item) => [item.title, false])),
+  ]));
+}
+
+function entryKey(stageId, itemId) {
+  return `${stageId}::${itemId}`;
 }
 
 export default function CompassPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
   const clientId = user?.role === 'client' ? Number(user.client_id) : Number(selectedClient?.id) || null;
@@ -60,6 +98,9 @@ export default function CompassPage() {
   const [filesLoading, setFilesLoading] = useState(false);
   const [fileAction, setFileAction] = useState('');
   const [fileError, setFileError] = useState('');
+  const [entries, setEntries] = useState([]);
+  const [entryDrafts, setEntryDrafts] = useState({});
+  const [entryAction, setEntryAction] = useState('');
 
   useEffect(() => {
     if (!clientId) return setProgress(emptyProgress());
@@ -90,7 +131,28 @@ export default function CompassPage() {
     }
   }
 
-  useEffect(() => { loadCompassFiles(); }, [clientId]);
+  async function loadCompassEntries() {
+    if (!clientId) {
+      setEntries([]);
+      setEntryDrafts({});
+      return;
+    }
+    try {
+      const { data } = await api.get(`/materials/compass/entries?client_id=${clientId}`);
+      const nextEntries = data.entries || [];
+      setEntries(nextEntries);
+      setEntryDrafts(Object.fromEntries(nextEntries.map((entry) => [entryKey(entry.stage_id, entry.item_id), entry.value || ''])));
+    } catch (requestError) {
+      setEntries([]);
+      setEntryDrafts({});
+      setFileError(requestError.response?.data?.error || 'Não foi possível carregar as informações da Bússola.');
+    }
+  }
+
+  useEffect(() => {
+    loadCompassFiles();
+    loadCompassEntries();
+  }, [clientId]);
 
   const materialMap = useMemo(() => {
     const map = new Map();
@@ -101,8 +163,10 @@ export default function CompassPage() {
     return map;
   }, [materials]);
 
-  function materialFor(stageId, item) {
-    return materialMap.get(`${stageId}::${item}`) || null;
+  const entryMap = useMemo(() => new Map(entries.map((entry) => [entryKey(entry.stage_id, entry.item_id), entry])), [entries]);
+
+  function materialFor(stageId, itemTitle) {
+    return materialMap.get(`${stageId}::${itemTitle}`) || null;
   }
 
   async function openMaterial(material) {
@@ -124,8 +188,8 @@ export default function CompassPage() {
       return;
     }
 
-    const actionKey = `${stage.id}::${item}`;
-    const previous = materialFor(stage.id, item);
+    const actionKey = `${stage.id}::${item.title}`;
+    const previous = materialFor(stage.id, item.title);
     setFileAction(actionKey);
     setFileError('');
     try {
@@ -133,7 +197,7 @@ export default function CompassPage() {
       payload.append('client_id', String(clientId));
       payload.append('stage_id', stage.id);
       payload.append('stage_title', stage.title);
-      payload.append('title', item);
+      payload.append('title', item.title);
       payload.append('file', file);
       await api.post('/materials/compass', payload);
       if (previous?.id) {
@@ -149,8 +213,8 @@ export default function CompassPage() {
 
   async function removeMaterial(stage, item, material) {
     if (!material || !canEdit) return;
-    if (!window.confirm(`Remover o HTML salvo em “${item}”?`)) return;
-    const actionKey = `${stage.id}::${item}`;
+    if (!window.confirm(`Remover o HTML salvo em “${item.title}”?`)) return;
+    const actionKey = `${stage.id}::${item.title}`;
     setFileAction(actionKey);
     setFileError('');
     try {
@@ -163,8 +227,33 @@ export default function CompassPage() {
     }
   }
 
+  async function saveEntry(stage, item) {
+    if (!clientId || !canEdit || !['link', 'text'].includes(item.type)) return;
+    const key = entryKey(stage.id, item.id);
+    setEntryAction(key);
+    setFileError('');
+    try {
+      const { data } = await api.put('/materials/compass/entry', {
+        client_id: clientId,
+        stage_id: stage.id,
+        item_id: item.id,
+        kind: item.type,
+        value: entryDrafts[key] || '',
+      });
+      setEntries((current) => {
+        const filtered = current.filter((entry) => entryKey(entry.stage_id, entry.item_id) !== key);
+        return data.entry ? [...filtered, data.entry] : filtered;
+      });
+      if (data.entry) setEntryDrafts((current) => ({ ...current, [key]: data.entry.value || '' }));
+    } catch (requestError) {
+      setFileError(requestError.response?.data?.error || 'Não foi possível salvar essa informação.');
+    } finally {
+      setEntryAction('');
+    }
+  }
+
   const stageProgress = useMemo(() => Object.fromEntries(JOURNEY.map((stage) => {
-    const done = stage.items.filter((item) => progress?.[stage.id]?.[item]).length;
+    const done = stage.items.filter((item) => progress?.[stage.id]?.[item.title]).length;
     return [stage.id, { done, total: stage.items.length, percent: Math.round((done / stage.items.length) * 100) }];
   })), [progress]);
 
@@ -173,13 +262,117 @@ export default function CompassPage() {
   const overall = total ? Math.round((done / total) * 100) : 0;
   const currentStage = JOURNEY.find((stage) => (stageProgress[stage.id]?.percent || 0) < 100) || JOURNEY[JOURNEY.length - 1];
 
-  function toggle(stageId, item) {
+  function toggle(stageId, itemTitle) {
     if (!canEdit || !clientId) return;
     setProgress((current) => {
-      const next = { ...current, [stageId]: { ...(current[stageId] || {}), [item]: !current?.[stageId]?.[item] } };
+      const next = { ...current, [stageId]: { ...(current[stageId] || {}), [itemTitle]: !current?.[stageId]?.[itemTitle] } };
       localStorage.setItem(storageKey, JSON.stringify(next));
       return next;
     });
+  }
+
+  function renderItemAction(stage, item) {
+    const key = entryKey(stage.id, item.id);
+    const material = materialFor(stage.id, item.title);
+    const busyFile = fileAction === `${stage.id}::${item.title}`;
+    const busyEntry = entryAction === key;
+    const savedEntry = entryMap.get(key);
+    const draftValue = entryDrafts[key] ?? savedEntry?.value ?? '';
+
+    if (item.type === 'check') return null;
+
+    if (item.type === 'competition') {
+      return (
+        <button
+          type="button"
+          onClick={() => navigate('/bussola/concorrencia')}
+          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
+        >
+          <Search size={14} /> Abrir análise de concorrência <ChevronRight size={13} />
+        </button>
+      );
+    }
+
+    if (item.type === 'link') {
+      return (
+        <div className="mt-2 space-y-2">
+          {savedEntry?.value && (
+            <a href={savedEntry.value} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1.5 text-xs font-bold text-blue-700 hover:underline">
+              <Link2 size={13} className="shrink-0" /><span className="truncate">{savedEntry.value}</span><ExternalLink size={12} className="shrink-0" />
+            </a>
+          )}
+          {canEdit ? (
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={draftValue}
+                onChange={(event) => setEntryDrafts((current) => ({ ...current, [key]: event.target.value }))}
+                placeholder="Cole o link aqui"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+              <button type="button" disabled={busyEntry} onClick={() => saveEntry(stage, item)} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:opacity-50" title="Salvar link">
+                {busyEntry ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              </button>
+            </div>
+          ) : !savedEntry?.value ? <p className="text-xs text-slate-400">Nenhum link salvo.</p> : null}
+        </div>
+      );
+    }
+
+    if (item.type === 'text') {
+      return canEdit ? (
+        <div className="mt-2">
+          <textarea
+            rows={3}
+            value={draftValue}
+            onChange={(event) => setEntryDrafts((current) => ({ ...current, [key]: event.target.value }))}
+            placeholder="Inserir texto"
+            className="w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs leading-5 text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          />
+          <div className="mt-1.5 flex justify-end">
+            <button type="button" disabled={busyEntry} onClick={() => saveEntry(stage, item)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
+              {busyEntry ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar
+            </button>
+          </div>
+        </div>
+      ) : savedEntry?.value ? (
+        <p className="mt-2 whitespace-pre-wrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs leading-5 text-slate-600">{savedEntry.value}</p>
+      ) : <p className="mt-1.5 text-xs text-slate-400">Nenhum texto salvo.</p>;
+    }
+
+    if (item.type === 'html') {
+      if (material) {
+        return (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => openMaterial(material)} className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50" title="Abrir HTML">
+              <FileCode2 size={15} className="shrink-0" />
+              <span className="max-w-[190px] truncate">{material.original_name || 'Arquivo HTML'}</span>
+              <ExternalLink size={13} className="shrink-0" />
+            </button>
+            {canEdit && (
+              <>
+                <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 ${busyFile ? 'pointer-events-none opacity-60' : ''}`}>
+                  {busyFile ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />} Trocar
+                  <input type="file" accept=".html,.htm,text/html" className="hidden" disabled={busyFile} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) uploadMaterial(stage, item, file); }} />
+                </label>
+                <button type="button" onClick={() => removeMaterial(stage, item, material)} disabled={busyFile} className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50" title="Remover HTML">
+                  {busyFile ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                </button>
+              </>
+            )}
+          </div>
+        );
+      }
+      return canEdit ? (
+        <label className={`mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 ${busyFile ? 'pointer-events-none opacity-60' : ''}`}>
+          {busyFile ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+          {busyFile ? 'Salvando...' : 'Anexar HTML'}
+          <input type="file" accept=".html,.htm,text/html" className="hidden" disabled={busyFile} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) uploadMaterial(stage, item, file); }} />
+        </label>
+      ) : <p className="mt-1.5 text-xs text-slate-400">Nenhum HTML salvo.</p>;
+    }
+
+    return null;
   }
 
   return (
@@ -261,45 +454,15 @@ export default function CompassPage() {
                     {fileError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600">{fileError}</div>}
                     <div className="grid gap-2 sm:grid-cols-2">
                       {stage.items.map((item) => {
-                        const checked = !!progress?.[stage.id]?.[item];
-                        const material = materialFor(stage.id, item);
-                        const actionKey = `${stage.id}::${item}`;
-                        const busy = fileAction === actionKey;
-                        return <div key={item} className={`rounded-xl border p-3 transition ${checked ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50/60'}`}>
+                        const checked = !!progress?.[stage.id]?.[item.title];
+                        return <div key={item.id} className={`rounded-xl border p-3 transition ${checked ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50/60'}`}>
                           <div className="flex items-start gap-3">
-                            <button type="button" disabled={!canEdit} onClick={() => toggle(stage.id, item)} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white text-transparent'} ${!canEdit ? 'cursor-default' : ''}`} title={checked ? 'Marcar como pendente' : 'Marcar como concluído'}>
+                            <button type="button" disabled={!canEdit} onClick={() => toggle(stage.id, item.title)} className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-white text-transparent'} ${!canEdit ? 'cursor-default' : ''}`} title={checked ? 'Marcar como pendente' : 'Marcar como concluído'}>
                               {checked ? <Check size={13} strokeWidth={3} /> : <Circle size={8} />}
                             </button>
                             <div className="min-w-0 flex-1">
-                              <p className={`text-sm font-semibold ${checked ? 'text-emerald-900' : 'text-slate-800'}`}>{item}</p>
-                              {material ? (
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <button type="button" onClick={() => openMaterial(material)} className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50" title="Abrir HTML">
-                                    <FileCode2 size={15} className="shrink-0" />
-                                    <span className="max-w-[190px] truncate">{material.original_name || 'Arquivo HTML'}</span>
-                                    <ExternalLink size={13} className="shrink-0" />
-                                  </button>
-                                  {canEdit && (
-                                    <>
-                                      <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
-                                        {busy ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />} Trocar
-                                        <input type="file" accept=".html,.htm,text/html" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) uploadMaterial(stage, item, file); }} />
-                                      </label>
-                                      <button type="button" onClick={() => removeMaterial(stage, item, material)} disabled={busy} className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50" title="Remover HTML">
-                                        {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              ) : canEdit ? (
-                                <label className={`mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
-                                  {busy ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-                                  {busy ? 'Salvando...' : 'Anexar HTML'}
-                                  <input type="file" accept=".html,.htm,text/html" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) uploadMaterial(stage, item, file); }} />
-                                </label>
-                              ) : (
-                                <p className="mt-1.5 text-xs text-slate-400">Nenhum HTML salvo.</p>
-                              )}
+                              <p className={`text-sm font-semibold ${checked ? 'text-emerald-900' : 'text-slate-800'}`}>{item.title}</p>
+                              {renderItemAction(stage, item)}
                             </div>
                           </div>
                         </div>;
