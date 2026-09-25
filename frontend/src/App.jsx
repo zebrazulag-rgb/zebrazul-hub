@@ -26,6 +26,7 @@ import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
 import SocialMedia from './pages/SocialMedia.jsx';
+import InstagramMessages from './pages/InstagramMessages.jsx';
 import AIPage from './pages/AI.jsx';
 import Reports from './pages/Reports.jsx';
 import Organizer from './pages/Organizer.jsx';
@@ -53,6 +54,7 @@ function fallbackRoute(user) {
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
   if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/tarefas';
   if (hasPermission(user, 'social.feed')) return user?.role === 'client' ? '/cliente/grade' : '/social-media/feed';
+  if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
   if (hasPermission(user, 'social.covers')) return '/ia?view=covers';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
   if (hasPermission(user, 'social.reports')) return user?.role === 'client' ? '/cliente/relatorios' : '/relatorios';
@@ -113,6 +115,7 @@ export default function App() {
       <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />
       <Route path="/social-media" element={<Navigate to="/social-media/feed" replace />} />
       <Route path="/social-media/feed" element={<ProtectedRoute permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
+      <Route path="/social-media/mensagens" element={<ProtectedRoute roles={["admin","team"]} permission="social.messages"><InstagramMessages /></ProtectedRoute>} />
       <Route path="/social-media/stories" element={<Navigate to="/ia?view=stories" replace />} />
       <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />

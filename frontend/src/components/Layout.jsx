@@ -276,7 +276,7 @@ export default function Layout({ children }) {
           if (!anyPermission(user, ['compass.view', 'materials.view'])) return false;
         } else if (!hasPermission(user, item.permission)) return false;
         if (item.to === '/social-media') {
-          return hasPermission(user, 'social.feed');
+          return anyPermission(user, ['social.feed', 'social.messages']);
         }
         if (item.to === '/ia') {
           return anyPermission(user, ['social.covers', 'social.stories']);

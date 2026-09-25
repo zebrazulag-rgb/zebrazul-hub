@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff, CheckCircle2, XCircle, Clock3, MessageSquareText, Instagram } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff, CheckCircle2, XCircle, Clock3, MessageSquareText, MessageCircle, Instagram } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -31,6 +31,7 @@ export default function Feed({ forcedView = null, toolMode = false }) {
   const canCompare = hasPermission(user, 'social.compare');
   const canCalendar = hasPermission(user, 'social.calendar');
   const canConnections = hasPermission(user, 'social.connections');
+  const canMessages = hasPermission(user, 'social.messages');
   const requestedAllowed = requestedView === 'covers' ? canCovers
     : requestedView === 'published' ? canPublished
       : requestedView === 'compare' ? canCompare
@@ -752,6 +753,15 @@ export default function Feed({ forcedView = null, toolMode = false }) {
         >
           <Columns3 size={17} /> Comparar
         </button>
+        )}
+        {canMessages && (
+          <button
+            type="button"
+            onClick={() => navigate('/social-media/mensagens')}
+            className="flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <MessageCircle size={17} /> Mensagens
+          </button>
         )}
       </div>}
 

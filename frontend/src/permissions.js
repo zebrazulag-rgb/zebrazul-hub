@@ -2,13 +2,13 @@ const DEFAULTS = {
   admin: new Set(['*']),
   operations_head: new Set([
     'dashboard.view','tasks.view','tasks.create','tasks.approval','tasks.import','tasks.export','tasks.share_calendar','compass.view',
-    'social.view','social.feed','social.feed_create','social.feed_share','social.link_social_media','social.covers','social.published','social.compare','social.calendar','social.stories','social.reports','social.connections',
+    'social.view','social.feed','social.feed_create','social.feed_share','social.link_social_media','social.covers','social.published','social.compare','social.calendar','social.stories','social.messages','social.reports','social.connections',
     'audiovisual.view','audiovisual.manage','audiovisual.edit','audiovisual.publish','audiovisual.calendar',
     'reenrollments.view','materials.view','chat.view','organizer.view','activity.view_own','activity.view_team','activity.export','settings.clients'
   ]),
   team: new Set([
     'dashboard.view','tasks.view','tasks.create','tasks.approval','tasks.import','tasks.export','tasks.share_calendar','compass.view',
-    'social.view','social.feed','social.feed_create','social.feed_share','social.link_social_media','social.covers','social.published','social.compare','social.calendar','social.stories','social.reports','social.connections',
+    'social.view','social.feed','social.feed_create','social.feed_share','social.link_social_media','social.covers','social.published','social.compare','social.calendar','social.stories','social.messages','social.reports','social.connections',
     'audiovisual.view','audiovisual.manage','audiovisual.edit','audiovisual.publish',
     'reenrollments.view','materials.view','chat.view','organizer.view','activity.view_own','settings.clients'
   ]),

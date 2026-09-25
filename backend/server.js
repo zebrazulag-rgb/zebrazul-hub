@@ -23,6 +23,7 @@ const metaRoutes = require('./routes/meta');
 const metaOrganicRoutes = require('./routes/metaOrganic');
 const metaOAuthRoutes = require('./routes/metaOAuth');
 const instagramOAuthRoutes = require('./routes/instagramOAuth');
+const instagramMessagesRoutes = require('./routes/instagramMessages');
 const tenantRoutes = require('./routes/tenant');
 const agencyRoutes = require('./routes/agencies');
 const diagnosticRoutes = require('./routes/diagnostics');
@@ -178,6 +179,7 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/material-boards', materialBoardRoutes);
 app.use('/api/video-reviews', videoReviewRoutes);
 app.use('/api/instagram-stories', instagramStoriesRoutes);
+app.use('/api/instagram-messages', instagramMessagesRoutes);
 
 app.use((err, req, res, next) => {
   if (err?.type === 'entity.too.large' || err?.status === 413 || err?.statusCode === 413) {
