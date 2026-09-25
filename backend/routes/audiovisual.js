@@ -841,6 +841,13 @@ router.put('/videos/:id/status', (req, res) => {
     const totalSchedules = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status IN ('dated','scheduled')").get(video.id)?.total || 0);
     if (!totalSchedules) return res.status(400).json({ error: 'Envie o vídeo para a grade e defina a data antes de marcar como Agendado.' });
     db.prepare("UPDATE audiovisual_video_schedules SET status = 'scheduled', updated_at = datetime('now') WHERE video_id = ? AND status = 'dated'").run(video.id);
+    db.prepare(`
+      UPDATE posts
+      SET status = 'scheduled', updated_at = datetime('now')
+      WHERE agency_id = ?
+        AND id IN (SELECT feed_post_id FROM audiovisual_video_schedules WHERE video_id = ? AND feed_post_id IS NOT NULL)
+        AND status IN ('draft','pending_approval','approved','rejected')
+    `).run(req.user.agency_id, video.id);
   }
   if (status === 'posted') {
     if (video.status !== 'scheduled') return res.status(400).json({ error: 'O vídeo precisa estar agendado antes de ser marcado como postado.' });
@@ -848,6 +855,12 @@ router.put('/videos/:id/status', (req, res) => {
     updates.push('posted_at = ?'); values.push(postedAt);
     db.prepare(`UPDATE audiovisual_video_schedules SET status = 'posted', posted_at = COALESCE(posted_at, ?), updated_at = datetime('now') WHERE video_id = ? AND status = 'scheduled'`)
       .run(postedAt, video.id);
+    db.prepare(`
+      UPDATE posts
+      SET status = 'published', updated_at = datetime('now')
+      WHERE agency_id = ?
+        AND id IN (SELECT feed_post_id FROM audiovisual_video_schedules WHERE video_id = ? AND feed_post_id IS NOT NULL)
+    `).run(req.user.agency_id, video.id);
   } else if (video.status === 'posted' && status !== 'posted') {
     updates.push('posted_at = NULL');
   }
@@ -871,14 +884,95 @@ router.post('/videos/:id/schedules', (req, res) => {
   const scheduledAt = validDateTime(req.body.scheduled_at);
   if (!scheduledAt) return res.status(400).json({ error: 'Informe a data e o horário do agendamento.' });
   const platform = normalizeText(req.body.platform) || 'instagram';
-  const info = db.prepare(`
-    INSERT INTO audiovisual_video_schedules (agency_id, video_id, platform, scheduled_at, status, created_by)
-    VALUES (?, ?, ?, ?, 'dated', ?)
-  `).run(req.user.agency_id, video.id, platform.slice(0, 40), scheduledAt, req.user.id);
-  db.prepare("UPDATE audiovisual_videos SET status = 'dated', updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
-    .run(video.id, req.user.agency_id);
-  const schedule = db.prepare('SELECT * FROM audiovisual_video_schedules WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json({ schedule });
+  try {
+    const result = db.transaction(() => {
+      const activeSchedule = db.prepare(`
+        SELECT * FROM audiovisual_video_schedules
+        WHERE agency_id = ? AND video_id = ? AND status IN ('dated','scheduled')
+        ORDER BY id DESC LIMIT 1
+      `).get(req.user.agency_id, video.id);
+
+      let scheduleId = activeSchedule?.id || null;
+      if (scheduleId) {
+        try {
+          db.prepare(`
+            UPDATE audiovisual_video_schedules
+            SET platform = ?, scheduled_at = ?, status = 'dated', created_by = ?, updated_at = datetime('now')
+            WHERE id = ? AND agency_id = ?
+          `).run(platform.slice(0, 40), scheduledAt, req.user.id, scheduleId, req.user.agency_id);
+        } catch (error) {
+          // Compatibilidade com bancos antigos cuja CHECK constraint ainda não
+          // conhecia o status "dated". O vídeo continua em Datado; a linha de
+          // agenda pode ficar como scheduled até a próxima migração.
+          if (!String(error?.message || '').toLowerCase().includes('check constraint')) throw error;
+          db.prepare(`
+            UPDATE audiovisual_video_schedules
+            SET platform = ?, scheduled_at = ?, status = 'scheduled', created_by = ?, updated_at = datetime('now')
+            WHERE id = ? AND agency_id = ?
+          `).run(platform.slice(0, 40), scheduledAt, req.user.id, scheduleId, req.user.agency_id);
+        }
+      } else {
+        let info;
+        try {
+          info = db.prepare(`
+            INSERT INTO audiovisual_video_schedules (agency_id, video_id, platform, scheduled_at, status, created_by)
+            VALUES (?, ?, ?, ?, 'dated', ?)
+          `).run(req.user.agency_id, video.id, platform.slice(0, 40), scheduledAt, req.user.id);
+        } catch (error) {
+          if (!String(error?.message || '').toLowerCase().includes('check constraint')) throw error;
+          info = db.prepare(`
+            INSERT INTO audiovisual_video_schedules (agency_id, video_id, platform, scheduled_at, status, created_by)
+            VALUES (?, ?, ?, ?, 'scheduled', ?)
+          `).run(req.user.agency_id, video.id, platform.slice(0, 40), scheduledAt, req.user.id);
+        }
+        scheduleId = Number(info.lastInsertRowid);
+      }
+
+      let schedule = db.prepare('SELECT * FROM audiovisual_video_schedules WHERE id = ? AND agency_id = ?').get(scheduleId, req.user.agency_id);
+
+      let feedPostId = Number(schedule?.feed_post_id || 0) || null;
+      if (feedPostId) {
+        const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(feedPostId, req.user.agency_id);
+        if (!existingPost) feedPostId = null;
+      }
+
+      if (feedPostId) {
+        db.prepare(`
+          UPDATE posts
+          SET title = ?, content_type = 'reels', platforms = ?, scheduled_at = ?, updated_at = datetime('now')
+          WHERE id = ? AND agency_id = ?
+        `).run(video.title || `Vídeo ${video.video_number || ''}`.trim(), JSON.stringify([platform]), scheduledAt, feedPostId, req.user.agency_id);
+      } else {
+        const postInfo = db.prepare(`
+          INSERT INTO posts (
+            agency_id, client_id, created_by, title, caption, content_type, platforms,
+            scheduled_at, status, feed_visible
+          ) VALUES (?, ?, ?, ?, '', 'reels', ?, ?, 'draft', 1)
+        `).run(
+          req.user.agency_id,
+          video.client_id,
+          req.user.id,
+          video.title || `Vídeo ${video.video_number || ''}`.trim(),
+          JSON.stringify([platform]),
+          scheduledAt
+        );
+        feedPostId = Number(postInfo.lastInsertRowid);
+        db.prepare('UPDATE audiovisual_video_schedules SET feed_post_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND agency_id = ?')
+          .run(feedPostId, scheduleId, req.user.agency_id);
+      }
+
+      db.prepare("UPDATE audiovisual_videos SET status = 'dated', updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+        .run(video.id, req.user.agency_id);
+
+      schedule = db.prepare('SELECT * FROM audiovisual_video_schedules WHERE id = ? AND agency_id = ?').get(scheduleId, req.user.agency_id);
+      return { schedule, feed_post_id: feedPostId };
+    })();
+
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('[AUDIOVISUAL] enviar para grade:', error);
+    return res.status(500).json({ error: 'Não foi possível enviar o vídeo para a grade. Atualize a página e tente novamente.' });
+  }
 });
 
 router.delete('/videos/:videoId/schedules/:scheduleId', (req, res) => {
@@ -888,8 +982,14 @@ router.delete('/videos/:videoId/schedules/:scheduleId', (req, res) => {
   const video = db.prepare('SELECT * FROM audiovisual_videos WHERE id = ? AND agency_id = ?').get(req.params.videoId, req.user.agency_id);
   if (!video) return res.status(404).json({ error: 'Vídeo não encontrado.' });
   if (!ensureClient(req, res, video.client_id)) return;
+  const schedule = db.prepare('SELECT * FROM audiovisual_video_schedules WHERE id = ? AND video_id = ? AND agency_id = ?')
+    .get(req.params.scheduleId, video.id, req.user.agency_id);
   db.prepare("UPDATE audiovisual_video_schedules SET status = 'cancelled', updated_at = datetime('now') WHERE id = ? AND video_id = ? AND agency_id = ?")
     .run(req.params.scheduleId, video.id, req.user.agency_id);
+  if (schedule?.feed_post_id) {
+    db.prepare("DELETE FROM posts WHERE id = ? AND agency_id = ? AND status IN ('draft','pending_approval','approved','rejected','scheduled')")
+      .run(schedule.feed_post_id, req.user.agency_id);
+  }
   const remaining = Number(db.prepare("SELECT COUNT(*) AS total FROM audiovisual_video_schedules WHERE video_id = ? AND status IN ('dated','scheduled')").get(video.id)?.total || 0);
   if (!remaining && ['dated', 'scheduled'].includes(video.status)) {
     db.prepare("UPDATE audiovisual_videos SET status = 'approved', updated_at = datetime('now') WHERE id = ? AND agency_id = ?").run(video.id, req.user.agency_id);

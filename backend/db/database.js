@@ -1078,6 +1078,7 @@ CREATE TABLE IF NOT EXISTS audiovisual_video_schedules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
   video_id INTEGER NOT NULL,
+  feed_post_id INTEGER,
   platform TEXT DEFAULT 'instagram',
   scheduled_at TEXT NOT NULL,
   status TEXT DEFAULT 'dated' CHECK(status IN ('dated','scheduled','posted','cancelled')),
@@ -1151,6 +1152,7 @@ tryAddColumn('audiovisual_videos', 'edited_at', 'TEXT');
 tryAddColumn('audiovisual_videos', 'posted_at', 'TEXT');
 tryAddColumn('audiovisual_video_schedules', 'posted_at', 'TEXT');
 tryAddColumn('audiovisual_video_schedules', 'post_url', 'TEXT');
+tryAddColumn('audiovisual_video_schedules', 'feed_post_id', 'INTEGER');
 
 tryAddColumn('posts', 'media_data', 'TEXT');
 tryAddColumn('posts', 'media_mime', 'TEXT');

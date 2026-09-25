@@ -387,7 +387,7 @@ export default function CompassPage() {
         </section>
       ) : (
         <>
-          <section className="relative rounded-[26px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
+          <section className="relative overflow-visible rounded-[26px] border border-slate-200 bg-white px-4 py-6 shadow-sm sm:px-6 lg:px-8">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Mapa da jornada</p>
@@ -402,24 +402,24 @@ export default function CompassPage() {
               </div>
             </div>
 
-            <div className="relative w-full pb-1">
-              <div className="relative w-full px-1 py-7 sm:px-2">
-                <svg className="pointer-events-none absolute inset-x-0 top-[30px] h-[132px] w-full" viewBox="0 0 1000 150" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M18 110 C85 18,145 18,205 92 S315 155,375 50 S490 4,545 88 S665 150,720 45 S835 5,982 65" fill="none" stroke="#e2e8f0" strokeWidth="6" strokeLinecap="round" />
-                  <path d="M18 110 C85 18,145 18,205 92 S315 155,375 50 S490 4,545 88 S665 150,720 45 S835 5,982 65" fill="none" stroke="#2563eb" strokeWidth="6" strokeLinecap="round" strokeDasharray="1000" strokeDashoffset={1000 - (overall * 10)} className="transition-all duration-700" />
+            <div className="relative w-full overflow-visible pb-3">
+              <div className="relative min-h-[310px] w-full overflow-visible px-2 py-9 sm:px-4 lg:px-6">
+                <svg className="pointer-events-none absolute left-5 right-5 top-[42px] h-[195px] w-[calc(100%-2.5rem)] overflow-visible" viewBox="0 0 1200 210" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M30 150 C115 28,190 28,265 125 S395 205,465 65 S610 10,675 120 S825 195,885 58 S1035 18,1170 102" fill="none" stroke="#e2e8f0" strokeWidth="7" strokeLinecap="round" />
+                  <path d="M30 150 C115 28,190 28,265 125 S395 205,465 65 S610 10,675 120 S825 195,885 58 S1035 18,1170 102" fill="none" stroke="#2563eb" strokeWidth="7" strokeLinecap="round" strokeDasharray="1200" strokeDashoffset={1200 - (overall * 12)} className="transition-all duration-700" />
                 </svg>
-                <div className="relative grid w-full grid-cols-6 gap-1.5 sm:gap-2 lg:gap-3">
+                <div className="relative grid w-full grid-cols-6 gap-2 sm:gap-3 lg:gap-5">
                   {JOURNEY.map((stage, index) => {
                     const stat = stageProgress[stage.id];
                     const completed = stat.percent === 100;
                     const active = currentStage.id === stage.id;
                     const Icon = stage.icon;
-                    const offsets = ['mt-12','mt-0','mt-14','mt-1','mt-11','mt-0'];
+                    const offsets = ['mt-20','mt-1','mt-24','mt-3','mt-20','mt-2'];
                     return <button key={stage.id} type="button" onClick={() => setOpenStage(stage.id)} className={`${offsets[index]} group min-w-0 text-left`}>
-                      <div className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-white shadow-md transition group-hover:scale-105 sm:h-11 sm:w-11 ${completed ? 'bg-emerald-500 text-white' : active ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-100 text-slate-500'}`}>
+                      <div className={`mx-auto flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-white shadow-md transition group-hover:scale-105 sm:h-12 sm:w-12 ${completed ? 'bg-emerald-500 text-white' : active ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-100 text-slate-500'}`}>
                         {completed ? <Check size={17} strokeWidth={3} /> : <Icon size={16} />}
                       </div>
-                      <div className={`mx-auto mt-2 min-h-[88px] w-full max-w-[138px] rounded-xl border bg-white p-2 shadow-sm transition sm:p-2.5 ${openStage === stage.id ? 'border-blue-300 shadow-blue-950/10' : 'border-slate-200'}`}>
+                      <div className={`mx-auto mt-2 min-h-[100px] w-full max-w-[156px] rounded-xl border bg-white p-2.5 shadow-sm transition sm:p-3 ${openStage === stage.id ? 'border-blue-300 shadow-blue-950/10' : 'border-slate-200'}`}>
                         <span className="text-[8px] font-black tracking-[0.10em] text-blue-600 sm:text-[9px]">ETAPA {stage.number}</span>
                         <p className="mt-1 break-words text-[10px] font-bold leading-[1.18] text-slate-900 sm:text-[11px] lg:text-xs">{stage.title}</p>
                         <p className="mt-1 text-[9px] text-slate-400 sm:text-[10px]">{stat.done}/{stat.total} concluídos</p>

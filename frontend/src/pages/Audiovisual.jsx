@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clapperboard,
   Clock3,
@@ -73,6 +74,24 @@ function formatMonthLabel(value) {
   if (!year || !month) return 'Mês';
   return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' })
     .format(new Date(year, month - 1, 1));
+}
+
+function shiftMonth(value, amount) {
+  const [year, month] = String(value || '').split('-').map(Number);
+  const date = new Date(year || new Date().getFullYear(), (month || 1) - 1 + amount, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthCalendarCells(value) {
+  const [year, month] = String(value || '').split('-').map(Number);
+  if (!year || !month) return [];
+  const first = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0).getDate();
+  const mondayOffset = (first.getDay() + 6) % 7;
+  const cells = Array.from({ length: mondayOffset }, () => null);
+  for (let day = 1; day <= lastDay; day += 1) cells.push(day);
+  while (cells.length % 7) cells.push(null);
+  return cells;
 }
 
 function linksFromText(value) {
@@ -380,7 +399,7 @@ export default function Audiovisual() {
         platform: form.platform,
       });
       setScheduleModal(null);
-      setNotice('Vídeo datado e enviado para a grade.');
+      setNotice('Vídeo datado e enviado para a grade do Social Media.');
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível agendar o vídeo.');
@@ -610,6 +629,8 @@ export default function Audiovisual() {
       {tab === 'agenda' && (
         <AgendaTab
           recordings={recordings}
+          referenceMonth={referenceMonth}
+          setReferenceMonth={setReferenceMonth}
           calendarStatus={calendarStatus}
           canManage={canManage}
           canCalendar={canCalendar}
@@ -910,9 +931,19 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
-function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connectCalendar, disconnectCalendar, openNewRecording, openHistoricalRecording, openComplete, onDelete }) {
+function AgendaTab({ recordings, referenceMonth, setReferenceMonth, calendarStatus, canManage, canCalendar, connectCalendar, disconnectCalendar, openNewRecording, openHistoricalRecording, openComplete, onDelete }) {
   const connected = Boolean(calendarStatus?.connection?.connected);
   const configured = Boolean(calendarStatus?.oauth?.configured);
+  const calendarCells = monthCalendarCells(referenceMonth);
+  const recordingsByDay = recordings.reduce((map, recording) => {
+    const date = String(recording.scheduled_start || '').slice(0, 10);
+    if (!date.startsWith(`${referenceMonth}-`)) return map;
+    const day = Number(date.slice(8, 10));
+    if (!map[day]) map[day] = [];
+    map[day].push(recording);
+    return map;
+  }, {});
+  const today = localDateTimeInput(new Date()).slice(0, 10);
   return (
     <div className="space-y-4">
       <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -934,32 +965,62 @@ function AgendaTab({ recordings, calendarStatus, canManage, canCalendar, connect
         </div>
       </section>
 
-      <section className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-bold text-slate-900">Agenda do mês</h2><p className="mt-1 text-xs text-slate-400">A data da gravação fica registrada aqui e, quando conectado, também no Google Agenda.</p></div>
-        <div className="divide-y divide-slate-100">
-          {recordings.map((recording) => {
-            const isOverdue = recording.status === 'scheduled' && String(recording.scheduled_start || '').slice(0, 10) < localDateTimeInput(new Date()).slice(0, 10);
-            return (
-            <div key={recording.id} className={`flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center ${isOverdue ? 'bg-amber-50/50' : ''}`}>
-              <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl bg-slate-950 text-white">
-                <strong className="text-lg leading-none">{String(recording.scheduled_start || '').slice(8, 10)}</strong>
-                <span className="mt-1 text-[9px] font-bold uppercase text-white/50">{formatDate(recording.scheduled_start).slice(3, 5)}</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-bold text-slate-900">{recording.client_name}</h3><StatusPill status={recording.status} /></div>
-                <p className="mt-1 text-xs text-slate-500">{formatDate(recording.scheduled_start, { time: true })}{recording.location ? ` · ${recording.location}` : ''}{recording.responsible_name ? ` · ${recording.responsible_name}` : ''}</p>
-                {recording.status === 'recorded' && <p className="mt-1 text-xs font-semibold text-emerald-600">{recording.video_count || recording.videos_created || 0} vídeo(s) gravado(s)</p>}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {recording.google_event_link && <a href={recording.google_event_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"><ExternalLink size={13} /> Google</a>}
-                {canManage && recording.status === 'scheduled' && <button type="button" onClick={() => openComplete(recording)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white">Concluir gravação</button>}
-                {canManage && recording.status !== 'recorded' && <button type="button" onClick={() => onDelete(recording)} className="rounded-xl p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>}
-              </div>
-              {isOverdue && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">Pendente</span>}
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+          <div>
+            <h2 className="font-bold text-slate-900">Agenda do mês</h2>
+            <p className="mt-0.5 text-xs text-slate-400">Visualização em calendário das gravações planejadas e concluídas.</p>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
+            <button type="button" onClick={() => setReferenceMonth(shiftMonth(referenceMonth, -1))} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white hover:text-slate-900" aria-label="Mês anterior"><ChevronLeft size={15} /></button>
+            <span className="min-w-[150px] px-2 text-center text-xs font-bold capitalize text-slate-700">{formatMonthLabel(referenceMonth)}</span>
+            <button type="button" onClick={() => setReferenceMonth(shiftMonth(referenceMonth, 1))} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white hover:text-slate-900" aria-label="Próximo mês"><ChevronRight size={15} /></button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <div className="min-w-[920px]">
+            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80">
+              {['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'].map((day) => <div key={day} className="px-3 py-2 text-center text-[10px] font-black tracking-[0.14em] text-slate-400">{day}</div>)}
             </div>
-            );
-          })}
-          {!recordings.length && <p className="px-5 py-14 text-center text-sm text-slate-400">Nenhuma gravação neste mês.</p>}
+            <div className="grid grid-cols-7">
+              {calendarCells.map((day, index) => {
+                if (!day) return <div key={`empty-${index}`} className="min-h-[132px] border-b border-r border-slate-100 bg-slate-50/40" />;
+                const dateKey = `${referenceMonth}-${String(day).padStart(2, '0')}`;
+                const dayRecordings = recordingsByDay[day] || [];
+                const isToday = dateKey === today;
+                return (
+                  <div key={dateKey} className={`min-h-[132px] border-b border-r border-slate-100 p-2.5 ${isToday ? 'bg-blue-50/45' : 'bg-white'}`}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${isToday ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>{day}</span>
+                      {dayRecordings.length > 0 && <span className="text-[9px] font-bold text-slate-300">{dayRecordings.length}</span>}
+                    </div>
+                    <div className="space-y-1.5">
+                      {dayRecordings.map((recording) => {
+                        const isOverdue = recording.status === 'scheduled' && dateKey < today;
+                        return (
+                          <div key={recording.id} className={`group rounded-xl border px-2.5 py-2 shadow-sm ${recording.status === 'recorded' ? 'border-emerald-200 bg-emerald-50' : isOverdue ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[11px] font-black text-slate-800">{recording.client_name}</p>
+                                <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">{String(recording.scheduled_start || '').slice(11, 16)}{recording.responsible_name ? ` · ${recording.responsible_name}` : ''}</p>
+                              </div>
+                              {recording.status === 'recorded' ? <CheckCircle2 size={13} className="shrink-0 text-emerald-600" /> : isOverdue ? <AlertTriangle size={13} className="shrink-0 text-amber-600" /> : <Clock3 size={13} className="shrink-0 text-blue-500" />}
+                            </div>
+                            <div className="mt-2 flex items-center gap-1">
+                              {recording.google_event_link && <a href={recording.google_event_link} target="_blank" rel="noreferrer" title="Abrir no Google Agenda" className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-400 hover:text-blue-600"><ExternalLink size={11} /></a>}
+                              {canManage && recording.status === 'scheduled' && <button type="button" onClick={() => openComplete(recording)} title="Concluir gravação" className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-600 text-white"><Check size={12} /></button>}
+                              {canManage && recording.status !== 'recorded' && <button type="button" onClick={() => onDelete(recording)} title="Excluir gravação" className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-300 hover:bg-red-50 hover:text-red-600"><Trash2 size={11} /></button>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </section>
     </div>

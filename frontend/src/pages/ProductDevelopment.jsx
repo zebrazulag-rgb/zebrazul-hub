@@ -36,27 +36,27 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
 
 const STATUS_COLUMNS = [
-  { key: 'backlog', label: 'Backlog', short: 'Backlog', tone: 'slate' },
-  { key: 'analysis', label: 'Em análise', short: 'Análise', tone: 'violet' },
-  { key: 'ready', label: 'Pronto para desenvolver', short: 'Pronto', tone: 'blue' },
-  { key: 'development', label: 'Em desenvolvimento', short: 'Desenvolvimento', tone: 'indigo' },
-  { key: 'testing', label: 'Em teste', short: 'Teste', tone: 'amber' },
-  { key: 'awaiting_owner', label: 'Aguardando Arthur', short: 'Arthur', tone: 'orange' },
-  { key: 'ready_production', label: 'Pronto para produção', short: 'Produção', tone: 'emerald' },
+  { key: 'backlog', label: 'Ideias', short: 'Ideias', tone: 'slate' },
+  { key: 'analysis', label: 'Avaliando', short: 'Avaliando', tone: 'violet' },
+  { key: 'ready', label: 'Pronto para começar', short: 'Pronto', tone: 'blue' },
+  { key: 'development', label: 'Em andamento', short: 'Andamento', tone: 'indigo' },
+  { key: 'testing', label: 'Conferindo', short: 'Conferindo', tone: 'amber' },
+  { key: 'awaiting_owner', label: 'Precisa de você', short: 'Você', tone: 'orange' },
+  { key: 'ready_production', label: 'Pronto para publicar', short: 'Publicar', tone: 'emerald' },
   { key: 'done', label: 'Concluído', short: 'Concluído', tone: 'green' },
 ];
 
 const TYPE_OPTIONS = [
-  ['bug', 'Bug'],
+  ['bug', 'Problema'],
   ['improvement', 'Melhoria'],
   ['feature', 'Nova função'],
-  ['tech_debt', 'Débito técnico'],
+  ['tech_debt', 'Melhoria interna'],
 ];
 
 const PRIORITY_OPTIONS = [
-  ['critical', 'Crítica'],
+  ['critical', 'Urgente'],
   ['high', 'Alta'],
-  ['medium', 'Média'],
+  ['medium', 'Normal'],
   ['low', 'Baixa'],
 ];
 
@@ -378,23 +378,23 @@ export default function ProductDevelopment() {
     try {
       await api.post('/product/releases', form);
       setReleaseModal(null);
-      setNotice('Release criada.');
+      setNotice('Entrega preparada.');
       await loadAll({ quiet: true });
       setTab('releases');
     } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível criar a release.');
+      setError(requestError.response?.data?.error || 'Não foi possível preparar a entrega.');
     } finally {
       setBusy('');
     }
   }
 
   async function deployRelease(release) {
-    if (!canApprove || !window.confirm(`Confirmar que a release ${release.version} foi publicada em produção?`)) return;
+    if (!canApprove || !window.confirm(`Confirmar que a entrega ${release.version} foi publicada?`)) return;
     setBusy(`deploy-${release.id}`);
     setError('');
     try {
       await api.post(`/product/releases/${release.id}/deploy`);
-      setNotice(`Release ${release.version} publicada.`);
+      setNotice(`Entrega ${release.version} publicada.`);
       await loadAll({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível confirmar o deploy.');
@@ -410,7 +410,7 @@ export default function ProductDevelopment() {
     setBusy(`rollback-${release.id}`);
     try {
       await api.post(`/product/releases/${release.id}/rollback`, { notes });
-      setNotice(`Rollback da release ${release.version} registrado.`);
+      setNotice(`Retorno da entrega ${release.version} registrado.`);
       await loadAll({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível registrar rollback.');
@@ -444,7 +444,7 @@ export default function ProductDevelopment() {
                 onClick={() => setNewItem({ ...EMPTY_ITEM })}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
               >
-                <Plus size={15} /> Nova demanda
+                <Plus size={15} /> Novo pedido
               </button>
             )}
             <button
@@ -459,10 +459,10 @@ export default function ProductDevelopment() {
 
         <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
           {[
-            ['overview', 'Painel'],
-            ['backlog', 'Backlog'],
-            ['development', 'Desenvolvimento'],
-            ['releases', 'Releases'],
+            ['overview', 'Visão geral'],
+            ['backlog', 'A fazer'],
+            ['development', 'Andamento'],
+            ['releases', 'Entregas'],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -610,19 +610,15 @@ export default function ProductDevelopment() {
 
 function Overview({ stats, priority, releases, openItem, setTab }) {
   const metrics = [
-    ['Abertas', stats.total_open || 0, Code2],
-    ['Críticas', stats.critical || 0, ShieldAlert],
-    ['Desenvolvimento', stats.development || 0, GitBranch],
-    ['Em teste', stats.testing || 0, TestTube2],
-    ['Aguardando Arthur', stats.awaiting_owner || 0, UserRound],
-    ['Prontas p/ produção', stats.ready_production || 0, Rocket],
-    ['Bloqueadas', stats.blocked || 0, AlertTriangle],
-    ['Entregues no mês', stats.delivered_month || 0, BadgeCheck],
+    ['A fazer', stats.total_open || 0, Code2],
+    ['Em andamento', stats.development || 0, GitBranch],
+    ['Precisa de você', stats.awaiting_owner || 0, UserRound],
+    ['Concluídas no mês', stats.delivered_month || 0, BadgeCheck],
   ];
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {metrics.map(([label, value, Icon]) => (
           <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-50 text-slate-500"><Icon size={15} /></span>
@@ -636,13 +632,13 @@ function Overview({ stats, priority, releases, openItem, setTab }) {
         <section className="overflow-hidden rounded-[26px] border border-red-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-red-100 bg-red-50/70 px-5 py-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-600">Resolver primeiro</p>
-              <h2 className="mt-1 text-lg font-black text-slate-950">Risco, bloqueios e bugs críticos</h2>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-600">Precisa de atenção</p>
+              <h2 className="mt-1 text-lg font-black text-slate-950">O que vale olhar primeiro</h2>
             </div>
-            <button type="button" onClick={() => setTab('development')} className="text-xs font-bold text-red-700">Abrir Kanban <ChevronRight size={14} className="inline" /></button>
+            <button type="button" onClick={() => setTab('development')} className="text-xs font-bold text-red-700">Ver andamento <ChevronRight size={14} className="inline" /></button>
           </div>
           <div className="divide-y divide-slate-100">
-            {!priority.length && <p className="px-5 py-12 text-center text-sm text-slate-400">Nenhum item crítico ou bloqueado agora.</p>}
+            {!priority.length && <p className="px-5 py-12 text-center text-sm text-slate-400">Nada urgente por aqui agora.</p>}
             {priority.map((item) => (
               <button key={item.id} type="button" onClick={() => openItem(item.id)} className="flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-slate-50">
                 <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${priorityClass(item.priority)}`}>{typeIcon(item.type, 15)}</span>
@@ -663,13 +659,13 @@ function Overview({ stats, priority, releases, openItem, setTab }) {
         <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Últimas releases</p>
-              <h2 className="mt-1 text-lg font-black text-slate-950">Produção</h2>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Últimas entregas</p>
+              <h2 className="mt-1 text-lg font-black text-slate-950">O que já foi ao ar</h2>
             </div>
-            <button type="button" onClick={() => setTab('releases')} className="text-xs font-bold text-blue-600">Ver releases</button>
+            <button type="button" onClick={() => setTab('releases')} className="text-xs font-bold text-blue-600">Ver entregas</button>
           </div>
           <div className="mt-4 space-y-2">
-            {!releases.length && <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400">Nenhuma release registrada.</p>}
+            {!releases.length && <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400">Nenhuma entrega registrada.</p>}
             {releases.map((release) => (
               <div key={release.id} className="rounded-2xl bg-slate-50 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
@@ -677,7 +673,7 @@ function Overview({ stats, priority, releases, openItem, setTab }) {
                   <ReleaseStatus status={release.status} />
                 </div>
                 <p className="mt-1 truncate text-xs text-slate-500">{release.title}</p>
-                <p className="mt-2 text-[10px] font-semibold text-slate-400">{release.items_count} demanda(s)</p>
+                <p className="mt-2 text-[10px] font-semibold text-slate-400">{release.items_count} item(ns)</p>
               </div>
             ))}
           </div>
@@ -714,12 +710,12 @@ function Backlog(props) {
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-slate-500">Ideias, bugs e melhorias antes de entrarem em desenvolvimento.</p>
-        {props.canCreate && <button type="button" onClick={props.onCreate} className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white"><Plus size={14} /> Nova demanda</button>}
+        <p className="text-sm text-slate-500">Pedidos, problemas e melhorias que ainda não começaram.</p>
+        {props.canCreate && <button type="button" onClick={props.onCreate} className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white"><Plus size={14} /> Novo pedido</button>}
       </div>
       <Filters {...props} />
       <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-        {!props.items.length && <p className="px-5 py-14 text-center text-sm text-slate-400">Nenhuma demanda encontrada no backlog.</p>}
+        {!props.items.length && <p className="px-5 py-14 text-center text-sm text-slate-400">Nenhum pedido pendente aqui.</p>}
         <div className="divide-y divide-slate-100">
           {props.items.map((item) => (
             <button key={item.id} type="button" onClick={() => props.openItem(item.id)} className="grid w-full gap-3 px-5 py-4 text-left hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_140px_130px_170px_100px] md:items-center">
@@ -807,14 +803,14 @@ function Releases({ releases, readyItems, canManage, canApprove, openItem, onCre
       <section className="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">Entrega</p>
-          <h2 className="mt-1 text-lg font-black text-slate-950">Releases do ZebraHub</h2>
-          <p className="mt-1 text-xs text-slate-500">{readyItems.length} demanda(s) aprovadas aguardando produção.</p>
+          <h2 className="mt-1 text-lg font-black text-slate-950">Publicações do ZebraHub</h2>
+          <p className="mt-1 text-xs text-slate-500">{readyItems.length} item(ns) prontos para publicar.</p>
         </div>
-        {canManage && <button type="button" onClick={onCreate} disabled={!readyItems.length} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><PackageCheck size={15} /> Montar release</button>}
+        {canManage && <button type="button" onClick={onCreate} disabled={!readyItems.length} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><PackageCheck size={15} /> Preparar entrega</button>}
       </section>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        {!releases.length && <div className="rounded-[24px] border border-dashed border-slate-300 bg-white px-5 py-16 text-center text-sm text-slate-400 lg:col-span-2">Nenhuma release registrada ainda.</div>}
+        {!releases.length && <div className="rounded-[24px] border border-dashed border-slate-300 bg-white px-5 py-16 text-center text-sm text-slate-400 lg:col-span-2">Nenhuma entrega registrada ainda.</div>}
         {releases.map((release) => (
           <article key={release.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -847,11 +843,11 @@ function Releases({ releases, readyItems, canManage, canApprove, openItem, onCre
               <div className="ml-auto flex gap-2">
                 {canApprove && release.status !== 'production' && release.status !== 'rolled_back' && (
                   <button type="button" onClick={() => deployRelease(release)} disabled={busy === `deploy-${release.id}`} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                    {busy === `deploy-${release.id}` ? 'Publicando...' : 'Confirmar deploy'}
+                    {busy === `deploy-${release.id}` ? 'Publicando...' : 'Marcar como publicado'}
                   </button>
                 )}
                 {canApprove && release.status === 'production' && (
-                  <button type="button" onClick={() => rollbackRelease(release)} className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Registrar rollback</button>
+                  <button type="button" onClick={() => rollbackRelease(release)} className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-600">Desfazer publicação</button>
                 )}
               </div>
             </div>
@@ -1021,28 +1017,23 @@ function CreateItemModal({ form, setForm, users, busy, onClose, onSave }) {
       <div className="w-full max-w-3xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Plus size={18} /></span>
-          <div className="flex-1"><h2 className="font-black text-slate-950">Nova demanda de Produto</h2><p className="mt-0.5 text-xs text-slate-400">Registre primeiro o problema. A solução pode evoluir durante a análise.</p></div>
+          <div className="flex-1"><h2 className="font-black text-slate-950">Novo pedido</h2><p className="mt-0.5 text-xs text-slate-400">Explique do seu jeito. A parte técnica pode ser organizada depois.</p></div>
           <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={16} /></button>
         </div>
         <div className="max-h-[76vh] space-y-4 overflow-y-auto p-5">
-          <FormField label="Título *" value={form.title} onChange={(value) => setForm({ ...form, title: value })} />
+          <FormField label="O que você quer resolver? *" value={form.title} onChange={(value) => setForm({ ...form, title: value })} placeholder="Ex.: calendário do Audiovisual não mostra o mês inteiro" />
           <div className="grid gap-3 sm:grid-cols-2">
             <SelectField label="Tipo" value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={TYPE_OPTIONS} />
             <SelectField label="Prioridade" value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={PRIORITY_OPTIONS} />
             <DatalistField label="Módulo" value={form.module} onChange={(value) => setForm({ ...form, module: value })} />
             <SelectField label="Responsável" value={form.assignee_id} onChange={(value) => setForm({ ...form, assignee_id: value })} options={[['','Não atribuído'], ...users.map((person) => [String(person.id), person.name])]} />
           </div>
-          <TextArea label="Problema" value={form.problem} onChange={(value) => setForm({ ...form, problem: value })} placeholder="O que está impedindo, atrasando ou gerando retrabalho?" />
-          <div className="grid gap-3 lg:grid-cols-2">
-            <TextArea label="Comportamento atual" value={form.current_behavior} onChange={(value) => setForm({ ...form, current_behavior: value })} />
-            <TextArea label="Comportamento esperado" value={form.expected_behavior} onChange={(value) => setForm({ ...form, expected_behavior: value })} />
-          </div>
-          <TextArea label="Critérios de aceite" value={form.acceptance_criteria} onChange={(value) => setForm({ ...form, acceptance_criteria: value })} />
+          <TextArea label="Explique o que está acontecendo ou o que você gostaria" value={form.problem} onChange={(value) => setForm({ ...form, problem: value })} placeholder="Pode escrever normalmente, sem termos técnicos." />
           {form.origin_url ? <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700">Origem: {form.origin_url}</p> : null}
         </div>
         <div className="flex gap-2 border-t border-slate-100 p-4">
           <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Cancelar</button>
-          <button type="button" onClick={() => onSave(form)} disabled={busy || !form.title.trim()} className="flex-1 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{busy ? 'Criando...' : 'Criar demanda'}</button>
+          <button type="button" onClick={() => onSave(form)} disabled={busy || !form.title.trim()} className="flex-1 rounded-xl bg-[#0969ff] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{busy ? 'Criando...' : 'Criar pedido'}</button>
         </div>
       </div>
     </ModalBackdrop>
@@ -1060,7 +1051,7 @@ function ReleaseModal({ form, setForm, items, busy, onClose, onSave }) {
       <div className="w-full max-w-3xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><PackageCheck size={18} /></span>
-          <div className="flex-1"><h2 className="font-black text-slate-950">Montar release</h2><p className="mt-0.5 text-xs text-slate-400">Agrupe apenas demandas já aprovadas para produção.</p></div>
+          <div className="flex-1"><h2 className="font-black text-slate-950">Preparar entrega</h2><p className="mt-0.5 text-xs text-slate-400">Escolha o que está pronto. A parte técnica abaixo é opcional.</p></div>
           <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={16} /></button>
         </div>
         <div className="max-h-[76vh] space-y-4 overflow-y-auto p-5">
@@ -1069,7 +1060,7 @@ function ReleaseModal({ form, setForm, items, busy, onClose, onSave }) {
             <FormField label="Título" value={form.title} onChange={(value) => setForm({ ...form, title: value })} placeholder="Ex.: Audiovisual + correções Social Media" />
           </div>
           <div>
-            <p className="mb-2 text-xs font-bold text-slate-600">Demandas incluídas</p>
+            <p className="mb-2 text-xs font-bold text-slate-600">Itens incluídos</p>
             <div className="space-y-2 rounded-2xl border border-slate-200 p-3">
               {items.map((item) => (
                 <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-xl px-2 py-2 hover:bg-slate-50">
@@ -1079,18 +1070,24 @@ function ReleaseModal({ form, setForm, items, busy, onClose, onSave }) {
               ))}
             </div>
           </div>
-          <TextArea label="Notas da release" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
-          <TextArea label="Arquivos alterados" value={form.files_changed} onChange={(value) => setForm({ ...form, files_changed: value })} />
-          <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
-            <span><strong className="block text-xs text-slate-700">Tem migration de banco?</strong><small className="text-[10px] text-slate-400">Marque se a versão altera schema ou dados.</small></span>
-            <input type="checkbox" checked={Boolean(form.migration_required)} onChange={(event) => setForm({ ...form, migration_required: event.target.checked })} className="h-4 w-4 accent-amber-600" />
-          </label>
-          <TextArea label="Variáveis novas / alteradas" value={form.env_vars} onChange={(value) => setForm({ ...form, env_vars: value })} placeholder="Ex.: NOVA_VARIAVEL=..." />
-          <TextArea label="Plano de rollback" value={form.rollback_plan} onChange={(value) => setForm({ ...form, rollback_plan: value })} placeholder="Como voltar com segurança se algo falhar?" />
+          <TextArea label="Resumo da entrega" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
+          <details className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+            <summary className="cursor-pointer text-xs font-bold text-slate-700">Opções técnicas (opcional)</summary>
+            <p className="mt-1 text-[11px] leading-5 text-slate-400">Se você não souber preencher, pode deixar tudo abaixo em branco.</p>
+            <div className="mt-4 space-y-4">
+              <TextArea label="Arquivos alterados" value={form.files_changed} onChange={(value) => setForm({ ...form, files_changed: value })} />
+              <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <span><strong className="block text-xs text-slate-700">Alterou o banco de dados?</strong><small className="text-[10px] text-slate-400">Só marque se alguém da parte técnica orientar.</small></span>
+                <input type="checkbox" checked={Boolean(form.migration_required)} onChange={(event) => setForm({ ...form, migration_required: event.target.checked })} className="h-4 w-4 accent-amber-600" />
+              </label>
+              <TextArea label="Variáveis novas / alteradas" value={form.env_vars} onChange={(value) => setForm({ ...form, env_vars: value })} placeholder="Pode deixar em branco" />
+              <TextArea label="Plano para desfazer" value={form.rollback_plan} onChange={(value) => setForm({ ...form, rollback_plan: value })} placeholder="Pode deixar em branco" />
+            </div>
+          </details>
         </div>
         <div className="flex gap-2 border-t border-slate-100 p-4">
           <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Cancelar</button>
-          <button type="button" onClick={() => onSave(form)} disabled={busy || !form.version.trim() || !(form.item_ids || []).length} className="flex-1 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{busy ? 'Criando...' : 'Criar release'}</button>
+          <button type="button" onClick={() => onSave(form)} disabled={busy || !form.version.trim() || !(form.item_ids || []).length} className="flex-1 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{busy ? 'Salvando...' : 'Salvar entrega'}</button>
         </div>
       </div>
     </ModalBackdrop>
@@ -1116,8 +1113,8 @@ function ReleaseStatus({ status }) {
   const map = {
     draft: ['Rascunho', 'bg-slate-100 text-slate-600'],
     ready: ['Pronta', 'bg-blue-100 text-blue-700'],
-    production: ['Produção', 'bg-emerald-100 text-emerald-700'],
-    rolled_back: ['Rollback', 'bg-red-100 text-red-700'],
+    production: ['No ar', 'bg-emerald-100 text-emerald-700'],
+    rolled_back: ['Desfeita', 'bg-red-100 text-red-700'],
   };
   const [label, classes] = map[status] || map.draft;
   return <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wide ${classes}`}>{label}</span>;

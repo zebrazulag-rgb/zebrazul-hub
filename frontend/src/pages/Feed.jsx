@@ -16,13 +16,13 @@ import FeedHighlightsManager from '../components/FeedHighlightsManager.jsx';
 import { formChanged } from '../utils/formState.js';
 import { hasPermission } from '../permissions.js';
 
-export default function Feed() {
+export default function Feed({ forcedView = null, toolMode = false }) {
   const { user } = useAuth();
 
   const { selectedClient } = useClientFilter();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedView = searchParams.get('view');
+  const requestedView = forcedView || searchParams.get('view');
   const canFeedCreate = hasPermission(user, 'social.feed_create');
   const canShareFeed = hasPermission(user, 'social.feed_share');
   const canSocialMediaLink = hasPermission(user, 'social.link_social_media');
@@ -36,7 +36,7 @@ export default function Feed() {
       : requestedView === 'compare' ? canCompare
         : requestedView === 'calendar' ? canCalendar
           : true;
-  const activeView = requestedAllowed && ['calendar', 'published', 'compare', 'covers'].includes(requestedView) ? requestedView : 'grid';
+  const activeView = forcedView || (requestedAllowed && ['calendar', 'published', 'compare', 'covers'].includes(requestedView) ? requestedView : 'grid');
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
@@ -324,6 +324,7 @@ export default function Feed() {
   }, [clientId, posts, publishedPosts, coverAnalyses, canCovers]);
 
   function switchView(view) {
+    if (forcedView) return;
     setOpenPost(null);
     setSearchParams(view === 'grid' ? {} : { view }, { replace: true });
   }
@@ -696,21 +697,9 @@ export default function Feed() {
     avatar_data: publishedConnection?.instagram_picture_url || currentClient.avatar_data,
   } : currentClient;
 
-  const viewDescription = {
-    grid: 'Feed planejado no ZebraHub, com a grade limpa para organizar a sequência das publicações.',
-    covers: 'Área exclusiva para revisar capas de Reels e vídeos antes e depois da publicação.',
-    published: 'Feed publicado no Instagram, usando a última sincronização disponível.',
-    compare: 'Compare lado a lado o que foi planejado no ZebraHub com o que está publicado.',
-    calendar: 'Visualize as datas de publicação dentro do planejamento do feed.',
-  }[activeView];
-
   return (
     <div className="feed-page space-y-6 min-w-0">
-      <div className="flex items-center justify-between flex-wrap gap-4 min-w-0">
-        <div className="hidden min-w-0 sm:block">
-          <h1 className="text-2xl font-bold text-slate-800">Feed em tempo real</h1>
-          <p className="text-slate-500 mt-1">{viewDescription}</p>
-        </div>
+      {!toolMode && <div className="flex items-center justify-end flex-wrap gap-4 min-w-0">
         {clientId && (canFeedCreate || canShareFeed || canSocialMediaLink) && (
           <div className="flex w-full items-center gap-1.5 flex-nowrap sm:w-auto sm:gap-2 sm:flex-wrap">
             {canFeedCreate && <button
@@ -743,9 +732,9 @@ export default function Feed() {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
-      <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      {!toolMode && <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         <button
           onClick={() => switchView('grid')}
           className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -754,26 +743,6 @@ export default function Feed() {
         >
           <Grid3x3 size={17} /> Planejado
         </button>
-        {canCovers && (
-        <button
-          onClick={() => switchView('covers')}
-          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            activeView === 'covers' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Sparkles size={17} /> Capas
-        </button>
-        )}
-        {canPublished && (
-        <button
-          onClick={() => switchView('published')}
-          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            activeView === 'published' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Radio size={17} /> Publicado
-        </button>
-        )}
         {canCompare && (
         <button
           onClick={() => switchView('compare')}
@@ -784,17 +753,7 @@ export default function Feed() {
           <Columns3 size={17} /> Comparar
         </button>
         )}
-        {canCalendar && (
-        <button
-          onClick={() => switchView('calendar')}
-          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            activeView === 'calendar' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <CalendarDays size={17} /> Calendário
-        </button>
-        )}
-      </div>
+      </div>}
 
       {clientId && activeView === 'grid' && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
