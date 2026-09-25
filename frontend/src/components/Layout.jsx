@@ -30,7 +30,6 @@ import {
   Code2,
   Bug,
   CalendarDays,
-  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -259,7 +258,6 @@ export default function Layout({ children }) {
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
-    { to: '/ia', label: 'IA', icon: Sparkles, permission: 'social.view' },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
@@ -275,11 +273,8 @@ export default function Layout({ children }) {
         if (item.to === '/bussola') {
           if (!anyPermission(user, ['compass.view', 'materials.view'])) return false;
         } else if (!hasPermission(user, item.permission)) return false;
-        if (item.to === '/social-media') {
-          return hasPermission(user, 'social.feed');
-        }
-        if (item.to === '/ia') {
-          return anyPermission(user, ['social.covers', 'social.stories']);
+        if (item.permission === 'social.view') {
+          return anyPermission(user, ['social.feed', 'social.stories', 'social.messages']);
         }
         return true;
       });
@@ -292,7 +287,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/produto','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/produto','/bussola','/relatorios','/rematriculas'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -311,7 +306,6 @@ export default function Layout({ children }) {
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/relatorios')) return 'Relatórios';
     if (path.startsWith('/organizacao')) return 'Meu Espaço';
-    if (path.startsWith('/ia')) return 'IA';
     if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
     if (path.startsWith('/bussola')) return 'Bússola';
@@ -436,8 +430,6 @@ export default function Layout({ children }) {
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
             <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
           </div>
-
-          <div id="zebrahub-topbar-tools" className="ml-3 hidden min-w-0 flex-1 items-center gap-2 overflow-x-auto lg:flex" />
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
             {!isClientPortal && hasPermission(user, 'product.create') && (

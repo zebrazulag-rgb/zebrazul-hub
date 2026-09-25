@@ -180,7 +180,7 @@ function routeContext(req) {
   } else if (['diagnostics', 'action-plans', 'planning-documents', 'bee-campaign-briefing'].includes(module)) {
     module = 'compass'; entityType = 'strategic_item'; entityId = numericPart(parts[1]);
     summary = 'Atualizou conteúdo estratégico da Bússola';
-  } else if (['meta', 'meta-organic', 'instagram-stories', 'feed-intelligence'].includes(module)) {
+  } else if (['meta', 'meta-organic', 'instagram-stories', 'instagram-messages', 'feed-intelligence'].includes(module)) {
     const sourceModule = module;
     module = 'social'; entityType = 'social_operation';
     if (path.includes('sync')) summary = 'Sincronizou dados de Social Media';
