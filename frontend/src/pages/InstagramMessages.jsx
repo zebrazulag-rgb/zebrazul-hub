@@ -426,7 +426,11 @@ export default function InstagramMessages() {
                   ) : messages.map((message) => (
                     <div key={message.id || `${message.created_time}-${message.text}`} className={`mb-3 flex ${message.is_from_business ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 shadow-sm ${message.is_from_business ? 'rounded-br-md bg-blue-600 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-800'}`}>
-                        {message.text && <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>}
+                        {message.text ? (
+                          <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.text}</p>
+                        ) : (!message.attachments?.length ? (
+                          <p className={`text-xs italic ${message.is_from_business ? 'text-blue-100' : 'text-slate-400'}`}>Conteúdo do Instagram</p>
+                        ) : null)}
                         {message.attachments?.map((attachment, index) => <Attachment key={`${message.id}-att-${index}`} attachment={attachment} />)}
                         <p className={`mt-1 text-[10px] ${message.is_from_business ? 'text-blue-100' : 'text-slate-400'}`}>{fullDate(message.created_time)}</p>
                       </div>

@@ -89,7 +89,33 @@ function normalizeAttachment(attachment) {
   };
 }
 
-function normalizeMessage(message, instagramUserId) {
+function normalizeUsername(value) {
+  return String(value || '').trim().replace(/^@/, '').toLowerCase();
+}
+
+function businessIdentity(connection, bundle) {
+  const ids = new Set([
+    bundle?.instagramUserId,
+    bundle?.instagram_user_id,
+    connection?.instagram_user_id,
+    connection?.instagramUserId,
+    connection?.id,
+  ].filter(Boolean).map((value) => String(value)));
+  const usernames = new Set([
+    connection?.username,
+    bundle?.username,
+  ].map(normalizeUsername).filter(Boolean));
+  return { ids, usernames };
+}
+
+function isBusinessParticipant(participant, identity) {
+  if (!participant) return false;
+  if (participant.id && identity?.ids?.has(String(participant.id))) return true;
+  const username = normalizeUsername(participant.username);
+  return Boolean(username && identity?.usernames?.has(username));
+}
+
+function normalizeMessage(message, identity) {
   const from = normalizeParticipant(message?.from);
   const to = arrayData(message?.to).map(normalizeParticipant).filter(Boolean);
   const attachments = arrayData(message?.attachments)
@@ -102,15 +128,14 @@ function normalizeMessage(message, instagramUserId) {
     from,
     to,
     attachments,
-    is_from_business: Boolean(from?.id && String(from.id) === String(instagramUserId)),
+    is_from_business: isBusinessParticipant(from, identity),
   };
 }
 
-function peerFromParticipants(participants, instagramUserId) {
+function peerFromParticipants(participants, identity) {
   const normalized = arrayData(participants).map(normalizeParticipant).filter(Boolean);
-  return normalized.find((item) => item.id && String(item.id) !== String(instagramUserId))
-    || normalized[0]
-    || null;
+  const external = normalized.find((item) => !isBusinessParticipant(item, identity));
+  return external || null;
 }
 
 async function enrichPeer(peer, accessToken) {
@@ -160,15 +185,16 @@ async function listConversations(clientId, agencyId, { limit = DEFAULT_LIMIT, af
   try {
     const { connection, bundle } = messagingBundle(clientId, agencyId);
     const instagramUserId = String(bundle.instagramUserId);
+    const identity = businessIdentity(connection, bundle);
     const safeLimit = Math.max(1, Math.min(Number(limit || DEFAULT_LIMIT), 50));
     const payload = await fetchConversationList(bundle, safeLimit, after);
     const rows = Array.isArray(payload?.data) ? payload.data : [];
 
     const conversations = await Promise.all(rows.map(async (row) => {
-      let peer = peerFromParticipants(row.participants, instagramUserId);
+      let peer = peerFromParticipants(row.participants, identity);
       peer = await enrichPeer(peer, bundle.accessToken);
       const latestRaw = arrayData(row.messages)[0] || null;
-      const latest = latestRaw ? normalizeMessage(latestRaw, instagramUserId) : null;
+      const latest = latestRaw ? normalizeMessage(latestRaw, identity) : null;
       return {
         id: String(row.id),
         updated_time: row.updated_time || latest?.created_time || null,
@@ -199,11 +225,12 @@ async function listConversations(clientId, agencyId, { limit = DEFAULT_LIMIT, af
   }
 }
 
-async function conversationInfo(conversationId, bundle) {
+async function conversationInfo(conversationId, bundle, connection = null) {
   const payload = await instagramGraphRequest(String(conversationId), {
     fields: 'id,updated_time,participants',
   }, bundle.accessToken);
-  let peer = peerFromParticipants(payload?.participants, bundle.instagramUserId);
+  const identity = businessIdentity(connection, bundle);
+  let peer = peerFromParticipants(payload?.participants, identity);
   peer = await enrichPeer(peer, bundle.accessToken);
   return {
     id: String(payload?.id || conversationId),
@@ -216,34 +243,46 @@ async function getConversation(clientId, agencyId, conversationId, { limit = 20 
   try {
     const { connection, bundle } = messagingBundle(clientId, agencyId);
     const safeLimit = Math.max(1, Math.min(Number(limit || 20), 20));
-    let expanded = null;
+    const identity = businessIdentity(connection, bundle);
     let info = null;
+    let expanded = null;
 
     try {
+      info = await conversationInfo(conversationId, bundle, connection);
+    } catch {
+      // Algumas versões retornam participants apenas quando a conversa é expandida.
       expanded = await instagramGraphRequest(String(conversationId), {
         fields: `id,updated_time,participants,messages.limit(${safeLimit}){id,created_time,from,to,message,attachments}`,
       }, bundle.accessToken);
-      let peer = peerFromParticipants(expanded?.participants, bundle.instagramUserId);
+      let peer = peerFromParticipants(expanded?.participants, identity);
       peer = await enrichPeer(peer, bundle.accessToken);
       info = {
         id: String(expanded?.id || conversationId),
         updated_time: expanded?.updated_time || null,
         peer,
       };
-    } catch {
-      info = await conversationInfo(conversationId, bundle);
     }
 
-    let messagePayload = expanded?.messages || null;
-    if (!messagePayload) {
+    // Para o histórico completo, priorizamos o edge /messages. Em algumas respostas
+    // expandidas a Meta retorna os IDs e timestamps, mas omite o corpo da mensagem.
+    let messagePayload = null;
+    try {
       messagePayload = await instagramGraphRequest(`${conversationId}/messages`, {
         fields: 'id,created_time,from,to,message,attachments',
         limit: safeLimit,
       }, bundle.accessToken);
+    } catch (error) {
+      if (!expanded) {
+        expanded = await instagramGraphRequest(String(conversationId), {
+          fields: `id,updated_time,participants,messages.limit(${safeLimit}){id,created_time,from,to,message,attachments}`,
+        }, bundle.accessToken);
+      }
+      messagePayload = expanded?.messages || null;
+      if (!messagePayload) throw error;
     }
 
     const messages = arrayData(messagePayload)
-      .map((row) => normalizeMessage(row, bundle.instagramUserId))
+      .map((row) => normalizeMessage(row, identity))
       .sort((a, b) => (Date.parse(a.created_time || '') || 0) - (Date.parse(b.created_time || '') || 0));
 
     return {
@@ -306,8 +345,8 @@ async function sendTextMessage(clientId, agencyId, conversationId, text) {
       throw new InstagramMessageError('A mensagem deve ter no máximo 1.000 caracteres.', { status: 400 });
     }
 
-    const { bundle } = messagingBundle(clientId, agencyId);
-    const info = await conversationInfo(conversationId, bundle);
+    const { connection, bundle } = messagingBundle(clientId, agencyId);
+    const info = await conversationInfo(conversationId, bundle, connection);
     if (!info.peer?.id) {
       throw new InstagramMessageError('Não foi possível identificar o destinatário desta conversa.', { status: 409 });
     }
