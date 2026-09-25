@@ -17,6 +17,7 @@ import PasswordVault from './pages/PasswordVault.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
 import CompassPage from './pages/Compass.jsx';
+import CompetitorAnalysis from './pages/CompetitorAnalysis.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
 import CommercialFunnel from './pages/CommercialFunnel.jsx';
@@ -25,6 +26,7 @@ import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
 import SocialMedia from './pages/SocialMedia.jsx';
+import AIPage from './pages/AI.jsx';
 import Reports from './pages/Reports.jsx';
 import Organizer from './pages/Organizer.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
@@ -51,8 +53,8 @@ function fallbackRoute(user) {
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
   if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/tarefas';
   if (hasPermission(user, 'social.feed')) return user?.role === 'client' ? '/cliente/grade' : '/social-media/feed';
+  if (hasPermission(user, 'social.covers')) return '/ia?view=covers';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
-  if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
   if (hasPermission(user, 'social.reports')) return user?.role === 'client' ? '/cliente/relatorios' : '/relatorios';
   if (hasPermission(user, 'commercial.view')) return '/comercial';
   if (hasPermission(user, 'materials.view')) return user?.role === 'client' ? '/cliente/materiais' : '/bussola/materiais';
@@ -111,16 +113,17 @@ export default function App() {
       <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />
       <Route path="/social-media" element={<Navigate to="/social-media/feed" replace />} />
       <Route path="/social-media/feed" element={<ProtectedRoute permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
-      <Route path="/social-media/stories" element={<ProtectedRoute permission="social.stories"><SocialMedia section="stories" /></ProtectedRoute>} />
-      <Route path="/social-media/mensagens" element={<ProtectedRoute permission="social.messages"><SocialMedia section="messages" /></ProtectedRoute>} />
+      <Route path="/social-media/stories" element={<Navigate to="/ia?view=stories" replace />} />
       <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
-      <Route path="/stories" element={<ProtectedRoute permission="social.stories"><SocialMediaLegacyRedirect section="stories" /></ProtectedRoute>} />
+      <Route path="/stories" element={<Navigate to="/ia?view=stories" replace />} />
       <Route path="/tarefas" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks /></ProtectedRoute>} />
       <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
+      <Route path="/ia" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><AIPage /></ProtectedRoute>} />
+      <Route path="/bussola/concorrencia" element={<ProtectedRoute permission="compass.view"><CompetitorAnalysis /></ProtectedRoute>} />
       <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/diagnostico" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />

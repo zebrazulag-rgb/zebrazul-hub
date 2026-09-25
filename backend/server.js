@@ -45,7 +45,6 @@ const publicVideoReviewRoutes = require('./routes/publicVideoReviews');
 const mediaRoutes = require('./routes/media');
 const instagramStoriesWebhookRoutes = require('./routes/instagramStoriesWebhook');
 const instagramStoriesRoutes = require('./routes/instagramStories');
-const instagramMessagesRoutes = require('./routes/instagramMessages');
 const permissionsRoutes = require('./routes/permissions');
 const activityRoutes = require('./routes/activity');
 const organizerRoutes = require('./routes/organizer');
@@ -179,7 +178,6 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/material-boards', materialBoardRoutes);
 app.use('/api/video-reviews', videoReviewRoutes);
 app.use('/api/instagram-stories', instagramStoriesRoutes);
-app.use('/api/instagram-messages', instagramMessagesRoutes);
 
 app.use((err, req, res, next) => {
   if (err?.type === 'entity.too.large' || err?.status === 413 || err?.statusCode === 413) {

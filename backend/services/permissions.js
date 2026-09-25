@@ -19,7 +19,6 @@ const PERMISSION_CATALOG = [
   { key: 'social.compare', group: 'Social Media', label: 'Comparar feeds', description: 'Comparar planejado e publicado lado a lado.' },
   { key: 'social.calendar', group: 'Social Media', label: 'Calendário do Feed', description: 'Visualizar o calendário editorial do Feed.' },
   { key: 'social.stories', group: 'Social Media', label: 'Stories', description: 'Acessar menções, repostagens e Stories.' },
-  { key: 'social.messages', group: 'Social Media', label: 'Mensagens do Instagram', description: 'Visualizar e responder conversas da conta profissional do Instagram.' },
   { key: 'social.reports', group: 'Social Media', label: 'Relatórios', description: 'Acessar relatórios orgânicos e de mídia paga.' },
   { key: 'social.connections', group: 'Social Media', label: 'Conexões Meta/Instagram', description: 'Gerenciar conexões e sincronizações das redes.' },
   { key: 'commercial.view', group: 'Comercial', label: 'Comercial', description: 'Acessar o pipeline comercial.' },
@@ -56,14 +55,14 @@ const DEFAULTS = {
   operations_head: new Set([
     'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
-    'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
+    'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish', 'audiovisual.calendar',
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
   ]),
   team: new Set([
     'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
-    'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
+    'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish',
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'settings.clients',
   ]),
@@ -228,7 +227,6 @@ function apiPermissionForRequest(req) {
   }
   if (path.startsWith('/feed-intelligence')) return path.includes('covers') || path.includes('analyze-covers') ? 'social.covers' : 'social.published';
   if (path.startsWith('/instagram-stories')) return 'social.stories';
-  if (path.startsWith('/instagram-messages')) return 'social.messages';
   if (path.startsWith('/reports')) return 'social.reports';
   if (path.startsWith('/meta-organic')) return ['social.reports', 'social.published'];
   if (path.startsWith('/meta-oauth') || path.startsWith('/instagram-oauth') || path.startsWith('/meta')) return 'social.connections';

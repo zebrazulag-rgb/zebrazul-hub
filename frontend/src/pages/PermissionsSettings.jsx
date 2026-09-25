@@ -283,7 +283,7 @@ export default function PermissionsSettings() {
               </select>
             </div>
             <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {catalog.filter((item) => item.key.endsWith('.view') || ['social.feed','social.stories','social.messages','social.reports','social.covers','social.published','social.compare','social.calendar'].includes(item.key)).map((item) => {
+              {catalog.filter((item) => item.key.endsWith('.view') || ['social.feed','social.stories','social.reports','social.covers','social.published','social.compare','social.calendar'].includes(item.key)).map((item) => {
                 const visible = effectiveRolePermission(previewRole, item.key, ownerOnly);
                 return <div key={item.key} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm ${visible ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200' : ownerOnly[item.key] ? 'border-violet-400/20 bg-violet-400/10 text-violet-200' : 'border-white/10 bg-white/[0.03] text-white/35'}`}>{visible ? <Check size={14} /> : ownerOnly[item.key] ? <EyeOff size={14} /> : <X size={14} />}<span className="truncate">{item.label}{ownerOnly[item.key] ? ' · só proprietário' : ''}</span></div>;
               })}
