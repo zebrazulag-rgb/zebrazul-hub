@@ -64,6 +64,7 @@ export default function Layout({ children }) {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [squadMenuOpen, setSquadMenuOpen] = useState(false);
   const [squadMenuTop, setSquadMenuTop] = useState(0);
+  const squadCloseTimerRef = useRef(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
@@ -73,6 +74,25 @@ export default function Layout({ children }) {
   const isClientPortal = user?.role === 'client';
 
   const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
+
+  const cancelSquadMenuClose = () => {
+    if (squadCloseTimerRef.current) {
+      window.clearTimeout(squadCloseTimerRef.current);
+      squadCloseTimerRef.current = null;
+    }
+  };
+
+  const scheduleSquadMenuClose = () => {
+    cancelSquadMenuClose();
+    squadCloseTimerRef.current = window.setTimeout(() => {
+      setSquadMenuOpen(false);
+      squadCloseTimerRef.current = null;
+    }, 260);
+  };
+
+  useEffect(() => () => {
+    if (squadCloseTimerRef.current) window.clearTimeout(squadCloseTimerRef.current);
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem('zebrahub.sidebar.collapsed', sidebarCollapsed ? '1' : '0');
@@ -382,11 +402,12 @@ export default function Layout({ children }) {
                   <div
                     className="relative mt-1"
                     onMouseEnter={(event) => {
+                      cancelSquadMenuClose();
                       const rect = event.currentTarget.getBoundingClientRect();
                       setSquadMenuTop(Math.max(12, rect.top - 4));
                       setSquadMenuOpen(true);
                     }}
-                    onMouseLeave={() => setSquadMenuOpen(false)}
+                    onMouseLeave={scheduleSquadMenuClose}
                   >
                     <button
                       type="button"
@@ -408,8 +429,10 @@ export default function Layout({ children }) {
                     {squadMenuOpen && (
                       <div
                         className="fixed z-[90] w-[230px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
-                        style={{ left: sidebarCollapsed ? 84 : 252, top: squadMenuTop }}
+                        style={{ left: sidebarCollapsed ? 68 : 232, top: squadMenuTop }}
                         role="menu"
+                        onMouseEnter={cancelSquadMenuClose}
+                        onMouseLeave={scheduleSquadMenuClose}
                       >
                         <div className="px-3 pb-2 pt-1">
                           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Squad</p>
