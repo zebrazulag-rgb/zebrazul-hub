@@ -5,6 +5,7 @@ import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
+import SiteLP from './pages/SiteLP.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import PublicSocialMediaFeed from './pages/PublicSocialMediaFeed.jsx';
@@ -48,11 +49,16 @@ function SocialMediaLegacyRedirect({ section }) {
   return <Navigate to={`/social-media/${section}${location.search || ''}`} replace />;
 }
 
+
+function DesignerLegacyRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/designer${location.search || ''}`} replace />;
+}
+
 function fallbackRoute(user) {
   if (hasPermission(user, 'dashboard.view')) return '/';
-  if (hasPermission(user, 'product.view')) return '/produto';
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
-  if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/tarefas';
+  if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/designer';
   if (hasPermission(user, 'social.feed')) return user?.role === 'client' ? '/cliente/grade' : '/social-media/feed';
   if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
   if (hasPermission(user, 'social.covers')) return '/ia?view=covers';
@@ -120,7 +126,9 @@ export default function App() {
       <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
       <Route path="/stories" element={<Navigate to="/ia?view=stories" replace />} />
-      <Route path="/tarefas" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks /></ProtectedRoute>} />
+      <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks workspace="designer" /></ProtectedRoute>} />
+      <Route path="/tarefas" element={<DesignerLegacyRedirect />} />
+      <Route path="/site-lp" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><SiteLP /></ProtectedRoute>} />
       <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />

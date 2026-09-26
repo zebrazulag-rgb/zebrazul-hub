@@ -1050,6 +1050,24 @@ CREATE TABLE IF NOT EXISTS audiovisual_recordings (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS audiovisual_scripts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  recording_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT DEFAULT '',
+  created_by INTEGER,
+  updated_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (recording_id) REFERENCES audiovisual_recordings(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS audiovisual_videos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
@@ -1127,6 +1145,7 @@ CREATE TABLE IF NOT EXISTS google_calendar_oauth_states (
 
 CREATE INDEX IF NOT EXISTS idx_av_settings_agency_client ON audiovisual_client_settings(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_av_recordings_scope ON audiovisual_recordings(agency_id, client_id, scheduled_start, status);
+CREATE INDEX IF NOT EXISTS idx_av_scripts_recording ON audiovisual_scripts(agency_id, recording_id, id);
 CREATE INDEX IF NOT EXISTS idx_av_videos_scope ON audiovisual_videos(agency_id, client_id, status, recording_id);
 CREATE INDEX IF NOT EXISTS idx_av_schedules_video ON audiovisual_video_schedules(agency_id, video_id, status, scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_google_calendar_oauth_expiry ON google_calendar_oauth_states(expires_at, used_at);

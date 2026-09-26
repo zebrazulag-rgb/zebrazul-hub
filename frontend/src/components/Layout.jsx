@@ -28,7 +28,6 @@ import {
   Send,
   Clapperboard,
   Code2,
-  Bug,
   CalendarDays,
   Sparkles,
 } from 'lucide-react';
@@ -254,9 +253,9 @@ export default function Layout({ children }) {
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
     { to: '/organizacao', label: 'Meu Espaço', icon: CalendarDays, permission: 'organizer.view' },
-    { to: '/tarefas', label: 'Tarefas', icon: ListChecks, permission: 'tasks.view' },
-    { to: '/produto', label: 'Produto', icon: Code2, permission: 'product.view' },
-    { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view' },
+    { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view', group: 'squad' },
+    { to: '/designer', label: 'Designer', icon: Palette, permission: 'tasks.view', group: 'squad' },
+    { to: '/site-lp', label: 'Site/LP', icon: Code2, permission: 'tasks.view', group: 'squad' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/ia', label: 'IA', icon: Sparkles, permission: 'social.view' },
@@ -288,11 +287,11 @@ export default function Layout({ children }) {
 
   const mobilePrimaryItems = isClientPortal
     ? visibleWorkspaceItems.slice(0, 4)
-    : visibleWorkspaceItems.filter((item) => ['/','/audiovisual','/tarefas','/organizacao','/social-media'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/','/audiovisual','/designer','/site-lp','/social-media'].includes(item.to));
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/produto','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/organizacao','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -307,7 +306,8 @@ export default function Layout({ children }) {
     if (path === '/') return 'Painel';
     if (path.startsWith('/audiovisual')) return 'Audiovisual';
     if (path.startsWith('/produto')) return 'Produto';
-    if (path.startsWith('/tarefas')) return 'Tarefas';
+    if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
+    if (path.startsWith('/site-lp')) return 'Site/LP';
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/relatorios')) return 'Relatórios';
     if (path.startsWith('/organizacao')) return 'Meu Espaço';
@@ -364,9 +364,17 @@ export default function Layout({ children }) {
 
         <nav className={`flex-1 overflow-y-auto pb-4 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
           <div className="space-y-1">
-            {visibleWorkspaceItems.map((item) => (
-              <SidebarLink key={item.to} item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} />
-            ))}
+            {visibleWorkspaceItems.map((item, index) => {
+              const startsSquad = item.group === 'squad' && visibleWorkspaceItems[index - 1]?.group !== 'squad';
+              return (
+                <div key={item.to}>
+                  {startsSquad && (sidebarCollapsed
+                    ? <div className="mx-2 my-2 border-t border-white/[0.07]" />
+                    : <p className="mb-1 mt-4 px-3 text-[9px] font-black uppercase tracking-[0.18em] text-white/25">Squad</p>)}
+                  <SidebarLink item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} />
+                </div>
+              );
+            })}
           </div>
 
           {canSeeSettings && (
@@ -440,18 +448,6 @@ export default function Layout({ children }) {
           <div id="zebrahub-topbar-tools" className="ml-3 hidden min-w-0 flex-1 items-center gap-2 overflow-x-auto lg:flex" />
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
-            {!isClientPortal && hasPermission(user, 'product.create') && (
-              <button
-                type="button"
-                onClick={() => navigate(`/produto?novo=1&origem=${encodeURIComponent(location.pathname + location.search)}`)}
-                title="Reportar para Produto"
-                aria-label="Reportar problema ou melhoria para Produto"
-                className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 sm:flex"
-              >
-                <Bug size={16} />
-              </button>
-            )}
-
             {(user?.role === 'client' ? user?.client_id : selectedClient?.id) && hasPermission(user, 'social.connections') && (
               <div
                 className={`hidden min-w-0 items-center gap-2 rounded-xl border px-3 py-2 sm:flex ${instagramHeaderConnection?.status === 'connected' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}
@@ -575,7 +571,7 @@ export default function Layout({ children }) {
           {mobileMoreItems.length > 0 && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
-            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/produto','/bussola','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
+            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/organizacao','/bussola','/ia','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
             <span>Mais</span>

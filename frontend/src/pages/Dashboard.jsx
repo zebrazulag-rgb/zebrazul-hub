@@ -223,7 +223,7 @@ export default function Dashboard() {
       icon: AlertCircle,
       iconClass: 'bg-red-50 text-red-600',
       accent: 'from-red-500 to-rose-500',
-      href: '/tarefas',
+      href: '/designer',
     },
     {
       label: 'Aguardando aprovação',
@@ -272,7 +272,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-wrap gap-2.5">
-            <Link to="/tarefas" className="btn-primary inline-flex items-center gap-2 text-sm">
+            <Link to="/designer" className="btn-primary inline-flex items-center gap-2 text-sm">
               <Plus size={17} /> Nova tarefa
             </Link>
             <Link to={isCommercialTeam ? '/comercial' : '/aprovacao'} className="btn-secondary inline-flex items-center gap-2 text-sm">
@@ -306,12 +306,12 @@ export default function Dashboard() {
                 <Star size={20} fill="currentColor" />
               </div>
               <div>
-                <h2 className="font-semibold text-slate-900">Tarefas em destaque</h2>
+                <h2 className="font-semibold text-slate-900">Demandas em destaque</h2>
                 <p className="text-xs text-slate-500">Prioridades da operação inteira, mesmo quando um cliente está selecionado no filtro.</p>
               </div>
             </div>
-            <Link to="/tarefas" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0969ff] transition hover:text-blue-700">
-              Gerenciar tarefas <ChevronRight size={15} />
+            <Link to="/designer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0969ff] transition hover:text-blue-700">
+              Abrir Designer <ChevronRight size={15} />
             </Link>
           </div>
 
@@ -327,7 +327,7 @@ export default function Dashboard() {
                 return (
                   <Link
                     key={task.id}
-                    to={`/tarefas?task_id=${task.id}`}
+                    to={`/designer?task_id=${task.id}`}
                     className="group rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-[0_14px_30px_rgba(9,105,255,0.08)]"
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -350,7 +350,7 @@ export default function Dashboard() {
           )}
 
           {featuredTasks.length > 6 && (
-            <p className="mt-4 text-center text-xs text-slate-400">Mais {featuredTasks.length - 6} tarefa{featuredTasks.length - 6 > 1 ? 's' : ''} em destaque na área de tarefas.</p>
+            <p className="mt-4 text-center text-xs text-slate-400">Mais {featuredTasks.length - 6} tarefa{featuredTasks.length - 6 > 1 ? 's' : ''} em destaque no Designer.</p>
           )}
         </section>
       )}
@@ -364,7 +364,7 @@ export default function Dashboard() {
                   <ListChecks size={18} />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-slate-900">Desempenho das tarefas</h2>
+                  <h2 className="font-semibold text-slate-900">Desempenho das demandas</h2>
                   <p className="text-xs text-slate-400">
                     {taskStats.start.split('-').reverse().join('/')} até {taskStats.end.split('-').reverse().join('/')} · inclui subtarefas
                   </p>
@@ -409,12 +409,12 @@ export default function Dashboard() {
                 <Target size={17} className="text-[#63a0ff]" />
               </div>
               <p className="mt-5 text-4xl font-bold">{taskStatsLoading ? '—' : `${completionRate}%`}</p>
-              <p className="mt-1 text-sm text-white/45">das tarefas e subtarefas do período foram concluídas.</p>
+              <p className="mt-1 text-sm text-white/45">das demandas e subtarefas do período foram concluídas.</p>
               <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-gradient-to-r from-[#0969ff] to-[#63a0ff] transition-all" style={{ width: `${completionRate}%` }} />
               </div>
-              <Link to="/tarefas" className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-white/75 transition hover:text-white">
-                Abrir tarefas <ChevronRight size={15} />
+              <Link to="/designer" className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-white/75 transition hover:text-white">
+                Abrir Designer <ChevronRight size={15} />
               </Link>
             </div>
           </div>

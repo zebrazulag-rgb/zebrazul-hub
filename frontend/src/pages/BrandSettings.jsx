@@ -162,7 +162,7 @@ export default function BrandSettings({ embedded = false }) {
                 {form.logo_data ? <img src={form.logo_data} alt="Prévia" className="max-h-12 max-w-[190px] object-contain" /> : <p className="text-xl font-semibold">{form.product_name || form.name}</p>}
               </div>
               <div className="mt-5 space-y-2">
-                {['Painel', 'Tarefas', 'Aprovação', 'Relatórios'].map((item, index) => (
+                {['Painel', 'Designer', 'Aprovação', 'Relatórios'].map((item, index) => (
                   <div key={item} className={`rounded-xl px-3 py-2 text-sm ${index === 0 ? 'bg-white text-slate-900' : 'bg-white/5 text-white/65'}`}>
                     <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: index === 0 ? form.primary_color : 'rgba(255,255,255,.25)' }} />{item}
                   </div>

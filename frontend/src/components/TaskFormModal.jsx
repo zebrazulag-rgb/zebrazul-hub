@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ImagePlus, FileText, Grid3x3, Video, Trash2, Star } from 'lucide-react';
+import { X, ImagePlus, FileText, Grid3x3, Trash2, Star } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import { formChanged } from '../utils/formState.js';
@@ -15,7 +15,6 @@ const CONTENT_TYPES = [
 const TASK_TYPES = [
   { value: 'basic', label: 'Tarefa básica', icon: FileText },
   { value: 'post', label: 'Post', icon: Grid3x3 },
-  { value: 'video', label: 'Gravação e Edição de Vídeo', icon: Video }
 ];
 
 function fileToBase64(file) {
@@ -53,14 +52,15 @@ function AutoGrowTextarea({ value, onChange, minHeight = 110, className = '', ..
   );
 }
 
-export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
+export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, defaultFrontName = '', allowedTaskTypes = ['basic', 'post'], parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
   const isEditing = Boolean(taskToEdit?.id);
+  const visibleTaskTypes = TASK_TYPES.filter((item) => allowedTaskTypes.includes(item.value));
   const initialForm = {
-    task_type: taskToEdit?.task_type || 'basic',
+    task_type: taskToEdit?.task_type || visibleTaskTypes[0]?.value || 'basic',
     title: taskToEdit?.title || '',
     description: taskToEdit?.description || '',
     project_name: taskToEdit?.project_name || '',
-    front_name: taskToEdit?.front_name || '',
+    front_name: taskToEdit?.front_name || defaultFrontName || '',
     priority: taskToEdit?.priority || 'medium',
     goal: taskToEdit?.goal || '',
     content_type: taskToEdit?.content_type || '',
@@ -204,7 +204,6 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
 
 
   const isPost = form.task_type === 'post';
-  const isVideo = form.task_type === 'video';
   const canFeatureTask = userRole !== 'client' && !parentTaskId && !taskToEdit?.parent_task_id;
   const selectedClientId = Number(form.client_id) || null;
   const visibleTeamUsers = teamUsers.filter((member) => {
@@ -223,24 +222,26 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
           </button>
         </div>
         <form onSubmit={handleSubmit} className="max-h-[calc(94vh-65px)] overflow-y-auto p-6 md:p-7 space-y-5">
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-2">Tipo de tarefa</label>
-            <div className="grid grid-cols-3 gap-2">
-              {TASK_TYPES.map((tt) => (
-                <button
-                  type="button"
-                  key={tt.value}
-                  onClick={() => setForm({ ...form, task_type: tt.value })}
-                  className={`flex flex-col items-center gap-1.5 py-3 rounded-lg border text-xs font-medium transition-colors ${
-                    form.task_type === tt.value ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300'
-                  }`}
-                >
-                  <tt.icon size={16} />
-                  {tt.label}
-                </button>
-              ))}
+          {visibleTaskTypes.length > 1 && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-2">Tipo de demanda</label>
+              <div className="grid grid-cols-2 gap-2">
+                {visibleTaskTypes.map((tt) => (
+                  <button
+                    type="button"
+                    key={tt.value}
+                    onClick={() => setForm({ ...form, task_type: tt.value })}
+                    className={`flex flex-col items-center gap-1.5 py-3 rounded-lg border text-xs font-medium transition-colors ${
+                      form.task_type === tt.value ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300'
+                    }`}
+                  >
+                    <tt.icon size={16} />
+                    {tt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">Título</label>
@@ -248,13 +249,13 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
               className="input-field"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder={isPost ? 'Ex: Post institucional - dia das mães' : isVideo ? 'Ex: Vídeo depoimento cliente' : 'Ex: Organizar planilha de métricas'}
+              placeholder={isPost ? 'Ex: Post institucional - dia das mães' : 'Ex: Organizar referências para a peça'}
             />
           </div>
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">
-              {isPost ? 'Ideia do conteúdo' : isVideo ? 'Roteiro / briefing' : 'Descrição'}
+              {isPost ? 'Ideia do conteúdo' : 'Descrição'}
             </label>
             <AutoGrowTextarea
               minHeight={120}
@@ -281,6 +282,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
                 value={form.front_name}
                 onChange={(e) => setForm({ ...form, front_name: e.target.value })}
                 placeholder="Ex: Comercial"
+                readOnly={Boolean(defaultFrontName)}
               />
             </div>
           </div>
@@ -352,28 +354,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
             </>
           )}
 
-          {isVideo && (
-            <>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Prazo</label>
-                <input type="date" className="input-field" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Link do vídeo (Drive, YouTube não listado, etc.)</label>
-                <input className="input-field" value={form.video_link} onChange={(e) => setForm({ ...form, video_link: e.target.value })} placeholder="https://..." />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Thumbnail / referência (opcional)</label>
-                <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
-                  <ImagePlus size={16} />
-                  {form.attachment_filename || 'Clique para anexar uma imagem'}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                </label>
-              </div>
-            </>
-          )}
-
-          {!isPost && !isVideo && (
+          {!isPost && (
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1">Prazo</label>
               <input type="date" className="input-field" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />

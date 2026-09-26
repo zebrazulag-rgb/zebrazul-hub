@@ -439,7 +439,8 @@ router.get('/recordings', (req, res) => {
   const placeholders = ids.map(() => '?').join(',');
   const rows = db.prepare(`
     SELECT r.*, c.name AS client_name, c.logo_color AS client_color,
-           (SELECT COUNT(*) FROM audiovisual_videos v WHERE v.recording_id = r.id) AS videos_created
+           (SELECT COUNT(*) FROM audiovisual_videos v WHERE v.recording_id = r.id) AS videos_created,
+           (SELECT COUNT(*) FROM audiovisual_scripts s WHERE s.recording_id = r.id) AS scripts_count
     FROM audiovisual_recordings r
     JOIN clients c ON c.id = r.client_id
     WHERE r.agency_id = ? AND r.client_id IN (${placeholders})
@@ -450,6 +451,66 @@ router.get('/recordings', (req, res) => {
     raw_links: parseJsonArray(row.raw_links_json),
   }));
   res.json({ recordings: rows, reference_month: referenceMonth });
+});
+
+
+router.get('/recordings/:id/scripts', (req, res) => {
+  const recording = getRecording(req.params.id, req.user.agency_id);
+  if (!recording) return res.status(404).json({ error: 'Gravação não encontrada.' });
+  if (!ensureClient(req, res, recording.client_id)) return;
+
+  const scripts = db.prepare(`
+    SELECT s.*, creator.name AS created_by_name, updater.name AS updated_by_name
+    FROM audiovisual_scripts s
+    LEFT JOIN users creator ON creator.id = s.created_by
+    LEFT JOIN users updater ON updater.id = s.updated_by
+    WHERE s.agency_id = ? AND s.recording_id = ?
+    ORDER BY s.id ASC
+  `).all(req.user.agency_id, recording.id);
+  res.json({ scripts });
+});
+
+router.post('/recordings/:id/scripts', requireAny(['audiovisual.manage', 'audiovisual.edit']), (req, res) => {
+  const recording = getRecording(req.params.id, req.user.agency_id);
+  if (!recording) return res.status(404).json({ error: 'Gravação não encontrada.' });
+  if (!ensureClient(req, res, recording.client_id)) return;
+
+  const existingCount = Number(db.prepare('SELECT COUNT(*) AS total FROM audiovisual_scripts WHERE agency_id = ? AND recording_id = ?').get(req.user.agency_id, recording.id)?.total || 0);
+  const title = normalizeText(req.body.title) || `Roteiro ${existingCount + 1}`;
+  const content = String(req.body.content || '');
+  const info = db.prepare(`
+    INSERT INTO audiovisual_scripts (agency_id, client_id, recording_id, title, content, created_by, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.agency_id, recording.client_id, recording.id, title.slice(0, 160), content, req.user.id, req.user.id);
+  const script = db.prepare('SELECT * FROM audiovisual_scripts WHERE id = ? AND agency_id = ?').get(info.lastInsertRowid, req.user.agency_id);
+  res.status(201).json({ script });
+});
+
+router.put('/recordings/:recordingId/scripts/:scriptId', requireAny(['audiovisual.manage', 'audiovisual.edit']), (req, res) => {
+  const recording = getRecording(req.params.recordingId, req.user.agency_id);
+  if (!recording) return res.status(404).json({ error: 'Gravação não encontrada.' });
+  if (!ensureClient(req, res, recording.client_id)) return;
+  const current = db.prepare('SELECT * FROM audiovisual_scripts WHERE id = ? AND agency_id = ? AND recording_id = ?').get(req.params.scriptId, req.user.agency_id, recording.id);
+  if (!current) return res.status(404).json({ error: 'Roteiro não encontrado.' });
+
+  const title = normalizeText(req.body.title) || current.title || 'Roteiro';
+  const content = Object.prototype.hasOwnProperty.call(req.body, 'content') ? String(req.body.content || '') : String(current.content || '');
+  db.prepare(`
+    UPDATE audiovisual_scripts
+    SET title = ?, content = ?, updated_by = ?, updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ? AND recording_id = ?
+  `).run(title.slice(0, 160), content, req.user.id, current.id, req.user.agency_id, recording.id);
+  const script = db.prepare('SELECT * FROM audiovisual_scripts WHERE id = ? AND agency_id = ?').get(current.id, req.user.agency_id);
+  res.json({ script });
+});
+
+router.delete('/recordings/:recordingId/scripts/:scriptId', requireAny(['audiovisual.manage', 'audiovisual.edit']), (req, res) => {
+  const recording = getRecording(req.params.recordingId, req.user.agency_id);
+  if (!recording) return res.status(404).json({ error: 'Gravação não encontrada.' });
+  if (!ensureClient(req, res, recording.client_id)) return;
+  const info = db.prepare('DELETE FROM audiovisual_scripts WHERE id = ? AND agency_id = ? AND recording_id = ?').run(req.params.scriptId, req.user.agency_id, recording.id);
+  if (!info.changes) return res.status(404).json({ error: 'Roteiro não encontrado.' });
+  res.json({ ok: true });
 });
 
 router.post('/recordings', requireAny(['audiovisual.manage']), async (req, res) => {

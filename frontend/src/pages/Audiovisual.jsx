@@ -10,6 +10,7 @@ import {
   Clock3,
   ExternalLink,
   Film,
+  FileText,
   Link2,
   Loader2,
   Plus,
@@ -152,6 +153,9 @@ export default function Audiovisual() {
   const [scheduleModal, setScheduleModal] = useState(null);
   const [settingsModal, setSettingsModal] = useState(null);
   const [clientSelectionModal, setClientSelectionModal] = useState(null);
+  const [scriptsModal, setScriptsModal] = useState(null);
+  const [scriptsLoading, setScriptsLoading] = useState(false);
+  const [scriptSavingId, setScriptSavingId] = useState(null);
   const [clientCatalog, setClientCatalog] = useState([]);
   const [saving, setSaving] = useState(false);
 
@@ -249,7 +253,7 @@ export default function Audiovisual() {
         ? await api.put(`/audiovisual/recordings/${form.id}`, payload)
         : await api.post('/audiovisual/recordings', payload);
       setRecordingModal(null);
-      setNotice(data.calendar_warning ? `Gravação salva. Google Agenda: ${data.calendar_warning}` : 'Gravação salva e operação atualizada.');
+      setNotice(data.calendar_warning ? `Gravação agendada. Google Agenda: ${data.calendar_warning}` : 'Gravação agendada. O roteiro já está disponível como próximo passo.');
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível salvar a gravação.');
@@ -522,6 +526,80 @@ export default function Audiovisual() {
     });
   }
 
+  async function openScripts(recording) {
+    setScriptsModal({ recording, scripts: [], error: '' });
+    setScriptsLoading(true);
+    try {
+      const { data } = await api.get(`/audiovisual/recordings/${recording.id}/scripts`);
+      setScriptsModal({ recording, scripts: data.scripts || [], error: '' });
+    } catch (requestError) {
+      setScriptsModal({ recording, scripts: [], error: requestError.response?.data?.error || 'Não foi possível carregar os roteiros.' });
+    } finally {
+      setScriptsLoading(false);
+    }
+  }
+
+  function updateScriptField(scriptId, field, value) {
+    setScriptsModal((current) => current ? {
+      ...current,
+      scripts: current.scripts.map((script) => Number(script.id) === Number(scriptId) ? { ...script, [field]: value } : script),
+    } : current);
+  }
+
+  async function addScript() {
+    if (!scriptsModal?.recording?.id) return;
+    setScriptSavingId('new');
+    try {
+      const { data } = await api.post(`/audiovisual/recordings/${scriptsModal.recording.id}/scripts`, {});
+      setScriptsModal((current) => current ? { ...current, scripts: [...current.scripts, data.script], error: '' } : current);
+      setRecordings((current) => current.map((recording) => Number(recording.id) === Number(scriptsModal.recording.id)
+        ? { ...recording, scripts_count: Number(recording.scripts_count || 0) + 1 }
+        : recording));
+    } catch (requestError) {
+      setScriptsModal((current) => current ? { ...current, error: requestError.response?.data?.error || 'Não foi possível criar o roteiro.' } : current);
+    } finally {
+      setScriptSavingId(null);
+    }
+  }
+
+  async function saveScript(script) {
+    if (!scriptsModal?.recording?.id || !script?.id) return;
+    setScriptSavingId(script.id);
+    try {
+      const { data } = await api.put(`/audiovisual/recordings/${scriptsModal.recording.id}/scripts/${script.id}`, {
+        title: script.title,
+        content: script.content,
+      });
+      setScriptsModal((current) => current ? {
+        ...current,
+        scripts: current.scripts.map((item) => Number(item.id) === Number(script.id) ? data.script : item),
+        error: '',
+      } : current);
+      setNotice('Roteiro salvo.');
+    } catch (requestError) {
+      setScriptsModal((current) => current ? { ...current, error: requestError.response?.data?.error || 'Não foi possível salvar o roteiro.' } : current);
+    } finally {
+      setScriptSavingId(null);
+    }
+  }
+
+  async function deleteScript(script) {
+    if (!scriptsModal?.recording?.id || !script?.id) return;
+    if (!window.confirm(`Excluir “${script.title || 'Roteiro'}”?`)) return;
+    setScriptSavingId(script.id);
+    try {
+      await api.delete(`/audiovisual/recordings/${scriptsModal.recording.id}/scripts/${script.id}`);
+      setScriptsModal((current) => current ? { ...current, scripts: current.scripts.filter((item) => Number(item.id) !== Number(script.id)), error: '' } : current);
+      setRecordings((current) => current.map((recording) => Number(recording.id) === Number(scriptsModal.recording.id)
+        ? { ...recording, scripts_count: Math.max(0, Number(recording.scripts_count || 0) - 1) }
+        : recording));
+    } catch (requestError) {
+      setScriptsModal((current) => current ? { ...current, error: requestError.response?.data?.error || 'Não foi possível excluir o roteiro.' } : current);
+    } finally {
+      setScriptSavingId(null);
+    }
+  }
+
   function openSettings(client) {
     setSettingsModal({
       client_id: client.id,
@@ -622,6 +700,9 @@ export default function Audiovisual() {
           openNewRecording={openNewRecording}
           openComplete={openComplete}
           openHistoricalRecording={openHistoricalRecording}
+          recordings={recordings}
+          canEditScripts={canEdit}
+          openScripts={openScripts}
           setTab={setTab}
         />
       )}
@@ -639,6 +720,8 @@ export default function Audiovisual() {
           openNewRecording={openNewRecording}
           openHistoricalRecording={openHistoricalRecording}
           openComplete={openComplete}
+          openScripts={openScripts}
+          canEditScripts={canEdit}
           onDelete={async (recording) => {
             if (!window.confirm(`Excluir a gravação de ${recording.client_name}?`)) return;
             try {
@@ -712,6 +795,19 @@ export default function Audiovisual() {
         <ScheduleModal form={scheduleModal} setForm={setScheduleModal} saving={saving} onClose={() => setScheduleModal(null)} onSave={scheduleVideo} />
       )}
 
+      {scriptsModal && (
+        <ScriptsModal
+          data={scriptsModal}
+          loading={scriptsLoading}
+          savingId={scriptSavingId}
+          onClose={() => setScriptsModal(null)}
+          onAdd={addScript}
+          onChange={updateScriptField}
+          onSave={saveScript}
+          onDelete={deleteScript}
+        />
+      )}
+
       {settingsModal && (
         <SettingsModal form={settingsModal} setForm={setSettingsModal} saving={saving} onClose={() => setSettingsModal(null)} onSave={saveClientSettings} />
       )}
@@ -730,7 +826,7 @@ export default function Audiovisual() {
   );
 }
 
-function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, clientsNotScheduled, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, setTab }) {
+function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, clientsNotScheduled, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, recordings, canEditScripts, openScripts, setTab }) {
   const clients = dashboard?.clients || [];
   const priorityClients = [...clients].sort((a, b) => {
     const stage = (client) => {
@@ -796,6 +892,9 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
               const tone = urgencyTone(client);
               const scheduled = Boolean(client.scheduled_in_reference_month);
               const recorded = Boolean(client.recorded_in_reference_month);
+              const scheduledRecording = (recordings || [])
+                .filter((recording) => Number(recording.client_id) === Number(client.id) && recording.status === 'scheduled')
+                .sort((a, b) => String(a.scheduled_start || '').localeCompare(String(b.scheduled_start || '')))[0] || null;
               const rowClass = recorded
                 ? 'bg-emerald-50/55'
                 : scheduled
@@ -832,8 +931,19 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
                       <button type="button" onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">Marcar</button>
                     )}
 
+                    {scheduled && !recorded && scheduledRecording && canEditScripts && (
+                      <button
+                        type="button"
+                        onClick={() => openScripts(scheduledRecording)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-violet-700"
+                      >
+                        <FileText size={12} />
+                        {Number(scheduledRecording.scripts_count || 0) > 0 ? `Roteiro (${scheduledRecording.scripts_count})` : 'Criar roteiro'}
+                      </button>
+                    )}
+
                     {canManage && scheduled && !recorded && (
-                      <button type="button" onClick={() => setTab('agenda')} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50">Ver agenda</button>
+                      <button type="button" onClick={() => setTab('agenda')} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50">Agenda</button>
                     )}
                   </div>
                 </div>
@@ -931,7 +1041,7 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
-function AgendaTab({ recordings, referenceMonth, setReferenceMonth, calendarStatus, canManage, canCalendar, connectCalendar, disconnectCalendar, openNewRecording, openHistoricalRecording, openComplete, onDelete }) {
+function AgendaTab({ recordings, referenceMonth, setReferenceMonth, calendarStatus, canManage, canCalendar, canEditScripts, connectCalendar, disconnectCalendar, openNewRecording, openHistoricalRecording, openComplete, openScripts, onDelete }) {
   const connected = Boolean(calendarStatus?.connection?.connected);
   const configured = Boolean(calendarStatus?.oauth?.configured);
   const calendarCells = monthCalendarCells(referenceMonth);
@@ -1009,6 +1119,7 @@ function AgendaTab({ recordings, referenceMonth, setReferenceMonth, calendarStat
                             </div>
                             <div className="mt-2 flex items-center gap-1">
                               {recording.google_event_link && <a href={recording.google_event_link} target="_blank" rel="noreferrer" title="Abrir no Google Agenda" className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-400 hover:text-blue-600"><ExternalLink size={11} /></a>}
+                              {canEditScripts && (recording.status === 'scheduled' || Number(recording.scripts_count || 0) > 0) && <button type="button" onClick={() => openScripts(recording)} title="Roteiro desta gravação" className={`flex h-6 items-center justify-center gap-1 rounded-md px-2 text-[9px] font-black ${Number(recording.scripts_count || 0) > 0 ? 'bg-violet-100 text-violet-700' : 'bg-violet-600 text-white hover:bg-violet-700'}`}><FileText size={11} /><span>{Number(recording.scripts_count || 0) > 0 ? `Roteiro ${recording.scripts_count}` : 'Roteiro'}</span></button>}
                               {canManage && recording.status === 'scheduled' && <button type="button" onClick={() => openComplete(recording)} title="Concluir gravação" className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-600 text-white"><Check size={12} /></button>}
                               {canManage && recording.status !== 'recorded' && <button type="button" onClick={() => onDelete(recording)} title="Excluir gravação" className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-300 hover:bg-red-50 hover:text-red-600"><Trash2 size={11} /></button>}
                             </div>
@@ -1177,6 +1288,61 @@ function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewR
   );
 }
 
+
+function ScriptsModal({ data, loading, savingId, onClose, onAdd, onChange, onSave, onDelete }) {
+  const recording = data.recording;
+  const scripts = data.scripts || [];
+  return (
+    <ModalShell
+      title="Roteiros da gravação"
+      subtitle={`${recording.client_name} · ${formatDate(recording.scheduled_start, { year: true, time: true })}`}
+      onClose={onClose}
+      saving={Boolean(savingId)}
+    >
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.12em] text-violet-600">Pré-produção</p>
+          <p className="mt-1 text-sm text-violet-900">A gravação já está agendada. Agora o próximo passo do Audiovisual é preparar o roteiro.</p>
+        </div>
+        <button type="button" onClick={onAdd} disabled={Boolean(savingId)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Plus size={14} /> Novo roteiro</button>
+      </div>
+
+      {data.error && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{data.error}</div>}
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-sm text-slate-400"><Loader2 size={17} className="mr-2 animate-spin" /> Carregando roteiros...</div>
+      ) : (
+        <div className="max-h-[58vh] space-y-3 overflow-y-auto pr-1">
+          {scripts.map((script, index) => (
+            <div key={script.id} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-violet-600 shadow-sm"><FileText size={15} /></span>
+                <input
+                  value={script.title || ''}
+                  onChange={(event) => onChange(script.id, 'title', event.target.value)}
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  placeholder={`Roteiro ${index + 1}`}
+                />
+                <button type="button" onClick={() => onDelete(script)} disabled={savingId === script.id} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-40" title="Excluir roteiro"><Trash2 size={14} /></button>
+              </div>
+              <textarea
+                value={script.content || ''}
+                onChange={(event) => onChange(script.id, 'content', event.target.value)}
+                rows={8}
+                className="w-full resize-y rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                placeholder="Escreva aqui as falas, cenas, ganchos e observações do roteiro..."
+              />
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-[10px] text-slate-400">{script.updated_at ? `Atualizado em ${formatDate(script.updated_at, { year: true, time: true })}` : 'Roteiro novo'}</span>
+                <button type="button" onClick={() => onSave(script)} disabled={Boolean(savingId)} className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{savingId === script.id ? 'Salvando...' : 'Salvar roteiro'}</button>
+              </div>
+            </div>
+          ))}
+          {!scripts.length && <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-12 text-center"><FileText size={24} className="mx-auto text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-600">Nenhum roteiro criado ainda.</p><p className="mt-1 text-xs text-slate-400">Clique em “Novo roteiro” para começar a preparação desta gravação.</p></div>}
+        </div>
+      )}
+    </ModalShell>
+  );
+}
 
 function ClientSelectionModal({ form, setForm, clients, saving, onClose, onSave }) {
   const selectedIds = (form.selected_ids || []).map(Number);

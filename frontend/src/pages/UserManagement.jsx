@@ -610,7 +610,7 @@ function UserFormModal({
           )}
           {form.role === 'commercial_team' && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Perfil focado em vendas: o menu exibirá somente Painel, Tarefas e Comercial. O acesso ao pipeline será limitado aos clientes marcados abaixo.
+              Perfil focado em vendas: o menu exibirá somente Painel, Designer e Comercial. O acesso ao pipeline será limitado aos clientes marcados abaixo.
             </div>
           )}
           {form.role === 'client' && (
@@ -660,7 +660,7 @@ function UserFormModal({
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-400 mt-2">{form.role === 'commercial_team' ? 'A pessoa verá somente Painel, Tarefas e Comercial destes clientes.' : 'A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.'}</p>
+              <p className="text-[11px] text-slate-400 mt-2">{form.role === 'commercial_team' ? 'A pessoa verá somente Painel, Designer e Comercial destes clientes.' : 'A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.'}</p>
             </div>
           )}
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}

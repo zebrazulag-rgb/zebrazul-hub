@@ -221,9 +221,16 @@ function InlineAssigneePicker({ task, teamUsers, updating, onChange }) {
   );
 }
 
-export default function Tasks() {
+export default function Tasks({ workspace = 'designer' }) {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
+  const isSiteLP = workspace === 'site-lp';
+  const defaultFrontName = isSiteLP ? 'Site/LP' : '';
+  const belongsToWorkspace = useCallback((task) => {
+    if (String(task?.task_type || '') === 'video') return false;
+    const front = String(task?.front_name || '').trim().toLocaleLowerCase('pt-BR');
+    return isSiteLP ? front === 'site/lp' : front !== 'site/lp';
+  }, [isSiteLP]);
   const canCreateTasks = hasPermission(user, 'tasks.create');
   const isAdminUser = user?.role === 'admin' || Number(user?.is_platform_owner) === 1 || user?.is_platform_owner === true;
   const canImportTasks = isAdminUser || hasPermission(user, 'tasks.import');
@@ -327,9 +334,9 @@ export default function Tasks() {
       api.get('/tasks' + params),
       api.get('/tasks/calendar' + params),
     ]);
-    setTasks(sortTasks(taskResponse.data.tasks || []));
-    setCalendarTasks(calendarResponse.data.tasks || []);
-  }, [effectiveClientId]);
+    setTasks(sortTasks((taskResponse.data.tasks || []).filter(belongsToWorkspace)));
+    setCalendarTasks((calendarResponse.data.tasks || []).filter(belongsToWorkspace));
+  }, [effectiveClientId, belongsToWorkspace]);
 
   useEffect(() => {
     loadTasks();
@@ -352,7 +359,7 @@ export default function Tasks() {
       };
       const response = await api.get('/tasks/csv/export', { params, responseType: 'blob' });
       const clientPart = String(selectedClient?.name || 'todos').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'todos';
-      const projectPart = String(filters.project || 'tarefas').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'tarefas';
+      const projectPart = String(filters.project || (isSiteLP ? 'site_lp' : 'designer')).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'tarefas';
       const filename = `tarefas_${clientPart}_${projectPart}_${new Date().toISOString().slice(0, 10)}.csv`;
       const url = URL.createObjectURL(response.data);
       const anchor = document.createElement('a');
@@ -447,7 +454,7 @@ export default function Tasks() {
   function upsertTaskSummary(task) {
     if (!task) return;
     setTasks((previous) => {
-      if (effectiveClientId && String(task.client_id || '') !== String(effectiveClientId)) {
+      if (!belongsToWorkspace(task) || (effectiveClientId && String(task.client_id || '') !== String(effectiveClientId))) {
         return previous.filter((item) => item.id !== task.id);
       }
       const exists = previous.some((item) => item.id === task.id);
@@ -934,7 +941,7 @@ export default function Tasks() {
         className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_20px_rgba(9,105,255,0.16)] transition hover:-translate-y-0.5"
         style={{ backgroundColor: 'var(--agency-primary, #0969ff)' }}
       >
-        <Plus size={15} /> <span className="hidden sm:inline">Nova tarefa</span><span className="sm:hidden">Nova</span>
+        <Plus size={15} /> <span className="hidden sm:inline">Nova demanda</span><span className="sm:hidden">Nova</span>
       </button>}
 
       {canImportTasks && <button
@@ -1122,7 +1129,7 @@ export default function Tasks() {
           {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', priority: '', project: '', front: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-slate-400">{visibleFilteredTasks.length} tarefa(s) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' · filtros ativos' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
+          <p className="text-[11px] text-slate-400">{visibleFilteredTasks.length} demanda(s) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' · filtros ativos' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
@@ -1290,7 +1297,7 @@ export default function Tasks() {
           <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <h2 className="font-semibold text-slate-800">Tarefas e subtarefas — {dayTasks.day} de {MONTHS[month]}</h2>
+                <h2 className="font-semibold text-slate-800">Demandas e subtarefas — {dayTasks.day} de {MONTHS[month]}</h2>
                 {canCreateTasks && <button onClick={() => openNewTaskForDate(dayTasks.day)} className="mt-1 text-xs font-medium text-zebrazul-600 hover:underline inline-flex items-center gap-1">
                   <Plus size={13} /> Adicionar tarefa neste dia
                 </button>}
@@ -1345,6 +1352,8 @@ export default function Tasks() {
           defaultClientId={effectiveClientId}
           defaultDueDate={defaultTaskDate}
           userRole={user?.role}
+          defaultFrontName={defaultFrontName}
+          allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
           onClose={() => { setShowForm(false); setDefaultTaskDate(''); }}
           onSaved={(task) => { setShowForm(false); setDefaultTaskDate(''); upsertTaskSummary(task); loadTasks(); }}
         />
@@ -1357,6 +1366,8 @@ export default function Tasks() {
           defaultClientId={selectedTask.client_id}
           parentTaskId={selectedTask.id}
           userRole={user?.role}
+          defaultFrontName={defaultFrontName}
+          allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
           onClose={() => setShowSubtaskForm(false)}
           onSaved={() => { setShowSubtaskForm(false); openTask(selectedTask.id); loadTasks(); }}
         />
@@ -1368,6 +1379,8 @@ export default function Tasks() {
           clients={clients}
           taskToEdit={editingTask}
           userRole={user?.role}
+          defaultFrontName={defaultFrontName}
+          allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
           onClose={() => setEditingTask(null)}
           onSaved={(task) => {
             setEditingTask(null);
@@ -1384,6 +1397,8 @@ export default function Tasks() {
           clients={clients}
           taskToEdit={editingSubtask}
           userRole={user?.role}
+          defaultFrontName={defaultFrontName}
+          allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
           onClose={() => setEditingSubtask(null)}
           onSaved={() => {
             setEditingSubtask(null);
