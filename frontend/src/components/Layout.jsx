@@ -62,6 +62,8 @@ export default function Layout({ children }) {
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [squadMenuOpen, setSquadMenuOpen] = useState(false);
+  const [squadMenuTop, setSquadMenuTop] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
@@ -75,7 +77,12 @@ export default function Layout({ children }) {
   useEffect(() => {
     window.localStorage.setItem('zebrahub.sidebar.collapsed', sidebarCollapsed ? '1' : '0');
     setClientPickerOpen(false);
+    setSquadMenuOpen(false);
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    setSquadMenuOpen(false);
+  }, [location.pathname]);
 
 
   useEffect(() => {
@@ -283,6 +290,10 @@ export default function Layout({ children }) {
         return true;
       });
 
+  const visibleSquadItems = isClientPortal ? [] : visibleWorkspaceItems.filter((item) => item.group === 'squad');
+  const visibleMainWorkspaceItems = isClientPortal ? visibleWorkspaceItems : visibleWorkspaceItems.filter((item) => item.group !== 'squad');
+  const squadActive = visibleSquadItems.some((item) => location.pathname.startsWith(item.to));
+
   const canSeeSettings = !isClientPortal && (!user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']));
 
   const mobilePrimaryItems = isClientPortal
@@ -364,17 +375,71 @@ export default function Layout({ children }) {
 
         <nav className={`flex-1 overflow-y-auto pb-4 ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
           <div className="space-y-1">
-            {visibleWorkspaceItems.map((item, index) => {
-              const startsSquad = item.group === 'squad' && visibleWorkspaceItems[index - 1]?.group !== 'squad';
-              return (
-                <div key={item.to}>
-                  {startsSquad && (sidebarCollapsed
-                    ? <div className="mx-2 my-2 border-t border-white/[0.07]" />
-                    : <p className="mb-1 mt-4 px-3 text-[9px] font-black uppercase tracking-[0.18em] text-white/25">Squad</p>)}
-                  <SidebarLink item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} />
-                </div>
-              );
-            })}
+            {visibleMainWorkspaceItems.map((item) => (
+              <div key={item.to}>
+                <SidebarLink item={item} agencyPrimary={agencyPrimary} collapsed={sidebarCollapsed} />
+                {!isClientPortal && item.to === '/organizacao' && visibleSquadItems.length > 0 && (
+                  <div
+                    className="relative mt-1"
+                    onMouseEnter={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setSquadMenuTop(Math.max(12, rect.top - 4));
+                      setSquadMenuOpen(true);
+                    }}
+                    onMouseLeave={() => setSquadMenuOpen(false)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSquadMenuOpen((open) => !open)}
+                      aria-haspopup="menu"
+                      aria-expanded={squadMenuOpen}
+                      title={sidebarCollapsed ? 'Squad' : undefined}
+                      className={`group flex w-full items-center rounded-xl py-2 text-sm font-medium transition-all duration-200 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${squadActive ? 'text-white' : 'text-white/62 hover:bg-white/[0.06] hover:text-white'}`}
+                    >
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all ${squadActive ? 'text-white shadow-[0_8px_22px_rgba(0,0,0,0.22)]' : 'bg-white/[0.055] text-white/60 group-hover:bg-white/10 group-hover:text-white'}`}
+                        style={squadActive ? { backgroundColor: agencyPrimary } : undefined}
+                      >
+                        <Grid3x3 size={18} strokeWidth={2.1} />
+                      </span>
+                      {!sidebarCollapsed && <><span className="flex-1 text-left">Squad</span><ChevronDown size={14} className={`transition-transform ${squadMenuOpen ? 'rotate-90' : '-rotate-90'} opacity-50`} /></>}
+                    </button>
+
+                    {squadMenuOpen && (
+                      <div
+                        className="fixed z-[90] w-[230px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
+                        style={{ left: sidebarCollapsed ? 84 : 252, top: squadMenuTop }}
+                        role="menu"
+                      >
+                        <div className="px-3 pb-2 pt-1">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Squad</p>
+                          <p className="mt-0.5 text-xs text-slate-400">Escolha a frente de operação</p>
+                        </div>
+                        <div className="space-y-1">
+                          {visibleSquadItems.map((squadItem) => (
+                            <NavLink
+                              key={squadItem.to}
+                              to={squadItem.to}
+                              role="menuitem"
+                              className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isActive ? 'bg-blue-50 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+                            >
+                              {({ isActive }) => (
+                                <>
+                                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${isActive ? 'text-white' : 'bg-slate-100 text-slate-500'}`} style={isActive ? { backgroundColor: agencyPrimary } : undefined}>
+                                    <squadItem.icon size={17} />
+                                  </span>
+                                  <span>{squadItem.label}</span>
+                                </>
+                              )}
+                            </NavLink>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
 
           {canSeeSettings && (

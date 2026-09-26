@@ -8,7 +8,33 @@ router.use(authRequired);
 router.use(requireRole('admin', 'team', 'client'));
 
 const TASK_STATUSES = new Set(['pending', 'in_progress', 'done', 'posted']);
+const TASK_WORKFLOW_STAGES = new Set(['todo', 'in_progress', 'correction', 'internal_approval', 'external_approval', 'approved', 'scheduled', 'posted']);
 const TASK_APPROVAL_STATUSES = new Set(['completed', 'send', 'pending_approval', 'changes_requested', 'approved']);
+
+
+function legacyStatusForWorkflow(stage) {
+  if (stage === 'posted') return 'posted';
+  if (stage === 'approved' || stage === 'scheduled') return 'done';
+  if (['in_progress', 'correction', 'internal_approval', 'external_approval'].includes(stage)) return 'in_progress';
+  return 'pending';
+}
+
+function workflowStageFromLegacy(status) {
+  if (status === 'posted') return 'posted';
+  if (status === 'done') return 'approved';
+  if (status === 'in_progress') return 'in_progress';
+  return 'todo';
+}
+
+function normalizeFeedContentType(contentType) {
+  if (contentType === 'carrossel') return 'carrossel';
+  if (contentType === 'story' || contentType === 'stories') return 'story';
+  return 'feed';
+}
+
+function taskHasMedia(task) {
+  return Boolean(task?.attachment_data || parseGallery(task?.media_gallery).length);
+}
 
 function canAccessTask(user, task) {
   if (!task || Number(task.agency_id) !== Number(user.agency_id)) return false;
@@ -162,37 +188,60 @@ function serializeExternalGallery(value, fallbackData = null, fallbackMime = nul
 }
 
 function addTaskRecordToFeed(task, userId, agencyId) {
-  if (task.feed_post_id) {
-    const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(task.feed_post_id, agencyId);
-    if (existingPost) {
-      db.prepare(`UPDATE posts SET feed_visible = 1, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
-        .run(existingPost.id, agencyId);
-      return { postId: Number(existingPost.id), action: 'reactivated' };
-    }
-  }
-
   if (!task.client_id) throw new Error('A tarefa precisa estar vinculada a um cliente');
   const taskGallery = parseGallery(task.media_gallery);
   if (!task.attachment_data && taskGallery.length === 0) {
     throw new Error('Anexe ao menos uma imagem antes de enviar para o feed');
   }
 
+  const mediaData = task.attachment_data || taskGallery[0]?.data || null;
+  const mediaMime = task.attachment_mime || taskGallery[0]?.mime || null;
+  const galleryJson = taskGallery.length ? JSON.stringify(taskGallery) : null;
+  const feedContentType = normalizeFeedContentType(task.content_type);
+  const workflowStage = task.workflow_stage || workflowStageFromLegacy(task.status);
+
+  if (task.feed_post_id) {
+    const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(task.feed_post_id, agencyId);
+    if (existingPost) {
+      db.prepare(`
+        UPDATE posts SET
+          title = ?, caption = ?, content_type = ?, media_data = ?, media_mime = ?, media_gallery = ?,
+          scheduled_at = COALESCE(?, scheduled_at), workflow_stage = ?, feed_visible = 1,
+          updated_at = datetime('now')
+        WHERE id = ? AND agency_id = ?
+      `).run(
+        task.title,
+        task.caption || '',
+        feedContentType,
+        mediaData,
+        mediaMime,
+        galleryJson,
+        task.due_date || null,
+        workflowStage,
+        existingPost.id,
+        agencyId
+      );
+      return { postId: Number(existingPost.id), action: 'updated' };
+    }
+  }
+
   const info = db.prepare(`
     INSERT INTO posts (
       agency_id, client_id, created_by, title, caption, content_type, platforms,
-      media_data, media_mime, media_gallery, scheduled_at, status, feed_visible
-    ) VALUES (?, ?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft', 1)
+      media_data, media_mime, media_gallery, scheduled_at, status, workflow_stage, feed_visible
+    ) VALUES (?, ?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft', ?, 1)
   `).run(
     agencyId,
     task.client_id,
     userId,
     task.title,
     task.caption || '',
-    task.content_type || 'feed',
-    task.attachment_data || taskGallery[0]?.data || null,
-    task.attachment_mime || taskGallery[0]?.mime || null,
-    taskGallery.length ? JSON.stringify(taskGallery) : null,
-    task.due_date || null
+    feedContentType,
+    mediaData,
+    mediaMime,
+    galleryJson,
+    task.due_date || null,
+    workflowStage
   );
 
   db.prepare(`UPDATE tasks SET feed_post_id = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
@@ -204,7 +253,7 @@ function taskSummaryQuery(whereClause) {
   return `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.due_date, t.status, t.approval_status, t.is_featured, t.attachment_filename, t.feed_post_id,
+      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.is_featured, t.attachment_filename, t.feed_post_id,
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
@@ -363,7 +412,7 @@ router.get('/calendar', (req, res) => {
   let query = `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.due_date, t.status, t.approval_status, t.is_featured, t.attachment_filename, t.feed_post_id,
+      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.is_featured, t.attachment_filename, t.feed_post_id,
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
@@ -504,8 +553,8 @@ router.get('/:id', (req, res) => {
   const task = db.prepare(`
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.description, t.content_type, t.caption, t.video_link,
-      t.due_date, t.status, t.is_featured, t.attachment_mime, t.attachment_filename,
+      t.title, t.description, t.content_type, t.content_tag, t.front_name, t.caption, t.video_link,
+      t.due_date, t.status, t.workflow_stage, t.is_featured, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, COALESCE(p.feed_visible, 0) AS feed_post_visible, t.created_at, t.updated_at,
       CASE WHEN t.attachment_data IS NOT NULL AND length(t.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
@@ -521,8 +570,8 @@ router.get('/:id', (req, res) => {
   task.assignees = attachAssignees([{ id: task.id }], req.user.agency_id)[0].assignees;
 
   let subtaskQuery = `
-    SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type,
-           st.title, st.status, st.due_date, st.attachment_filename, st.feed_post_id,
+    SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type, st.content_tag, st.front_name,
+           st.title, st.status, st.workflow_stage, st.due_date, st.attachment_filename, st.feed_post_id,
            COALESCE(sp.feed_visible, 0) AS feed_post_visible,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment
     FROM tasks st
@@ -543,13 +592,16 @@ router.get('/:id', (req, res) => {
 
 router.post('/', (req, res) => {
   const {
-    title, description, task_type, content_type, caption, video_link, media_gallery,
-    due_date, assignee_ids, status, client_id, is_featured,
+    title, description, task_type, content_type, content_tag, front_name, caption, video_link, media_gallery,
+    due_date, assignee_ids, status, workflow_stage, client_id, is_featured,
     attachment_data, attachment_mime, attachment_filename, parent_task_id
   } = req.body;
   if (!String(title || '').trim()) return res.status(400).json({ error: 'Titulo e obrigatorio' });
   if (req.user.role !== 'client' && status && !TASK_STATUSES.has(String(status))) {
     return res.status(400).json({ error: 'Status de tarefa inválido' });
+  }
+  if (workflow_stage && !TASK_WORKFLOW_STAGES.has(String(workflow_stage))) {
+    return res.status(400).json({ error: 'Etapa de fluxo inválida' });
   }
 
   let finalClientId = req.user.role === 'client' ? Number(req.user.client_id) : (client_id ? Number(client_id) : null);
@@ -563,16 +615,21 @@ router.post('/', (req, res) => {
   const finalAssigneeIds = Array.isArray(assignee_ids) ? assignee_ids : [];
   const assigneeValidation = validateAssigneesForClient(finalClientId, finalAssigneeIds, req.user.agency_id);
   if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
+  const finalWorkflowStage = req.user.role === 'client'
+    ? 'todo'
+    : (workflow_stage || workflowStageFromLegacy(status || 'pending'));
 
   const createTask = db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, is_featured, attachment_data, attachment_mime, attachment_filename)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, content_tag, front_name, caption, video_link, media_gallery, due_date, status, workflow_stage, is_featured, attachment_data, attachment_mime, attachment_filename)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.user.agency_id, finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
-      content_type || null, caption || null, video_link || null,
+      content_type || null, content_tag || null, front_name || null, caption || null, video_link || null,
       serializeExternalGallery(media_gallery),
-      due_date || null, req.user.role === 'client' ? 'pending' : (status || 'pending'),
+      due_date || null,
+      legacyStatusForWorkflow(finalWorkflowStage),
+      finalWorkflowStage,
       req.user.role === 'client' || parent_task_id ? 0 : (Number(is_featured) === 1 ? 1 : 0),
       persistMedia(attachment_data, attachment_mime || 'application/octet-stream'), attachment_mime || null, attachment_filename || null
     );
@@ -581,6 +638,10 @@ router.post('/', (req, res) => {
   });
 
   const id = createTask();
+  const created = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(id, req.user.agency_id);
+  if (created?.task_type === 'post' && taskHasMedia(created)) {
+    try { addTaskRecordToFeed(created, req.user.id, req.user.agency_id); } catch (error) { console.warn('[TASKS] Auto-grade na criação:', error.message); }
+  }
   res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 
@@ -595,6 +656,9 @@ router.put('/:id', (req, res) => {
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'status') && !TASK_STATUSES.has(String(req.body.status))) {
     return res.status(400).json({ error: 'Status de tarefa inválido' });
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage') && !TASK_WORKFLOW_STAGES.has(String(req.body.workflow_stage))) {
+    return res.status(400).json({ error: 'Etapa de fluxo inválida' });
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'approval_status') && !TASK_APPROVAL_STATUSES.has(String(req.body.approval_status))) {
     return res.status(400).json({ error: 'Etapa de aprovação inválida' });
@@ -617,11 +681,11 @@ router.put('/:id', (req, res) => {
   }
 
   const allowedFields = req.user.role === 'client' ? [
-    'title', 'description', 'task_type', 'content_type', 'caption', 'video_link',
+    'title', 'description', 'task_type', 'content_type', 'content_tag', 'front_name', 'caption', 'video_link',
     'media_gallery', 'due_date', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ] : [
-    'title', 'description', 'task_type', 'content_type', 'caption', 'video_link',
-    'media_gallery', 'due_date', 'status', 'approval_status', 'client_id',
+    'title', 'description', 'task_type', 'content_type', 'content_tag', 'front_name', 'caption', 'video_link',
+    'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'client_id',
     'is_featured', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ];
   const updates = [];
@@ -629,6 +693,7 @@ router.put('/:id', (req, res) => {
 
   for (const field of allowedFields) {
     if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
+    if (field === 'status' && Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage')) continue;
     updates.push(`${field} = ?`);
     if (field === 'media_gallery') {
       values.push(serializeExternalGallery(req.body.media_gallery));
@@ -645,6 +710,14 @@ router.put('/:id', (req, res) => {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage')) {
+    updates.push('status = ?');
+    values.push(legacyStatusForWorkflow(String(req.body.workflow_stage)));
+  } else if (Object.prototype.hasOwnProperty.call(req.body, 'status')) {
+    updates.push('workflow_stage = ?');
+    values.push(workflowStageFromLegacy(String(req.body.status)));
+  }
+
   const updateTask = db.transaction(() => {
     if (updates.length) {
       db.prepare(`UPDATE tasks SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
@@ -655,6 +728,14 @@ router.put('/:id', (req, res) => {
     }
   });
   updateTask();
+
+  const refreshedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (refreshedTask?.task_type === 'post' && taskHasMedia(refreshedTask)) {
+    try { addTaskRecordToFeed(refreshedTask, req.user.id, req.user.agency_id); } catch (error) { console.warn('[TASKS] Auto-grade na atualização:', error.message); }
+  } else if (refreshedTask?.feed_post_id) {
+    db.prepare(`UPDATE posts SET workflow_stage = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+      .run(refreshedTask.workflow_stage || workflowStageFromLegacy(refreshedTask.status), refreshedTask.feed_post_id, req.user.agency_id);
+  }
 
   res.json({ ok: true, task: getTaskSummary(req.params.id, req.user.agency_id) });
 });
@@ -681,11 +762,11 @@ router.post('/:id/duplicate', requireRole('admin', 'team', 'client'), (req, res)
 
   const duplicate = db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, caption, video_link, media_gallery, due_date, status, attachment_data, attachment_mime, attachment_filename)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, content_tag, front_name, caption, video_link, media_gallery, due_date, status, workflow_stage, attachment_data, attachment_mime, attachment_filename)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'todo', ?, ?, ?)
     `).run(
       req.user.agency_id, task.client_id, req.user.id, task.parent_task_id, task.task_type, `${task.title} (cópia)`, task.description,
-      task.content_type, task.caption, task.video_link, task.media_gallery, requestedDueDate,
+      task.content_type, task.content_tag, task.front_name, task.caption, task.video_link, task.media_gallery, requestedDueDate,
       task.attachment_data, task.attachment_mime, task.attachment_filename
     );
     const assigneeIds = db.prepare('SELECT user_id FROM task_assignees WHERE task_id = ?').all(task.id).map((row) => row.user_id);
@@ -694,6 +775,10 @@ router.post('/:id/duplicate', requireRole('admin', 'team', 'client'), (req, res)
   });
 
   const id = duplicate();
+  const duplicatedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(id, req.user.agency_id);
+  if (duplicatedTask?.task_type === 'post' && taskHasMedia(duplicatedTask)) {
+    try { addTaskRecordToFeed(duplicatedTask, req.user.id, req.user.agency_id); } catch (error) { console.warn('[TASKS] Auto-grade na duplicação:', error.message); }
+  }
   res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 

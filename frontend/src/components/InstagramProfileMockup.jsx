@@ -9,6 +9,20 @@ function approvalStatusMeta(status) {
   return null;
 }
 
+function workflowStageMeta(stage) {
+  const stages = {
+    todo: { label: 'A fazer', className: 'bg-slate-900/85 text-white' },
+    in_progress: { label: 'Em andamento', className: 'bg-amber-400 text-slate-950' },
+    correction: { label: 'Em correção', className: 'bg-rose-500 text-white' },
+    internal_approval: { label: 'Aprovação interna', className: 'bg-violet-600 text-white' },
+    external_approval: { label: 'Aprovação externa', className: 'bg-fuchsia-600 text-white' },
+    approved: { label: 'Aprovado', className: 'bg-emerald-500 text-white' },
+    scheduled: { label: 'Agendado', className: 'bg-sky-500 text-white' },
+    posted: { label: 'Postado', className: 'bg-indigo-600 text-white' },
+  };
+  return stages[stage] || null;
+}
+
 function formatMetric(value) {
   const number = Number(value || 0);
   return new Intl.NumberFormat('pt-BR').format(number);
@@ -120,6 +134,7 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
             }[status.tone] || 'bg-slate-900/75 text-white';
             const mediaSrc = post.media_data || post.thumbnail_url || null;
             const approvalStatus = sourceType === 'planned' ? approvalStatusMeta(post.status) : null;
+            const workflowStatus = sourceType === 'planned' ? workflowStageMeta(post.workflow_stage) : null;
             const ApprovalIcon = approvalStatus?.icon || null;
             return (
               <button key={`${sourceType}-${sourceId}`} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100 text-left">
@@ -132,6 +147,14 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                 {galleryCount > 1 && (
                   <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white shadow">
                     <Images size={13} /> {galleryCount}
+                  </span>
+                )}
+                {workflowStatus && (
+                  <span
+                    className={`absolute left-2 z-10 max-w-[80%] truncate rounded-full px-2 py-1 text-[9px] font-black tracking-[0.03em] shadow ${Number(post.is_pinned || 0) === 1 ? 'top-11' : 'top-2'} ${workflowStatus.className}`}
+                    title={`Etapa do Designer: ${workflowStatus.label}`}
+                  >
+                    {workflowStatus.label}
                   </span>
                 )}
                 {showCoverBadges && video && (

@@ -7,15 +7,36 @@ import { formChanged } from '../utils/formState.js';
 const CONTENT_TYPES = [
   { value: 'feed', label: 'Estático' },
   { value: 'carrossel', label: 'Carrossel' },
-  { value: 'reels', label: 'Reels' },
-  { value: 'story', label: 'Story' },
-  { value: 'artigo', label: 'Artigo' },
+  { value: 'story', label: 'Stories' },
+  { value: 'presentation', label: 'Apresentação' },
+  { value: 'print', label: 'Impresso' },
 ];
 
 const TASK_TYPES = [
   { value: 'basic', label: 'Tarefa básica', icon: FileText },
   { value: 'post', label: 'Post', icon: Grid3x3 },
 ];
+
+const CONTENT_TAGS = ['Venda', 'Trend', 'Institucional', 'Feriado', 'Outro'];
+
+const WORKFLOW_STAGES = [
+  { value: 'todo', label: 'A fazer' },
+  { value: 'in_progress', label: 'Em andamento' },
+  { value: 'correction', label: 'Em correção' },
+  { value: 'internal_approval', label: 'Em aprovação interna' },
+  { value: 'external_approval', label: 'Em aprovação externa' },
+  { value: 'approved', label: 'Aprovado' },
+  { value: 'scheduled', label: 'Agendado' },
+  { value: 'posted', label: 'Postado' },
+];
+
+function workflowStageFromTask(task) {
+  if (task?.workflow_stage) return task.workflow_stage;
+  if (task?.status === 'posted') return 'posted';
+  if (task?.status === 'done') return 'approved';
+  if (task?.status === 'in_progress') return 'in_progress';
+  return 'todo';
+}
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -59,17 +80,15 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
     task_type: taskToEdit?.task_type || visibleTaskTypes[0]?.value || 'basic',
     title: taskToEdit?.title || '',
     description: taskToEdit?.description || '',
-    project_name: taskToEdit?.project_name || '',
     front_name: taskToEdit?.front_name || defaultFrontName || '',
-    priority: taskToEdit?.priority || 'medium',
-    goal: taskToEdit?.goal || '',
+    content_tag: taskToEdit?.content_tag || '',
     content_type: taskToEdit?.content_type || '',
     caption: taskToEdit?.caption || '',
     video_link: taskToEdit?.video_link || '',
     due_date: taskToEdit?.due_date ? taskToEdit.due_date.slice(0, 10) : (defaultDueDate || todayISO()),
     assignee_ids: taskToEdit?.assignees?.map((a) => a.id) || [],
     client_id: taskToEdit?.client_id || defaultClientId || '',
-    status: taskToEdit?.status || 'pending',
+    workflow_stage: workflowStageFromTask(taskToEdit),
     is_featured: Number(taskToEdit?.is_featured) === 1,
     attachment_data: taskToEdit?.attachment_data || '',
     attachment_mime: taskToEdit?.attachment_mime || '',
@@ -152,17 +171,15 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
         task_type: form.task_type,
         title: form.title.trim(),
         description: form.description,
-        project_name: form.project_name,
         front_name: form.front_name,
-        priority: form.priority,
-        goal: form.goal,
+        content_tag: form.content_tag,
         content_type: form.content_type,
         caption: form.caption,
         video_link: form.video_link,
         due_date: form.due_date || null,
         assignee_ids: form.assignee_ids,
         client_id: form.client_id || null,
-        status: form.status
+        workflow_stage: form.workflow_stage
       };
 
       if (canFeatureTask) payload.is_featured = form.is_featured ? 1 : 0;
@@ -265,51 +282,16 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Projeto</label>
-              <input
-                className="input-field"
-                value={form.project_name}
-                onChange={(e) => setForm({ ...form, project_name: e.target.value })}
-                placeholder="Ex: Plano Estratégico 2026"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Frente</label>
-              <input
-                className="input-field"
-                value={form.front_name}
-                onChange={(e) => setForm({ ...form, front_name: e.target.value })}
-                placeholder="Ex: Comercial"
-                readOnly={Boolean(defaultFrontName)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Prioridade</label>
-              <select className="input-field" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                <option value="low">Baixa</option>
-                <option value="medium">Média</option>
-                <option value="high">Alta</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Meta</label>
-              <input
-                className="input-field"
-                value={form.goal}
-                onChange={(e) => setForm({ ...form, goal: e.target.value })}
-                placeholder="Meta ou resultado esperado"
-              />
-            </div>
-          </div>
-
           {isPost && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 block mb-1">Tag</label>
+                  <select className="input-field" value={form.content_tag} onChange={(e) => setForm({ ...form, content_tag: e.target.value })}>
+                    <option value="">Sem tag</option>
+                    {CONTENT_TAGS.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label className="text-sm font-medium text-slate-700 block mb-1">Tipo de conteúdo</label>
                   <select className="input-field" value={form.content_type} onChange={(e) => setForm({ ...form, content_type: e.target.value })}>
@@ -389,12 +371,9 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1">Status inicial</label>
-              <select className="input-field" value={form.status} disabled={userRole === 'client'} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option value="pending">Pendente</option>
-                <option value="in_progress">Em andamento</option>
-                <option value="done">Concluída</option>
-                <option value="posted">Postado</option>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Etapa inicial</label>
+              <select className="input-field" value={form.workflow_stage} disabled={userRole === 'client'} onChange={(e) => setForm({ ...form, workflow_stage: e.target.value })}>
+                {WORKFLOW_STAGES.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
               </select>
             </div>
           </div>

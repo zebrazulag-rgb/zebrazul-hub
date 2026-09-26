@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS posts (
   media_gallery TEXT,
   scheduled_at TEXT,
   status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_approval','approved','rejected','scheduled','published')),
+  workflow_stage TEXT,
   client_feedback TEXT,
   feed_visible INTEGER DEFAULT 1,
   is_pinned INTEGER DEFAULT 0 CHECK(is_pinned IN (0,1)),
@@ -158,6 +159,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   media_gallery TEXT,
   due_date TEXT,
   status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
+  workflow_stage TEXT DEFAULT 'todo',
+  content_tag TEXT,
+  project_name TEXT,
+  front_name TEXT,
+  priority TEXT DEFAULT 'medium',
+  goal TEXT,
   approval_status TEXT DEFAULT 'completed',
   is_featured INTEGER DEFAULT 0,
   attachment_data TEXT,
@@ -1211,6 +1218,42 @@ tryAddColumn('posts', 'instagram_publish_error', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
+tryAddColumn('tasks', 'workflow_stage', "TEXT DEFAULT 'todo'");
+tryAddColumn('tasks', 'content_tag', 'TEXT');
+tryAddColumn('tasks', 'front_name', 'TEXT');
+tryAddColumn('tasks', 'project_name', 'TEXT');
+tryAddColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
+tryAddColumn('tasks', 'goal', 'TEXT');
+tryAddColumn('posts', 'workflow_stage', 'TEXT');
+
+// A operação de Designer usa uma jornada mais detalhada que o status legado.
+// Mantemos `status` para compatibilidade com painel, clientes e integrações antigas,
+// e usamos `workflow_stage` como a etapa visual/operacional do kanban.
+db.exec(`
+  UPDATE tasks
+  SET workflow_stage = CASE
+    WHEN status = 'posted' THEN 'posted'
+    WHEN status = 'done' THEN 'approved'
+    WHEN status = 'in_progress' THEN 'in_progress'
+    ELSE 'todo'
+  END
+  WHERE workflow_stage IS NULL OR trim(workflow_stage) = ''
+`);
+
+db.exec(`
+  UPDATE posts
+  SET workflow_stage = (
+    SELECT t.workflow_stage
+    FROM tasks t
+    WHERE t.feed_post_id = posts.id AND t.agency_id = posts.agency_id
+    LIMIT 1
+  )
+  WHERE (workflow_stage IS NULL OR trim(workflow_stage) = '')
+    AND EXISTS (
+      SELECT 1 FROM tasks t
+      WHERE t.feed_post_id = posts.id AND t.agency_id = posts.agency_id
+    )
+`);
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
 
 // Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
@@ -1293,6 +1336,12 @@ function migrateTaskStatuses() {
           media_gallery TEXT,
           due_date TEXT,
           status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','done','posted')),
+          workflow_stage TEXT DEFAULT 'todo',
+          content_tag TEXT,
+          project_name TEXT,
+          front_name TEXT,
+          priority TEXT DEFAULT 'medium',
+          goal TEXT,
           approval_status TEXT DEFAULT 'completed',
           is_featured INTEGER DEFAULT 0,
           attachment_data TEXT,
@@ -1314,14 +1363,18 @@ function migrateTaskStatuses() {
         INSERT INTO tasks_migrated (
           id, agency_id, client_id, created_by, assignee_id, parent_task_id,
           task_type, title, description, content_type, caption, video_link,
-          media_gallery, due_date, status, approval_status, is_featured, attachment_data,
+          media_gallery, due_date, status, workflow_stage, content_tag, project_name, front_name, priority, goal,
+          approval_status, is_featured, attachment_data,
           attachment_mime, attachment_filename, feed_post_id, created_at, updated_at
         )
         SELECT
           id, COALESCE(agency_id, (SELECT id FROM agencies ORDER BY id LIMIT 1), 1),
           client_id, created_by, assignee_id, parent_task_id,
           COALESCE(task_type, 'basic'), title, description, content_type, caption,
-          video_link, media_gallery, due_date, status, 'completed', COALESCE(is_featured, 0),
+          video_link, media_gallery, due_date, status,
+          COALESCE(workflow_stage, CASE WHEN status = 'posted' THEN 'posted' WHEN status = 'done' THEN 'approved' WHEN status = 'in_progress' THEN 'in_progress' ELSE 'todo' END),
+          content_tag, project_name, front_name, COALESCE(priority, 'medium'), goal,
+          'completed', COALESCE(is_featured, 0),
           attachment_data, attachment_mime, attachment_filename, feed_post_id,
           created_at, updated_at
         FROM tasks;

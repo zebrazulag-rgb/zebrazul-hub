@@ -12,11 +12,40 @@ import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { hasPermission } from '../permissions.js';
 
 const STATUS_COLUMNS = [
-  { key: 'pending', label: 'Pendente', badge: 'bg-slate-100 text-slate-600' },
+  { key: 'todo', label: 'A fazer', badge: 'bg-slate-100 text-slate-600' },
   { key: 'in_progress', label: 'Em andamento', badge: 'bg-amber-100 text-amber-700' },
-  { key: 'done', label: 'Concluída', badge: 'bg-emerald-100 text-emerald-700' },
-  { key: 'posted', label: 'Postado', badge: 'bg-indigo-100 text-indigo-700' }
+  { key: 'correction', label: 'Em correção', badge: 'bg-rose-100 text-rose-700' },
+  { key: 'internal_approval', label: 'Em aprovação interna', badge: 'bg-violet-100 text-violet-700' },
+  { key: 'external_approval', label: 'Em aprovação externa', badge: 'bg-fuchsia-100 text-fuchsia-700' },
+  { key: 'approved', label: 'Aprovado', badge: 'bg-emerald-100 text-emerald-700' },
+  { key: 'scheduled', label: 'Agendado', badge: 'bg-sky-100 text-sky-700' },
+  { key: 'posted', label: 'Postado', badge: 'bg-indigo-100 text-indigo-700' },
 ];
+
+const WORKFLOW_ORDER = STATUS_COLUMNS.map((item) => item.key);
+const CONTENT_TYPE_LABELS = {
+  feed: 'Estático',
+  carrossel: 'Carrossel',
+  story: 'Stories',
+  stories: 'Stories',
+  presentation: 'Apresentação',
+  print: 'Impresso',
+};
+const CONTENT_TAG_CLASSES = {
+  Venda: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  Trend: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
+  Institucional: 'bg-blue-50 text-blue-700 border-blue-100',
+  Feriado: 'bg-amber-50 text-amber-700 border-amber-100',
+  Outro: 'bg-slate-50 text-slate-600 border-slate-200',
+};
+
+function workflowStage(task) {
+  if (task?.workflow_stage) return task.workflow_stage;
+  if (task?.status === 'posted') return 'posted';
+  if (task?.status === 'done') return 'approved';
+  if (task?.status === 'in_progress') return 'in_progress';
+  return 'todo';
+}
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
 
@@ -51,15 +80,12 @@ function localTodayIso() {
 function isTaskOverdue(task) {
   const due = String(task?.due_date || '').slice(0, 10);
   if (!due) return false;
-  if (task?.status === 'done' || task?.status === 'posted') return false;
+  if (['approved', 'scheduled', 'posted'].includes(workflowStage(task))) return false;
   return due < localTodayIso();
 }
 
 function taskMatchesFilters(task, filters) {
-  if (filters.status && task.status !== filters.status) return false;
-  if (filters.priority && (task.priority || 'medium') !== filters.priority) return false;
-  if (filters.project && String(task.project_name || '') !== filters.project) return false;
-  if (filters.front && String(task.front_name || '') !== filters.front) return false;
+  if (filters.status && workflowStage(task) !== filters.status) return false;
   if (filters.assignee_id && !(task.assignees || []).some((item) => String(item.id) === String(filters.assignee_id))) return false;
   const due = String(task.due_date || '').slice(0, 10);
   if (filters.due_from && (!due || due < filters.due_from)) return false;
@@ -151,11 +177,10 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
               )}
             </div>
           )}
-          {(t.project_name || t.front_name || t.priority) && (
+          {(t.content_tag || t.content_type) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {t.project_name && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600">{t.project_name}</span>}
-              {t.front_name && <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700">{t.front_name}</span>}
-              {t.priority && <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${t.priority === 'high' ? 'bg-rose-50 text-rose-700' : t.priority === 'low' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{priorityLabel(t.priority)}</span>}
+              {t.content_tag && <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${CONTENT_TAG_CLASSES[t.content_tag] || CONTENT_TAG_CLASSES.Outro}`}>{t.content_tag}</span>}
+              {t.content_type && <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500">{CONTENT_TYPE_LABELS[t.content_type] || t.content_type}</span>}
             </div>
           )}
           {t.parent_task_id && (
@@ -282,9 +307,6 @@ export default function Tasks({ workspace = 'designer' }) {
   const [csvNotice, setCsvNotice] = useState('');
   const [filters, setFilters] = useState({
     status: '',
-    priority: '',
-    project: '',
-    front: '',
     assignee_id: '',
     due_from: '',
     due_to: '',
@@ -516,10 +538,11 @@ export default function Tasks({ workspace = 'designer' }) {
     setEditingTask(completeTask);
   }
 
-  async function updateStatus(taskId, status) {
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
-    setCalendarTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
-    await api.put('/tasks/' + taskId, { status });
+  async function updateStatus(taskId, workflow_stage) {
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, workflow_stage } : t)));
+    setCalendarTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, workflow_stage } : t)));
+    setSelectedTask((prev) => prev?.id === taskId ? { ...prev, workflow_stage } : prev);
+    await api.put('/tasks/' + taskId, { workflow_stage });
   }
 
   async function toggleFeatured(taskId, nextValue) {
@@ -554,10 +577,10 @@ export default function Tasks({ workspace = 'designer' }) {
     }
   }
 
-  async function updateSubtaskStatus(subtaskId, status) {
-    setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
-    setCalendarTasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, status } : s)));
-    await api.put('/tasks/' + subtaskId, { status });
+  async function updateSubtaskStatus(subtaskId, workflow_stage) {
+    setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, workflow_stage } : s)));
+    setCalendarTasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, workflow_stage } : s)));
+    await api.put('/tasks/' + subtaskId, { workflow_stage });
     loadTasks();
   }
 
@@ -809,24 +832,21 @@ export default function Tasks({ workspace = 'designer' }) {
     const taskId = Number(e.dataTransfer.getData('text/task-id'));
     if (!taskId) return;
     const task = tasks.find((t) => t.id === taskId);
-    if (task && task.status !== columnKey) updateStatus(taskId, columnKey);
+    if (task && workflowStage(task) !== columnKey) updateStatus(taskId, columnKey);
   }
 
-  function nextStatus(status) {
-    if (status === 'pending') return 'in_progress';
-    if (status === 'in_progress') return 'done';
-    if (status === 'done') return 'posted';
-    return 'pending';
+  function nextStatus(taskOrStage) {
+    const current = typeof taskOrStage === 'string' ? taskOrStage : workflowStage(taskOrStage);
+    const index = WORKFLOW_ORDER.indexOf(current);
+    return WORKFLOW_ORDER[index >= 0 && index < WORKFLOW_ORDER.length - 1 ? index + 1 : 0];
   }
 
   const filteredTasks = tasks.filter((task) => taskMatchesFilters(task, filters));
-  const postedFilteredTasks = hidePosted ? filteredTasks.filter((task) => task.status !== 'posted') : filteredTasks;
+  const postedFilteredTasks = hidePosted ? filteredTasks.filter((task) => workflowStage(task) !== 'posted') : filteredTasks;
   const visibleFilteredTasks = showOverdueOnly ? postedFilteredTasks.filter(isTaskOverdue) : postedFilteredTasks;
   const visibleStatusColumns = showOverdueOnly
-    ? STATUS_COLUMNS.filter((column) => column.key === 'pending' || column.key === 'in_progress')
+    ? STATUS_COLUMNS.filter((column) => !['approved', 'scheduled', 'posted'].includes(column.key))
     : (hidePosted ? STATUS_COLUMNS.filter((column) => column.key !== 'posted') : STATUS_COLUMNS);
-  const projectOptions = [...new Set(tasks.map((task) => task.project_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const frontOptions = [...new Set(tasks.map((task) => task.front_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
   const canModifySelectedTask = Boolean(selectedTask && canCreateTasks);
@@ -841,11 +861,11 @@ export default function Tasks({ workspace = 'designer' }) {
 
   const taskOverview = {
     total: tasks.length + subtaskOverview.total,
-    pending: tasks.filter((task) => task.status === 'pending').length + subtaskOverview.pending,
-    inProgress: tasks.filter((task) => task.status === 'in_progress').length + subtaskOverview.inProgress,
+    pending: tasks.filter((task) => workflowStage(task) === 'todo').length + subtaskOverview.pending,
+    inProgress: tasks.filter((task) => ['in_progress', 'correction', 'internal_approval', 'external_approval'].includes(workflowStage(task))).length + subtaskOverview.inProgress,
     overdue: tasks.filter(isTaskOverdue).length,
-    done: tasks.filter((task) => task.status === 'done').length + (subtaskOverview.done - subtaskOverview.posted),
-    posted: tasks.filter((task) => task.status === 'posted').length + subtaskOverview.posted,
+    done: tasks.filter((task) => ['approved', 'scheduled'].includes(workflowStage(task))).length + (subtaskOverview.done - subtaskOverview.posted),
+    posted: tasks.filter((task) => workflowStage(task) === 'posted').length + subtaskOverview.posted,
   };
 
   const year = cursor.getFullYear();
@@ -856,7 +876,7 @@ export default function Tasks({ workspace = 'designer' }) {
     if (!day) return [];
     return calendarTasks.filter((t) => {
       if (!t.due_date || !taskMatchesFilters(t, filters)) return false;
-      if (hidePosted && t.status === 'posted') return false;
+      if (hidePosted && workflowStage(t) === 'posted') return false;
       if (showOverdueOnly && !isTaskOverdue(t)) return false;
       const parts = dateParts(t.due_date);
       return parts.year === year && parts.month === month + 1 && parts.day === day;
@@ -927,7 +947,7 @@ export default function Tasks({ workspace = 'designer' }) {
     else {
       nextParams.set('atrasadas', '1');
       nextParams.delete('task_id');
-      if (filters.status === 'done' || filters.status === 'posted') {
+      if (['approved', 'scheduled', 'posted'].includes(filters.status)) {
         setFilters((current) => ({ ...current, status: '' }));
       }
     }
@@ -1086,26 +1106,6 @@ export default function Tasks({ workspace = 'designer' }) {
 
       <div className="toolbar-panel space-y-3 py-3">
         <div className={`${mobileFiltersOpen ? 'flex' : 'hidden'} flex-wrap items-end gap-2`}>
-          <div className="min-w-[150px] flex-1">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Projeto</label>
-            <select className="input-field py-2 text-xs" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))}>
-              <option value="">Todos</option>
-              {projectOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-          <div className="min-w-[140px] flex-1">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Frente</label>
-            <select className="input-field py-2 text-xs" value={filters.front} onChange={(e) => setFilters((current) => ({ ...current, front: e.target.value }))}>
-              <option value="">Todas</option>
-              {frontOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </div>
-          <div className="min-w-[130px]">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Prioridade</label>
-            <select className="input-field py-2 text-xs" value={filters.priority} onChange={(e) => setFilters((current) => ({ ...current, priority: e.target.value }))}>
-              <option value="">Todas</option><option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option>
-            </select>
-          </div>
           <div className="min-w-[145px]">
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
             <select className="input-field py-2 text-xs" value={filters.status} onChange={(e) => setFilters((current) => ({ ...current, status: e.target.value }))}>
@@ -1126,7 +1126,7 @@ export default function Tasks({ workspace = 'designer' }) {
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Até</label>
             <input type="date" className="input-field py-2 text-xs" value={filters.due_to} onChange={(e) => setFilters((current) => ({ ...current, due_to: e.target.value }))} />
           </div>
-          {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', priority: '', project: '', front: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
+          {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[11px] text-slate-400">{visibleFilteredTasks.length} demanda(s) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' · filtros ativos' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
@@ -1183,24 +1183,24 @@ export default function Tasks({ workspace = 'designer' }) {
       {csvNotice && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">{csvNotice}</p>}
 
       {view === 'kanban' && (
-        <div className={`flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 md:grid md:snap-none md:overflow-visible md:pb-0 md:gap-5 md:grid-cols-2 ${hidePosted ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}`}>
+        <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3">
           {visibleStatusColumns.map((col) => (
             <div
               key={col.key}
               onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, col.key)}
-              className={'w-[calc(100vw-48px)] shrink-0 snap-start min-h-[420px] rounded-[24px] md:w-auto md:shrink border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
+              className={'w-[min(86vw,310px)] shrink-0 snap-start min-h-[420px] rounded-[24px] border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
             >
               <div className="mb-3 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{visibleFilteredTasks.filter((t) => t.status === col.key).length}</span>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{visibleFilteredTasks.filter((t) => workflowStage(t) === col.key).length}</span>
               </div>
               <div className="space-y-3 min-h-[60px]">
-                {visibleFilteredTasks.filter((t) => t.status === col.key).map((t) => (
+                {visibleFilteredTasks.filter((t) => workflowStage(t) === col.key).map((t) => (
                   <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={canCreateTasks ? handleDragStart : null} onToggleFeatured={canCreateTasks ? (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1) : null} />
                 ))}
-                {visibleFilteredTasks.filter((t) => t.status === col.key).length === 0 && (
+                {visibleFilteredTasks.filter((t) => workflowStage(t) === col.key).length === 0 && (
                   <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
                 )}
               </div>
@@ -1509,12 +1509,10 @@ export default function Tasks({ workspace = 'designer' }) {
                 )}
               </div>
             )}
-            {!selectedTask.details_loading && (selectedTask.project_name || selectedTask.front_name || selectedTask.goal || selectedTask.priority) && (
-              <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                {selectedTask.project_name && <p><span className="font-semibold text-slate-700">Projeto:</span> {selectedTask.project_name}</p>}
-                {selectedTask.front_name && <p><span className="font-semibold text-slate-700">Frente:</span> {selectedTask.front_name}</p>}
-                {selectedTask.priority && <p><span className="font-semibold text-slate-700">Prioridade:</span> {priorityLabel(selectedTask.priority)}</p>}
-                {selectedTask.goal && <p><span className="font-semibold text-slate-700">Meta:</span> {selectedTask.goal}</p>}
+            {!selectedTask.details_loading && (selectedTask.content_tag || selectedTask.content_type) && (
+              <div className="mb-4 flex flex-wrap gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                {selectedTask.content_tag && <span className={`rounded-full border px-2.5 py-1 font-bold ${CONTENT_TAG_CLASSES[selectedTask.content_tag] || CONTENT_TAG_CLASSES.Outro}`}>{selectedTask.content_tag}</span>}
+                {selectedTask.content_type && <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-600">{CONTENT_TYPE_LABELS[selectedTask.content_type] || selectedTask.content_type}</span>}
               </div>
             )}
 
@@ -1555,8 +1553,8 @@ export default function Tasks({ workspace = 'designer' }) {
               {STATUS_COLUMNS.map((col) => (
                 <button
                   key={col.key}
-                  onClick={() => { updateStatus(selectedTask.id, col.key); setSelectedTask({ ...selectedTask, status: col.key }); }}
-                  className={'rounded-lg border py-2 text-xs font-medium transition-colors ' + (selectedTask.status === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300')}
+                  onClick={() => { updateStatus(selectedTask.id, col.key); setSelectedTask({ ...selectedTask, workflow_stage: col.key }); }}
+                  className={'rounded-lg border py-2 text-xs font-medium transition-colors ' + (workflowStage(selectedTask) === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300')}
                 >
                   {col.label}
                 </button>
@@ -1564,16 +1562,6 @@ export default function Tasks({ workspace = 'designer' }) {
             </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
-              {canCreateTasks && selectedTask.client_id && (selectedTask.task_type === 'post' || subtasks.some((item) => item.task_type === 'post')) && (
-                <button
-                  type="button"
-                  onClick={addAllToFeed}
-                  disabled={addingAllToFeed}
-                  className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
-                >
-                  <Grid3x3 size={15} /> {addingAllToFeed ? 'Adicionando publicações...' : 'Adicionar todos à grade'}
-                </button>
-              )}
               {canCreateTasks && !selectedTask.parent_task_id && (
                 <button
                   onClick={() => toggleFeatured(selectedTask.id, Number(selectedTask.is_featured) !== 1)}
@@ -1622,13 +1610,9 @@ export default function Tasks({ workspace = 'designer' }) {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => sendToFeed(selectedTask.id)}
-                    disabled={sendingToFeed}
-                    className="col-span-2 bg-zebrazul-50 text-zebrazul-700 hover:bg-zebrazul-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <Grid3x3 size={14} /> {sendingToFeed ? 'Enviando...' : selectedTask.feed_post_id ? 'Devolver à grade' : 'Adicionar à grade'}
-                  </button>
+                  <div className="col-span-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-center text-xs font-medium text-slate-500">
+                    Anexe uma imagem e salve: o conteúdo entra na grade automaticamente.
+                  </div>
                 )
               )}
             </div>
@@ -1638,7 +1622,7 @@ export default function Tasks({ workspace = 'designer' }) {
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-slate-700">
-                  Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => ['done', 'posted'].includes(s.status)).length}/{subtasks.length})</span>}
+                  Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => ['approved', 'scheduled', 'posted'].includes(workflowStage(s))).length}/{subtasks.length})</span>}
                 </p>
                 {canCreateTasks && (
                   <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
@@ -1651,14 +1635,14 @@ export default function Tasks({ workspace = 'designer' }) {
                 {subtasks.map((s) => (
                   <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
                     <button
-                      onClick={() => canCreateTasks && updateSubtaskStatus(s.id, nextStatus(s.status))}
-                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (s.status === 'posted' ? 'bg-indigo-500 border-indigo-500' : s.status === 'done' ? 'bg-emerald-500 border-emerald-500' : s.status === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
+                      onClick={() => canCreateTasks && updateSubtaskStatus(s.id, nextStatus(s))}
+                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (workflowStage(s) === 'posted' ? 'bg-indigo-500 border-indigo-500' : ['approved', 'scheduled'].includes(workflowStage(s)) ? 'bg-emerald-500 border-emerald-500' : workflowStage(s) === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
                       title="Clique para avançar o status"
                     >
-                      {['done', 'posted'].includes(s.status) && <span className="text-white text-[10px]">✓</span>}
+                      {['approved', 'scheduled', 'posted'].includes(workflowStage(s)) && <span className="text-white text-[10px]">✓</span>}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className={'text-sm truncate ' + (['done', 'posted'].includes(s.status) ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
+                      <p className={'text-sm truncate ' + (['approved', 'scheduled', 'posted'].includes(workflowStage(s)) ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}
@@ -1680,14 +1664,7 @@ export default function Tasks({ workspace = 'designer' }) {
                               </button>
                             </>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => { setSendingSubtaskToFeedId(s.id); sendToFeed(s.id, 'subtask'); }}
-                              disabled={sendingSubtaskToFeedId === s.id}
-                              className="inline-flex items-center gap-1 text-[11px] font-medium text-zebrazul-600 hover:underline disabled:opacity-50"
-                            >
-                              <Grid3x3 size={11} /> {sendingSubtaskToFeedId === s.id ? 'Adicionando...' : s.feed_post_id ? 'Devolver à grade' : 'Adicionar à grade'}
-                            </button>
+                            <span className="text-[11px] font-medium text-slate-400">A grade será criada ao anexar a imagem.</span>
                           )}
                         </div>
                       )}
