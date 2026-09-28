@@ -78,6 +78,36 @@ function sumPlatforms(report, field) {
   return Number(report?.facebook?.[field] || 0) + Number(report?.instagram?.[field] || 0);
 }
 
+function isMetaPermissionPendingError(value) {
+  const message = String(value || '').toLowerCase();
+  if (!message) return false;
+  return (
+    message.includes('pages_read_engagement')
+    || message.includes('page public content access')
+    || message.includes('page public metadata access')
+    || message.includes('permission')
+    || message.includes('(#10)')
+  );
+}
+
+function friendlySyncMessage(value) {
+  if (isMetaPermissionPendingError(value)) {
+    return 'A conexão com a Meta está salva. Os dados orgânicos do Facebook ainda não puderam ser sincronizados porque a permissão necessária está aguardando liberação da Meta. Você não precisa reconectar a conta.';
+  }
+  return 'A conexão está salva, mas os dados orgânicos não puderam ser atualizados agora. Tente novamente em alguns instantes.';
+}
+
+function TechnicalSyncDetails({ value, user }) {
+  const isPlatformOwner = user?.is_platform_owner === true || Number(user?.is_platform_owner) === 1;
+  if (!value || !isPlatformOwner) return null;
+  return (
+    <details className="mt-2 text-[11px] text-slate-500">
+      <summary className="cursor-pointer select-none font-semibold text-slate-500 hover:text-slate-700">Ver detalhes técnicos</summary>
+      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white/70 p-2 font-mono text-[10px] leading-4 text-slate-500">{String(value)}</pre>
+    </details>
+  );
+}
+
 const weekDays = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 
 export default function OrganicReports({ clientId, from, to, user, refreshKey = 0, onReportLoaded, onOpenConnections }) {
@@ -263,9 +293,12 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
       </div>
 
       {error && (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${isMetaPermissionPendingError(error) ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
           <AlertCircle size={18} className="mt-0.5 shrink-0" />
-          <span>{error}</span>
+          <div className="min-w-0">
+            <p>{isMetaPermissionPendingError(error) ? friendlySyncMessage(error) : error}</p>
+            <TechnicalSyncDetails value={error} user={user} />
+          </div>
         </div>
       )}
       {notice && (
@@ -325,9 +358,15 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
               <p className="mt-1 text-xs text-slate-400">Fonte: {organicSource}</p>
             </div>
             {report.connection.last_sync_error && (
-              <div className={`lg:col-span-3 rounded-xl border px-3 py-2 text-xs leading-5 ${report.connection.last_sync_status === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-                <strong>{report.connection.last_sync_status === 'error' ? 'Conexão salva, mas os dados não puderam ser atualizados.' : 'Conexão ativa com sincronização parcial.'}</strong>{' '}
-                {report.connection.last_sync_error}
+              <div className="lg:col-span-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-800">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                  <div className="min-w-0">
+                    <strong className="block text-slate-800">Facebook conectado</strong>
+                    <span>{friendlySyncMessage(report.connection.last_sync_error)}</span>
+                    <TechnicalSyncDetails value={report.connection.last_sync_error} user={user} />
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -612,7 +651,7 @@ function PlatformBadge({ platform }) {
 function OrganicConnectionBadge({ configured, connected, status }) {
   if (!configured) return <span className="badge bg-amber-100 text-amber-700">Integração orgânica não configurada</span>;
   if (!connected) return <span className="badge bg-slate-100 text-slate-600">Aguardando conexão</span>;
-  if (status === 'error') return <span className="badge bg-red-100 text-red-700">Conectado • dados pendentes</span>;
+  if (status === 'error') return <span className="badge bg-amber-100 text-amber-700">Conectado • dados pendentes</span>;
   if (status === 'partial') return <span className="badge bg-amber-100 text-amber-700">Conectado • parcial</span>;
   if (status === 'syncing') return <span className="badge bg-blue-100 text-blue-700">Sincronizando dados</span>;
   if (status === 'success') return <span className="badge bg-emerald-100 text-emerald-700">Conectado</span>;
