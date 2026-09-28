@@ -5,6 +5,7 @@ import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
+import Moodboard from './pages/Moodboard.jsx';
 import SiteLP from './pages/SiteLP.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
@@ -127,6 +128,7 @@ export default function App() {
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
       <Route path="/stories" element={<Navigate to="/ia?view=stories" replace />} />
       <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks workspace="designer" /></ProtectedRoute>} />
+      <Route path="/designer/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Moodboard /></ProtectedRoute>} />
       <Route path="/tarefas" element={<DesignerLegacyRedirect />} />
       <Route path="/site-lp" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><SiteLP /></ProtectedRoute>} />
       <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />

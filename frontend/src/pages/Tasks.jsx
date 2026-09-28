@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, NavLink, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -9,6 +9,7 @@ import TaskCsvModal from '../components/TaskCsvModal.jsx';
 import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import TopbarPortal from '../components/TopbarPortal.jsx';
 import { hasPermission } from '../permissions.js';
 
 const STATUS_COLUMNS = [
@@ -1082,6 +1083,14 @@ export default function Tasks({ workspace = 'designer' }) {
 
   return (
     <div className="space-y-4">
+      {!isSiteLP && (
+        <TopbarPortal>
+          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+            <NavLink to="/designer" end className={({ isActive }) => `inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold transition ${isActive ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>Demandas</NavLink>
+            <NavLink to="/designer/moodboard" className={({ isActive }) => `inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold transition ${isActive ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>Moodboard</NavLink>
+          </div>
+        </TopbarPortal>
+      )}
       {taskCommandBar}
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
