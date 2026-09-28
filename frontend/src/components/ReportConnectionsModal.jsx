@@ -27,7 +27,7 @@ const INSTAGRAM_REPORT_SCOPES = [
 ];
 
 function formatDate(value) {
-  if (!value) return 'Sem data informada';
+  if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -85,6 +85,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
           setNotice('Instagram conectado diretamente. O relatório orgânico já pode usar esta conta.');
           setError('');
           loadEverything({ keepNotice: true });
+          window.dispatchEvent(new CustomEvent('zebrahub-instagram-connection-changed', { detail: { clientId } }));
           onChanged?.();
         } else {
           setError(payload.message || 'A conexão direta com o Instagram não foi concluída.');
@@ -213,6 +214,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
       });
       setNotice('Página do Facebook salva com sucesso. A conexão está pronta; a sincronização dos dados é uma etapa separada.');
       await loadEverything({ keepNotice: true });
+      window.dispatchEvent(new CustomEvent('zebrahub-instagram-connection-changed', { detail: { clientId } }));
       onChanged?.();
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível salvar os ativos selecionados.');
@@ -231,6 +233,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
       setAssets({ pages: [] });
       setPageId('');
       setNotice('Meta desconectada. O histórico já salvo foi preservado.');
+      window.dispatchEvent(new CustomEvent('zebrahub-instagram-connection-changed', { detail: { clientId } }));
       onChanged?.();
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível desconectar a Meta.');
@@ -247,6 +250,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
       await api.delete(`/instagram-oauth/client/${clientId}`);
       setInstagramInfo((current) => ({ ...(current || {}), connection: null }));
       setNotice('Instagram direto desconectado. O histórico já salvo foi preservado.');
+      window.dispatchEvent(new CustomEvent('zebrahub-instagram-connection-changed', { detail: { clientId } }));
       onChanged?.();
       await loadEverything({ keepNotice: true });
     } catch (requestError) {
@@ -326,7 +330,9 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                       {metaConnection && (
                         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-500">
                           <p>Autorizado por <strong className="text-slate-700">{metaConnection.provider_user_name || 'usuário da Meta'}</strong>.</p>
-                          <p className="mt-1">{metaConnection.expired ? 'A autorização expirou.' : `Validade informada: ${formatDate(metaConnection.token_expires_at)}`}</p>
+                          {(metaConnection.expired || metaConnection.token_expires_at) && (
+                            <p className="mt-1">{metaConnection.expired ? 'A autorização expirou.' : `Validade informada: ${formatDate(metaConnection.token_expires_at)}`}</p>
+                          )}
                         </div>
                       )}
                       <button type="button" onClick={startMetaOAuth} disabled={connecting} className="btn-primary mt-4 flex w-full items-center justify-center gap-2">
@@ -375,7 +381,9 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-bold text-slate-800">{instagramConnection.display_name || instagramConnection.username || 'Instagram profissional'}</p>
                             <p className="truncate text-xs text-slate-500">{instagramConnection.username ? `@${instagramConnection.username}` : 'Conta profissional conectada'}{instagramConnection.account_type ? ` • ${instagramConnection.account_type}` : ''}</p>
-                            <p className="mt-1 text-[11px] text-slate-400">{instagramConnection.expired ? 'Autorização expirada' : `Validade: ${formatDate(instagramConnection.token_expires_at)}`}</p>
+                            {(instagramConnection.expired || instagramConnection.token_expires_at) && (
+                              <p className="mt-1 text-[11px] text-slate-400">{instagramConnection.expired ? 'Autorização expirada' : `Validade: ${formatDate(instagramConnection.token_expires_at)}`}</p>
+                            )}
                           </div>
                         </div>
                       )}

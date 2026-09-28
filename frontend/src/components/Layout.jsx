@@ -178,8 +178,33 @@ export default function Layout({ children }) {
     const loadConnection = async () => {
       setInstagramHeaderLoading(true);
       try {
-        const { data } = await api.get(`/instagram-oauth/status/${clientId}`, { params: { _ts: Date.now() } });
-        if (active) setInstagramHeaderConnection(data.connection || null);
+        const [instagramResult, organicResult] = await Promise.allSettled([
+          api.get(`/instagram-oauth/status/${clientId}`, { params: { _ts: Date.now() } }),
+          api.get(`/meta-organic/client/${clientId}/connection`, { params: { _ts: Date.now() } }),
+        ]);
+
+        const directConnection = instagramResult.status === 'fulfilled'
+          ? instagramResult.value.data?.connection || null
+          : null;
+        const organicConnection = organicResult.status === 'fulfilled'
+          ? organicResult.value.data?.connection || null
+          : null;
+
+        let nextConnection = null;
+        if (directConnection?.status === 'connected' && !directConnection?.expired) {
+          nextConnection = { ...directConnection, source: 'instagram' };
+        } else if (organicConnection?.instagram_account_id) {
+          nextConnection = {
+            status: 'connected',
+            username: organicConnection.instagram_username || null,
+            display_name: organicConnection.instagram_name || null,
+            profile_picture_url: organicConnection.instagram_picture_url || null,
+            account_id: organicConnection.instagram_account_id,
+            source: 'meta',
+          };
+        }
+
+        if (active) setInstagramHeaderConnection(nextConnection);
       } catch {
         if (active) setInstagramHeaderConnection(null);
       } finally {
@@ -189,7 +214,9 @@ export default function Layout({ children }) {
 
     const onInstagramMessage = (event) => {
       const payload = event.data;
-      if (payload?.type === 'zebrahub-instagram-oauth' && Number(payload.clientId) === Number(clientId) && payload.ok) {
+      if (['zebrahub-instagram-oauth', 'zebrahub-meta-oauth'].includes(payload?.type)
+        && Number(payload.clientId) === Number(clientId)
+        && payload.ok) {
         loadConnection();
       }
     };
