@@ -153,7 +153,11 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
     try {
       const { data } = await api.post(`/meta-organic/client/${clientId}/sync`, { from, to });
       setReport(data);
-      setNotice('Dados orgânicos atualizados com sucesso.');
+      if (data?.connection?.last_sync_status === 'partial') {
+        setNotice('Conexão ativa. Parte dos dados foi atualizada; a outra plataforma ainda precisa de permissão ou nova tentativa.');
+      } else {
+        setNotice('Dados orgânicos atualizados com sucesso.');
+      }
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível sincronizar os dados orgânicos.');
       await loadReport();
@@ -321,7 +325,10 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
               <p className="mt-1 text-xs text-slate-400">Fonte: {organicSource}</p>
             </div>
             {report.connection.last_sync_error && (
-              <p className="lg:col-span-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{report.connection.last_sync_error}</p>
+              <div className={`lg:col-span-3 rounded-xl border px-3 py-2 text-xs leading-5 ${report.connection.last_sync_status === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                <strong>{report.connection.last_sync_status === 'error' ? 'Conexão salva, mas os dados não puderam ser atualizados.' : 'Conexão ativa com sincronização parcial.'}</strong>{' '}
+                {report.connection.last_sync_error}
+              </div>
             )}
           </div>
         ) : (
@@ -605,10 +612,11 @@ function PlatformBadge({ platform }) {
 function OrganicConnectionBadge({ configured, connected, status }) {
   if (!configured) return <span className="badge bg-amber-100 text-amber-700">Integração orgânica não configurada</span>;
   if (!connected) return <span className="badge bg-slate-100 text-slate-600">Aguardando conexão</span>;
-  if (status === 'error') return <span className="badge bg-red-100 text-red-700">Erro na sincronização</span>;
-  if (status === 'syncing') return <span className="badge bg-blue-100 text-blue-700">Sincronizando</span>;
+  if (status === 'error') return <span className="badge bg-red-100 text-red-700">Conectado • dados pendentes</span>;
+  if (status === 'partial') return <span className="badge bg-amber-100 text-amber-700">Conectado • parcial</span>;
+  if (status === 'syncing') return <span className="badge bg-blue-100 text-blue-700">Sincronizando dados</span>;
   if (status === 'success') return <span className="badge bg-emerald-100 text-emerald-700">Conectado</span>;
-  return <span className="badge bg-blue-100 text-blue-700">Conectado • sem dados</span>;
+  return <span className="badge bg-blue-100 text-blue-700">Conectado • aguardando dados</span>;
 }
 
 function OrganicEmptyState({ title, description }) {

@@ -9,12 +9,7 @@ const DEFAULT_FRONTEND_ORIGIN = 'https://app.zebrazul.com.br';
 const DEFAULT_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
-  'pages_manage_metadata',
-  'instagram_basic',
-  'instagram_manage_insights',
-  'instagram_manage_messages',
-  'instagram_content_publish',
-  'ads_read',
+  'read_insights',
 ];
 
 class MetaOAuthError extends Error {
@@ -392,16 +387,12 @@ function pictureUrl(value) {
 }
 
 async function discoverAssets(accessToken) {
-  const [profile, pages, adAccounts] = await Promise.all([
+  const [profile, pages] = await Promise.all([
     graphRequest('me', { fields: 'id,name' }, accessToken),
     graphCollection('me/accounts', {
       fields: 'id,name,username,picture.type(large){url},access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count,media_count}',
       limit: 200,
     }, accessToken),
-    graphCollection('me/adaccounts', {
-      fields: 'id,account_id,name,currency,timezone_name,account_status',
-      limit: 200,
-    }, accessToken).catch(() => []),
   ]);
 
   return {
@@ -421,14 +412,8 @@ async function discoverAssets(accessToken) {
       } : null,
       __page_access_token: page.access_token || null,
     })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    ad_accounts: adAccounts.map((account) => ({
-      id: String(account.id || ''),
-      account_id: String(account.account_id || account.id || '').replace(/^act_/, ''),
-      name: account.name || `Conta ${account.account_id || account.id}`,
-      currency: account.currency || null,
-      timezone_name: account.timezone_name || null,
-      account_status: account.account_status ?? null,
-    })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    // Mantido por compatibilidade com clientes antigos. Novas conexoes nao solicitam acesso a anuncios.
+    ad_accounts: [],
   };
 }
 
@@ -478,6 +463,13 @@ async function saveClientSelections({ clientId, agencyId, pageId, adAccountId })
   const { page, ad } = assertClientAssetAvailability(assets, pageId, adAccountId);
   assertNoAssignmentConflict({ agencyId, clientId, page, ad });
 
+  const currentOrganic = db.prepare(`
+    SELECT id, page_id, instagram_account_id, instagram_oauth_connection_id, last_synced_at
+    FROM meta_organic_accounts
+    WHERE client_id = ? AND agency_id = ?
+  `).get(clientId, agencyId) || null;
+  const pageChanged = Boolean(page && currentOrganic?.page_id && String(currentOrganic.page_id) !== String(page.id));
+
   const save = db.transaction(() => {
     if (page) {
       db.prepare(`
@@ -525,6 +517,30 @@ async function saveClientSelections({ clientId, agencyId, pageId, adAccountId })
         page.instagram?.profile_picture_url || null,
         bundle.connectionId
       );
+
+      const organicRow = db.prepare('SELECT id, instagram_oauth_connection_id FROM meta_organic_accounts WHERE client_id = ? AND agency_id = ?').get(clientId, agencyId);
+      if (organicRow) {
+        if (pageChanged) {
+          db.prepare(`DELETE FROM meta_organic_report_snapshots WHERE organic_account_id = ? AND platform = 'facebook'`).run(organicRow.id);
+          db.prepare(`DELETE FROM meta_organic_daily_metrics WHERE organic_account_id = ? AND platform = 'facebook'`).run(organicRow.id);
+          db.prepare(`DELETE FROM meta_organic_content_snapshots WHERE organic_account_id = ? AND platform = 'facebook'`).run(organicRow.id);
+
+          // Se o Instagram vinha da Pagina antiga, limpe tambem seus snapshots. A conexao direta do Instagram e preservada.
+          if (!organicRow.instagram_oauth_connection_id) {
+            db.prepare(`DELETE FROM meta_organic_report_snapshots WHERE organic_account_id = ? AND platform = 'instagram'`).run(organicRow.id);
+            db.prepare(`DELETE FROM meta_organic_daily_metrics WHERE organic_account_id = ? AND platform = 'instagram'`).run(organicRow.id);
+            db.prepare(`DELETE FROM meta_organic_content_snapshots WHERE organic_account_id = ? AND platform = 'instagram'`).run(organicRow.id);
+          }
+          db.prepare(`UPDATE meta_organic_accounts SET last_synced_at = NULL, last_sync_status = 'never', last_sync_error = NULL, updated_at = datetime('now') WHERE id = ?`).run(organicRow.id);
+        } else {
+          db.prepare(`
+            UPDATE meta_organic_accounts
+            SET last_sync_status = CASE WHEN last_synced_at IS NULL THEN 'never' ELSE 'success' END,
+                last_sync_error = NULL, updated_at = datetime('now')
+            WHERE id = ?
+          `).run(organicRow.id);
+        }
+      }
     }
 
     if (ad) {

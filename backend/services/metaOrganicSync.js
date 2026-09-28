@@ -164,14 +164,17 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
     }
 
     const metaAccessToken = metaBundle?.pageAccessToken || metaBundle?.userAccessToken || null;
-    const facebookPromise = connection.page_id
+    const facebookExpected = Boolean(connection.page_id);
+    const instagramExpected = Boolean(connection.instagram_account_id);
+
+    const facebookPromise = facebookExpected
       ? withOrganicAccessToken(metaAccessToken, () => Promise.all([
         getFacebookOverview(connection.page_id, dateFrom, dateTo),
         getFacebookContent(connection.page_id, dateFrom, dateTo),
       ]))
       : Promise.resolve([null, []]);
 
-    const instagramPromise = connection.instagram_account_id
+    const instagramPromise = instagramExpected
       ? (instagramBundle
         ? withOrganicRequestContext({
           accessToken: instagramBundle.accessToken,
@@ -189,13 +192,53 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
         ])))
       : Promise.resolve([null, []]);
 
-    const [[facebookOverview, facebookContent], [instagramOverview, instagramContent]] = await Promise.all([
+    // Facebook e Instagram sao independentes: uma permissao pendente nao deve derrubar
+    // os dados da outra plataforma que ja esta autorizada.
+    const [facebookResult, instagramResult] = await Promise.allSettled([
       facebookPromise,
       instagramPromise,
     ]);
 
+    const failures = [];
+    const normalizeFailure = (label, result) => {
+      if (result.status !== 'rejected') return;
+      const error = result.reason;
+      const message = (error instanceof MetaOrganicApiError || error instanceof MetaOAuthError || error instanceof InstagramOAuthError)
+        ? error.message
+        : 'Falha inesperada na API da Meta';
+      failures.push({ label, message, error });
+      console.warn(`[meta-organic] ${label} sync failed for client ${clientId}:`, {
+        message,
+        metaCode: error?.metaCode || null,
+        metaSubcode: error?.metaSubcode || null,
+        traceId: error?.traceId || null,
+      });
+    };
+
+    if (facebookExpected) normalizeFailure('Facebook', facebookResult);
+    if (instagramExpected) normalizeFailure('Instagram', instagramResult);
+
+    const [facebookOverview, facebookContent] = facebookResult.status === 'fulfilled'
+      ? facebookResult.value
+      : [null, []];
+    const [instagramOverview, instagramContent] = instagramResult.status === 'fulfilled'
+      ? instagramResult.value
+      : [null, []];
+
+    const successfulPlatforms = Number(facebookExpected && facebookResult.status === 'fulfilled')
+      + Number(instagramExpected && instagramResult.status === 'fulfilled');
+    const expectedPlatforms = Number(facebookExpected) + Number(instagramExpected);
+
+    if (expectedPlatforms > 0 && successfulPlatforms === 0 && failures.length) {
+      throw failures[0].error;
+    }
+
     const facebookDaily = buildDailyRows('facebook', facebookOverview, facebookContent);
     const instagramDaily = buildDailyRows('instagram', instagramOverview, instagramContent);
+    const syncStatus = failures.length ? 'partial' : 'success';
+    const syncError = failures.length
+      ? failures.map((item) => `${item.label}: ${item.message}`).join(' | ').slice(0, 700)
+      : null;
 
     const saveSync = db.transaction(() => {
       if (facebookOverview) {
@@ -218,8 +261,8 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
             instagram_username = COALESCE(?, instagram_username),
             instagram_name = COALESCE(?, instagram_name),
             instagram_picture_url = COALESCE(?, instagram_picture_url),
-            last_synced_at = datetime('now'), last_sync_status = 'success',
-            last_sync_error = NULL, updated_at = datetime('now')
+            last_synced_at = CASE WHEN ? > 0 THEN datetime('now') ELSE last_synced_at END,
+            last_sync_status = ?, last_sync_error = ?, updated_at = datetime('now')
         WHERE id = ?
       `).run(
         facebookOverview?.profile?.name || null,
@@ -229,25 +272,37 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
         instagramOverview?.profile?.username || null,
         instagramOverview?.profile?.name || null,
         instagramOverview?.profile?.picture_url || null,
+        successfulPlatforms,
+        syncStatus,
+        syncError,
         connection.id
       );
 
-      if (instagramBundle && instagramOverview?.profile?.id) {
-        db.prepare(`
-          UPDATE instagram_oauth_connections
-          SET instagram_user_id = ?,
-              username = COALESCE(?, username),
-              display_name = COALESCE(?, display_name),
-              profile_picture_url = COALESCE(?, profile_picture_url),
-              status = 'connected', last_error = NULL, updated_at = datetime('now')
-          WHERE id = ?
-        `).run(
-          instagramOverview.profile.id,
-          instagramOverview.profile.username || null,
-          instagramOverview.profile.name || null,
-          instagramOverview.profile.picture_url || null,
-          instagramBundle.connectionId
-        );
+      if (instagramBundle && instagramExpected) {
+        if (instagramOverview?.profile?.id) {
+          db.prepare(`
+            UPDATE instagram_oauth_connections
+            SET instagram_user_id = ?,
+                username = COALESCE(?, username),
+                display_name = COALESCE(?, display_name),
+                profile_picture_url = COALESCE(?, profile_picture_url),
+                status = 'connected', last_error = NULL, updated_at = datetime('now')
+            WHERE id = ?
+          `).run(
+            instagramOverview.profile.id,
+            instagramOverview.profile.username || null,
+            instagramOverview.profile.name || null,
+            instagramOverview.profile.picture_url || null,
+            instagramBundle.connectionId
+          );
+        } else if (instagramResult.status === 'rejected') {
+          const instagramFailure = failures.find((item) => item.label === 'Instagram');
+          db.prepare(`
+            UPDATE instagram_oauth_connections
+            SET status = 'error', last_error = ?, updated_at = datetime('now')
+            WHERE id = ?
+          `).run(instagramFailure?.message || 'Falha ao sincronizar o Instagram', instagramBundle.connectionId);
+        }
       }
     });
     saveSync();
@@ -260,6 +315,8 @@ async function syncMetaOrganicClient(clientId, dateFrom, dateTo) {
       instagram_daily: instagramDaily.length,
       date_from: dateFrom,
       date_to: dateTo,
+      status: syncStatus,
+      warnings: failures.map(({ label, message }) => ({ platform: label.toLowerCase(), message })),
     };
   } catch (error) {
     const message = (error instanceof MetaOrganicApiError || error instanceof MetaOAuthError || error instanceof InstagramOAuthError) ? error.message : 'Falha inesperada na sincronizacao organica';

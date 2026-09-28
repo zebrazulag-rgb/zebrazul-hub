@@ -7,7 +7,6 @@ import {
   Instagram,
   KeyRound,
   LoaderCircle,
-  Megaphone,
   Save,
   ShieldCheck,
   Unlink,
@@ -19,9 +18,7 @@ import ModalBackdrop from './ModalBackdrop.jsx';
 const META_REQUIRED_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
-  'instagram_basic',
-  'instagram_manage_insights',
-  'ads_read',
+  'read_insights',
 ];
 
 const INSTAGRAM_REPORT_SCOPES = [
@@ -52,9 +49,8 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
   const [notice, setNotice] = useState('');
   const [oauthInfo, setOauthInfo] = useState(null);
   const [instagramInfo, setInstagramInfo] = useState(null);
-  const [assets, setAssets] = useState({ pages: [], ad_accounts: [] });
+  const [assets, setAssets] = useState({ pages: [] });
   const [pageId, setPageId] = useState('');
-  const [adAccountId, setAdAccountId] = useState('');
   const metaPopupRef = useRef(null);
   const instagramPopupRef = useRef(null);
 
@@ -116,25 +112,21 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
         setOauthInfo(data);
         const connection = data.connection;
         setPageId(connection?.selected_page_id || '');
-        setAdAccountId(connection?.selected_ad_account_id || '');
 
         if (connection && connection.status !== 'expired') {
           try {
             const assetsResponse = await api.get(`/meta-oauth/assets/${clientId}`, { params: { _ts: Date.now() } });
-            setAssets({
-              pages: assetsResponse.data.pages || [],
-              ad_accounts: assetsResponse.data.ad_accounts || [],
-            });
+            setAssets({ pages: assetsResponse.data.pages || [] });
           } catch (assetsError) {
-            setAssets({ pages: [], ad_accounts: [] });
+            setAssets({ pages: [] });
             setError(assetsError.response?.data?.error || 'A Meta foi conectada, mas não foi possível listar os ativos.');
           }
         } else {
-          setAssets({ pages: [], ad_accounts: [] });
+          setAssets({ pages: [] });
         }
       } else {
         setOauthInfo(null);
-        setAssets({ pages: [], ad_accounts: [] });
+        setAssets({ pages: [] });
       }
 
       if (instagramResult.status === 'fulfilled') {
@@ -207,8 +199,8 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
   }
 
   async function saveSelections() {
-    if (!pageId && !adAccountId) {
-      setError('Selecione uma Página/Instagram ou uma conta de anúncios.');
+    if (!pageId) {
+      setError('Selecione uma Página do Facebook.');
       return;
     }
     setSaving(true);
@@ -217,9 +209,9 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
     try {
       await api.put(`/meta-oauth/client/${clientId}/selections`, {
         page_id: pageId || null,
-        ad_account_id: adAccountId || null,
+        ad_account_id: null,
       });
-      setNotice('Ativos da Meta salvos. O relatório deste cliente passará a usar esta autorização.');
+      setNotice('Página do Facebook salva com sucesso. A conexão está pronta; a sincronização dos dados é uma etapa separada.');
       await loadEverything({ keepNotice: true });
       onChanged?.();
     } catch (requestError) {
@@ -236,9 +228,8 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
     try {
       await api.delete(`/meta-oauth/client/${clientId}`);
       setOauthInfo((current) => ({ ...(current || {}), connection: null }));
-      setAssets({ pages: [], ad_accounts: [] });
+      setAssets({ pages: [] });
       setPageId('');
-      setAdAccountId('');
       setNotice('Meta desconectada. O histórico já salvo foi preservado.');
       onChanged?.();
     } catch (requestError) {
@@ -314,7 +305,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                       <div>
                         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Opção principal</p>
                         <h3 className="mt-1 font-bold text-slate-900">Conectar com a Meta</h3>
-                        <p className="mt-1 text-sm leading-6 text-slate-500">Mantém Facebook, Instagram vinculado à Página e Meta Ads no mesmo fluxo.</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">Conecta a Página do Facebook e identifica o Instagram profissional vinculado, quando existir.</p>
                       </div>
                     </div>
                   </div>
@@ -419,24 +410,24 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
 
               {instagramConnection && metaConnection && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-800">
-                  <strong>Modo híbrido ativo:</strong> o ZebraHub pode manter Facebook/Ads pela Meta e usar a conexão direta do Instagram para os dados orgânicos do Instagram.
+                  <strong>Modo híbrido ativo:</strong> o ZebraHub mantém o Facebook pela Meta e usa a conexão direta do Instagram para os dados orgânicos do Instagram.
                 </div>
               )}
 
               {metaConnection && metaConnection.status !== 'expired' && (
                 <>
-                  <div className="grid gap-5 lg:grid-cols-2">
+                  <div className="grid gap-5">
                     <ConnectionBlock
                       icon={<><Facebook size={18} /><Instagram size={18} /></>}
-                      title="Facebook e Instagram pela Meta"
-                      description="Selecione a Página. Se houver um Instagram profissional vinculado, ele será identificado automaticamente."
+                      title="Facebook pela Meta"
+                      description="Selecione a Página deste cliente. Se houver um Instagram profissional vinculado, ele será identificado automaticamente."
                       connected={Boolean(metaConnection.selected_page_id)}
                     >
                       <select className="input-field" value={pageId} onChange={(event) => setPageId(event.target.value)}>
-                        <option value="">Não conectar orgânico por esta rota</option>
+                        <option value="">Selecione uma Página do Facebook</option>
                         {assets.pages.map((page) => <option key={page.id} value={page.id}>{pageLabel(page)}</option>)}
                       </select>
-                      {!assets.pages.length && <p className="text-xs leading-5 text-slate-500">Nenhuma Página foi retornada. Nesse caso, você pode usar a opção “Conectar somente o Instagram” acima.</p>}
+                      {!assets.pages.length && <p className="text-xs leading-5 text-slate-500">Nenhuma Página foi retornada. Verifique se o usuário conectado administra a Página e concedeu as permissões necessárias.</p>}
                       {pageId && (() => {
                         const selected = assets.pages.find((page) => String(page.id) === String(pageId));
                         return selected ? (
@@ -447,29 +438,15 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                         ) : null;
                       })()}
                     </ConnectionBlock>
-
-                    <ConnectionBlock
-                      icon={<Megaphone size={19} />}
-                      title="Meta Ads"
-                      description="Opcional. Selecione a conta de anúncios usada nas campanhas deste cliente."
-                      connected={Boolean(metaConnection.selected_ad_account_id)}
-                      optional
-                    >
-                      <select className="input-field" value={adAccountId} onChange={(event) => setAdAccountId(event.target.value)}>
-                        <option value="">Não conectar anúncios agora</option>
-                        {assets.ad_accounts.map((account) => <option key={account.account_id} value={account.account_id}>{account.name} • {account.account_id}{account.currency ? ` • ${account.currency}` : ''}</option>)}
-                      </select>
-                      {!assets.ad_accounts.length && <p className="text-xs leading-5 text-slate-500">Nenhuma conta de anúncios foi retornada. O usuário precisa ter acesso à conta e autorizar a permissão de leitura de anúncios.</p>}
-                    </ConnectionBlock>
                   </div>
 
                   <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
                     <button type="button" onClick={disconnectMeta} disabled={disconnecting} className="flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50">
                       {disconnecting ? <LoaderCircle size={16} className="animate-spin" /> : <Unlink size={16} />} Desconectar Meta
                     </button>
-                    <button type="button" onClick={saveSelections} disabled={saving || (!pageId && !adAccountId)} className="btn-primary flex items-center justify-center gap-2">
+                    <button type="button" onClick={saveSelections} disabled={saving || !pageId} className="btn-primary flex items-center justify-center gap-2">
                       {saving ? <LoaderCircle size={17} className="animate-spin" /> : <Save size={17} />}
-                      {saving ? 'Salvando...' : 'Salvar ativos da Meta'}
+                      {saving ? 'Salvando...' : 'Salvar Página da Meta'}
                     </button>
                   </div>
                 </>
