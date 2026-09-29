@@ -66,6 +66,75 @@ function whereFor(req, alias = 'al') {
   return { clauses, params };
 }
 
+const presenceStreams = new Map();
+
+function presenceSnapshot(agencyId) {
+  const rows = db.prepare(`
+    SELECT
+      u.id,
+      u.name,
+      u.role,
+      u.avatar_color,
+      u.avatar_data,
+      u.is_platform_owner,
+      u.is_agency_owner,
+      u.is_operations_head,
+      u.is_commercial_team,
+      up.last_seen,
+      up.last_path,
+      up.last_client_id,
+      c.name AS last_client_name,
+      CASE
+        WHEN datetime(up.last_seen) >= datetime('now', '-50 seconds') THEN 'online'
+        WHEN datetime(up.last_seen) >= datetime('now', '-5 minutes') THEN 'away'
+        ELSE 'offline'
+      END AS presence_status
+    FROM users u
+    JOIN user_presence up
+      ON up.agency_id = u.agency_id AND up.user_id = u.id
+    LEFT JOIN clients c
+      ON c.id = up.last_client_id AND c.agency_id = u.agency_id
+    WHERE u.agency_id = ?
+      AND u.role IN ('admin', 'team')
+      AND datetime(up.last_seen) >= datetime('now', '-5 minutes')
+    ORDER BY
+      CASE WHEN datetime(up.last_seen) >= datetime('now', '-50 seconds') THEN 0 ELSE 1 END,
+      datetime(up.last_seen) DESC,
+      u.name COLLATE NOCASE
+  `).all(Number(agencyId)).map((row) => ({
+    ...row,
+    id: Number(row.id),
+    last_client_id: row.last_client_id ? Number(row.last_client_id) : null,
+  }));
+
+  return {
+    users: rows,
+    online: rows.filter((row) => row.presence_status === 'online').length,
+    away: rows.filter((row) => row.presence_status === 'away').length,
+    sent_at: new Date().toISOString(),
+  };
+}
+
+function writePresenceEvent(res, payload) {
+  try {
+    res.write(`event: presence\ndata: ${JSON.stringify(payload)}\n\n`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function broadcastPresence(agencyId) {
+  const key = Number(agencyId);
+  const streams = presenceStreams.get(key);
+  if (!streams?.size) return;
+  const payload = presenceSnapshot(key);
+  for (const res of [...streams]) {
+    if (!writePresenceEvent(res, payload)) streams.delete(res);
+  }
+  if (!streams.size) presenceStreams.delete(key);
+}
+
 router.post('/presence', (req, res) => {
   const clientId = Number(req.body.client_id);
   updatePresence({
@@ -74,8 +143,51 @@ router.post('/presence', (req, res) => {
     path: String(req.body.path || '').trim() || null,
     clientId: Number.isInteger(clientId) && clientId > 0 ? clientId : null,
   });
+  broadcastPresence(req.user.agency_id);
   res.json({ ok: true, tracking: true });
 });
+
+// Snapshot simples, também usado como fallback caso a conexão ao vivo seja interrompida.
+router.get('/presence', (req, res) => {
+  if (req.user?.role === 'client') return res.json({ users: [], online: 0, away: 0 });
+  res.json(presenceSnapshot(req.user.agency_id));
+});
+
+// Stream em tempo real usando Server-Sent Events. Não requer dependência adicional
+// e funciona com o mesmo token JWT da API através de fetch no frontend.
+router.get('/presence/stream', (req, res) => {
+  if (req.user?.role === 'client') return res.status(403).end();
+
+  const agencyId = Number(req.user.agency_id);
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  if (!presenceStreams.has(agencyId)) presenceStreams.set(agencyId, new Set());
+  presenceStreams.get(agencyId).add(res);
+  writePresenceEvent(res, presenceSnapshot(agencyId));
+
+  const keepAlive = setInterval(() => {
+    try { res.write(': keep-alive\n\n'); } catch {}
+  }, 20000);
+  keepAlive.unref?.();
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    const streams = presenceStreams.get(agencyId);
+    streams?.delete(res);
+    if (streams && !streams.size) presenceStreams.delete(agencyId);
+  });
+});
+
+// Atualiza transições online -> ausente mesmo quando ninguém navega ou muda de tela.
+const presenceRefreshTimer = setInterval(() => {
+  for (const agencyId of presenceStreams.keys()) broadcastPresence(agencyId);
+}, 15000);
+presenceRefreshTimer.unref?.();
 
 router.get('/filters', ensureView, (req, res) => {
   const canTeam = canViewTeam(req);

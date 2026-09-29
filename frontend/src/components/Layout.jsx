@@ -42,6 +42,7 @@ import zebraHubLogo from '../assets/logo-hub-white.png';
 import { isBeeClient } from '../utils/beeClientAccess.js';
 import NotificationBell from './NotificationBell.jsx';
 import { anyPermission, hasPermission } from '../permissions.js';
+import { getTenantSlug } from '../tenant';
 
 export default function Layout({ children }) {
   const { user, logout, refreshUser } = useAuth();
@@ -66,6 +67,9 @@ export default function Layout({ children }) {
   const [squadMenuOpen, setSquadMenuOpen] = useState(false);
   const [squadMenuTop, setSquadMenuTop] = useState(0);
   const squadCloseTimerRef = useRef(null);
+  const [presenceUsers, setPresenceUsers] = useState([]);
+  const [presenceOpen, setPresenceOpen] = useState(false);
+  const presenceRef = useRef(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('zebrahub.sidebar.collapsed') === '1';
@@ -111,10 +115,14 @@ export default function Layout({ children }) {
       const outsideDesktop = !clientPickerRef.current || !clientPickerRef.current.contains(event.target);
       const outsideMobile = !mobileClientPickerRef.current || !mobileClientPickerRef.current.contains(event.target);
       if (outsideDesktop && outsideMobile) setClientPickerOpen(false);
+      if (presenceRef.current && !presenceRef.current.contains(event.target)) setPresenceOpen(false);
     }
 
     function handleKeyDown(event) {
-      if (event.key === 'Escape') setClientPickerOpen(false);
+      if (event.key === 'Escape') {
+        setClientPickerOpen(false);
+        setPresenceOpen(false);
+      }
     }
 
     document.addEventListener('mousedown', handlePointerDown);
@@ -236,25 +244,102 @@ export default function Layout({ children }) {
   }, [user?.id, user?.role, user?.client_id, selectedClient?.id]);
 
   useEffect(() => {
-    if (!user?.id || user?.role === 'client') return undefined;
+    if (!user?.id || user?.role === 'client') {
+      setPresenceUsers([]);
+      setPresenceOpen(false);
+      return undefined;
+    }
+
     let active = true;
+    const streamController = new AbortController();
+    const loadPresence = () => {
+      api.get('/activity/presence', { params: { _ts: Date.now() } })
+        .then(({ data }) => {
+          if (active) setPresenceUsers(Array.isArray(data?.users)
+            ? data.users.map((member) => ({ ...member, is_current_user: Number(member.id) === Number(user.id) }))
+            : []);
+        })
+        .catch(() => {
+          if (active) setPresenceUsers([]);
+        });
+    };
     const sendPresence = () => {
       if (!active || document.visibilityState === 'hidden') return;
       api.post('/activity/presence', {
         path: `${location.pathname}${location.search || ''}`,
-        client_id: selectedClient?.id || (user?.role === 'client' ? user?.client_id : null),
+        client_id: selectedClient?.id || null,
       }).catch(() => {});
     };
+
+    const connectPresenceStream = async () => {
+      const token = window.localStorage.getItem('zebrazul_token');
+      if (!token) return;
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
+      const streamPath = `${String(apiBase).replace(/\/$/, '')}/activity/presence/stream`;
+      const streamUrl = /^https?:\/\//i.test(streamPath)
+        ? streamPath
+        : new URL(streamPath, window.location.origin).toString();
+
+      try {
+        const response = await fetch(streamUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Tenant-Slug': getTenantSlug(),
+            Accept: 'text/event-stream',
+          },
+          cache: 'no-store',
+          signal: streamController.signal,
+        });
+        if (!response.ok || !response.body) throw new Error('presence_stream_unavailable');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (active) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split(/\n\n/);
+          buffer = blocks.pop() || '';
+          blocks.forEach((block) => {
+            const dataLine = block.split(/\n/).find((line) => line.startsWith('data:'));
+            if (!dataLine) return;
+            try {
+              const payload = JSON.parse(dataLine.slice(5).trim());
+              if (active && Array.isArray(payload?.users)) {
+                setPresenceUsers(payload.users.map((member) => ({ ...member, is_current_user: Number(member.id) === Number(user.id) })));
+              }
+            } catch {}
+          });
+        }
+      } catch (error) {
+        if (active && error?.name !== 'AbortError') loadPresence();
+      }
+    };
+
     sendPresence();
-    const interval = window.setInterval(sendPresence, 75000);
-    const handleVisibility = () => { if (document.visibilityState === 'visible') sendPresence(); };
+    loadPresence();
+    connectPresenceStream();
+    const heartbeatInterval = window.setInterval(sendPresence, 20000);
+    const listInterval = window.setInterval(loadPresence, 60000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        sendPresence();
+        loadPresence();
+      }
+    };
     document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       active = false;
-      window.clearInterval(interval);
+      streamController.abort();
+      window.clearInterval(heartbeatInterval);
+      window.clearInterval(listInterval);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [user?.id, user?.role, user?.client_id, location.pathname, location.search, selectedClient?.id]);
+  }, [user?.id, user?.role, location.pathname, location.search, selectedClient?.id]);
 
   function handleLogout() {
     logout();
@@ -386,6 +471,9 @@ export default function Layout({ children }) {
     return 'ZebraHub';
   })();
   const topbarClient = workspaceClient?.name || (user?.role === 'client' ? 'Meu espaço' : 'Todos os clientes');
+  const onlinePresenceUsers = presenceUsers.filter((member) => member.presence_status === 'online');
+  const awayPresenceUsers = presenceUsers.filter((member) => member.presence_status === 'away');
+  const topPresenceUsers = onlinePresenceUsers.slice(0, 3);
 
   const normalizedClientSearch = clientSearch.trim().toLocaleLowerCase('pt-BR');
   const filteredClients = normalizedClientSearch
@@ -743,6 +831,78 @@ export default function Layout({ children }) {
               </div>
             )}
 
+            {user?.role !== 'client' && (
+              <div className="relative" ref={presenceRef}>
+                <button
+                  type="button"
+                  onClick={() => setPresenceOpen((open) => !open)}
+                  aria-haspopup="dialog"
+                  aria-expanded={presenceOpen}
+                  title={`${onlinePresenceUsers.length} pessoa${onlinePresenceUsers.length === 1 ? '' : 's'} online`}
+                  className="flex h-10 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  {topPresenceUsers.length > 0 ? (
+                    <div className="flex -space-x-2">
+                      {topPresenceUsers.map((member) => (
+                        <PresenceAvatar key={member.id} member={member} size="sm" />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <Users size={15} />
+                    </span>
+                  )}
+                  <span className="ml-1.5 hidden text-[11px] font-semibold text-slate-600 xl:inline">
+                    {onlinePresenceUsers.length} online
+                  </span>
+                  {onlinePresenceUsers.length > 3 && (
+                    <span className="ml-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] font-bold text-white">
+                      +{onlinePresenceUsers.length - 3}
+                    </span>
+                  )}
+                </button>
+
+                {presenceOpen && (
+                  <div className="absolute right-0 top-[calc(100%+8px)] z-[120] w-[min(340px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Equipe online</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">Presença ao vivo no ZebraHub</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">
+                        {onlinePresenceUsers.length} online
+                      </span>
+                    </div>
+
+                    <div className="max-h-[420px] overflow-y-auto p-2">
+                      {onlinePresenceUsers.length === 0 && awayPresenceUsers.length === 0 ? (
+                        <div className="px-3 py-8 text-center">
+                          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400"><Users size={18} /></div>
+                          <p className="text-sm font-semibold text-slate-700">Ninguém online agora</p>
+                          <p className="mt-1 text-xs text-slate-400">Assim que alguém abrir o ZebraHub, aparece aqui.</p>
+                        </div>
+                      ) : (
+                        <>
+                          {onlinePresenceUsers.map((member) => (
+                            <PresenceRow key={member.id} member={member} agencyName={agency?.name} />
+                          ))}
+                          {awayPresenceUsers.length > 0 && (
+                            <>
+                              <div className="mx-2 my-2 border-t border-slate-100" />
+                              <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Ausentes recentemente</p>
+                              {awayPresenceUsers.map((member) => (
+                                <PresenceRow key={member.id} member={member} agencyName={agency?.name} />
+                              ))}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <NotificationBell />
           </div>
         </div>
@@ -854,6 +1014,73 @@ function ClientAvatar({ client = null, allClientsColor = '#0969ff', sizeClass = 
       {client.name?.trim()?.[0]?.toUpperCase() || '?'}
     </div>
   );
+}
+
+function PresenceAvatar({ member, size = 'md' }) {
+  const sizeClass = size === 'sm' ? 'h-7 w-7 text-[10px]' : 'h-9 w-9 text-xs';
+  const dotClass = member?.presence_status === 'online' ? 'bg-emerald-500' : 'bg-amber-400';
+  return (
+    <span className={`relative flex ${sizeClass} shrink-0 items-center justify-center overflow-visible rounded-full border-2 border-white bg-slate-200 font-bold text-white shadow-sm`}>
+      {member?.avatar_data ? (
+        <img src={member.avatar_data} alt="" className="h-full w-full rounded-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center rounded-full" style={{ backgroundColor: member?.avatar_color || '#64748b' }}>
+          {String(member?.name || '?').trim().charAt(0).toUpperCase() || '?'}
+        </span>
+      )}
+      <span className={`absolute bottom-[-1px] right-[-1px] h-2.5 w-2.5 rounded-full border-2 border-white ${dotClass}`} />
+    </span>
+  );
+}
+
+function PresenceRow({ member, agencyName }) {
+  const area = presenceAreaLabel(member?.last_path);
+  const client = String(member?.last_client_name || '').trim();
+  const statusLabel = member?.presence_status === 'online' ? 'Online agora' : 'Ausente';
+  const statusClass = member?.presence_status === 'online' ? 'text-emerald-600' : 'text-amber-600';
+  const context = [area, client].filter(Boolean).join(' · ');
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-50">
+      <PresenceAvatar member={member} />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <p className="truncate text-sm font-semibold text-slate-800">{member?.name || 'Usuário'}</p>
+          {member?.is_current_user && <span className="shrink-0 text-[10px] font-semibold text-slate-400">você</span>}
+        </div>
+        <p className="truncate text-[11px] text-slate-400">{presenceRoleLabel(member, agencyName)}</p>
+        {context && <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">{context}</p>}
+      </div>
+      <span className={`shrink-0 text-[10px] font-semibold ${statusClass}`}>{statusLabel}</span>
+    </div>
+  );
+}
+
+function presenceAreaLabel(rawPath) {
+  const path = String(rawPath || '').split('?')[0];
+  if (!path || path === '/') return 'Painel';
+  if (path.startsWith('/audiovisual')) return 'Audiovisual';
+  if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
+  if (path.startsWith('/site-lp')) return 'Site/LP';
+  if (path.startsWith('/moodboard')) return 'Moodboard';
+  if (path.startsWith('/concorrentes')) return 'Concorrentes';
+  if (path.startsWith('/bussola')) return 'Bússola';
+  if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
+  if (path.startsWith('/ia')) return 'IA';
+  if (path.startsWith('/relatorios')) return 'Relatórios';
+  if (path.startsWith('/comercial')) return 'Comercial';
+  if (path.startsWith('/organizacao')) return 'Meu Espaço';
+  if (path.startsWith('/configuracoes')) return 'Configurações';
+  return 'ZebraHub';
+}
+
+function presenceRoleLabel(member, agencyName) {
+  if (member?.is_platform_owner) return 'Super Administrador';
+  if (member?.is_operations_head) return 'Head de Operação';
+  if (member?.is_commercial_team) return 'Equipe Comercial';
+  if (member?.role === 'admin') return 'Administrador';
+  if (member?.role === 'team') return `Equipe ${agencyName || ''}`.trim();
+  return 'Equipe';
 }
 
 function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = null, compact = false }) {

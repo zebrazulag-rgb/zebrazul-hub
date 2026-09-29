@@ -119,7 +119,10 @@ app.use('/api', (req, res, next) => {
 
   return authRequired(req, res, () => {
     const permissionKey = apiPermissionForRequest(req);
-    const activityPresenceAccess = req.path === '/activity/presence' && req.method === 'POST';
+    const activityPresenceAccess = (
+      (req.path === '/activity/presence' && ['GET', 'POST'].includes(req.method))
+      || (req.path === '/activity/presence/stream' && req.method === 'GET')
+    );
     const permissionAllowed = activityPresenceAccess || (Array.isArray(permissionKey)
       ? permissionKey.some((key) => hasPermission(req.user, key))
       : (!permissionKey || hasPermission(req.user, permissionKey)));

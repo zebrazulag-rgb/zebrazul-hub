@@ -1673,6 +1673,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_organizer_finance_user_date ON organizer_financial_entries(agency_id, user_id, due_date, status);
 `);
 
+// Presença leve da equipe para indicar quem está usando o ZebraHub agora.
+// Mantemos somente o último sinal de cada usuário; não é histórico de atividade.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_presence (
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    last_path TEXT,
+    last_client_id INTEGER,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (agency_id, user_id),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (last_client_id) REFERENCES clients(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_user_presence_agency_seen
+    ON user_presence(agency_id, last_seen DESC);
+`);
+
 // Posts antigos devem continuar visíveis na grade após a criação da coluna.
 if (tableHasColumn('posts', 'feed_visible')) {
   db.exec('UPDATE posts SET feed_visible = 1 WHERE feed_visible IS NULL');
@@ -1798,7 +1818,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '31', datetime('now'))
+   VALUES ('schema_version', '32', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 
