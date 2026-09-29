@@ -310,6 +310,8 @@ export default function Layout({ children }) {
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view', group: 'squad' },
     { to: '/designer', label: 'Designer', icon: Palette, permission: 'tasks.view', group: 'squad' },
     { to: '/site-lp', label: 'Site/LP', icon: Code2, permission: 'tasks.view', group: 'squad' },
+    { to: '/moodboard', label: 'Moodboard', icon: Grid3x3, permission: 'tasks.view' },
+    { to: '/concorrentes', label: 'Concorrentes', icon: Search, permission: 'compass.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/ia', label: 'IA', icon: Sparkles, permission: 'social.view' },
@@ -349,7 +351,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/organizacao','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/organizacao','/moodboard','/concorrentes','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -366,6 +368,8 @@ export default function Layout({ children }) {
     if (path.startsWith('/produto')) return 'Produto';
     if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
     if (path.startsWith('/site-lp')) return 'Site/LP';
+    if (path.startsWith('/moodboard')) return 'Moodboard';
+    if (path.startsWith('/concorrentes')) return 'Concorrentes';
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/relatorios')) return 'Relatórios';
     if (path.startsWith('/organizacao')) return 'Meu Espaço';

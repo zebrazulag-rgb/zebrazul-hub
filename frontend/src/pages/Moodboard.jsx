@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink } from 'react-router-dom';
 import {
   Check, ExternalLink, Frame, Hand, Image as ImageIcon, Link2, Maximize2, Minus, MousePointer2,
   Move, Palette, Pencil, Plus, Presentation, Save, StickyNote, Trash2, Type, Upload, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import api from '../api';
-import TopbarPortal from '../components/TopbarPortal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -14,16 +12,6 @@ import { hasPermission } from '../permissions.js';
 const WORLD_W = 5200;
 const WORLD_H = 3400;
 const CATEGORIES = ['Geral', 'Layout', 'Fotografia', 'Tipografia', 'Cores', 'Ilustração', 'Motion', 'Não fazer'];
-
-function DesignerNav() {
-  const base = 'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition';
-  return (
-    <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-      <NavLink to="/designer" end className={({ isActive }) => `${base} ${isActive ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>Demandas</NavLink>
-      <NavLink to="/designer/moodboard" className={({ isActive }) => `${base} ${isActive ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>Moodboard</NavLink>
-    </div>
-  );
-}
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -141,7 +129,11 @@ function BoardItem({ item, layout, selected, presentation, onSelect, onPointerDo
   const kind = layout.kind || item.item_type;
   return (
     <div
-      onPointerDown={(event) => onPointerDown(event, item)}
+      onPointerDown={(event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest('button, a, input, textarea, select, [data-no-drag="true"]')) return;
+        onPointerDown(event, item);
+      }}
       onClick={(event) => { event.stopPropagation(); onSelect(item.id); }}
       className={`absolute overflow-visible ${presentation ? '' : 'group'} ${selected && !presentation ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}
       style={{ left: layout.x, top: layout.y, width: layout.w, minHeight: layout.h, zIndex: layout.z || 2 }}
@@ -153,7 +145,7 @@ function BoardItem({ item, layout, selected, presentation, onSelect, onPointerDo
         {(item.title || item.note || item.category !== 'Geral') && kind !== 'text' && kind !== 'note' && <div className="p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{item.category}</span>{item.title && <p className="mt-2 text-sm font-bold text-slate-900">{item.title}</p>}</div></div>{item.note && <p className="mt-2 text-xs leading-5 text-slate-500">{item.note}</p>}</div>}
       </div>
       {selected && !presentation && <>
-        <div className="absolute -top-11 right-0 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+        <div data-no-drag="true" onPointerDown={(e) => e.stopPropagation()} className="absolute -top-11 right-0 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
           <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(item); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Editar"><Pencil size={14} /></button>
           <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(item); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" title="Excluir"><Trash2 size={14} /></button>
         </div>
@@ -270,10 +262,25 @@ export default function Moodboard() {
 
   async function deleteItem(item) {
     if (!window.confirm('Excluir esta referência?')) return;
-    await api.delete(`/moodboards/items/${item.id}`);
-    setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
-    updateCanvas((current) => { const elements = { ...(current.elements || {}) }; delete elements[String(item.id)]; return { ...current, elements }; });
+    const itemId = Number(item.id);
+    const previousItems = items;
+
+    // Remove imediatamente da tela para o comando responder no clique.
+    setItems((current) => current.filter((entry) => Number(entry.id) !== itemId));
     setSelectedId(null);
+
+    try {
+      await api.delete(`/moodboards/items/${itemId}`);
+      updateCanvas((current) => {
+        const elements = { ...(current.elements || {}) };
+        delete elements[String(itemId)];
+        return { ...current, elements };
+      });
+    } catch (err) {
+      // Se o servidor recusar, restaura a referência e mostra o motivo.
+      setItems(previousItems);
+      setError(err.response?.data?.error || 'Não foi possível excluir esta referência.');
+    }
   }
 
   function addFrame() {
@@ -369,7 +376,6 @@ export default function Moodboard() {
 
   return (
     <div className="space-y-3">
-      <TopbarPortal><DesignerNav /></TopbarPortal>
       {!clientId ? <EmptyClientState /> : <>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-blue-600">Direção criativa</p><h1 className="mt-0.5 text-xl font-black text-slate-950">Moodboard · {selectedClient?.name || 'Cliente'}</h1></div>

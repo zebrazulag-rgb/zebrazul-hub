@@ -235,7 +235,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl">
           <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
           <div className="flex items-center gap-2">
-            <a href="/designer/moodboard" target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="Abrir o Moodboard do cliente em outra aba">
+            <a href="/moodboard" target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="Abrir o Moodboard do cliente em outra aba">
               <Palette size={14} /> Ver Moodboard
             </a>
             <button type="button" onClick={handleRequestClose} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600">

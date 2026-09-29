@@ -128,15 +128,17 @@ export default function App() {
       <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
       <Route path="/stories" element={<Navigate to="/ia?view=stories" replace />} />
       <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks workspace="designer" /></ProtectedRoute>} />
-      <Route path="/designer/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Moodboard /></ProtectedRoute>} />
+      <Route path="/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Moodboard /></ProtectedRoute>} />
+      <Route path="/designer/moodboard" element={<Navigate to="/moodboard" replace />} />
       <Route path="/tarefas" element={<DesignerLegacyRedirect />} />
       <Route path="/site-lp" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><SiteLP /></ProtectedRoute>} />
       <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
+      <Route path="/concorrentes" element={<ProtectedRoute permission="compass.view"><CompetitorAnalysis /></ProtectedRoute>} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
       <Route path="/ia" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><AIPage /></ProtectedRoute>} />
-      <Route path="/bussola/concorrencia" element={<ProtectedRoute permission="compass.view"><CompetitorAnalysis /></ProtectedRoute>} />
+      <Route path="/bussola/concorrencia" element={<Navigate to="/concorrentes" replace />} />
       <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/diagnostico" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />

@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, BarChart3, ExternalLink, ImagePlus, Instagram, Loader2, RefreshCw, Search, Sparkles,
+  BarChart3, ExternalLink, ImagePlus, Instagram, Loader2, RefreshCw, Search, Sparkles,
   Trash2, TrendingUp, UsersRound, X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import CompassSectionNav from '../components/CompassSectionNav.jsx';
 import api from '../api';
 
 function fmt(value) {
@@ -24,7 +22,6 @@ function ProfileCard({ competitor, active, onClick }) {
 }
 
 export default function CompetitorAnalysis() {
-  const navigate = useNavigate();
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
   const clientId = user?.role === 'client' ? Number(user.client_id) : Number(selectedClient?.id) || null;
@@ -116,10 +113,9 @@ export default function CompetitorAnalysis() {
 
   return (
     <div className="space-y-4">
-      <CompassSectionNav />
       {!clientId ? <section className="rounded-[26px] border border-dashed border-slate-300 bg-white p-10 text-center"><Search className="mx-auto text-blue-600" size={28} /><h2 className="mt-3 font-bold text-slate-900">Selecione um cliente</h2><p className="mt-1 text-sm text-slate-500">A análise é salva separadamente por cliente.</p></section> : <>
         <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => navigate('/bussola')} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"><ArrowLeft size={18} /></button><div className="min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[.17em] text-blue-600">Bússola · Inteligência competitiva</p><h1 className="mt-0.5 text-xl font-black text-slate-950">Concorrentes · {clientName}</h1><p className="mt-1 text-xs text-slate-500">Cole o Instagram de um concorrente profissional e o ZebraHub salva uma fotografia da conta + leitura estratégica.</p></div></div>
+          <div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[.17em] text-blue-600">Inteligência competitiva</p><h1 className="mt-0.5 text-xl font-black text-slate-950">Análise de concorrentes · {clientName}</h1><p className="mt-1 text-xs text-slate-500">Cole o Instagram de um concorrente profissional e o ZebraHub salva uma fotografia da conta + leitura estratégica.</p></div></div>
           {canEdit && <form onSubmit={analyzeNew} className="mt-5 flex flex-col gap-2 sm:flex-row"><div className="relative min-w-0 flex-1"><Instagram className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} /><input value={input} onChange={(e) => setInput(e.target.value)} placeholder="instagram.com/concorrente ou @concorrente" className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" /></div><button disabled={analyzing || !input.trim()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{analyzing ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}{analyzing ? 'Analisando...' : 'Adicionar e analisar'}</button></form>}
           <p className="mt-2 text-[11px] text-slate-400">Funciona via API oficial para perfis Instagram Business/Creator. A conta Meta do cliente precisa estar conectada.</p>
         </section>

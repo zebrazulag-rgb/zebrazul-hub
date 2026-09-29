@@ -285,7 +285,7 @@ export default function CompassPage() {
       return (
         <button
           type="button"
-          onClick={() => navigate('/bussola/concorrencia')}
+          onClick={() => navigate('/concorrentes')}
           className="mt-2 inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
         >
           <Search size={14} /> Abrir análise de concorrência <ChevronRight size={13} />
