@@ -215,6 +215,7 @@ function apiPermissionForRequest(req) {
     return method === 'GET' ? null : 'settings.clients';
   }
   if (path.startsWith('/moodboards')) return method === 'GET' ? 'tasks.view' : 'tasks.create';
+  if (path.startsWith('/competitors')) return 'compass.view';
   if (path === '/tasks' || path.startsWith('/tasks/')) {
     if (path.includes('/import')) return 'tasks.import';
     if (path.includes('/export')) return 'tasks.export';

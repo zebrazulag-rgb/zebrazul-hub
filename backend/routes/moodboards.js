@@ -93,10 +93,24 @@ function getItem(id, agencyId) {
 function serializeBoard(clientId, agencyId, userId) {
   ensureDefaultCollection(clientId, agencyId, userId);
   const profile = db.prepare(`
-    SELECT concept, feeling, avoid_notes, updated_at
+    SELECT concept, feeling, avoid_notes, canvas_json, updated_at
     FROM moodboard_profiles
     WHERE agency_id = ? AND client_id = ?
-  `).get(agencyId, clientId) || { concept: '', feeling: '', avoid_notes: '', updated_at: null };
+  `).get(agencyId, clientId) || { concept: '', feeling: '', avoid_notes: '', canvas_json: '{"version":2,"elements":{},"frames":[]}', updated_at: null };
+
+  let canvas = { version: 2, elements: {}, frames: [] };
+  try {
+    const parsed = JSON.parse(profile.canvas_json || '{}');
+    if (parsed && typeof parsed === 'object') {
+      canvas = {
+        version: 2,
+        elements: parsed.elements && typeof parsed.elements === 'object' ? parsed.elements : {},
+        frames: Array.isArray(parsed.frames) ? parsed.frames.slice(0, 100) : [],
+      };
+    }
+  } catch {}
+  profile.canvas = canvas;
+  delete profile.canvas_json;
 
   const collections = db.prepare(`
     SELECT id, client_id, title, position, created_at, updated_at,
@@ -129,20 +143,37 @@ router.put('/profile', (req, res) => {
   const clientId = ensureClient(req, res, req.body.client_id);
   if (!clientId) return;
 
-  const concept = cleanText(req.body.concept, 700);
-  const feeling = cleanText(req.body.feeling, 700);
-  const avoidNotes = cleanText(req.body.avoid_notes, 1200);
+  const current = db.prepare(`
+    SELECT concept, feeling, avoid_notes, canvas_json
+    FROM moodboard_profiles WHERE agency_id = ? AND client_id = ?
+  `).get(req.user.agency_id, clientId) || {};
+  const concept = req.body.concept !== undefined ? cleanText(req.body.concept, 700) : cleanText(current.concept, 700);
+  const feeling = req.body.feeling !== undefined ? cleanText(req.body.feeling, 700) : cleanText(current.feeling, 700);
+  const avoidNotes = req.body.avoid_notes !== undefined ? cleanText(req.body.avoid_notes, 1200) : cleanText(current.avoid_notes, 1200);
+  let canvasJson = current.canvas_json || '{"version":2,"elements":{},"frames":[]}';
+  if (req.body.canvas !== undefined) {
+    const value = req.body.canvas && typeof req.body.canvas === 'object' ? req.body.canvas : {};
+    const safe = {
+      version: 2,
+      elements: value.elements && typeof value.elements === 'object'
+        ? Object.fromEntries(Object.entries(value.elements).slice(0, 1000))
+        : {},
+      frames: Array.isArray(value.frames) ? value.frames.slice(0, 100) : [],
+    };
+    canvasJson = JSON.stringify(safe).slice(0, 2000000);
+  }
 
   db.prepare(`
-    INSERT INTO moodboard_profiles (agency_id, client_id, concept, feeling, avoid_notes, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO moodboard_profiles (agency_id, client_id, concept, feeling, avoid_notes, canvas_json, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(agency_id, client_id) DO UPDATE SET
       concept = excluded.concept,
       feeling = excluded.feeling,
       avoid_notes = excluded.avoid_notes,
+      canvas_json = excluded.canvas_json,
       updated_by = excluded.updated_by,
       updated_at = datetime('now')
-  `).run(req.user.agency_id, clientId, concept, feeling, avoidNotes, req.user.id);
+  `).run(req.user.agency_id, clientId, concept, feeling, avoidNotes, canvasJson, req.user.id);
 
   return res.json({ profile: serializeBoard(clientId, Number(req.user.agency_id), Number(req.user.id)).profile });
 });

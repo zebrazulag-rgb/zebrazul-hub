@@ -620,6 +620,7 @@ CREATE TABLE IF NOT EXISTS moodboard_profiles (
   concept TEXT,
   feeling TEXT,
   avoid_notes TEXT,
+  canvas_json TEXT NOT NULL DEFAULT '{"version":2,"elements":{},"frames":[]}',
   updated_by INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
@@ -666,6 +667,50 @@ CREATE TABLE IF NOT EXISTS moodboard_items (
   FOREIGN KEY (collection_id) REFERENCES moodboard_collections(id) ON DELETE CASCADE,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+
+CREATE TABLE IF NOT EXISTS competitors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  instagram_username TEXT NOT NULL,
+  instagram_url TEXT,
+  display_name TEXT,
+  profile_picture_url TEXT,
+  biography TEXT,
+  website TEXT,
+  followers_count INTEGER NOT NULL DEFAULT 0,
+  follows_count INTEGER NOT NULL DEFAULT 0,
+  media_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  last_error TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(agency_id, client_id, instagram_username),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS competitor_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  competitor_id INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'meta_business_discovery',
+  profile_json TEXT NOT NULL DEFAULT '{}',
+  media_json TEXT NOT NULL DEFAULT '[]',
+  metrics_json TEXT NOT NULL DEFAULT '{}',
+  analysis_json TEXT NOT NULL DEFAULT '{}',
+  ai_model TEXT,
+  captured_at TEXT DEFAULT (datetime('now')),
+  created_by INTEGER,
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS materials (
@@ -1280,6 +1325,7 @@ tryAddColumn('tasks', 'project_name', 'TEXT');
 tryAddColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
 tryAddColumn('tasks', 'goal', 'TEXT');
 tryAddColumn('posts', 'workflow_stage', 'TEXT');
+tryAddColumn('moodboard_profiles', 'canvas_json', `TEXT NOT NULL DEFAULT '{"version":2,"elements":{},"frames":[]}'`);
 
 // A operação de Designer usa uma jornada mais detalhada que o status legado.
 // Mantemos `status` para compatibilidade com painel, clientes e integrações antigas,
@@ -1722,6 +1768,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_material_boards_agency_client ON material_boards(agency_id, client_id, is_active, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_moodboard_collections_client ON moodboard_collections(agency_id, client_id, is_active, position);
   CREATE INDEX IF NOT EXISTS idx_moodboard_items_collection ON moodboard_items(agency_id, client_id, collection_id, position);
+  CREATE INDEX IF NOT EXISTS idx_competitors_client ON competitors(agency_id, client_id, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_competitor_snapshots_competitor ON competitor_snapshots(agency_id, client_id, competitor_id, captured_at DESC);
   CREATE INDEX IF NOT EXISTS idx_materials_agency_client ON materials(agency_id, client_id, is_active, created_at DESC);
 `);
 

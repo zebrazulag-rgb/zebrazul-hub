@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  ArrowDown, ArrowUp, Check, ExternalLink, FileText, GripVertical, Image as ImageIcon,
-  Link2, MoreHorizontal, Palette, Pencil, Plus, Save, Sparkles, Trash2, Upload, X
+  Check, ExternalLink, Frame, Hand, Image as ImageIcon, Link2, Maximize2, Minus, MousePointer2,
+  Move, Palette, Pencil, Plus, Presentation, Save, StickyNote, Trash2, Type, Upload, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import api from '../api';
 import TopbarPortal from '../components/TopbarPortal.jsx';
@@ -11,29 +11,9 @@ import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
 
+const WORLD_W = 5200;
+const WORLD_H = 3400;
 const CATEGORIES = ['Geral', 'Layout', 'Fotografia', 'Tipografia', 'Cores', 'Ilustração', 'Motion', 'Não fazer'];
-const ITEM_TYPES = [
-  { key: 'image', label: 'Imagem', icon: ImageIcon },
-  { key: 'link', label: 'Link', icon: Link2 },
-  { key: 'text', label: 'Texto', icon: FileText },
-];
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function hostLabel(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return 'Abrir referência';
-  }
-}
 
 function DesignerNav() {
   const base = 'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition';
@@ -45,93 +25,70 @@ function DesignerNav() {
   );
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function hostLabel(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'Referência'; }
+}
+
 function EmptyClientState() {
   return (
     <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500"><Palette size={22} /></div>
-      <h2 className="mt-4 text-lg font-semibold text-slate-900">Selecione um cliente no topo</h2>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">O Moodboard pertence ao cliente. Ao selecionar um cliente, você verá as referências, coleções e a direção criativa dele.</p>
+      <Palette className="mx-auto text-blue-600" size={26} />
+      <h2 className="mt-3 font-bold text-slate-900">Selecione um cliente no topo</h2>
+      <p className="mt-1 text-sm text-slate-500">Cada cliente possui seu próprio quadro criativo.</p>
     </div>
   );
 }
 
-function DirectionPanel({ profile, onSave, canEdit }) {
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState(profile);
+function DirectionModal({ profile, onClose, onSave }) {
+  const [form, setForm] = useState({ concept: profile.concept || '', feeling: profile.feeling || '', avoid_notes: profile.avoid_notes || '' });
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => setForm(profile), [profile]);
-
-  async function submit() {
+  async function submit(event) {
+    event.preventDefault();
     setSaving(true);
-    try {
-      await onSave(form);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
+    try { await onSave(form); onClose(); } finally { setSaving(false); }
   }
-
-  const blocks = [
-    { key: 'concept', label: 'Conceito', placeholder: 'Ex.: luxo silencioso, urbano, leve...' },
-    { key: 'feeling', label: 'Sensação', placeholder: 'Ex.: intimista, tecnológico, sofisticado...' },
-    { key: 'avoid_notes', label: 'Evitar', placeholder: 'Ex.: excesso de elementos, estética genérica...' },
-  ];
-
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">Direção do Moodboard</p>
-          <p className="mt-1 text-sm text-slate-500">O que o designer precisa sentir antes de começar.</p>
+    <ModalBackdrop onClose={onClose} className="z-[90]">
+      <form onSubmit={submit} className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div><h2 className="font-bold text-slate-900">Direção criativa</h2><p className="text-xs text-slate-400">Um resumo rápido para orientar quem vai criar.</p></div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl hover:bg-slate-100"><X size={18} /></button>
         </div>
-        {canEdit && (
-          <button type="button" onClick={() => setEditing((value) => !value)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-            {editing ? <X size={14} /> : <Pencil size={14} />}{editing ? 'Cancelar' : 'Editar direção'}
-          </button>
-        )}
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-3">
-        {blocks.map((block) => (
-          <div key={block.key} className="min-w-0 rounded-2xl bg-slate-50 p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{block.label}</p>
-            {editing ? (
-              <textarea
-                value={form[block.key] || ''}
-                onChange={(event) => setForm((current) => ({ ...current, [block.key]: event.target.value }))}
-                placeholder={block.placeholder}
-                className="mt-2 min-h-[96px] w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-              />
-            ) : (
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{profile[block.key] || <span className="text-slate-400">Ainda não definido.</span>}</p>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {editing && (
-        <div className="mt-4 flex justify-end">
-          <button type="button" disabled={saving} onClick={submit} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-            <Save size={15} /> {saving ? 'Salvando...' : 'Salvar direção'}
-          </button>
+        <div className="grid gap-4 p-5 md:grid-cols-3">
+          {[['concept','Conceito','Ex.: luxo silencioso'],['feeling','Sensação','Ex.: intimista, tecnológico'],['avoid_notes','Evitar','Ex.: excesso de elementos']].map(([key,label,placeholder]) => (
+            <label key={key} className="text-xs font-semibold text-slate-600">{label}
+              <textarea value={form[key]} onChange={(e) => setForm((c) => ({ ...c, [key]: e.target.value }))} placeholder={placeholder} className="mt-2 min-h-36 w-full resize-none rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
+            </label>
+          ))}
         </div>
-      )}
-    </section>
+        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600">Cancelar</button>
+          <button disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Save size={15} />{saving ? 'Salvando...' : 'Salvar'}</button>
+        </div>
+      </form>
+    </ModalBackdrop>
   );
 }
 
-function ReferenceModal({ item, collectionId, onClose, onSave }) {
+function ItemModal({ kind, item, onClose, onSave }) {
+  const type = kind === 'note' ? 'text' : (kind || item?.item_type || 'image');
   const [form, setForm] = useState({
-    item_type: item?.item_type || 'image',
+    item_type: type,
     category: item?.category || 'Geral',
     title: item?.title || '',
     note: item?.note || '',
     source_url: item?.source_url || '',
     text_content: item?.text_content || '',
-    media_data: '',
-    media_mime: '',
-    media_name: '',
+    media_data: '', media_mime: '', media_name: '',
   });
   const [preview, setPreview] = useState(item?.media_url || (item?.item_type === 'image' ? item?.source_url : '') || '');
   const [saving, setSaving] = useState(false);
@@ -139,197 +96,70 @@ function ReferenceModal({ item, collectionId, onClose, onSave }) {
   const fileRef = useRef(null);
 
   async function useFile(file) {
-    if (!file) return;
-    if (!String(file.type || '').startsWith('image/')) {
-      setError('Escolha um arquivo de imagem.');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('A imagem deve ter no máximo 10 MB.');
-      return;
-    }
+    if (!file || !String(file.type || '').startsWith('image/')) return setError('Escolha uma imagem.');
+    if (file.size > 10 * 1024 * 1024) return setError('A imagem deve ter no máximo 10 MB.');
     const data = await fileToBase64(file);
     setPreview(data);
-    setForm((current) => ({ ...current, item_type: 'image', media_data: data, media_mime: file.type || 'image/jpeg', media_name: file.name || 'imagem' }));
-    setError('');
-  }
-
-  async function handlePaste(event) {
-    const image = Array.from(event.clipboardData?.items || []).find((entry) => entry.type?.startsWith('image/'));
-    const file = image?.getAsFile?.();
-    if (file) {
-      event.preventDefault();
-      await useFile(file);
-    }
+    setForm((c) => ({ ...c, item_type: 'image', media_data: data, media_mime: file.type || 'image/jpeg', media_name: file.name || 'imagem' }));
   }
 
   async function submit(event) {
-    event.preventDefault();
-    setSaving(true);
-    setError('');
-    try {
-      await onSave({ ...form, collection_id: collectionId });
-      onClose();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Não foi possível salvar a referência.');
-    } finally {
-      setSaving(false);
-    }
+    event.preventDefault(); setSaving(true); setError('');
+    try { await onSave(form, kind); onClose(); } catch (err) { setError(err.response?.data?.error || 'Não foi possível salvar.'); } finally { setSaving(false); }
   }
 
+  const label = kind === 'note' ? 'Post-it' : type === 'image' ? 'Imagem' : type === 'link' ? 'Link' : 'Texto';
   return (
-    <ModalBackdrop onClose={() => !saving && onClose()} className="z-[70]">
-      <form onSubmit={submit} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
-          <div>
-            <h2 className="font-semibold text-slate-900">{item ? 'Editar referência' : 'Adicionar referência'}</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Imagem, link ou bloco de texto.</p>
+    <ModalBackdrop onClose={onClose} className="z-[90]">
+      <form onSubmit={submit} className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-900">{item ? 'Editar' : 'Adicionar'} {label}</h2><p className="text-xs text-slate-400">Vai direto para o quadro.</p></div><button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl hover:bg-slate-100"><X size={18} /></button></div>
+        <div className="space-y-4 p-5">
+          {type === 'image' && <>
+            <button type="button" onClick={() => fileRef.current?.click()} className="flex min-h-44 w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50">
+              {preview ? <img src={preview} alt="Prévia" className="max-h-64 w-full object-contain" /> : <div className="text-center"><Upload className="mx-auto text-slate-400" size={24} /><p className="mt-2 text-sm font-semibold text-slate-600">Enviar imagem</p></div>}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => useFile(e.target.files?.[0])} />
+            <input value={form.source_url} onChange={(e) => { setForm((c) => ({ ...c, source_url: e.target.value })); if (!form.media_data) setPreview(e.target.value); }} placeholder="Ou cole o link da imagem" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300" />
+          </>}
+          {type === 'link' && <input autoFocus value={form.source_url} onChange={(e) => setForm((c) => ({ ...c, source_url: e.target.value }))} placeholder="https://instagram.com/..." className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300" />}
+          {type === 'text' && <textarea autoFocus value={form.text_content} onChange={(e) => setForm((c) => ({ ...c, text_content: e.target.value }))} placeholder={kind === 'note' ? 'Escreva uma anotação rápida...' : 'Escreva a direção, frase ou observação...'} className="min-h-36 w-full resize-y rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-blue-300" />}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input value={form.title} onChange={(e) => setForm((c) => ({ ...c, title: e.target.value }))} placeholder="Título (opcional)" className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300" />
+            <select value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-300">{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
           </div>
-          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
-        </div>
-
-        <div className="space-y-5 p-5">
-          <div className="grid grid-cols-3 gap-2">
-            {ITEM_TYPES.map(({ key, label, icon: Icon }) => (
-              <button key={key} type="button" onClick={() => setForm((current) => ({ ...current, item_type: key }))} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${form.item_type === key ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                <Icon size={16} /> {label}
-              </button>
-            ))}
-          </div>
-
-          {form.item_type === 'image' && (
-            <div className="space-y-3">
-              <button type="button" onClick={() => fileRef.current?.click()} onPaste={handlePaste} className="group flex min-h-44 w-full flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 text-center hover:border-blue-300 hover:bg-blue-50/40">
-                {preview ? <img src={preview} alt="Prévia" className="max-h-72 w-full object-contain" /> : <><Upload size={24} className="text-slate-400" /><span className="mt-2 text-sm font-semibold text-slate-600">Clique para enviar ou cole uma imagem aqui</span><span className="mt-1 text-xs text-slate-400">PNG, JPG ou WEBP · até 10 MB</span></>}
-              </button>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(event) => useFile(event.target.files?.[0])} />
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Ou use um link de imagem</label>
-                <input value={form.source_url} onChange={(event) => { setForm((current) => ({ ...current, source_url: event.target.value })); if (!form.media_data) setPreview(event.target.value); }} placeholder="https://..." className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
-              </div>
-            </div>
-          )}
-
-          {form.item_type === 'link' && (
-            <div>
-              <label className="text-xs font-semibold text-slate-600">Link da referência</label>
-              <input value={form.source_url} onChange={(event) => setForm((current) => ({ ...current, source_url: event.target.value }))} placeholder="https://pinterest.com/..." className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
-            </div>
-          )}
-
-          {form.item_type === 'text' && (
-            <div>
-              <label className="text-xs font-semibold text-slate-600">Texto da referência</label>
-              <textarea value={form.text_content} onChange={(event) => setForm((current) => ({ ...current, text_content: event.target.value }))} placeholder="Escreva uma direção, ideia, frase ou observação..." className="mt-1.5 min-h-36 w-full resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
-            </div>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-xs font-semibold text-slate-600">Categoria</label>
-              <select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100">
-                {CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600">Título <span className="font-normal text-slate-400">(opcional)</span></label>
-              <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ex.: Luz e enquadramento" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-600">Por que essa referência está aqui?</label>
-            <textarea value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} placeholder="Ex.: aproveitar luz natural, enquadramento lateral e espaço negativo. Não copiar a paleta." className="mt-1.5 min-h-24 w-full resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
-          </div>
-
+          <textarea value={form.note} onChange={(e) => setForm((c) => ({ ...c, note: e.target.value }))} placeholder="Por que essa referência está aqui? (opcional)" className="min-h-20 w-full resize-y rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-blue-300" />
           {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         </div>
-
-        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-100 bg-white px-5 py-4">
-          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
-          <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"><Check size={15} /> {saving ? 'Salvando...' : 'Salvar referência'}</button>
-        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600">Cancelar</button><button disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Check size={15} />{saving ? 'Salvando...' : 'Adicionar ao quadro'}</button></div>
       </form>
     </ModalBackdrop>
   );
 }
 
-function CollectionModal({ onClose, onSave }) {
-  const [title, setTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  async function submit(event) {
-    event.preventDefault();
-    if (!title.trim()) return;
-    setSaving(true);
-    setError('');
-    try {
-      await onSave(title.trim());
-      onClose();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Não foi possível criar a coleção.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <ModalBackdrop onClose={onClose} className="z-[70]">
-      <form onSubmit={submit} className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-4">
-          <div><h2 className="font-semibold text-slate-900">Nova coleção</h2><p className="mt-1 text-xs text-slate-400">Separe referências por campanha, produto ou direção.</p></div>
-          <button type="button" onClick={onClose} className="text-slate-400"><X size={18} /></button>
-        </div>
-        <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Campanha 2027" className="mt-5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100" />
-        {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
-        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600">Cancelar</button><button disabled={saving || !title.trim()} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Criando...' : 'Criar coleção'}</button></div>
-      </form>
-    </ModalBackdrop>
-  );
-}
-
-function ReferenceCard({ item, canEdit, onEdit, onDelete, onDragStart, onDrop, onMove }) {
+function BoardItem({ item, layout, selected, presentation, onSelect, onPointerDown, onResizeStart, onEdit, onDelete }) {
   const imageSrc = item.media_url || (item.item_type === 'image' ? item.source_url : '');
-  const danger = item.category === 'Não fazer';
+  const kind = layout.kind || item.item_type;
   return (
-    <article
-      draggable={canEdit}
-      onDragStart={(event) => onDragStart?.(event, item.id)}
-      onDragOver={(event) => canEdit && event.preventDefault()}
-      onDrop={(event) => { if (canEdit) { event.preventDefault(); onDrop?.(event, item.id); } }}
-      className={`group mb-4 break-inside-avoid overflow-hidden rounded-2xl border bg-white transition hover:-translate-y-0.5 hover:shadow-lg ${danger ? 'border-rose-200' : 'border-slate-200'}`}
+    <div
+      onPointerDown={(event) => onPointerDown(event, item)}
+      onClick={(event) => { event.stopPropagation(); onSelect(item.id); }}
+      className={`absolute overflow-visible ${presentation ? '' : 'group'} ${selected && !presentation ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}
+      style={{ left: layout.x, top: layout.y, width: layout.w, minHeight: layout.h, zIndex: layout.z || 2 }}
     >
-      {item.item_type === 'image' && imageSrc && <img src={imageSrc} alt={item.title || 'Referência visual'} className="max-h-[520px] w-full bg-slate-100 object-cover" />}
-      {item.item_type === 'link' && (
-        <a href={item.source_url} target="_blank" rel="noreferrer" className="flex min-h-32 flex-col justify-between bg-slate-950 p-4 text-white">
-          <Link2 size={20} className="text-slate-400" />
-          <div className="mt-8"><p className="line-clamp-2 text-base font-semibold">{item.title || hostLabel(item.source_url)}</p><p className="mt-1 flex items-center gap-1 text-xs text-slate-400">{hostLabel(item.source_url)} <ExternalLink size={11} /></p></div>
-        </a>
-      )}
-      {item.item_type === 'text' && <div className="bg-[#fffdf4] px-5 py-6"><p className="whitespace-pre-wrap text-[15px] font-medium leading-7 text-slate-800">{item.text_content}</p></div>}
-
-      <div className="p-4">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${danger ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{item.category}</span>
-            {item.title && item.item_type !== 'link' && <h3 className="mt-2 text-sm font-semibold text-slate-900">{item.title}</h3>}
-          </div>
-          {canEdit && <GripVertical size={16} className="mt-1 shrink-0 cursor-grab text-slate-300" />}
-        </div>
-        {item.note && <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-500">{item.note}</p>}
-        {item.source_url && item.item_type === 'image' && <a href={item.source_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"><ExternalLink size={12} /> Ver origem</a>}
-        {canEdit && (
-          <div className="mt-4 flex items-center gap-1 border-t border-slate-100 pt-3">
-            <button type="button" onClick={() => onMove(item.id, -1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Mover para cima"><ArrowUp size={14} /></button>
-            <button type="button" onClick={() => onMove(item.id, 1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Mover para baixo"><ArrowDown size={14} /></button>
-            <div className="flex-1" />
-            <button type="button" onClick={() => onEdit(item)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Editar"><Pencil size={14} /></button>
-            <button type="button" onClick={() => onDelete(item)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Excluir"><Trash2 size={14} /></button>
-          </div>
-        )}
+      <div className={`h-full w-full overflow-hidden border ${kind === 'note' ? 'border-amber-200 bg-amber-50' : kind === 'text' ? 'border-transparent bg-transparent' : 'rounded-2xl border-slate-200 bg-white shadow-sm'}`} style={{ borderRadius: kind === 'note' ? 6 : undefined }}>
+        {item.item_type === 'image' && imageSrc && <img draggable={false} src={imageSrc} alt={item.title || 'Referência'} className="block h-auto w-full select-none object-cover" />}
+        {item.item_type === 'link' && <a href={item.source_url} target="_blank" rel="noreferrer" onPointerDown={(e) => e.stopPropagation()} className="flex min-h-32 flex-col justify-between bg-slate-950 p-4 text-white"><Link2 size={20} className="text-slate-400" /><div className="mt-8"><p className="text-base font-bold">{item.title || hostLabel(item.source_url)}</p><p className="mt-1 flex items-center gap-1 text-xs text-slate-400">{hostLabel(item.source_url)} <ExternalLink size={11} /></p></div></a>}
+        {item.item_type === 'text' && <div className={`${kind === 'note' ? 'p-5' : 'p-2'} whitespace-pre-wrap text-[15px] font-medium leading-6 text-slate-800`}>{item.text_content}</div>}
+        {(item.title || item.note || item.category !== 'Geral') && kind !== 'text' && kind !== 'note' && <div className="p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{item.category}</span>{item.title && <p className="mt-2 text-sm font-bold text-slate-900">{item.title}</p>}</div></div>{item.note && <p className="mt-2 text-xs leading-5 text-slate-500">{item.note}</p>}</div>}
       </div>
-    </article>
+      {selected && !presentation && <>
+        <div className="absolute -top-11 right-0 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+          <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(item); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Editar"><Pencil size={14} /></button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(item); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" title="Excluir"><Trash2 size={14} /></button>
+        </div>
+        <button type="button" onPointerDown={(e) => onResizeStart(e, item.id)} className="absolute -bottom-2 -right-2 h-5 w-5 rounded-full border-2 border-white bg-blue-600 shadow" title="Redimensionar" />
+      </>}
+    </div>
   );
 }
 
@@ -338,180 +168,232 @@ export default function Moodboard() {
   const { user } = useAuth();
   const canEdit = user?.role !== 'client' && hasPermission(user, 'tasks.create');
   const clientId = selectedClient?.id ? Number(selectedClient.id) : null;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [profile, setProfile] = useState({ concept: '', feeling: '', avoid_notes: '' });
+  const [profile, setProfile] = useState({ concept: '', feeling: '', avoid_notes: '', canvas: { version: 2, elements: {}, frames: [] } });
   const [collections, setCollections] = useState([]);
   const [items, setItems] = useState([]);
-  const [activeCollectionId, setActiveCollectionId] = useState(null);
-  const [category, setCategory] = useState('Todos');
-  const [showReference, setShowReference] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [tool, setTool] = useState('select');
+  const [selectedId, setSelectedId] = useState(null);
+  const [viewport, setViewport] = useState({ x: -320, y: -180, zoom: 0.72 });
+  const [presentation, setPresentation] = useState(false);
+  const [directionOpen, setDirectionOpen] = useState(false);
+  const [modal, setModal] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
-  const [showCollection, setShowCollection] = useState(false);
-  const [collectionMenu, setCollectionMenu] = useState(false);
-  const [draggedId, setDraggedId] = useState(null);
+  const [canvas, setCanvas] = useState({ version: 2, elements: {}, frames: [] });
+  const viewportRef = useRef(null);
+  const gestureRef = useRef(null);
+  const saveTimerRef = useRef(null);
+  const lastPointerRef = useRef({ x: 900, y: 600 });
 
   const loadBoard = useCallback(async () => {
-    if (!clientId) {
-      setCollections([]); setItems([]); setActiveCollectionId(null); setProfile({ concept: '', feeling: '', avoid_notes: '' });
-      return;
-    }
+    if (!clientId) { setItems([]); setCollections([]); return; }
     setLoading(true); setError('');
     try {
-      const response = await api.get('/moodboards', { params: { client_id: clientId } });
-      setProfile(response.data.profile || { concept: '', feeling: '', avoid_notes: '' });
-      setCollections(response.data.collections || []);
-      setItems(response.data.items || []);
-      setActiveCollectionId((current) => {
-        const valid = (response.data.collections || []).some((collection) => Number(collection.id) === Number(current));
-        return valid ? current : (response.data.collections?.[0]?.id || null);
-      });
-    } catch (err) {
-      setError(err.response?.data?.error || 'Não foi possível carregar o Moodboard.');
-    } finally {
-      setLoading(false);
-    }
+      const { data } = await api.get('/moodboards', { params: { client_id: clientId } });
+      setProfile(data.profile || {}); setCollections(data.collections || []); setItems(data.items || []);
+      const nextCanvas = data.profile?.canvas || { version: 2, elements: {}, frames: [] };
+      setCanvas(nextCanvas);
+    } catch (err) { setError(err.response?.data?.error || 'Não foi possível carregar o Moodboard.'); } finally { setLoading(false); }
   }, [clientId]);
-
   useEffect(() => { loadBoard(); }, [loadBoard]);
 
-  const activeCollection = collections.find((collection) => Number(collection.id) === Number(activeCollectionId));
-  const collectionItems = useMemo(() => items.filter((item) => Number(item.collection_id) === Number(activeCollectionId)).sort((a, b) => Number(a.position) - Number(b.position) || Number(a.id) - Number(b.id)), [items, activeCollectionId]);
-  const visibleItems = useMemo(() => category === 'Todos' ? collectionItems : collectionItems.filter((item) => item.category === category), [collectionItems, category]);
+  const defaultCollectionId = collections[0]?.id || null;
 
-  async function saveProfile(next) {
-    const response = await api.put('/moodboards/profile', { client_id: clientId, ...next });
-    setProfile(response.data.profile || next);
+  const layoutFor = useCallback((item, index) => {
+    const saved = canvas.elements?.[String(item.id)];
+    if (saved) return { x: 380, y: 320, w: 280, h: 180, z: 2, kind: item.item_type, ...saved };
+    const col = index % 5; const row = Math.floor(index / 5);
+    return { x: 480 + col * 330, y: 420 + row * 320, w: item.item_type === 'text' ? 300 : 280, h: item.item_type === 'text' ? 150 : 220, z: 2 + index, kind: item.item_type };
+  }, [canvas.elements]);
+
+  useEffect(() => {
+    if (!items.length || !clientId) return;
+    const missing = items.filter((item) => !canvas.elements?.[String(item.id)]);
+    if (!missing.length) return;
+    setCanvas((current) => {
+      const elements = { ...(current.elements || {}) };
+      items.forEach((item, index) => { if (!elements[String(item.id)]) elements[String(item.id)] = layoutFor(item, index); });
+      return { ...current, elements };
+    });
+  }, [items, clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const persistCanvas = useCallback((nextCanvas) => {
+    if (!clientId || !canEdit) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      api.put('/moodboards/profile', { client_id: clientId, canvas: nextCanvas }).catch(() => {});
+    }, 500);
+  }, [clientId, canEdit]);
+
+  function updateCanvas(updater, persist = true) {
+    setCanvas((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      if (persist) persistCanvas(next);
+      return next;
+    });
   }
 
-  async function saveReference(payload) {
-    if (editingItem) await api.put(`/moodboards/items/${editingItem.id}`, payload);
-    else await api.post('/moodboards/items', { client_id: clientId, ...payload });
-    await loadBoard();
+  function worldPoint(clientX, clientY) {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 900, y: 600 };
+    return { x: (clientX - rect.left - viewport.x) / viewport.zoom, y: (clientY - rect.top - viewport.y) / viewport.zoom };
+  }
+
+  function centerWorldPoint() {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 900, y: 600 };
+    return worldPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  async function saveDirection(form) {
+    const { data } = await api.put('/moodboards/profile', { client_id: clientId, ...form, canvas });
+    setProfile(data.profile || { ...profile, ...form });
+  }
+
+  async function saveItem(form, kind) {
+    if (!defaultCollectionId) throw new Error('Coleção indisponível');
+    const payload = { ...form, collection_id: defaultCollectionId };
+    let saved;
+    if (editingItem) {
+      const { data } = await api.put(`/moodboards/items/${editingItem.id}`, payload); saved = data.item;
+      setItems((current) => current.map((entry) => Number(entry.id) === Number(saved.id) ? saved : entry));
+    } else {
+      const { data } = await api.post('/moodboards/items', { client_id: clientId, ...payload }); saved = data.item;
+      setItems((current) => [...current, saved]);
+      const point = centerWorldPoint();
+      updateCanvas((current) => ({ ...current, elements: { ...(current.elements || {}), [String(saved.id)]: { x: point.x - 140, y: point.y - 100, w: 280, h: kind === 'note' ? 210 : form.item_type === 'text' ? 150 : 220, z: Date.now() % 1000000, kind: kind || form.item_type } } }));
+      setSelectedId(saved.id);
+    }
     setEditingItem(null);
   }
 
-  async function createCollection(title) {
-    const response = await api.post('/moodboards/collections', { client_id: clientId, title });
-    await loadBoard();
-    setActiveCollectionId(response.data.collection?.id || null);
-  }
-
-  async function deleteCollection() {
-    if (!activeCollection || collections.length <= 1) return;
-    const ok = window.confirm(`Excluir a coleção “${activeCollection.title}” e todas as referências dela?`);
-    if (!ok) return;
-    try {
-      await api.delete(`/moodboards/collections/${activeCollection.id}`);
-      setCollectionMenu(false);
-      await loadBoard();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Não foi possível excluir a coleção.');
-    }
-  }
-
   async function deleteItem(item) {
-    if (!window.confirm('Excluir esta referência do Moodboard?')) return;
+    if (!window.confirm('Excluir esta referência?')) return;
     await api.delete(`/moodboards/items/${item.id}`);
-    setItems((current) => current.filter((entry) => entry.id !== item.id));
+    setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
+    updateCanvas((current) => { const elements = { ...(current.elements || {}) }; delete elements[String(item.id)]; return { ...current, elements }; });
+    setSelectedId(null);
   }
 
-  async function persistOrder(next) {
-    const orderedIds = next.map((entry) => entry.id);
-    setItems((current) => {
-      const positions = new Map(orderedIds.map((id, index) => [Number(id), index]));
-      return current.map((entry) => Number(entry.collection_id) === Number(activeCollectionId) && positions.has(Number(entry.id)) ? { ...entry, position: positions.get(Number(entry.id)) } : entry);
+  function addFrame() {
+    if (!canEdit) return;
+    const title = window.prompt('Nome do frame', 'Direção visual');
+    if (!title) return;
+    const p = centerWorldPoint();
+    const frame = { id: `frame_${Date.now()}`, title: title.slice(0, 80), x: p.x - 300, y: p.y - 220, w: 600, h: 440, z: 0 };
+    updateCanvas((current) => ({ ...current, frames: [...(current.frames || []), frame].slice(0, 100) }));
+  }
+
+  function removeFrame(id) { updateCanvas((c) => ({ ...c, frames: (c.frames || []).filter((f) => f.id !== id) })); }
+
+  function pointerDownItem(event, item) {
+    if (!canEdit || presentation || tool !== 'select' || event.button !== 0) return;
+    event.stopPropagation(); event.currentTarget.setPointerCapture?.(event.pointerId);
+    const layout = layoutFor(item, items.findIndex((entry) => entry.id === item.id));
+    gestureRef.current = { type: 'move', id: item.id, startX: event.clientX, startY: event.clientY, x: layout.x, y: layout.y };
+    setSelectedId(item.id);
+  }
+
+  function resizeStart(event, id) {
+    event.stopPropagation(); event.preventDefault();
+    const item = items.find((entry) => Number(entry.id) === Number(id)); if (!item) return;
+    const layout = layoutFor(item, items.indexOf(item));
+    gestureRef.current = { type: 'resize', id, startX: event.clientX, startY: event.clientY, w: layout.w, h: layout.h };
+  }
+
+  function boardPointerDown(event) {
+    if (event.target !== event.currentTarget && !event.target.dataset?.canvasSurface) return;
+    setSelectedId(null);
+    if (tool === 'hand' || event.button === 1 || event.code === 'Space') gestureRef.current = { type: 'pan', startX: event.clientX, startY: event.clientY, x: viewport.x, y: viewport.y };
+  }
+
+  function boardPointerMove(event) {
+    lastPointerRef.current = { x: event.clientX, y: event.clientY };
+    const g = gestureRef.current; if (!g) return;
+    if (g.type === 'pan') return setViewport((v) => ({ ...v, x: g.x + event.clientX - g.startX, y: g.y + event.clientY - g.startY }));
+    const dx = (event.clientX - g.startX) / viewport.zoom; const dy = (event.clientY - g.startY) / viewport.zoom;
+    if (g.type === 'move') updateCanvas((current) => ({ ...current, elements: { ...(current.elements || {}), [String(g.id)]: { ...(current.elements?.[String(g.id)] || {}), x: Math.round(g.x + dx), y: Math.round(g.y + dy) } } }), false);
+    if (g.type === 'resize') updateCanvas((current) => ({ ...current, elements: { ...(current.elements || {}), [String(g.id)]: { ...(current.elements?.[String(g.id)] || {}), w: Math.max(120, Math.round(g.w + dx)), h: Math.max(80, Math.round(g.h + dy)) } } }), false);
+  }
+
+  function boardPointerUp() {
+    if (!gestureRef.current) return;
+    gestureRef.current = null;
+    setCanvas((current) => {
+      persistCanvas(current);
+      return current;
     });
-    await api.put('/moodboards/items/reorder', { client_id: clientId, collection_id: activeCollectionId, item_ids: orderedIds });
   }
 
-  async function moveItem(id, delta) {
-    if (category !== 'Todos') setCategory('Todos');
-    const current = [...collectionItems];
-    const index = current.findIndex((entry) => Number(entry.id) === Number(id));
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= current.length) return;
-    [current[index], current[target]] = [current[target], current[index]];
-    await persistOrder(current);
+  function handleWheel(event) {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      const factor = event.deltaY < 0 ? 1.08 : 0.92;
+      const nextZoom = Math.min(2.2, Math.max(0.25, viewport.zoom * factor));
+      const rect = viewportRef.current.getBoundingClientRect();
+      const px = event.clientX - rect.left; const py = event.clientY - rect.top;
+      const wx = (px - viewport.x) / viewport.zoom; const wy = (py - viewport.y) / viewport.zoom;
+      setViewport({ x: px - wx * nextZoom, y: py - wy * nextZoom, zoom: nextZoom });
+    } else setViewport((v) => ({ ...v, x: v.x - event.deltaX, y: v.y - event.deltaY }));
   }
 
-  function handleDrop(_event, targetId) {
-    if (!draggedId || Number(draggedId) === Number(targetId) || category !== 'Todos') return;
-    const current = [...collectionItems];
-    const from = current.findIndex((entry) => Number(entry.id) === Number(draggedId));
-    const to = current.findIndex((entry) => Number(entry.id) === Number(targetId));
-    if (from < 0 || to < 0) return;
-    const [moved] = current.splice(from, 1);
-    current.splice(to, 0, moved);
-    setDraggedId(null);
-    persistOrder(current).catch(() => loadBoard());
-  }
+  useEffect(() => {
+    const node = viewportRef.current; if (!node) return;
+    node.addEventListener('wheel', handleWheel, { passive: false });
+    return () => node.removeEventListener('wheel', handleWheel);
+  });
+
+  useEffect(() => {
+    if (!canEdit || !clientId) return;
+    async function onPaste(event) {
+      const image = Array.from(event.clipboardData?.items || []).find((entry) => entry.type?.startsWith('image/'));
+      const file = image?.getAsFile?.(); if (!file || !defaultCollectionId) return;
+      event.preventDefault();
+      const data = await fileToBase64(file);
+      try {
+        const response = await api.post('/moodboards/items', { client_id: clientId, collection_id: defaultCollectionId, item_type: 'image', category: 'Geral', media_data: data, media_mime: file.type || 'image/png', media_name: file.name || 'imagem-colada.png' });
+        const saved = response.data.item; setItems((current) => [...current, saved]);
+        const p = centerWorldPoint(); updateCanvas((current) => ({ ...current, elements: { ...(current.elements || {}), [String(saved.id)]: { x: p.x - 150, y: p.y - 100, w: 300, h: 220, z: Date.now() % 1000000, kind: 'image' } } })); setSelectedId(saved.id);
+      } catch {}
+    }
+    window.addEventListener('paste', onPaste); return () => window.removeEventListener('paste', onPaste);
+  }, [canEdit, clientId, defaultCollectionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function zoom(delta) { setViewport((v) => ({ ...v, zoom: Math.min(2.2, Math.max(0.25, v.zoom + delta)) })); }
+  function fitBoard() { setViewport({ x: -220, y: -120, zoom: 0.72 }); }
+
+  const tools = [
+    ['select','Selecionar',MousePointer2],['hand','Mover quadro',Hand],['image','Imagem',ImageIcon],['text','Texto',Type],['note','Post-it',StickyNote],['link','Link',Link2],['frame','Frame',Frame],
+  ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <TopbarPortal><DesignerNav /></TopbarPortal>
-
-      {!clientId ? <EmptyClientState /> : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2"><Sparkles size={16} className="text-blue-600" /><p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Direção criativa</p></div>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Moodboard · {selectedClient?.name || 'Cliente'}</h1>
-              <p className="mt-1 text-sm text-slate-500">Referências visuais organizadas para o designer entender a intenção, não apenas copiar a aparência.</p>
-            </div>
-            {canEdit && <button type="button" onClick={() => { setEditingItem(null); setShowReference(true); }} disabled={!activeCollectionId} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"><Plus size={16} /> Adicionar referência</button>}
+      {!clientId ? <EmptyClientState /> : <>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-blue-600">Direção criativa</p><h1 className="mt-0.5 text-xl font-black text-slate-950">Moodboard · {selectedClient?.name || 'Cliente'}</h1></div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setDirectionOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"><Palette size={15} /> Direção criativa</button>
+            <button type="button" onClick={() => setPresentation((v) => !v)} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${presentation ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}><Presentation size={15} /> {presentation ? 'Sair da apresentação' : 'Apresentar'}</button>
           </div>
-
-          <DirectionPanel profile={profile} onSave={saveProfile} canEdit={canEdit} />
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
-                {collections.map((collection) => (
-                  <button key={collection.id} type="button" onClick={() => { setActiveCollectionId(collection.id); setCategory('Todos'); setCollectionMenu(false); }} className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition ${Number(collection.id) === Number(activeCollectionId) ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                    {collection.title} <span className="ml-1 opacity-60">{collection.item_count || 0}</span>
-                  </button>
-                ))}
-                {canEdit && <button type="button" onClick={() => setShowCollection(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-slate-500 hover:border-blue-300 hover:text-blue-600"><Plus size={13} /> Coleção</button>}
-                {canEdit && activeCollection && collections.length > 1 && (
-                  <div className="relative">
-                    <button type="button" onClick={() => setCollectionMenu((value) => !value)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:bg-slate-50"><MoreHorizontal size={16} /></button>
-                    {collectionMenu && <div className="absolute left-0 top-11 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"><button type="button" onClick={deleteCollection} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50"><Trash2 size={13} /> Excluir coleção</button></div>}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1 overflow-x-auto pb-1">
-                {['Todos', ...CATEGORIES].map((filter) => (
-                  <button key={filter} type="button" onClick={() => setCategory(filter)} className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${category === filter ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50'}`}>{filter}</button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-
-          {loading ? (
-            <div className="rounded-3xl border border-slate-200 bg-white py-20 text-center text-sm text-slate-400">Carregando Moodboard...</div>
-          ) : visibleItems.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500"><ImageIcon size={22} /></div>
-              <h2 className="mt-4 text-base font-semibold text-slate-900">{category === 'Todos' ? 'Essa coleção ainda está vazia' : `Nenhuma referência em “${category}”`}</h2>
-              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">Adicione imagens, links ou textos e explique o que o designer deve aproveitar em cada referência.</p>
-              {canEdit && category === 'Todos' && <button type="button" onClick={() => setShowReference(true)} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white"><Plus size={16} /> Primeira referência</button>}
-            </div>
-          ) : (
-            <div className="columns-1 gap-4 sm:columns-2 xl:columns-3 2xl:columns-4">
-              {visibleItems.map((item) => (
-                <ReferenceCard key={item.id} item={item} canEdit={canEdit} onEdit={(entry) => { setEditingItem(entry); setShowReference(true); }} onDelete={deleteItem} onDragStart={(_event, id) => setDraggedId(id)} onDrop={handleDrop} onMove={moveItem} />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {showReference && activeCollectionId && <ReferenceModal item={editingItem} collectionId={activeCollectionId} onClose={() => { setShowReference(false); setEditingItem(null); }} onSave={saveReference} />}
-      {showCollection && <CollectionModal onClose={() => setShowCollection(false)} onSave={createCollection} />}
+        </div>
+        {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+        <div ref={viewportRef} onPointerDown={boardPointerDown} onPointerMove={boardPointerMove} onPointerUp={boardPointerUp} onPointerCancel={boardPointerUp} className={`relative h-[calc(100vh-205px)] min-h-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-[#f7f8fa] ${tool === 'hand' ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+          {!presentation && canEdit && <div className="absolute left-4 top-4 z-40 flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+            {tools.map(([key,label,Icon]) => <button key={key} type="button" title={label} onClick={() => { if (key === 'frame') addFrame(); else if (['image','text','note','link'].includes(key)) { setEditingItem(null); setModal(key); } else setTool(key); }} className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${tool === key && ['select','hand'].includes(key) ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}><Icon size={18} /></button>)}
+          </div>}
+          <div className="absolute bottom-4 left-4 z-40 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"><button type="button" onClick={() => zoom(-0.1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100"><ZoomOut size={16} /></button><span className="min-w-14 text-center text-xs font-bold text-slate-600">{Math.round(viewport.zoom * 100)}%</span><button type="button" onClick={() => zoom(0.1)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100"><ZoomIn size={16} /></button><button type="button" onClick={fitBoard} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100" title="Centralizar"><Maximize2 size={16} /></button></div>
+          {loading && <div className="absolute inset-0 z-50 grid place-items-center bg-white/60 text-sm font-semibold text-slate-500">Carregando quadro...</div>}
+          <div data-canvas-surface="true" className="absolute left-0 top-0" style={{ width: WORLD_W, height: WORLD_H, transformOrigin: '0 0', transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`, backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+            {(canvas.frames || []).map((frame) => <div key={frame.id} className="absolute rounded-3xl border-2 border-dashed border-slate-300 bg-white/25" style={{ left: frame.x, top: frame.y, width: frame.w, height: frame.h, zIndex: frame.z || 0 }}><div className="flex items-center justify-between px-5 py-4"><span className="text-sm font-black uppercase tracking-[.12em] text-slate-400">{frame.title}</span>{canEdit && !presentation && <button type="button" onClick={(e) => { e.stopPropagation(); removeFrame(frame.id); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-white hover:text-rose-500"><Trash2 size={14} /></button>}</div></div>)}
+            {items.map((item, index) => <BoardItem key={item.id} item={item} layout={layoutFor(item,index)} selected={Number(selectedId) === Number(item.id)} presentation={presentation} onSelect={setSelectedId} onPointerDown={pointerDownItem} onResizeStart={resizeStart} onEdit={(entry) => { setEditingItem(entry); setModal(canvas.elements?.[String(entry.id)]?.kind === 'note' ? 'note' : entry.item_type); }} onDelete={deleteItem} />)}
+            {!items.length && !(canvas.frames || []).length && <div className="absolute left-[900px] top-[650px] w-[520px] rounded-3xl border border-dashed border-slate-300 bg-white/80 p-10 text-center"><Move className="mx-auto text-slate-300" size={30} /><h2 className="mt-4 text-lg font-bold text-slate-800">Seu quadro está vazio</h2><p className="mt-2 text-sm leading-6 text-slate-500">Adicione imagens, textos, post-its, links ou frames. Você também pode colar uma imagem com ⌘V / Ctrl+V.</p></div>}
+          </div>
+        </div>
+      </>}
+      {directionOpen && <DirectionModal profile={profile} onClose={() => setDirectionOpen(false)} onSave={saveDirection} />}
+      {modal && <ItemModal kind={modal} item={editingItem} onClose={() => { setModal(null); setEditingItem(null); }} onSave={saveItem} />}
     </div>
   );
 }
