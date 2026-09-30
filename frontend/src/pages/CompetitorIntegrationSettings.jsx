@@ -15,11 +15,12 @@ export default function CompetitorIntegrationSettings() {
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const brightDataReady = Boolean(data?.configured && data?.provider === 'brightdata');
 
   async function load() {
     setLoading(true); setError('');
     try {
-      const response = await api.get('/competitors/collector', { params: { _ts: Date.now() } });
+      const response = await api.get('/competitors/brightdata-settings', { params: { _ts: Date.now() } });
       const next = response.data || { configured: false, provider: 'brightdata', source: null };
       setData(next);
       setProfileDatasetId(next.profile_dataset_id || DEFAULT_PROFILE_DATASET);
@@ -35,7 +36,7 @@ export default function CompetitorIntegrationSettings() {
     event?.preventDefault();
     setSaving(true); setError(''); setNotice('');
     try {
-      const response = await api.put('/competitors/collector', {
+      const response = await api.put('/competitors/brightdata-settings', {
         api_key: apiKey.trim() || undefined,
         profile_dataset_id: profileDatasetId.trim() || DEFAULT_PROFILE_DATASET,
         posts_dataset_id: postsDatasetId.trim() || DEFAULT_POSTS_DATASET,
@@ -52,7 +53,7 @@ export default function CompetitorIntegrationSettings() {
     if (!window.confirm('Remover a configuração salva da Bright Data desta agência?')) return;
     setRemoving(true); setError(''); setNotice('');
     try {
-      const response = await api.delete('/competitors/collector');
+      const response = await api.delete('/competitors/brightdata-settings');
       setData(response.data);
       setApiKey('');
       setProfileDatasetId(response.data?.profile_dataset_id || DEFAULT_PROFILE_DATASET);
@@ -77,13 +78,14 @@ export default function CompetitorIntegrationSettings() {
 
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
       {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
+      {data?.configured && data?.provider && data.provider !== 'brightdata' && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Foi detectada uma configuração antiga de coleta. Salve a API Key da Bright Data abaixo para substituir essa configuração.</div>}
 
-      <section className={`rounded-2xl border p-5 ${data.configured ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+      <section className={`rounded-2xl border p-5 ${brightDataReady ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
         <div className="flex flex-wrap items-center gap-3">
-          <span className={`grid h-11 w-11 place-items-center rounded-xl ${data.configured ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{data.configured ? <CheckCircle2 size={20} /> : <KeyRound size={20} />}</span>
+          <span className={`grid h-11 w-11 place-items-center rounded-xl ${brightDataReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{brightDataReady ? <CheckCircle2 size={20} /> : <KeyRound size={20} />}</span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-black text-slate-900">{data.configured ? 'Coleta automática pronta' : 'Ative a coleta uma vez'}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{data.configured ? (data.source === 'environment' ? 'Chave configurada no servidor.' : 'Chave salva com segurança para esta agência.') : 'Cole sua API Key da Bright Data abaixo.'}</p>
+            <p className="text-sm font-black text-slate-900">{brightDataReady ? 'Coleta automática pronta' : 'Ative a coleta uma vez'}</p>
+            <p className="mt-0.5 text-xs text-slate-500">{brightDataReady ? (data.source === 'environment' ? 'Chave configurada no servidor.' : 'Chave salva com segurança para esta agência.') : 'Cole sua API Key da Bright Data abaixo.'}</p>
           </div>
           <button type="button" onClick={load} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50"><RefreshCw size={14} />Atualizar</button>
         </div>
@@ -102,7 +104,7 @@ export default function CompetitorIntegrationSettings() {
           <span className="text-xs font-bold text-slate-700">API Key</span>
           <div className="mt-2 flex items-center rounded-xl border border-slate-200 bg-white px-3 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100">
             <KeyRound size={16} className="shrink-0 text-slate-400" />
-            <input type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={data.configured ? 'Chave já configurada — deixe em branco para manter' : 'Cole a API Key da Bright Data'} className="h-11 min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none" />
+            <input type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={brightDataReady ? 'Chave já configurada — deixe em branco para manter' : 'Cole a API Key da Bright Data'} className="h-11 min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none" />
           </div>
         </label>
 

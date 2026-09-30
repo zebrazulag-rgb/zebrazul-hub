@@ -167,6 +167,41 @@ function parseUsernames(value) {
   return { usernames: [...new Set(valid)], invalid };
 }
 
+
+// Endpoint dedicado da Bright Data. Ele evita conflito com o antigo /collector,
+// que em instalações anteriores era usado pela integração Meta.
+router.get('/brightdata-settings', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(getCollectorOverview(req.user.agency_id));
+});
+
+router.put('/brightdata-settings', (req, res) => {
+  if (!canConfigureCollector(req)) return res.status(403).json({ error: 'Somente administradores podem alterar a integração de coleta.' });
+  try {
+    const overview = saveBrightDataSettings(req.user.agency_id, {
+      api_key: req.body?.api_key,
+      profile_dataset_id: req.body?.profile_dataset_id,
+      posts_dataset_id: req.body?.posts_dataset_id,
+    }, req.user.id);
+    res.json(overview);
+  } catch (error) {
+    const known = error instanceof BrightDataError;
+    res.status(known ? (error.status || 500) : 500).json({
+      error: known ? error.message : 'Não foi possível salvar a integração com a Bright Data.',
+      code: known ? error.code : 'brightdata_setup_failed',
+    });
+  }
+});
+
+router.delete('/brightdata-settings', (req, res) => {
+  if (!canConfigureCollector(req)) return res.status(403).json({ error: 'Somente administradores podem alterar a integração de coleta.' });
+  try {
+    res.json(clearBrightDataSettings(req.user.agency_id));
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível remover a configuração salva.' });
+  }
+});
+
 router.get('/collector', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(getCollectorOverview(req.user.agency_id));
