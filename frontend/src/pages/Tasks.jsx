@@ -38,6 +38,13 @@ const CONTENT_TAG_CLASSES = {
   Outro: 'bg-slate-50 text-slate-600 border-slate-200',
 };
 
+
+function serverWorkflowStage(stage) {
+  // Compatibilidade com o backend anterior, que ainda usa internal_approval/external_approval.
+  // A interface continua exibindo apenas uma etapa: "Em aprovação".
+  return stage === 'approval' ? 'internal_approval' : stage;
+}
+
 function workflowStage(task) {
   if (['internal_approval', 'external_approval'].includes(task?.workflow_stage)) return 'approval';
   if (task?.workflow_stage) return task.workflow_stage;
@@ -536,10 +543,30 @@ export default function Tasks({ workspace = 'designer' }) {
   }
 
   async function updateStatus(taskId, workflow_stage) {
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, workflow_stage } : t)));
-    setCalendarTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, workflow_stage } : t)));
-    setSelectedTask((prev) => prev?.id === taskId ? { ...prev, workflow_stage } : prev);
-    await api.put('/tasks/' + taskId, { workflow_stage });
+    const previousTasks = tasks;
+    const previousCalendarTasks = calendarTasks;
+    const previousSelectedTask = selectedTask;
+    const visibleStage = workflow_stage;
+    const backendStage = serverWorkflowStage(workflow_stage);
+
+    setTaskError('');
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, workflow_stage: visibleStage } : t)));
+    setCalendarTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, workflow_stage: visibleStage } : t)));
+    setSelectedTask((prev) => prev?.id === taskId ? { ...prev, workflow_stage: visibleStage } : prev);
+
+    try {
+      const { data } = await api.put('/tasks/' + taskId, { workflow_stage: backendStage });
+      if (data?.task) {
+        const normalized = { ...data.task, workflow_stage: workflowStage(data.task) };
+        upsertTaskSummary(normalized);
+        setSelectedTask((prev) => prev?.id === taskId ? { ...prev, ...normalized } : prev);
+      }
+    } catch (error) {
+      setTasks(previousTasks);
+      setCalendarTasks(previousCalendarTasks);
+      setSelectedTask(previousSelectedTask);
+      setTaskError(error.response?.data?.error || 'Não foi possível atualizar a etapa da tarefa.');
+    }
   }
 
   async function toggleFeatured(taskId, nextValue) {
@@ -575,10 +602,23 @@ export default function Tasks({ workspace = 'designer' }) {
   }
 
   async function updateSubtaskStatus(subtaskId, workflow_stage) {
-    setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, workflow_stage } : s)));
-    setCalendarTasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, workflow_stage } : s)));
-    await api.put('/tasks/' + subtaskId, { workflow_stage });
-    loadTasks();
+    const previousSubtasks = subtasks;
+    const previousCalendarTasks = calendarTasks;
+    const visibleStage = workflow_stage;
+    const backendStage = serverWorkflowStage(workflow_stage);
+
+    setTaskError('');
+    setSubtasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, workflow_stage: visibleStage } : s)));
+    setCalendarTasks((prev) => prev.map((s) => (s.id === subtaskId ? { ...s, workflow_stage: visibleStage } : s)));
+
+    try {
+      await api.put('/tasks/' + subtaskId, { workflow_stage: backendStage });
+      loadTasks();
+    } catch (error) {
+      setSubtasks(previousSubtasks);
+      setCalendarTasks(previousCalendarTasks);
+      setTaskError(error.response?.data?.error || 'Não foi possível atualizar a etapa da subtarefa.');
+    }
   }
 
   async function setSubtaskAssignee(subtask, userId) {
@@ -673,8 +713,8 @@ export default function Tasks({ workspace = 'designer' }) {
     setFeedError('');
     setFeedNotice('');
     try {
-      const { data } = await api.put('/tasks/' + id, { workflow_stage: 'approval' });
-      const patch = { workflow_stage: 'approval', ...(data.task || {}) };
+      const { data } = await api.put('/tasks/' + id, { workflow_stage: serverWorkflowStage('approval') });
+      const patch = { ...(data.task || {}), workflow_stage: 'approval' };
       if (source === 'subtask') {
         setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, ...patch } : item));
       } else {
