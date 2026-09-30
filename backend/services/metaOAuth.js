@@ -9,6 +9,7 @@ const DEFAULT_FRONTEND_ORIGIN = 'https://app.zebrazul.com.br';
 const DEFAULT_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
+  'instagram_basic',
   'read_insights',
 ];
 

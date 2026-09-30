@@ -670,6 +670,22 @@ CREATE TABLE IF NOT EXISTS moodboard_items (
 );
 
 
+CREATE TABLE IF NOT EXISTS competitor_collectors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL UNIQUE,
+  oauth_connection_id INTEGER,
+  instagram_account_id TEXT,
+  instagram_username TEXT,
+  instagram_name TEXT,
+  profile_picture_url TEXT,
+  configured_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (oauth_connection_id) REFERENCES meta_oauth_connections(id) ON DELETE SET NULL,
+  FOREIGN KEY (configured_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS competitors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,

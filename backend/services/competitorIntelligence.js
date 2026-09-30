@@ -1,3 +1,4 @@
+const db = require('../db/database');
 const { getClientTokenBundle, graphRequest, MetaOAuthError } = require('./metaOAuth');
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
@@ -70,13 +71,146 @@ function calculateMetrics(profile, media) {
   };
 }
 
-async function fetchCompetitorProfile({ clientId, agencyId, username }) {
-  let bundle;
-  try { bundle = getClientTokenBundle(clientId, agencyId); }
-  catch (error) { throw new CompetitorIntelligenceError(error.message, error.status || 401, 'meta_connection_error'); }
-  if (!bundle?.selectedInstagramId) {
-    throw new CompetitorIntelligenceError('Conecte e selecione o Instagram profissional deste cliente em Conexões antes de analisar concorrentes.', 409, 'instagram_not_selected');
+function collectorCandidates(agencyId) {
+  return db.prepare(`
+    SELECT
+      moc.id AS oauth_connection_id, moc.client_id, moc.provider_user_name, moc.selected_instagram_account_id,
+      moc.status, moc.token_expires_at, moc.scopes_json, moc.updated_at, c.name AS client_name,
+      moa.instagram_username, moa.instagram_name, moa.instagram_picture_url
+    FROM meta_oauth_connections moc
+    JOIN clients c ON c.id = moc.client_id AND c.agency_id = moc.agency_id
+    LEFT JOIN meta_organic_accounts moa ON moa.client_id = moc.client_id AND moa.agency_id = moc.agency_id
+    WHERE moc.agency_id = ?
+      AND moc.status = 'connected'
+      AND moc.selected_instagram_account_id IS NOT NULL
+      AND trim(moc.selected_instagram_account_id) <> ''
+    ORDER BY datetime(moc.updated_at) DESC, moc.id DESC
+  `).all(Number(agencyId));
+}
+
+function candidateExpired(row) {
+  if (!row?.token_expires_at) return false;
+  const expiresAt = Date.parse(row.token_expires_at);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function candidateHasBusinessDiscoveryScope(row) {
+  let scopes = [];
+  try { scopes = JSON.parse(row?.scopes_json || '[]'); } catch { scopes = []; }
+  return scopes.includes('instagram_basic');
+}
+
+function rememberCollector(agencyId, candidate, configuredBy = null) {
+  db.prepare(`
+    INSERT INTO competitor_collectors (
+      agency_id, oauth_connection_id, instagram_account_id, instagram_username, instagram_name, profile_picture_url, configured_by, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(agency_id) DO UPDATE SET
+      oauth_connection_id = excluded.oauth_connection_id,
+      instagram_account_id = excluded.instagram_account_id,
+      instagram_username = COALESCE(excluded.instagram_username, competitor_collectors.instagram_username),
+      instagram_name = COALESCE(excluded.instagram_name, competitor_collectors.instagram_name),
+      profile_picture_url = COALESCE(excluded.profile_picture_url, competitor_collectors.profile_picture_url),
+      configured_by = COALESCE(excluded.configured_by, competitor_collectors.configured_by),
+      updated_at = datetime('now')
+  `).run(
+    Number(agencyId), Number(candidate.oauth_connection_id), String(candidate.selected_instagram_account_id || ''),
+    candidate.instagram_username || null, candidate.instagram_name || null, candidate.instagram_picture_url || null, configuredBy
+  );
+}
+
+function getStoredCollector(agencyId) {
+  return db.prepare(`
+    SELECT cc.*, moc.client_id, moc.provider_user_name, moc.status AS connection_status, moc.token_expires_at, moc.scopes_json,
+      c.name AS client_name, moa.instagram_username AS live_instagram_username,
+      moa.instagram_name AS live_instagram_name, moa.instagram_picture_url AS live_instagram_picture_url
+    FROM competitor_collectors cc
+    LEFT JOIN meta_oauth_connections moc ON moc.id = cc.oauth_connection_id AND moc.agency_id = cc.agency_id
+    LEFT JOIN clients c ON c.id = moc.client_id AND c.agency_id = cc.agency_id
+    LEFT JOIN meta_organic_accounts moa ON moa.client_id = moc.client_id AND moa.agency_id = cc.agency_id
+    WHERE cc.agency_id = ?
+  `).get(Number(agencyId)) || null;
+}
+
+function resolveAgencyCollector(agencyId, configuredBy = null) {
+  const stored = getStoredCollector(agencyId);
+  if (stored?.oauth_connection_id && stored.connection_status === 'connected' && stored.instagram_account_id !== '' && candidateHasBusinessDiscoveryScope(stored)) {
+    const expiresAt = stored.token_expires_at ? Date.parse(stored.token_expires_at) : NaN;
+    if (!Number.isFinite(expiresAt) || expiresAt > Date.now()) {
+      try {
+        const bundle = getClientTokenBundle(stored.client_id, agencyId);
+        if (bundle?.selectedInstagramId) {
+          return {
+            bundle,
+            collector: {
+              oauth_connection_id: Number(stored.oauth_connection_id), client_id: Number(stored.client_id),
+              client_name: stored.client_name || null,
+              instagram_account_id: stored.instagram_account_id || bundle.selectedInstagramId,
+              instagram_username: stored.live_instagram_username || stored.instagram_username || null,
+              instagram_name: stored.live_instagram_name || stored.instagram_name || null,
+              profile_picture_url: stored.live_instagram_picture_url || stored.profile_picture_url || null,
+              automatic: false,
+            },
+          };
+        }
+      } catch {}
+    }
   }
+
+  const candidates = collectorCandidates(agencyId).filter((row) => !candidateExpired(row) && candidateHasBusinessDiscoveryScope(row));
+  for (const candidate of candidates) {
+    try {
+      const bundle = getClientTokenBundle(candidate.client_id, agencyId);
+      if (!bundle?.selectedInstagramId) continue;
+      rememberCollector(agencyId, candidate, configuredBy);
+      return {
+        bundle,
+        collector: {
+          oauth_connection_id: Number(candidate.oauth_connection_id), client_id: Number(candidate.client_id),
+          client_name: candidate.client_name || null, instagram_account_id: bundle.selectedInstagramId,
+          instagram_username: candidate.instagram_username || null, instagram_name: candidate.instagram_name || null,
+          profile_picture_url: candidate.instagram_picture_url || null, automatic: true,
+        },
+      };
+    } catch {}
+  }
+  return null;
+}
+
+function getCollectorOverview(agencyId) {
+  const resolved = resolveAgencyCollector(agencyId);
+  const candidates = collectorCandidates(agencyId).map((row) => ({
+    oauth_connection_id: Number(row.oauth_connection_id), client_id: Number(row.client_id), client_name: row.client_name || null,
+    instagram_account_id: row.selected_instagram_account_id || null, instagram_username: row.instagram_username || null,
+    instagram_name: row.instagram_name || null, profile_picture_url: row.instagram_picture_url || null,
+    provider_user_name: row.provider_user_name || null, expired: candidateExpired(row),
+    business_discovery_ready: !candidateExpired(row) && candidateHasBusinessDiscoveryScope(row),
+  }));
+  return { configured: Boolean(resolved), collector: resolved?.collector || null, candidates };
+}
+
+function setAgencyCollector(agencyId, oauthConnectionId, configuredBy = null) {
+  const candidate = collectorCandidates(agencyId).find((row) => Number(row.oauth_connection_id) === Number(oauthConnectionId));
+  if (!candidate) throw new CompetitorIntelligenceError('Essa conexão não está disponível para a agência.', 404, 'collector_connection_not_found');
+  if (candidateExpired(candidate)) throw new CompetitorIntelligenceError('Essa conexão da Meta expirou. Reconecte-a antes de usá-la para concorrentes.', 409, 'collector_connection_expired');
+  if (!candidateHasBusinessDiscoveryScope(candidate)) throw new CompetitorIntelligenceError('Reconecte essa conta uma vez para liberar a permissão de análise de concorrentes.', 409, 'collector_permission_missing');
+  let bundle;
+  try { bundle = getClientTokenBundle(candidate.client_id, agencyId); }
+  catch (error) { throw new CompetitorIntelligenceError(error.message, error.status || 401, 'collector_connection_error'); }
+  if (!bundle?.selectedInstagramId) throw new CompetitorIntelligenceError('Selecione um Instagram profissional nessa conexão antes de usá-la como coletora.', 409, 'collector_instagram_not_selected');
+  rememberCollector(agencyId, candidate, configuredBy);
+  return getCollectorOverview(agencyId);
+}
+
+async function fetchCompetitorProfile({ agencyId, username }) {
+  const resolved = resolveAgencyCollector(agencyId);
+  if (!resolved?.bundle?.selectedInstagramId) {
+    throw new CompetitorIntelligenceError(
+      'Configure uma conta coletora uma única vez em Configurações > Integrações. Depois disso, basta cadastrar os @ dos concorrentes.',
+      409, 'collector_not_configured'
+    );
+  }
+  const bundle = resolved.bundle;
   const accessToken = bundle.pageAccessToken || bundle.userAccessToken;
   const fields = `business_discovery.username(${username}){id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count,media.limit(24){id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count}}`;
   let payload;
@@ -165,4 +299,7 @@ async function analyzeWithAI({ profile, media, metrics }) {
   } finally { clearTimeout(timer); }
 }
 
-module.exports = { CompetitorIntelligenceError, usernameFromInput, fetchCompetitorProfile, calculateMetrics, analyzeWithAI };
+module.exports = {
+  CompetitorIntelligenceError, usernameFromInput, fetchCompetitorProfile, calculateMetrics, analyzeWithAI,
+  getCollectorOverview, setAgencyCollector, resolveAgencyCollector,
+};
