@@ -39,7 +39,7 @@ export default function CompetitorAnalysis() {
   const [tab, setTab] = useState('analysis');
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [collector, setCollector] = useState({ configured: false, collector: null, candidates: [] });
+  const [collector, setCollector] = useState({ configured: false, provider: 'brightdata', source: null });
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [moodMsg, setMoodMsg] = useState('');
@@ -50,7 +50,7 @@ export default function CompetitorAnalysis() {
     try {
       const { data } = await api.get('/competitors', { params: { client_id: clientId, _ts: Date.now() } });
       setCompetitors(data.competitors || []);
-      setCollector(data.collector || { configured: false, collector: null, candidates: [] });
+      setCollector(data.collector || { configured: false, provider: 'brightdata', source: null });
       setSelectedId((current) => current && (data.competitors || []).some((c) => Number(c.id) === Number(current)) ? current : data.competitors?.[0]?.id || null);
     } catch (err) { setError(err.response?.data?.error || 'Não foi possível carregar os concorrentes.'); } finally { setLoading(false); }
   }
@@ -148,7 +148,7 @@ export default function CompetitorAnalysis() {
             </div>
             <div className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold ${collector.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
               {collector.configured ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-              {collector.configured ? `Coleta pronta${collector.collector?.instagram_username ? ` · @${collector.collector.instagram_username}` : ''}` : 'Coleta precisa ser configurada uma vez'}
+              {collector.configured ? 'Coleta pronta' : 'Ative a coleta em Configurações'}
             </div>
           </div>
           {canEdit && <form onSubmit={analyzeNew} className="mt-5 flex flex-col gap-2 sm:flex-row">
@@ -169,7 +169,7 @@ export default function CompetitorAnalysis() {
               <section className="rounded-[24px] border border-slate-200 bg-white p-5">
                 <div className="flex flex-wrap items-start gap-4">{selected.profile_picture_url ? <img src={selected.profile_picture_url} alt="" className="h-16 w-16 rounded-2xl object-cover" /> : <div className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Instagram size={24} /></div>}<div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-black text-slate-950">{selected.display_name || `@${selected.instagram_username}`}</h2><a href={selected.instagram_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-blue-600">@{selected.instagram_username}<ExternalLink size={12} /></a></div>{['pending','analyzing'].includes(selected.status) ? <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-amber-600"><Loader2 size={15} className="animate-spin" />Coletando informações e preparando a análise...</p> : selected.status === 'error' ? <p className="mt-2 max-w-3xl text-sm leading-6 text-rose-600">{selected.last_error || 'Não foi possível concluir a leitura.'}</p> : <><p className="mt-1 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-500">{selected.biography || 'Sem bio disponível na leitura atual.'}</p><p className="mt-2 text-[11px] text-slate-400">Última leitura: {date(snapshot?.captured_at)}</p></>}</div>{canEdit && <div className="flex gap-2"><button type="button" onClick={refreshSelected} disabled={analyzing || ['pending','analyzing'].includes(selected.status)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"><RefreshCw size={14} className={analyzing ? 'animate-spin' : ''} />{selected.status === 'error' ? 'Tentar de novo' : 'Atualizar'}</button><button type="button" onClick={removeSelected} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={15} /></button></div>}</div>
               </section>
-              {selected.status === 'error' && !collector.configured && <button type="button" onClick={() => navigate('/configuracoes/integracoes')} className="flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-800"><span>Configure uma conta coletora uma única vez para liberar todas as análises.</span><Settings2 size={16} /></button>}
+              {selected.status === 'error' && !collector.configured && <button type="button" onClick={() => navigate('/configuracoes/integracoes')} className="flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-800"><span>Ative a coleta uma única vez em Configurações &gt; Integrações.</span><Settings2 size={16} /></button>}
               {selected.status === 'ready' && <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1"><button onClick={() => setTab('analysis')} className={`rounded-lg px-3 py-2 text-xs font-bold ${tab === 'analysis' ? 'bg-slate-950 text-white' : 'text-slate-500'}`}>Análise</button><button onClick={() => setTab('posts')} className={`rounded-lg px-3 py-2 text-xs font-bold ${tab === 'posts' ? 'bg-slate-950 text-white' : 'text-slate-500'}`}>Posts ({media.length})</button><button onClick={() => setTab('compare')} className={`rounded-lg px-3 py-2 text-xs font-bold ${tab === 'compare' ? 'bg-slate-950 text-white' : 'text-slate-500'}`}>Comparar</button></div>}
               {selected.status === 'ready' && <>              {tab === 'analysis' && <>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Stat label="Seguidores" value={fmt(selected.followers_count)} /><Stat label="Posts na amostra / 30d" value={metrics.posts_last_30_days ?? '—'} hint={`${metrics.sample_size || 0} posts coletados`} /><Stat label="Média de curtidas" value={fmt(metrics.average_likes)} /><Stat label="Média de comentários" value={fmt(metrics.average_comments)} /></div>

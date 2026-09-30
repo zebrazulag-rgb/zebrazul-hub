@@ -686,6 +686,19 @@ CREATE TABLE IF NOT EXISTS competitor_collectors (
   FOREIGN KEY (configured_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS competitor_provider_settings (
+  agency_id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'brightdata',
+  api_key_encrypted TEXT,
+  profile_dataset_id TEXT NOT NULL DEFAULT 'gd_l1vikfch901nx3by4',
+  posts_dataset_id TEXT DEFAULT 'gd_lk5ns7kz21pck8jpis',
+  configured_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (configured_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS competitors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agency_id INTEGER NOT NULL,
@@ -1804,6 +1817,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_material_boards_agency_client ON material_boards(agency_id, client_id, is_active, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_moodboard_collections_client ON moodboard_collections(agency_id, client_id, is_active, position);
   CREATE INDEX IF NOT EXISTS idx_moodboard_items_collection ON moodboard_items(agency_id, client_id, collection_id, position);
+  CREATE INDEX IF NOT EXISTS idx_competitor_provider_settings_agency ON competitor_provider_settings(agency_id, provider);
   CREATE INDEX IF NOT EXISTS idx_competitors_client ON competitors(agency_id, client_id, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_competitor_snapshots_competitor ON competitor_snapshots(agency_id, client_id, competitor_id, captured_at DESC);
   CREATE INDEX IF NOT EXISTS idx_materials_agency_client ON materials(agency_id, client_id, is_active, created_at DESC);

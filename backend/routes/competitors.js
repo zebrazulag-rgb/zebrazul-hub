@@ -8,8 +8,12 @@ const {
   calculateMetrics,
   analyzeWithAI,
   getCollectorOverview,
-  setAgencyCollector,
 } = require('../services/competitorIntelligence');
+const {
+  BrightDataError,
+  saveBrightDataSettings,
+  clearBrightDataSettings,
+} = require('../services/brightData');
 
 const router = express.Router();
 router.use(authRequired);
@@ -74,20 +78,23 @@ function getCompetitor(id, agencyId) {
 }
 
 async function runAnalysis(context, competitor) {
-  const { profile, media } = await fetchCompetitorProfile({
+  const collected = await fetchCompetitorProfile({
     agencyId: context.agencyId,
     username: competitor.instagram_username,
   });
+  const { profile, media } = collected;
   const metrics = calculateMetrics(profile, media);
   const ai = await analyzeWithAI({ profile, media, metrics });
+  const combinedWarning = [collected.warning, ai.warning].filter(Boolean).join(' ');
   const analysis = ai.analysis || {
-    summary: ai.warning || 'Métricas coletadas. A leitura estratégica por IA ainda não está disponível.',
-    warning: ai.warning || null,
+    summary: combinedWarning || 'Métricas coletadas. A leitura estratégica por IA ainda não está disponível.',
+    warning: combinedWarning || null,
   };
+  if (ai.analysis && combinedWarning) analysis.warning = combinedWarning;
 
   const snapshotInfo = db.prepare(`
     INSERT INTO competitor_snapshots (agency_id, client_id, competitor_id, source, profile_json, media_json, metrics_json, analysis_json, ai_model, created_by)
-    VALUES (?, ?, ?, 'meta_agency_collector', ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, 'brightdata_instagram', ?, ?, ?, ?, ?, ?)
   `).run(
     context.agencyId,
     competitor.client_id,
@@ -117,7 +124,7 @@ async function runAnalysis(context, competitor) {
     context.agencyId,
   );
 
-  return { snapshot_id: snapshotInfo.lastInsertRowid, warning: ai.warning || null };
+  return { snapshot_id: snapshotInfo.lastInsertRowid, warning: combinedWarning || null };
 }
 
 async function processQueuedCompetitor(competitorId, agencyId, userId = null) {
@@ -166,14 +173,29 @@ router.get('/collector', (req, res) => {
 });
 
 router.put('/collector', (req, res) => {
-  if (!canConfigureCollector(req)) return res.status(403).json({ error: 'Somente administradores podem alterar a conta coletora.' });
+  if (!canConfigureCollector(req)) return res.status(403).json({ error: 'Somente administradores podem alterar a integração de coleta.' });
   try {
-    const oauthConnectionId = Number(req.body?.oauth_connection_id);
-    if (!Number.isInteger(oauthConnectionId) || oauthConnectionId <= 0) return res.status(400).json({ error: 'Selecione uma conexão válida.' });
-    res.json(setAgencyCollector(req.user.agency_id, oauthConnectionId, req.user.id));
+    const overview = saveBrightDataSettings(req.user.agency_id, {
+      api_key: req.body?.api_key,
+      profile_dataset_id: req.body?.profile_dataset_id,
+      posts_dataset_id: req.body?.posts_dataset_id,
+    }, req.user.id);
+    res.json(overview);
   } catch (error) {
-    const message = error instanceof CompetitorIntelligenceError ? error.message : 'Não foi possível configurar a conta coletora.';
-    res.status(error.status || 500).json({ error: message, code: error.code || 'collector_setup_failed' });
+    const known = error instanceof BrightDataError;
+    res.status(known ? (error.status || 500) : 500).json({
+      error: known ? error.message : 'Não foi possível salvar a integração com a Bright Data.',
+      code: known ? error.code : 'brightdata_setup_failed',
+    });
+  }
+});
+
+router.delete('/collector', (req, res) => {
+  if (!canConfigureCollector(req)) return res.status(403).json({ error: 'Somente administradores podem alterar a integração de coleta.' });
+  try {
+    res.json(clearBrightDataSettings(req.user.agency_id));
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível remover a configuração salva.' });
   }
 });
 
@@ -184,7 +206,7 @@ router.get('/', (req, res) => {
   rows.filter((row) => {
     if (['pending', 'analyzing'].includes(row.status)) return true;
     if (row.status !== 'error' || !collector.configured) return false;
-    return /conecte e selecione o instagram|conta coletora|configurações > integrações/i.test(String(row.last_error || ''));
+    return /api oficial|perfil precisa ser profissional|meta|conta coletora|instagram profissional|business\/creator|configurações > integrações/i.test(String(row.last_error || ''));
   }).forEach((row) => queueCompetitor(row.id, req.user.agency_id, req.user.id));
   res.set('Cache-Control', 'no-store');
   res.json({
