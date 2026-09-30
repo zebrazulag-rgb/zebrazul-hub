@@ -348,6 +348,87 @@ router.get('/', (req, res) => {
 });
 
 
+
+// Grade visual de aprovação do Squad -> Designer.
+// A grade é derivada diretamente das tarefas/subtarefas em "Em aprovação",
+// portanto não depende da grade editorial do Social Media.
+router.get('/approval-grid', (req, res) => {
+  const { client_id } = req.query;
+  let query = `
+    SELECT
+      t.id, t.agency_id, t.client_id, t.parent_task_id, t.task_type,
+      t.title, t.content_type, t.content_tag, t.front_name, t.caption,
+      t.due_date, t.status, t.workflow_stage,
+      t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
+      t.created_at, t.updated_at,
+      c.name AS client_name, c.logo_color AS client_color
+    FROM tasks t
+    LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
+    WHERE t.agency_id = ?
+      AND t.task_type != 'video'
+      AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
+      AND t.workflow_stage IN ('approval', 'internal_approval', 'external_approval')
+  `;
+  const params = [req.user.agency_id];
+
+  if (req.user.role === 'team' && !req.user.is_operations_head) {
+    query += ` AND (
+      t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)
+      OR t.parent_task_id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)
+    )`;
+    params.push(Number(req.user.id), Number(req.user.id));
+  } else if (req.user.role === 'client') {
+    query += ' AND t.client_id = ?';
+    params.push(Number(req.user.client_id));
+  }
+
+  if (client_id) {
+    if (!ensureClientAccess(req, res, client_id)) return;
+    query += ' AND t.client_id = ?';
+    params.push(Number(client_id));
+  }
+
+  query += ' ORDER BY COALESCE(t.updated_at, t.created_at) DESC';
+
+  const rows = db.prepare(query).all(...params);
+  const items = rows.map((row) => {
+    const gallery = parseGallery(row.media_gallery);
+    const imageGallery = gallery.filter((item) => {
+      const mime = String(item?.mime || item?.type || '').toLowerCase();
+      const data = String(item?.data || item?.url || item?.src || '').toLowerCase();
+      return mime.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(data) || data.startsWith('data:image/');
+    });
+    const attachmentIsImage = String(row.attachment_mime || '').toLowerCase().startsWith('image/')
+      || String(row.attachment_data || '').toLowerCase().startsWith('data:image/')
+      || /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(String(row.attachment_data || ''));
+
+    const images = imageGallery.length
+      ? imageGallery
+      : (attachmentIsImage && row.attachment_data
+          ? [{ data: row.attachment_data, mime: row.attachment_mime || 'image/jpeg', filename: row.attachment_filename || '' }]
+          : []);
+
+    return {
+      id: row.id,
+      client_id: row.client_id,
+      parent_task_id: row.parent_task_id,
+      title: row.title,
+      content_type: row.content_type,
+      content_tag: row.content_tag,
+      caption: row.caption,
+      due_date: row.due_date,
+      workflow_stage: normalizeWorkflowStage(row.workflow_stage),
+      client_name: row.client_name,
+      client_color: row.client_color,
+      images,
+      image_count: images.length,
+      updated_at: row.updated_at,
+    };
+  }).filter((item) => item.image_count > 0);
+
+  return res.json({ items, total: items.length });
+});
+
 // Métricas leves do painel. Cada registro é contabilizado individualmente,
 // portanto tarefas principais e subtarefas entram no total e nos status.
 router.get('/dashboard-stats', (req, res) => {
@@ -579,7 +660,8 @@ router.get('/:id', (req, res) => {
     SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type, st.content_tag, st.front_name,
            st.title, st.status, st.workflow_stage, st.due_date, st.attachment_filename, st.feed_post_id,
            COALESCE(sp.feed_visible, 0) AS feed_post_visible,
-           CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment
+           CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
+           CASE WHEN st.media_gallery IS NOT NULL AND length(st.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery
     FROM tasks st
     LEFT JOIN posts sp ON sp.id = st.feed_post_id AND sp.agency_id = st.agency_id
     WHERE st.parent_task_id = ? AND st.agency_id = ?
@@ -644,10 +726,6 @@ router.post('/', (req, res) => {
   });
 
   const id = createTask();
-  const created = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(id, req.user.agency_id);
-  if (created?.task_type === 'post' && taskHasMedia(created)) {
-    try { addTaskRecordToFeed(created, req.user.id, req.user.agency_id); } catch (error) { console.warn('[TASKS] Auto-grade na criação:', error.message); }
-  }
   res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 
@@ -738,12 +816,24 @@ router.put('/:id', (req, res) => {
   updateTask();
 
   const refreshedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
-  if (refreshedTask?.task_type === 'post' && taskHasMedia(refreshedTask)) {
-    try { addTaskRecordToFeed(refreshedTask, req.user.id, req.user.agency_id); } catch (error) { console.warn('[TASKS] Auto-grade na atualização:', error.message); }
+  const refreshedStage = normalizeWorkflowStage(refreshedTask?.workflow_stage || workflowStageFromLegacy(refreshedTask?.status));
+  const isDesignerTask = refreshedTask && refreshedTask.task_type !== 'video'
+    && String(refreshedTask.front_name || '').trim().toLocaleLowerCase('pt-BR') !== 'site/lp';
+
+  // O conteúdo do Designer só entra na grade editorial do Social Media depois
+  // de aprovado. Antes disso, a peça vive exclusivamente na grade /aprovacao.
+  if (isDesignerTask && refreshedTask.task_type === 'post' && refreshedStage === 'approved' && taskHasMedia(refreshedTask)) {
+    try {
+      addTaskRecordToFeed(refreshedTask, req.user.id, req.user.agency_id);
+    } catch (error) {
+      console.warn('[TASKS] Não foi possível promover o conteúdo aprovado para o Feed:', error.message);
+    }
   } else if (refreshedTask?.feed_post_id) {
-    db.prepare(`UPDATE posts SET workflow_stage = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
-      .run(normalizeWorkflowStage(refreshedTask.workflow_stage || workflowStageFromLegacy(refreshedTask.status)), refreshedTask.feed_post_id, req.user.agency_id);
+    const feedVisible = ['approved', 'scheduled', 'posted'].includes(refreshedStage) ? 1 : 0;
+    db.prepare(`UPDATE posts SET workflow_stage = ?, feed_visible = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+      .run(refreshedStage, feedVisible, refreshedTask.feed_post_id, req.user.agency_id);
   }
+
 
   res.json({ ok: true, task: getTaskSummary(req.params.id, req.user.agency_id) });
 });
@@ -784,9 +874,6 @@ router.post('/:id/duplicate', requireRole('admin', 'team', 'client'), (req, res)
 
   const id = duplicate();
   const duplicatedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(id, req.user.agency_id);
-  if (duplicatedTask?.task_type === 'post' && taskHasMedia(duplicatedTask)) {
-    try { addTaskRecordToFeed(duplicatedTask, req.user.id, req.user.agency_id); } catch (error) { console.warn('[TASKS] Auto-grade na duplicação:', error.message); }
-  }
   res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, ExternalLink, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -280,10 +280,7 @@ export default function Tasks({ workspace = 'designer' }) {
   const [calendarFeedback, setCalendarFeedback] = useState('');
   const [cursor, setCursor] = useState(new Date());
   const [dayTasks, setDayTasks] = useState(null);
-  const [sendingToFeed, setSendingToFeed] = useState(false);
-  const [sendingSubtaskToFeedId, setSendingSubtaskToFeedId] = useState(null);
-  const [removingFromFeedId, setRemovingFromFeedId] = useState(null);
-  const [addingAllToFeed, setAddingAllToFeed] = useState(false);
+  const [sendingApprovalId, setSendingApprovalId] = useState(null);
   const [feedError, setFeedError] = useState('');
   const [feedNotice, setFeedNotice] = useState('');
   const [taskError, setTaskError] = useState('');
@@ -671,69 +668,24 @@ export default function Tasks({ workspace = 'designer' }) {
     loadTasks();
   }
 
-  async function sendToFeed(id, source = 'task') {
-    setSendingToFeed(true);
+  async function sendForApproval(id, source = 'task') {
+    setSendingApprovalId(id);
     setFeedError('');
     setFeedNotice('');
     try {
-      const { data } = await api.post('/tasks/' + id + '/add-to-feed');
-      const patch = { feed_post_id: data.post_id, feed_post_visible: 1 };
+      const { data } = await api.put('/tasks/' + id, { workflow_stage: 'approval' });
+      const patch = { workflow_stage: 'approval', ...(data.task || {}) };
       if (source === 'subtask') {
         setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, ...patch } : item));
       } else {
-        setSelectedTask((prev) => ({ ...prev, ...patch }));
+        setSelectedTask((previous) => previous ? { ...previous, ...patch } : previous);
+        upsertTaskSummary(data.task || { id, workflow_stage: 'approval' });
       }
-      setFeedNotice(data.action === 'reactivated' ? 'Publicação devolvida à grade.' : 'Publicação adicionada à grade.');
+      setFeedNotice('Enviado para aprovação. Se houver imagem, a peça já está na grade de Aprovação.');
     } catch (err) {
-      setFeedError(err.response?.data?.error || 'Erro ao enviar para o feed.');
+      setFeedError(err.response?.data?.error || 'Não foi possível enviar para aprovação.');
     } finally {
-      setSendingToFeed(false);
-      setSendingSubtaskToFeedId(null);
-    }
-  }
-
-  async function removeFromFeed(id, source = 'task') {
-    setRemovingFromFeedId(id);
-    setFeedError('');
-    setFeedNotice('');
-    try {
-      await api.post('/tasks/' + id + '/remove-from-feed');
-      if (source === 'subtask') {
-        setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, feed_post_visible: 0 } : item));
-      } else {
-        setSelectedTask((previous) => previous ? { ...previous, feed_post_visible: 0 } : previous);
-      }
-      setFeedNotice('Publicação removida da grade sem apagar o conteúdo.');
-    } catch (err) {
-      setFeedError(err.response?.data?.error || 'Não foi possível remover da grade.');
-    } finally {
-      setRemovingFromFeedId(null);
-    }
-  }
-
-  async function addAllToFeed() {
-    if (!selectedTask?.id) return;
-    setAddingAllToFeed(true);
-    setFeedError('');
-    setFeedNotice('');
-    try {
-      const { data } = await api.post('/tasks/' + selectedTask.id + '/add-all-to-feed');
-      const byTaskId = new Map((data.added || []).map((item) => [Number(item.id), item]));
-      const parentResult = byTaskId.get(Number(selectedTask.id));
-      if (parentResult) {
-        setSelectedTask((previous) => previous ? { ...previous, feed_post_id: parentResult.post_id, feed_post_visible: 1 } : previous);
-      }
-      setSubtasks((previous) => previous.map((item) => {
-        const result = byTaskId.get(Number(item.id));
-        return result ? { ...item, feed_post_id: result.post_id, feed_post_visible: 1 } : item;
-      }));
-      const added = Number(data.total_added || 0);
-      const skipped = Number(data.total_skipped || 0);
-      setFeedNotice(`${added} publicação${added === 1 ? '' : 'ões'} adicionada${added === 1 ? '' : 's'} à grade${skipped ? ` · ${skipped} item(ns) ignorado(s)` : ''}.`);
-    } catch (err) {
-      setFeedError(err.response?.data?.error || 'Não foi possível adicionar todos à grade.');
-    } finally {
-      setAddingAllToFeed(false);
+      setSendingApprovalId(null);
     }
   }
 
@@ -1594,24 +1546,25 @@ export default function Tasks({ workspace = 'designer' }) {
                   <ListTree size={14} /> Tornar subtarefa
                 </button>
               )}
-              {canCreateTasks && selectedTask.task_type === 'post' && selectedTask.client_id && (
-                Number(selectedTask.feed_post_visible) === 1 ? (
-                  <div className="col-span-2 grid grid-cols-2 gap-2">
-                    <Link to={`/feed?client_id=${selectedTask.client_id}`} className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors">
-                      <ExternalLink size={14} /> Ver no Feed
+              {!isSiteLP && canCreateTasks && selectedTask.task_type === 'post' && selectedTask.client_id && (
+                (selectedTask.has_attachment || selectedTask.has_gallery) ? (
+                  workflowStage(selectedTask) === 'approval' ? (
+                    <Link to="/aprovacao" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-100">
+                      <Eye size={14} /> Ver na aprovação
                     </Link>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => removeFromFeed(selectedTask.id)}
-                      disabled={removingFromFeedId === selectedTask.id}
-                      className="bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                      onClick={() => sendForApproval(selectedTask.id)}
+                      disabled={sendingApprovalId === selectedTask.id}
+                      className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
                     >
-                      <Trash2 size={14} /> {removingFromFeedId === selectedTask.id ? 'Removendo...' : 'Remover da grade'}
+                      <Send size={14} /> {sendingApprovalId === selectedTask.id ? 'Enviando...' : 'Enviar para aprovação'}
                     </button>
-                  </div>
+                  )
                 ) : (
                   <div className="col-span-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-center text-xs font-medium text-slate-500">
-                    Anexe uma imagem e salve: o conteúdo entra na grade automaticamente.
+                    Anexe uma imagem para disponibilizar esta peça na grade de aprovação.
                   </div>
                 )
               )}
@@ -1647,24 +1600,25 @@ export default function Tasks({ workspace = 'designer' }) {
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}
                       </div>
-                      {canCreateTasks && s.task_type === 'post' && s.client_id && (
+                      {!isSiteLP && canCreateTasks && s.task_type === 'post' && s.client_id && (
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                          {Number(s.feed_post_visible) === 1 ? (
-                            <>
-                              <Link to={`/feed?client_id=${s.client_id}`} className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:underline">
-                                <ExternalLink size={11} /> Ver na grade
+                          {(s.has_attachment || s.has_gallery) ? (
+                            workflowStage(s) === 'approval' ? (
+                              <Link to="/aprovacao" className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:underline">
+                                <Eye size={11} /> Na aprovação
                               </Link>
+                            ) : (
                               <button
                                 type="button"
-                                onClick={() => removeFromFeed(s.id, 'subtask')}
-                                disabled={removingFromFeedId === s.id}
-                                className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600 hover:underline disabled:opacity-50"
+                                onClick={() => sendForApproval(s.id, 'subtask')}
+                                disabled={sendingApprovalId === s.id}
+                                className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
                               >
-                                <Trash2 size={11} /> {removingFromFeedId === s.id ? 'Removendo...' : 'Remover da grade'}
+                                <Send size={11} /> {sendingApprovalId === s.id ? 'Enviando...' : 'Enviar para aprovação'}
                               </button>
-                            </>
+                            )
                           ) : (
-                            <span className="text-[11px] font-medium text-slate-400">A grade será criada ao anexar a imagem.</span>
+                            <span className="text-[11px] font-medium text-slate-400">Anexe uma imagem para enviar para aprovação.</span>
                           )}
                         </div>
                       )}
