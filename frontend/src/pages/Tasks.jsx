@@ -49,7 +49,7 @@ function workflowStage(task) {
   if (['internal_approval', 'external_approval'].includes(task?.workflow_stage)) return 'approval';
   if (task?.workflow_stage) return task.workflow_stage;
   if (task?.status === 'posted') return 'posted';
-  if (task?.status === 'done') return 'approved';
+  if (task?.status === 'done') return 'in_progress';
   if (task?.status === 'in_progress') return 'in_progress';
   return 'todo';
 }
@@ -621,6 +621,22 @@ export default function Tasks({ workspace = 'designer' }) {
     }
   }
 
+  async function toggleSubtaskCompleted(subtask) {
+    if (!subtask?.id) return;
+    const nextValue = Number(subtask.designer_completed || 0) === 1 ? 0 : 1;
+    const previousSubtasks = subtasks;
+    setTaskError('');
+    setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: nextValue } : item));
+    setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: nextValue } : item));
+    try {
+      await api.put('/tasks/' + subtask.id, { designer_completed: nextValue });
+      loadTasks();
+    } catch (error) {
+      setSubtasks(previousSubtasks);
+      setTaskError(error.response?.data?.error || 'Não foi possível atualizar a conclusão do designer.');
+    }
+  }
+
   async function setSubtaskAssignee(subtask, userId) {
     if (!subtask || subtaskAssigneeUpdatingId || userId === '__multiple') return;
     const previousAssignees = subtask.assignees || [];
@@ -714,7 +730,7 @@ export default function Tasks({ workspace = 'designer' }) {
     setFeedNotice('');
     try {
       const { data } = await api.put('/tasks/' + id, { workflow_stage: serverWorkflowStage('approval') });
-      const patch = { ...(data.task || {}), workflow_stage: 'approval' };
+      const patch = { ...(data.task || {}), workflow_stage: 'approval', designer_completed: 1 };
       if (source === 'subtask') {
         setSubtasks((previous) => previous.map((item) => item.id === id ? { ...item, ...patch } : item));
       } else {
@@ -1615,7 +1631,7 @@ export default function Tasks({ workspace = 'designer' }) {
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-slate-700">
-                  Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => ['approved', 'scheduled', 'posted'].includes(workflowStage(s))).length}/{subtasks.length})</span>}
+                  Subtarefas {subtasks.length > 0 && <span className="text-slate-400 font-normal">({subtasks.filter((s) => Number(s.designer_completed || 0) === 1).length}/{subtasks.length})</span>}
                 </p>
                 {canCreateTasks && (
                   <button onClick={() => setShowSubtaskForm(true)} className="text-xs text-zebrazul-600 hover:underline flex items-center gap-1">
@@ -1628,14 +1644,14 @@ export default function Tasks({ workspace = 'designer' }) {
                 {subtasks.map((s) => (
                   <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
                     <button
-                      onClick={() => canCreateTasks && updateSubtaskStatus(s.id, nextStatus(s))}
-                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (workflowStage(s) === 'posted' ? 'bg-indigo-500 border-indigo-500' : ['approved', 'scheduled'].includes(workflowStage(s)) ? 'bg-emerald-500 border-emerald-500' : workflowStage(s) === 'in_progress' ? 'border-amber-400' : 'border-slate-300')}
-                      title="Clique para avançar o status"
+                      onClick={() => canCreateTasks && toggleSubtaskCompleted(s)}
+                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (Number(s.designer_completed || 0) === 1 ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400')}
+                      title={Number(s.designer_completed || 0) === 1 ? 'Marcar como pendente de produção' : 'Marcar produção como concluída'}
                     >
-                      {['approved', 'scheduled', 'posted'].includes(workflowStage(s)) && <span className="text-white text-[10px]">✓</span>}
+                      {Number(s.designer_completed || 0) === 1 && <span className="text-white text-[10px]">✓</span>}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className={'text-sm truncate ' + (['approved', 'scheduled', 'posted'].includes(workflowStage(s)) ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
+                      <p className={'text-sm truncate ' + (Number(s.designer_completed || 0) === 1 ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}

@@ -100,6 +100,8 @@ export default function DesignerApproval() {
   const [approvalLink, setApprovalLink] = useState(null);
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkNotice, setLinkNotice] = useState('');
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionFeedback, setCorrectionFeedback] = useState('');
 
   const loadLegacyApprovalItems = useCallback(async () => {
     if (!selectedClient?.id) {
@@ -138,8 +140,8 @@ export default function DesignerApproval() {
         if (!images.length) return null;
         return {
           ...candidate,
-          direction_status: candidate.workflow_stage === 'approved' ? 'approved' : 'pending',
-          client_status: candidate.workflow_stage === 'approved' ? 'approved' : 'waiting',
+          direction_status: candidate.direction_status || 'pending',
+          client_status: candidate.client_status || 'waiting',
           images,
           image_count: images.length,
         };
@@ -151,9 +153,9 @@ export default function DesignerApproval() {
     return hydrated.filter(Boolean);
   }, [selectedClient?.id, selectedClient?.name]);
 
-  const loadItems = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadItems = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError('');
     try {
       const { data } = await api.get('/tasks/approval-grid', {
         params: selectedClient?.id ? { client_id: selectedClient.id } : {},
@@ -177,7 +179,7 @@ export default function DesignerApproval() {
 
       setError(backendMessage || 'Não foi possível carregar a grade de aprovação.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [loadLegacyApprovalItems, selectedClient?.id]);
 
@@ -232,7 +234,7 @@ export default function DesignerApproval() {
   }, [selectedClient?.id]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => loadItems().catch(() => {}), 20000);
+    const interval = window.setInterval(() => loadItems(true).catch(() => {}), 20000);
     return () => window.clearInterval(interval);
   }, [loadItems]);
 
@@ -263,6 +265,8 @@ export default function DesignerApproval() {
   function openItem(item) {
     setSelectedItem(item);
     setImageIndex(0);
+    setCorrectionOpen(false);
+    setCorrectionFeedback('');
   }
 
   function replaceItemState(taskId, state) {
@@ -274,18 +278,25 @@ export default function DesignerApproval() {
       : current);
   }
 
-  async function directionDecision(item, decision) {
+  async function directionDecision(item, decision, feedback = '') {
     if (!item?.id || updatingId) return;
     setUpdatingId(item.id);
     setError('');
     try {
-      const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision });
-      if (decision === 'approved') {
-        replaceItemState(item.id, data?.state || { direction_status: 'approved', client_status: 'pending' });
-      } else {
-        setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
-        setSelectedItem(null);
+      const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision, feedback });
+      const state = data?.state || (decision === 'approved'
+        ? { direction_status: 'approved', client_status: 'pending' }
+        : { direction_status: 'changes_requested', client_status: 'waiting', direction_feedback: feedback || null });
+      replaceItemState(item.id, {
+        ...state,
+        workflow_stage: decision === 'approved' ? 'approval' : 'correction',
+        designer_completed: decision === 'approved' ? 1 : 0,
+      });
+      if (decision === 'changes_requested') {
+        setCorrectionOpen(false);
+        setCorrectionFeedback('');
       }
+      loadItems(true).catch(() => {});
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível registrar a aprovação da direção.');
     } finally {
@@ -492,7 +503,7 @@ export default function DesignerApproval() {
                         <button
                           type="button"
                           disabled={updatingId === selectedItem.id}
-                          onClick={() => directionDecision(selectedItem, 'changes_requested')}
+                          onClick={() => setCorrectionOpen(true)}
                           className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
                         ><MessageSquareWarning size={16} /> Correção</button>
                         <button
@@ -503,10 +514,26 @@ export default function DesignerApproval() {
                         >{updatingId === selectedItem.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={17} />} Aprovar</button>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700"><CheckCircle2 size={17} /> {directionStatusLabel(selectedItem)}</div>
+                      <div className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold ${selectedDirectionStatus === 'changes_requested' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 size={17} /> {directionStatusLabel(selectedItem)}</div>
                     )
                   ) : (
                     <div className="rounded-xl bg-violet-50 px-4 py-3 text-center text-sm font-semibold text-violet-700">A decisão do cliente acontece pelo link externo.</div>
+                  )}
+                  {mode === 'direction' && correctionOpen && canDirectionApprove && (
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                      <label className="text-xs font-bold text-rose-800">O que precisa ser corrigido?</label>
+                      <textarea
+                        value={correctionFeedback}
+                        onChange={(event) => setCorrectionFeedback(event.target.value)}
+                        rows={3}
+                        placeholder="Ex.: ajustar o título, trocar a foto, aumentar o respiro..."
+                        className="mt-2 w-full resize-none rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-rose-400"
+                      />
+                      <div className="mt-2 flex justify-end gap-2">
+                        <button type="button" onClick={() => { setCorrectionOpen(false); setCorrectionFeedback(''); }} className="rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-white">Cancelar</button>
+                        <button type="button" disabled={updatingId === selectedItem.id} onClick={() => directionDecision(selectedItem, 'changes_requested', correctionFeedback)} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50">Enviar correção</button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </aside>

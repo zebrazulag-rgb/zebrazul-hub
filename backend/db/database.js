@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT DEFAULT 'medium',
   goal TEXT,
   approval_status TEXT DEFAULT 'completed',
+  designer_completed INTEGER DEFAULT 0,
   is_featured INTEGER DEFAULT 0,
   attachment_data TEXT,
   attachment_mime TEXT,
@@ -1318,6 +1319,7 @@ tryAddColumn('posts', 'instagram_publish_error', 'TEXT');
 tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
+tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'workflow_stage', "TEXT DEFAULT 'todo'");
 tryAddColumn('tasks', 'content_tag', 'TEXT');
 tryAddColumn('tasks', 'front_name', 'TEXT');

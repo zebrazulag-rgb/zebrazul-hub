@@ -174,11 +174,20 @@ function legacyStatusForWorkflow(stage) {
 }
 
 function updateTaskWorkflow(taskId, agencyId, stage) {
+  const designerCompleted = stage === 'correction' ? 0 : (['approval', 'approved', 'scheduled', 'posted'].includes(stage) ? 1 : null);
+  if (designerCompleted === null) {
+    db.prepare(`
+      UPDATE tasks
+      SET workflow_stage = ?, status = ?, updated_at = datetime('now')
+      WHERE id = ? AND agency_id = ?
+    `).run(stage, legacyStatusForWorkflow(stage), Number(taskId), Number(agencyId));
+    return;
+  }
   db.prepare(`
     UPDATE tasks
-    SET workflow_stage = ?, status = ?, updated_at = datetime('now')
+    SET workflow_stage = ?, status = ?, designer_completed = ?, updated_at = datetime('now')
     WHERE id = ? AND agency_id = ?
-  `).run(stage, legacyStatusForWorkflow(stage), Number(taskId), Number(agencyId));
+  `).run(stage, legacyStatusForWorkflow(stage), designerCompleted, Number(taskId), Number(agencyId));
 }
 
 function normalizeFeedContentType(contentType) {
@@ -274,6 +283,10 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
           updated_at = datetime('now')
       WHERE task_id = ? AND agency_id = ?
     `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
+    const currentState = getApprovalState(task.id, task.agency_id);
+    if (currentState?.client_status !== 'approved') {
+      updateTaskWorkflow(task.id, task.agency_id, 'approval');
+    }
   } else {
     db.prepare(`
       UPDATE designer_approval_states

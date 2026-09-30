@@ -266,14 +266,14 @@ function taskSummaryQuery(whereClause) {
   return `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.is_featured, t.attachment_filename, t.feed_post_id,
+      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, t.attachment_filename, t.feed_post_id,
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'pending') AS subtask_pending,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'in_progress') AS subtask_in_progress,
-      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status IN ('done', 'posted')) AS subtask_done,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND COALESCE(st.designer_completed, 0) = 1) AS subtask_done,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'posted') AS subtask_posted
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
@@ -473,8 +473,8 @@ router.post('/:id/direction-approval', (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
-  if (!['approval', 'internal_approval', 'external_approval'].includes(String(task.workflow_stage || ''))) {
-    return res.status(400).json({ error: 'Esta peça não está em aprovação.' });
+  if (!['approval', 'internal_approval', 'external_approval', 'approved', 'correction'].includes(String(task.workflow_stage || ''))) {
+    return res.status(400).json({ error: 'Esta peça não está disponível para revisão da direção.' });
   }
   if (!taskHasMedia(task)) {
     return res.status(400).json({ error: 'A peça precisa ter imagem para ser aprovada.' });
@@ -589,7 +589,7 @@ router.get('/calendar', (req, res) => {
   let query = `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.is_featured, t.attachment_filename, t.feed_post_id,
+      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, t.attachment_filename, t.feed_post_id,
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
@@ -731,7 +731,7 @@ router.get('/:id', (req, res) => {
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.description, t.content_type, t.content_tag, t.front_name, t.caption, t.video_link,
-      t.due_date, t.status, t.workflow_stage, t.is_featured, t.attachment_mime, t.attachment_filename,
+      t.due_date, t.status, t.workflow_stage, t.designer_completed, t.is_featured, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, COALESCE(p.feed_visible, 0) AS feed_post_visible, t.created_at, t.updated_at,
       CASE WHEN t.attachment_data IS NOT NULL AND length(t.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
@@ -748,7 +748,7 @@ router.get('/:id', (req, res) => {
 
   let subtaskQuery = `
     SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type, st.content_tag, st.front_name,
-           st.title, st.status, st.workflow_stage, st.due_date, st.attachment_filename, st.feed_post_id,
+           st.title, st.status, st.workflow_stage, st.designer_completed, st.due_date, st.attachment_filename, st.feed_post_id,
            COALESCE(sp.feed_visible, 0) AS feed_post_visible,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
            CASE WHEN st.media_gallery IS NOT NULL AND length(st.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery
@@ -837,6 +837,9 @@ router.put('/:id', (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'approval_status') && !TASK_APPROVAL_STATUSES.has(String(req.body.approval_status))) {
     return res.status(400).json({ error: 'Etapa de aprovação inválida' });
   }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'designer_completed') && ![0, 1, true, false, '0', '1'].includes(req.body.designer_completed)) {
+    return res.status(400).json({ error: 'Conclusão do designer inválida' });
+  }
   if (Object.prototype.hasOwnProperty.call(req.body, 'is_featured') && existing.parent_task_id) {
     return res.status(400).json({ error: 'Somente tarefas principais podem aparecer em destaque no painel' });
   }
@@ -859,7 +862,7 @@ router.put('/:id', (req, res) => {
     'media_gallery', 'due_date', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ] : [
     'title', 'description', 'task_type', 'content_type', 'content_tag', 'front_name', 'caption', 'video_link',
-    'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'client_id',
+    'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'designer_completed', 'client_id',
     'is_featured', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ];
   const updates = [];
@@ -879,6 +882,8 @@ router.put('/:id', (req, res) => {
       values.push(req.body.client_id ? Number(req.body.client_id) : null);
     } else if (field === 'is_featured') {
       values.push(Number(req.body.is_featured) === 1 ? 1 : 0);
+    } else if (field === 'designer_completed') {
+      values.push(Number(req.body.designer_completed) === 1 || req.body.designer_completed === true ? 1 : 0);
     } else if (field === 'workflow_stage') {
       values.push(normalizeWorkflowStage(req.body.workflow_stage));
     } else {
@@ -887,8 +892,18 @@ router.put('/:id', (req, res) => {
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage')) {
+    const normalizedRequestedStage = normalizeWorkflowStage(String(req.body.workflow_stage));
     updates.push('status = ?');
-    values.push(legacyStatusForWorkflow(normalizeWorkflowStage(String(req.body.workflow_stage))));
+    values.push(legacyStatusForWorkflow(normalizedRequestedStage));
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'designer_completed')) {
+      if (normalizedRequestedStage === 'correction') {
+        updates.push('designer_completed = ?');
+        values.push(0);
+      } else if (['approval', 'approved', 'scheduled', 'posted'].includes(normalizedRequestedStage)) {
+        updates.push('designer_completed = ?');
+        values.push(1);
+      }
+    }
   } else if (Object.prototype.hasOwnProperty.call(req.body, 'status')) {
     updates.push('workflow_stage = ?');
     values.push(workflowStageFromLegacy(String(req.body.status)));
