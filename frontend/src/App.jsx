@@ -9,6 +9,7 @@ import DesignerApproval from './pages/DesignerApproval.jsx';
 import Moodboard from './pages/Moodboard.jsx';
 import SiteLP from './pages/SiteLP.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
+import PublicDesignerApproval from './pages/PublicDesignerApproval.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import PublicSocialMediaFeed from './pages/PublicSocialMediaFeed.jsx';
 import PublicPost from './pages/PublicPost.jsx';
@@ -99,6 +100,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/npsbee" element={<PublicBeeFamilySurvey />} />
       <Route path="/aprovar/:token" element={<PublicApproval />} />
+      <Route path="/aprovacao-cliente/:token" element={<PublicDesignerApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
       <Route path="/link-social-media/:token" element={<PublicSocialMediaFeed />} />
       <Route path="/post/:token" element={<PublicPost />} />

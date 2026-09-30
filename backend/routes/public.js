@@ -1,6 +1,12 @@
 const express = require('express');
 const db = require('../db/database');
 const { recordActivity } = require('../services/activity');
+const {
+  getLinkByToken,
+  getPublicClientProfile,
+  getPublicApprovalItems,
+  setClientDecision,
+} = require('../services/designerApprovals');
 
 const router = express.Router();
 
@@ -394,6 +400,68 @@ router.get('/task-calendar/:token', (req, res) => {
     summary,
     tasks: serializedTasks,
   });
+});
+
+
+// Aprovação pública das peças do Squad -> Designer.
+// O link é por cliente e só expõe peças que já passaram pela aprovação da direção.
+router.get('/designer-approval/:token', (req, res) => {
+  const link = getLinkByToken(req.params.token);
+  if (!link) return res.status(404).json({ error: 'Link de aprovação inválido ou desativado.' });
+
+  const client = getPublicClientProfile(link);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado para este link.' });
+
+  const items = getPublicApprovalItems(link);
+  return res.json({
+    client,
+    highlights: getVisibleFeedHighlights(client.id, client.agency_id),
+    items,
+    total: items.length,
+  });
+});
+
+router.put('/designer-approval/:token/items/:taskId', (req, res) => {
+  const decision = String(req.body?.decision || '');
+  if (!['approved', 'changes_requested'].includes(decision)) {
+    return res.status(400).json({ error: 'Decisão inválida.' });
+  }
+
+  try {
+    const result = setClientDecision({
+      token: req.params.token,
+      taskId: Number(req.params.taskId),
+      decision,
+      feedback: req.body?.feedback || null,
+    });
+
+    if (result?.error === 'LINK_NOT_FOUND') return res.status(404).json({ error: 'Link de aprovação inválido ou desativado.' });
+    if (result?.error === 'TASK_NOT_FOUND') return res.status(404).json({ error: 'Peça não encontrada neste link.' });
+    if (result?.error === 'NOT_READY') return res.status(409).json({ error: 'Esta peça ainda não está liberada para aprovação do cliente.' });
+
+    const link = getLinkByToken(req.params.token);
+    const client = link ? getPublicClientProfile(link) : null;
+    if (link && client) {
+      recordActivity({
+        agencyId: link.agency_id,
+        actorName: `CLIENTE · ${client.name || 'APROVAÇÃO'}`,
+        clientId: link.client_id,
+        module: 'designer',
+        action: decision === 'approved' ? 'approved' : 'changes_requested',
+        entityType: 'task',
+        entityId: Number(req.params.taskId),
+        entityLabel: `Peça #${req.params.taskId}`,
+        summary: decision === 'approved' ? 'Aprovou uma peça do Designer' : 'Solicitou correção em uma peça do Designer',
+        details: { source: 'designer_public_approval', feedback: req.body?.feedback || null },
+        path: `/public/designer-approval/${req.params.token}/items/${req.params.taskId}`,
+        method: 'PUT',
+      });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Não foi possível registrar esta decisão.' });
+  }
 });
 
 module.exports = router;

@@ -2,6 +2,13 @@ const express = require('express');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
 const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
+const {
+  getApprovalStates,
+  resetApprovalForTask,
+  setDirectionDecision,
+  getClientApprovalLink,
+  getOrCreateClientApprovalLink,
+} = require('../services/designerApprovals');
 
 const router = express.Router();
 router.use(authRequired);
@@ -367,7 +374,16 @@ router.get('/approval-grid', (req, res) => {
     WHERE t.agency_id = ?
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
-      AND t.workflow_stage IN ('approval', 'internal_approval', 'external_approval')
+      AND (
+        t.workflow_stage IN ('approval', 'internal_approval', 'external_approval')
+        OR (
+          t.workflow_stage IN ('approved', 'correction')
+          AND EXISTS (
+            SELECT 1 FROM designer_approval_states das
+            WHERE das.task_id = t.id AND das.agency_id = t.agency_id
+          )
+        )
+      )
   `;
   const params = [req.user.agency_id];
 
@@ -391,7 +407,17 @@ router.get('/approval-grid', (req, res) => {
   query += ' ORDER BY COALESCE(t.updated_at, t.created_at) DESC';
 
   const rows = db.prepare(query).all(...params);
+  const approvalStates = getApprovalStates(rows.map((row) => row.id), req.user.agency_id);
   const items = rows.map((row) => {
+    const approvalState = approvalStates.get(Number(row.id)) || {
+      direction_status: 'pending',
+      direction_feedback: null,
+      direction_by: null,
+      direction_at: null,
+      client_status: 'waiting',
+      client_feedback: null,
+      client_at: null,
+    };
     const gallery = parseGallery(row.media_gallery);
     const imageGallery = gallery.filter((item) => {
       const mime = String(item?.mime || item?.type || '').toLowerCase();
@@ -422,11 +448,75 @@ router.get('/approval-grid', (req, res) => {
       client_color: row.client_color,
       images,
       image_count: images.length,
+      direction_status: approvalState.direction_status || 'pending',
+      direction_feedback: approvalState.direction_feedback || null,
+      direction_by: approvalState.direction_by || null,
+      direction_at: approvalState.direction_at || null,
+      client_status: approvalState.client_status || 'waiting',
+      client_feedback: approvalState.client_feedback || null,
+      client_at: approvalState.client_at || null,
       updated_at: row.updated_at,
     };
   }).filter((item) => item.image_count > 0);
 
   return res.json({ items, total: items.length });
+});
+
+// Aprovação da direção acontece dentro do ZebraHub. Somente administração/direção
+// pode decidir; a aprovação positiva libera a peça para o link do cliente.
+router.post('/:id/direction-approval', (req, res) => {
+  const canApproveDirection = req.user.role === 'admin' || req.user.is_agency_owner || req.user.is_platform_owner;
+  if (!canApproveDirection) {
+    return res.status(403).json({ error: 'A aprovação da direção é restrita à administração.' });
+  }
+
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, task)) return;
+  if (!['approval', 'internal_approval', 'external_approval'].includes(String(task.workflow_stage || ''))) {
+    return res.status(400).json({ error: 'Esta peça não está em aprovação.' });
+  }
+  if (!taskHasMedia(task)) {
+    return res.status(400).json({ error: 'A peça precisa ter imagem para ser aprovada.' });
+  }
+
+  const decision = String(req.body?.decision || '');
+  if (!['approved', 'changes_requested'].includes(decision)) {
+    return res.status(400).json({ error: 'Decisão de aprovação inválida.' });
+  }
+
+  try {
+    const state = setDirectionDecision({
+      task,
+      userId: req.user.id,
+      decision,
+      feedback: req.body?.feedback || null,
+    });
+    return res.json({ ok: true, state });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Não foi possível registrar a aprovação da direção.' });
+  }
+});
+
+router.get('/approval-link/client/:clientId', (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!clientId || !ensureClientAccess(req, res, clientId)) return;
+  const link = getClientApprovalLink(req.user.agency_id, clientId);
+  return res.json({ link });
+});
+
+router.post('/approval-link/client/:clientId', (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!clientId || !ensureClientAccess(req, res, clientId)) return;
+  if (!['admin', 'team'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Apenas a equipe pode gerar o link de aprovação do cliente.' });
+  }
+  const link = getOrCreateClientApprovalLink({
+    agencyId: req.user.agency_id,
+    clientId,
+    createdBy: req.user.id,
+  });
+  return res.json({ link });
 });
 
 // Métricas leves do painel. Cada registro é contabilizado individualmente,
@@ -817,6 +907,10 @@ router.put('/:id', (req, res) => {
 
   const refreshedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   const refreshedStage = normalizeWorkflowStage(refreshedTask?.workflow_stage || workflowStageFromLegacy(refreshedTask?.status));
+  const previousStage = normalizeWorkflowStage(existing?.workflow_stage || workflowStageFromLegacy(existing?.status));
+  if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage') && refreshedStage === 'approval' && previousStage !== 'approval') {
+    resetApprovalForTask(refreshedTask);
+  }
   const isDesignerTask = refreshedTask && refreshedTask.task_type !== 'video'
     && String(refreshedTask.front_name || '').trim().toLocaleLowerCase('pt-BR') !== 'site/lp';
 

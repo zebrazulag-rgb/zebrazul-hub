@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Images, MessageSquareWarning, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, UsersRound, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 
@@ -15,7 +16,7 @@ const CONTENT_TYPE_LABELS = {
   print: 'Impresso',
 };
 
-const APPROVAL_STAGES = new Set(['approval', 'internal_approval', 'external_approval']);
+const APPROVAL_STAGES = new Set(['approval', 'internal_approval', 'external_approval', 'approved', 'correction']);
 
 function isDesignerItem(item) {
   if (!item) return false;
@@ -52,8 +53,41 @@ function mediaToImages(media) {
     : [];
 }
 
+function statusForDirection(item) {
+  if (item?.direction_status === 'approved') return 'approved';
+  if (item?.direction_status === 'changes_requested') return 'rejected';
+  return 'pending_approval';
+}
+
+function statusForClient(item) {
+  if (item?.client_status === 'approved') return 'approved';
+  if (item?.client_status === 'changes_requested') return 'rejected';
+  return 'pending_approval';
+}
+
+function directionStatusLabel(item) {
+  if (item?.direction_status === 'approved') return 'Direção aprovada';
+  if (item?.direction_status === 'changes_requested') return 'Correção solicitada';
+  return 'Aguardando direção';
+}
+
+function clientStatusLabel(item) {
+  if (item?.direction_status !== 'approved') return 'Aguardando direção';
+  if (item?.client_status === 'approved') return 'Cliente aprovou';
+  if (item?.client_status === 'changes_requested') return 'Cliente pediu correção';
+  return 'Aguardando cliente';
+}
+
+function statusTone(status) {
+  if (status === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (status === 'changes_requested') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
 export default function DesignerApproval() {
   const { selectedClient } = useClientFilter();
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,13 +96,14 @@ export default function DesignerApproval() {
   const [updatingId, setUpdatingId] = useState(null);
   const [clientProfile, setClientProfile] = useState(null);
   const [highlights, setHighlights] = useState([]);
+  const [mode, setMode] = useState('direction');
+  const [approvalLink, setApprovalLink] = useState(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkNotice, setLinkNotice] = useState('');
 
   const loadLegacyApprovalItems = useCallback(async () => {
-    // Compatibilidade com o backend antigo que ainda não possui /tasks/approval-grid.
-    // Com um cliente selecionado, reconstruímos a grade usando rotas que já existem
-    // há várias versões: /tasks, /tasks/:id e /tasks/:id/media.
     if (!selectedClient?.id) {
-      throw new Error('Selecione um cliente para carregar as aprovações enquanto o backend termina de atualizar.');
+      throw new Error('Selecione um cliente para carregar as aprovações.');
     }
 
     const { data: listData } = await api.get('/tasks', { params: { client_id: selectedClient.id } });
@@ -92,7 +127,7 @@ export default function DesignerApproval() {
           candidates.push({ ...subtask, client_name: clientName });
         });
       } catch {
-        // Uma tarefa inacessível não deve derrubar a grade inteira.
+        // Uma tarefa inacessível não derruba a grade inteira.
       }
     }
 
@@ -103,7 +138,8 @@ export default function DesignerApproval() {
         if (!images.length) return null;
         return {
           ...candidate,
-          workflow_stage: 'approval',
+          direction_status: candidate.workflow_stage === 'approved' ? 'approved' : 'pending',
+          client_status: candidate.workflow_stage === 'approved' ? 'approved' : 'waiting',
           images,
           image_count: images.length,
         };
@@ -145,9 +181,23 @@ export default function DesignerApproval() {
     }
   }, [loadLegacyApprovalItems, selectedClient?.id]);
 
+  const loadApprovalLink = useCallback(async () => {
+    if (!selectedClient?.id) {
+      setApprovalLink(null);
+      return;
+    }
+    try {
+      const { data } = await api.get(`/tasks/approval-link/client/${selectedClient.id}`);
+      setApprovalLink(data?.link || null);
+    } catch {
+      setApprovalLink(null);
+    }
+  }, [selectedClient?.id]);
+
   useEffect(() => {
     loadItems();
-  }, [loadItems]);
+    loadApprovalLink();
+  }, [loadItems, loadApprovalLink]);
 
   useEffect(() => {
     if (!selectedClient?.id) {
@@ -187,7 +237,10 @@ export default function DesignerApproval() {
   }, [loadItems]);
 
   const clientLabel = selectedClient?.name || 'Todos os clientes';
-  const visibleItems = useMemo(() => items, [items]);
+  const visibleItems = useMemo(() => {
+    if (mode === 'client') return items.filter((item) => item.direction_status === 'approved');
+    return items;
+  }, [items, mode]);
   const profileClient = clientProfile || selectedClient;
   const approvalPosts = useMemo(() => visibleItems.map((item) => ({
     ...item,
@@ -198,45 +251,140 @@ export default function DesignerApproval() {
       ? item.images.map((image) => ({ data: image.data, mime: image.mime, filename: image.filename }))
       : [],
     content_type: Number(item.image_count || item.images?.length || 0) > 1 ? 'carrossel' : (item.content_type || 'feed'),
-    status: 'pending_approval',
-    workflow_stage: 'approval',
+    status: mode === 'direction' ? statusForDirection(item) : statusForClient(item),
+    workflow_stage: null,
     scheduled_at: item.due_date || item.scheduled_at || item.created_at || null,
-  })), [visibleItems]);
+  })), [visibleItems, mode]);
+
+  const clientApprovalUrl = approvalLink?.token
+    ? `${window.location.origin}/aprovacao-cliente/${approvalLink.token}`
+    : '';
 
   function openItem(item) {
     setSelectedItem(item);
     setImageIndex(0);
   }
 
-  async function moveItem(item, workflowStage) {
+  function replaceItemState(taskId, state) {
+    setItems((current) => current.map((entry) => Number(entry.id) === Number(taskId)
+      ? { ...entry, ...state }
+      : entry));
+    setSelectedItem((current) => current && Number(current.id) === Number(taskId)
+      ? { ...current, ...state }
+      : current);
+  }
+
+  async function directionDecision(item, decision) {
     if (!item?.id || updatingId) return;
     setUpdatingId(item.id);
     setError('');
     try {
-      await api.put(`/tasks/${item.id}`, { workflow_stage: workflowStage });
-      setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
-      setSelectedItem(null);
+      const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision });
+      if (decision === 'approved') {
+        replaceItemState(item.id, data?.state || { direction_status: 'approved', client_status: 'pending' });
+      } else {
+        setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
+        setSelectedItem(null);
+      }
     } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível atualizar esta aprovação.');
+      setError(requestError.response?.data?.error || 'Não foi possível registrar a aprovação da direção.');
     } finally {
       setUpdatingId(null);
     }
   }
 
+  async function createApprovalLink() {
+    if (!selectedClient?.id || linkLoading) return;
+    setLinkLoading(true);
+    setLinkNotice('');
+    try {
+      const { data } = await api.post(`/tasks/approval-link/client/${selectedClient.id}`);
+      setApprovalLink(data?.link || null);
+      setLinkNotice('Link do cliente pronto.');
+    } catch (requestError) {
+      setLinkNotice(requestError.response?.data?.error || 'Não foi possível gerar o link.');
+    } finally {
+      setLinkLoading(false);
+    }
+  }
+
+  async function copyApprovalLink() {
+    if (!clientApprovalUrl) return;
+    try {
+      await navigator.clipboard.writeText(clientApprovalUrl);
+      setLinkNotice('Link copiado.');
+    } catch {
+      setLinkNotice(clientApprovalUrl);
+    }
+  }
+
   const currentImage = selectedItem?.images?.[imageIndex]?.data || null;
+  const selectedDirectionStatus = selectedItem?.direction_status || 'pending';
+  const selectedClientStatus = selectedItem?.client_status || 'waiting';
+  const canDirectionApprove = mode === 'direction' && selectedDirectionStatus === 'pending';
 
   return (
     <div className="space-y-5">
-      <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <section className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0969ff]">Designer</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Aprovação</h1>
-          <p className="mt-1 text-sm text-slate-500">{clientLabel} · tudo que foi enviado para aprovação e possui imagem.</p>
+          <p className="mt-1 text-sm text-slate-500">{clientLabel} · direção aprova no app; cliente aprova por link.</p>
         </div>
-        <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm">
-          <Images size={16} className="text-[#0969ff]" /> {visibleItems.length} {visibleItems.length === 1 ? 'peça' : 'peças'}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setMode('direction')}
+              className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'direction' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              Direção
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('client')}
+              className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'client' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              Cliente
+            </button>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm">
+            <Images size={16} className="text-[#0969ff]" /> {visibleItems.length} {visibleItems.length === 1 ? 'peça' : 'peças'}
+          </div>
         </div>
       </section>
+
+      {mode === 'direction' ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <CheckCircle2 size={18} className="shrink-0 text-blue-600" />
+          <div><strong>Aprovação da direção</strong> · {user?.name || 'Arthur'} revisa e aprova aqui dentro do ZebraHub. A peça aprovada continua visível com selo e é liberada para o cliente.</div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex gap-3">
+              <UsersRound size={19} className="mt-0.5 shrink-0 text-violet-600" />
+              <div>
+                <p className="text-sm font-bold text-violet-950">Aprovação do cliente</p>
+                <p className="mt-0.5 text-sm text-violet-700">Somente peças já aprovadas pela direção aparecem no link externo.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {clientApprovalUrl ? (
+                <>
+                  <button type="button" onClick={copyApprovalLink} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white hover:bg-violet-700"><Copy size={15} /> Copiar link</button>
+                  <a href={clientApprovalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50"><ExternalLink size={15} /> Abrir</a>
+                </>
+              ) : (
+                <button type="button" disabled={linkLoading || !selectedClient?.id} onClick={createApprovalLink} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">
+                  {linkLoading ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />} Gerar link do cliente
+                </button>
+              )}
+            </div>
+          </div>
+          {linkNotice && <p className="mt-3 text-xs font-semibold text-violet-700">{linkNotice}</p>}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>
@@ -246,106 +394,123 @@ export default function DesignerApproval() {
         <div className="flex min-h-[420px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0969ff]"><Images size={24} /></div>
           <h2 className="mt-4 text-lg font-bold text-slate-900">Selecione um cliente</h2>
-          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">A aprovação reproduz a grade do Instagram do cliente selecionado, com foto, perfil e peças aguardando decisão.</p>
+          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">A aprovação reproduz a grade do Instagram do cliente selecionado.</p>
         </div>
       ) : loading ? (
-        <div className="mx-auto w-full max-w-[620px] overflow-hidden rounded-[28px] border border-slate-200 bg-white">
-          <div className="space-y-4 p-5">
-            <div className="flex items-center gap-5">
-              <div className="h-24 w-24 animate-pulse rounded-full bg-slate-100" />
-              <div className="grid flex-1 grid-cols-3 gap-4">
-                {Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-12 animate-pulse rounded-xl bg-slate-100" />)}
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-[3px]">
-              {Array.from({ length: 9 }).map((_, index) => <div key={index} className="aspect-[4/5] animate-pulse bg-slate-100" />)}
-            </div>
-          </div>
-        </div>
+        <div className="flex min-h-[420px] items-center justify-center rounded-[24px] border border-slate-200 bg-white text-sm text-slate-400">Carregando aprovação...</div>
       ) : visibleItems.length === 0 ? (
         <div className="flex min-h-[420px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0969ff]"><Check size={24} /></div>
           <h2 className="mt-4 text-lg font-bold text-slate-900">Nada aguardando aprovação</h2>
-          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">No Squad → Designer, envie uma tarefa ou subtarefa com imagem para “Em aprovação”. Ela aparece aqui automaticamente.</p>
-          <Link to="/designer" className="mt-5 rounded-xl bg-[#0969ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">Abrir Designer</Link>
+          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">No Squad → Designer, envie uma tarefa ou subtarefa com imagem para “Em aprovação”.</p>
+          <Link to="/designer" className="mt-5 rounded-xl bg-[#0969ff] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700">Abrir Designer</Link>
         </div>
       ) : (
-        <div className="flex justify-center">
+        <div className="flex justify-center py-1">
           <InstagramProfileMockup
-            client={profileClient}
+            client={profileClient || { name: clientLabel }}
             highlights={highlights}
             posts={approvalPosts}
             onPostClick={openItem}
-            sourceType="approval"
+            sourceType="planned"
             showCoverBadges={false}
           />
         </div>
       )}
 
       {selectedItem && (
-        <ModalBackdrop onClose={() => setSelectedItem(null)} panelClassName="w-full max-w-5xl overflow-hidden rounded-[24px] bg-white shadow-2xl">
-          <div className="grid min-h-[560px] lg:grid-cols-[minmax(0,1.25fr)_380px]">
-            <div className="relative flex min-h-[420px] items-center justify-center bg-[#0b0d12] p-4 lg:min-h-[620px]">
-              {currentImage && <img src={currentImage} alt="" className="max-h-[76vh] max-w-full object-contain" />}
-              {selectedItem.images?.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setImageIndex((current) => (current - 1 + selectedItem.images.length) % selectedItem.images.length)}
-                    className="absolute left-3 flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/70"
-                    aria-label="Imagem anterior"
-                  ><ChevronLeft size={20} /></button>
-                  <button
-                    type="button"
-                    onClick={() => setImageIndex((current) => (current + 1) % selectedItem.images.length)}
-                    className="absolute right-3 flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/70"
-                    aria-label="Próxima imagem"
-                  ><ChevronRight size={20} /></button>
-                  <span className="absolute bottom-3 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">{imageIndex + 1}/{selectedItem.images.length}</span>
-                </>
-              )}
-            </div>
-
-            <aside className="flex min-w-0 flex-col border-l border-slate-100">
-              <div className="flex items-start gap-3 border-b border-slate-100 p-5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#0969ff]">Em aprovação</p>
-                  <h2 className="mt-1 text-lg font-bold leading-6 text-slate-950">{selectedItem.title}</h2>
-                  <p className="mt-1 text-sm font-medium text-slate-500">{selectedItem.client_name || 'Sem cliente'}</p>
-                </div>
-                <button type="button" onClick={() => setSelectedItem(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700" aria-label="Fechar"><X size={18} /></button>
-              </div>
-
-              <div className="flex-1 space-y-4 p-5">
-                <div className="flex flex-wrap gap-2">
-                  {selectedItem.content_tag && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{selectedItem.content_tag}</span>}
-                  {selectedItem.content_type && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{CONTENT_TYPE_LABELS[selectedItem.content_type] || selectedItem.content_type}</span>}
-                  {selectedItem.parent_task_id && <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">Subtarefa</span>}
-                </div>
-                {selectedItem.caption && (
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Legenda</p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{selectedItem.caption}</p>
-                  </div>
+        <ModalBackdrop onClose={() => setSelectedItem(null)}>
+          <div className="w-full max-w-[1040px] overflow-hidden rounded-[24px] bg-white shadow-2xl">
+            <div className="grid lg:grid-cols-[minmax(0,1fr)_390px]">
+              <div className="relative flex min-h-[420px] items-center justify-center bg-[#0b0d12] p-4 lg:min-h-[650px]">
+                {currentImage && <img src={currentImage} alt="" className="max-h-[80vh] max-w-full object-contain" />}
+                {selectedItem.images?.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setImageIndex((current) => (current - 1 + selectedItem.images.length) % selectedItem.images.length)}
+                      className="absolute left-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/75"
+                      aria-label="Imagem anterior"
+                    ><ChevronLeft size={21} /></button>
+                    <button
+                      type="button"
+                      onClick={() => setImageIndex((current) => (current + 1) % selectedItem.images.length)}
+                      className="absolute right-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/75"
+                      aria-label="Próxima imagem"
+                    ><ChevronRight size={21} /></button>
+                    <span className="absolute bottom-4 rounded-full bg-black/65 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">{imageIndex + 1}/{selectedItem.images.length}</span>
+                  </>
                 )}
-                <Link to={`/designer?task_id=${selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 p-5">
-                <button
-                  type="button"
-                  disabled={updatingId === selectedItem.id}
-                  onClick={() => moveItem(selectedItem, 'correction')}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
-                ><MessageSquareWarning size={16} /> Correção</button>
-                <button
-                  type="button"
-                  disabled={updatingId === selectedItem.id}
-                  onClick={() => moveItem(selectedItem, 'approved')}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-                ><Check size={17} /> Aprovar</button>
-              </div>
-            </aside>
+              <aside className="flex min-w-0 flex-col bg-white">
+                <div className="flex items-start gap-3 border-b border-slate-100 p-5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#0969ff]">Aprovação do Designer</p>
+                    <h2 className="mt-1 text-lg font-bold leading-6 text-slate-950">{selectedItem.title}</h2>
+                    <p className="mt-1 text-sm font-medium text-slate-500">{selectedItem.client_name || clientLabel}</p>
+                  </div>
+                  <button type="button" onClick={() => setSelectedItem(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700" aria-label="Fechar"><X size={18} /></button>
+                </div>
+
+                <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                  <div className="grid gap-2">
+                    <div className={`rounded-xl border px-3 py-3 ${statusTone(selectedDirectionStatus)}`}>
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] opacity-70">Direção</p>
+                      <p className="mt-1 text-sm font-bold">{directionStatusLabel(selectedItem)}</p>
+                    </div>
+                    <div className={`rounded-xl border px-3 py-3 ${statusTone(selectedClientStatus)}`}>
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] opacity-70">Cliente</p>
+                      <p className="mt-1 text-sm font-bold">{clientStatusLabel(selectedItem)}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {selectedItem.content_tag && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{selectedItem.content_tag}</span>}
+                    {selectedItem.content_type && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{CONTENT_TYPE_LABELS[selectedItem.content_type] || selectedItem.content_type}</span>}
+                    {selectedItem.parent_task_id && <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">Subtarefa</span>}
+                  </div>
+                  {selectedItem.caption && (
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Legenda</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{selectedItem.caption}</p>
+                    </div>
+                  )}
+                  {selectedItem.direction_feedback && (
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Direção:</strong> {selectedItem.direction_feedback}</div>
+                  )}
+                  {selectedItem.client_feedback && (
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Cliente:</strong> {selectedItem.client_feedback}</div>
+                  )}
+                  <Link to={`/designer?task_id=${selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
+                </div>
+
+                <div className="border-t border-slate-100 p-5">
+                  {mode === 'direction' ? (
+                    canDirectionApprove ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={updatingId === selectedItem.id}
+                          onClick={() => directionDecision(selectedItem, 'changes_requested')}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                        ><MessageSquareWarning size={16} /> Correção</button>
+                        <button
+                          type="button"
+                          disabled={updatingId === selectedItem.id}
+                          onClick={() => directionDecision(selectedItem, 'approved')}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                        >{updatingId === selectedItem.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={17} />} Aprovar</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700"><CheckCircle2 size={17} /> {directionStatusLabel(selectedItem)}</div>
+                    )
+                  ) : (
+                    <div className="rounded-xl bg-violet-50 px-4 py-3 text-center text-sm font-semibold text-violet-700">A decisão do cliente acontece pelo link externo.</div>
+                  )}
+                </div>
+              </aside>
+            </div>
           </div>
         </ModalBackdrop>
       )}
