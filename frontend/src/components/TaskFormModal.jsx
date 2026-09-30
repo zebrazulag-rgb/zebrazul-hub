@@ -23,14 +23,14 @@ const WORKFLOW_STAGES = [
   { value: 'todo', label: 'A fazer' },
   { value: 'in_progress', label: 'Em andamento' },
   { value: 'correction', label: 'Em correção' },
-  { value: 'internal_approval', label: 'Em aprovação interna' },
-  { value: 'external_approval', label: 'Em aprovação externa' },
+  { value: 'approval', label: 'Em aprovação' },
   { value: 'approved', label: 'Aprovado' },
   { value: 'scheduled', label: 'Agendado' },
   { value: 'posted', label: 'Postado' },
 ];
 
 function workflowStageFromTask(task) {
+  if (['internal_approval', 'external_approval'].includes(task?.workflow_stage)) return 'approval';
   if (task?.workflow_stage) return task.workflow_stage;
   if (task?.status === 'posted') return 'posted';
   if (task?.status === 'done') return 'approved';

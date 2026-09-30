@@ -15,8 +15,7 @@ const STATUS_COLUMNS = [
   { key: 'todo', label: 'A fazer', badge: 'bg-slate-100 text-slate-600' },
   { key: 'in_progress', label: 'Em andamento', badge: 'bg-amber-100 text-amber-700' },
   { key: 'correction', label: 'Em correção', badge: 'bg-rose-100 text-rose-700' },
-  { key: 'internal_approval', label: 'Em aprovação interna', badge: 'bg-violet-100 text-violet-700' },
-  { key: 'external_approval', label: 'Em aprovação externa', badge: 'bg-fuchsia-100 text-fuchsia-700' },
+  { key: 'approval', label: 'Em aprovação', badge: 'bg-violet-100 text-violet-700' },
   { key: 'approved', label: 'Aprovado', badge: 'bg-emerald-100 text-emerald-700' },
   { key: 'scheduled', label: 'Agendado', badge: 'bg-sky-100 text-sky-700' },
   { key: 'posted', label: 'Postado', badge: 'bg-indigo-100 text-indigo-700' },
@@ -40,6 +39,7 @@ const CONTENT_TAG_CLASSES = {
 };
 
 function workflowStage(task) {
+  if (['internal_approval', 'external_approval'].includes(task?.workflow_stage)) return 'approval';
   if (task?.workflow_stage) return task.workflow_stage;
   if (task?.status === 'posted') return 'posted';
   if (task?.status === 'done') return 'approved';
@@ -862,7 +862,7 @@ export default function Tasks({ workspace = 'designer' }) {
   const taskOverview = {
     total: tasks.length + subtaskOverview.total,
     pending: tasks.filter((task) => workflowStage(task) === 'todo').length + subtaskOverview.pending,
-    inProgress: tasks.filter((task) => ['in_progress', 'correction', 'internal_approval', 'external_approval'].includes(workflowStage(task))).length + subtaskOverview.inProgress,
+    inProgress: tasks.filter((task) => ['in_progress', 'correction', 'approval'].includes(workflowStage(task))).length + subtaskOverview.inProgress,
     overdue: tasks.filter(isTaskOverdue).length,
     done: tasks.filter((task) => ['approved', 'scheduled'].includes(workflowStage(task))).length + (subtaskOverview.done - subtaskOverview.posted),
     posted: tasks.filter((task) => workflowStage(task) === 'posted').length + subtaskOverview.posted,

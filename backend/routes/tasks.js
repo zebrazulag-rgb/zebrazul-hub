@@ -8,14 +8,20 @@ router.use(authRequired);
 router.use(requireRole('admin', 'team', 'client'));
 
 const TASK_STATUSES = new Set(['pending', 'in_progress', 'done', 'posted']);
-const TASK_WORKFLOW_STAGES = new Set(['todo', 'in_progress', 'correction', 'internal_approval', 'external_approval', 'approved', 'scheduled', 'posted']);
+const TASK_WORKFLOW_STAGES = new Set(['todo', 'in_progress', 'correction', 'approval', 'internal_approval', 'external_approval', 'approved', 'scheduled', 'posted']);
 const TASK_APPROVAL_STATUSES = new Set(['completed', 'send', 'pending_approval', 'changes_requested', 'approved']);
 
 
+function normalizeWorkflowStage(stage) {
+  if (stage === 'internal_approval' || stage === 'external_approval') return 'approval';
+  return stage;
+}
+
 function legacyStatusForWorkflow(stage) {
+  stage = normalizeWorkflowStage(stage);
   if (stage === 'posted') return 'posted';
   if (stage === 'approved' || stage === 'scheduled') return 'done';
-  if (['in_progress', 'correction', 'internal_approval', 'external_approval'].includes(stage)) return 'in_progress';
+  if (['in_progress', 'correction', 'approval'].includes(stage)) return 'in_progress';
   return 'pending';
 }
 
@@ -198,7 +204,7 @@ function addTaskRecordToFeed(task, userId, agencyId) {
   const mediaMime = task.attachment_mime || taskGallery[0]?.mime || null;
   const galleryJson = taskGallery.length ? JSON.stringify(taskGallery) : null;
   const feedContentType = normalizeFeedContentType(task.content_type);
-  const workflowStage = task.workflow_stage || workflowStageFromLegacy(task.status);
+  const workflowStage = normalizeWorkflowStage(task.workflow_stage || workflowStageFromLegacy(task.status));
 
   if (task.feed_post_id) {
     const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(task.feed_post_id, agencyId);
@@ -617,7 +623,7 @@ router.post('/', (req, res) => {
   if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
   const finalWorkflowStage = req.user.role === 'client'
     ? 'todo'
-    : (workflow_stage || workflowStageFromLegacy(status || 'pending'));
+    : normalizeWorkflowStage(workflow_stage || workflowStageFromLegacy(status || 'pending'));
 
   const createTask = db.transaction(() => {
     const info = db.prepare(`
@@ -705,6 +711,8 @@ router.put('/:id', (req, res) => {
       values.push(req.body.client_id ? Number(req.body.client_id) : null);
     } else if (field === 'is_featured') {
       values.push(Number(req.body.is_featured) === 1 ? 1 : 0);
+    } else if (field === 'workflow_stage') {
+      values.push(normalizeWorkflowStage(req.body.workflow_stage));
     } else {
       values.push(req.body[field] === '' ? null : req.body[field]);
     }
@@ -712,7 +720,7 @@ router.put('/:id', (req, res) => {
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage')) {
     updates.push('status = ?');
-    values.push(legacyStatusForWorkflow(String(req.body.workflow_stage)));
+    values.push(legacyStatusForWorkflow(normalizeWorkflowStage(String(req.body.workflow_stage))));
   } else if (Object.prototype.hasOwnProperty.call(req.body, 'status')) {
     updates.push('workflow_stage = ?');
     values.push(workflowStageFromLegacy(String(req.body.status)));
@@ -734,7 +742,7 @@ router.put('/:id', (req, res) => {
     try { addTaskRecordToFeed(refreshedTask, req.user.id, req.user.agency_id); } catch (error) { console.warn('[TASKS] Auto-grade na atualização:', error.message); }
   } else if (refreshedTask?.feed_post_id) {
     db.prepare(`UPDATE posts SET workflow_stage = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
-      .run(refreshedTask.workflow_stage || workflowStageFromLegacy(refreshedTask.status), refreshedTask.feed_post_id, req.user.agency_id);
+      .run(normalizeWorkflowStage(refreshedTask.workflow_stage || workflowStageFromLegacy(refreshedTask.status)), refreshedTask.feed_post_id, req.user.agency_id);
   }
 
   res.json({ ok: true, task: getTaskSummary(req.params.id, req.user.agency_id) });
