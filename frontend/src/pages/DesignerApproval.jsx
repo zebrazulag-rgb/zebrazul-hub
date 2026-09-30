@@ -14,6 +14,43 @@ const CONTENT_TYPE_LABELS = {
   print: 'Impresso',
 };
 
+const APPROVAL_STAGES = new Set(['approval', 'internal_approval', 'external_approval']);
+
+function isDesignerItem(item) {
+  if (!item) return false;
+  if (String(item.task_type || '').toLowerCase() === 'video') return false;
+  return String(item.front_name || '').trim().toLocaleLowerCase('pt-BR') !== 'site/lp';
+}
+
+function mediaToImages(media) {
+  const gallery = Array.isArray(media?.media_gallery) ? media.media_gallery : [];
+  const images = gallery
+    .map((entry) => ({
+      data: entry?.data || entry?.url || entry?.src || '',
+      mime: entry?.mime || entry?.type || '',
+      filename: entry?.filename || entry?.name || '',
+    }))
+    .filter((entry) => {
+      const data = String(entry.data || '');
+      const mime = String(entry.mime || '').toLowerCase();
+      return Boolean(data) && (mime.startsWith('image/') || data.startsWith('data:image/') || /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(data));
+    });
+
+  if (images.length) return images;
+
+  const attachmentData = media?.attachment_data || '';
+  const attachmentMime = String(media?.attachment_mime || '').toLowerCase();
+  const attachmentIsImage = Boolean(attachmentData) && (
+    attachmentMime.startsWith('image/') ||
+    String(attachmentData).startsWith('data:image/') ||
+    /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(String(attachmentData))
+  );
+
+  return attachmentIsImage
+    ? [{ data: attachmentData, mime: media?.attachment_mime || 'image/jpeg', filename: media?.attachment_filename || '' }]
+    : [];
+}
+
 export default function DesignerApproval() {
   const { selectedClient } = useClientFilter();
   const [items, setItems] = useState([]);
@@ -22,6 +59,58 @@ export default function DesignerApproval() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [imageIndex, setImageIndex] = useState(0);
   const [updatingId, setUpdatingId] = useState(null);
+
+  const loadLegacyApprovalItems = useCallback(async () => {
+    // Compatibilidade com o backend antigo que ainda não possui /tasks/approval-grid.
+    // Com um cliente selecionado, reconstruímos a grade usando rotas que já existem
+    // há várias versões: /tasks, /tasks/:id e /tasks/:id/media.
+    if (!selectedClient?.id) {
+      throw new Error('Selecione um cliente para carregar as aprovações enquanto o backend termina de atualizar.');
+    }
+
+    const { data: listData } = await api.get('/tasks', { params: { client_id: selectedClient.id } });
+    const parents = Array.isArray(listData?.tasks) ? listData.tasks : [];
+    const candidates = [];
+
+    for (const parent of parents) {
+      try {
+        const { data: detailData } = await api.get(`/tasks/${parent.id}`);
+        const parentTask = detailData?.task || parent;
+        const clientName = parentTask?.client_name || parent?.client_name || selectedClient?.name || '';
+
+        if (isDesignerItem(parentTask) && APPROVAL_STAGES.has(String(parentTask.workflow_stage || ''))) {
+          candidates.push({ ...parentTask, client_name: clientName });
+        }
+
+        const subtasks = Array.isArray(detailData?.subtasks) ? detailData.subtasks : [];
+        subtasks.forEach((subtask) => {
+          if (!isDesignerItem(subtask)) return;
+          if (!APPROVAL_STAGES.has(String(subtask.workflow_stage || ''))) return;
+          candidates.push({ ...subtask, client_name: clientName });
+        });
+      } catch {
+        // Uma tarefa inacessível não deve derrubar a grade inteira.
+      }
+    }
+
+    const hydrated = await Promise.all(candidates.map(async (candidate) => {
+      try {
+        const { data: mediaData } = await api.get(`/tasks/${candidate.id}/media`);
+        const images = mediaToImages(mediaData?.media);
+        if (!images.length) return null;
+        return {
+          ...candidate,
+          workflow_stage: 'approval',
+          images,
+          image_count: images.length,
+        };
+      } catch {
+        return null;
+      }
+    }));
+
+    return hydrated.filter(Boolean);
+  }, [selectedClient?.id, selectedClient?.name]);
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -32,11 +121,26 @@ export default function DesignerApproval() {
       });
       setItems(Array.isArray(data?.items) ? data.items : []);
     } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível carregar a grade de aprovação.');
+      const status = Number(requestError.response?.status || 0);
+      const backendMessage = String(requestError.response?.data?.error || '');
+      const missingApprovalRoute = status === 404 && /tarefa nao encontrada|tarefa não encontrada/i.test(backendMessage);
+
+      if (missingApprovalRoute) {
+        try {
+          const fallbackItems = await loadLegacyApprovalItems();
+          setItems(fallbackItems);
+          return;
+        } catch (fallbackError) {
+          setError(fallbackError?.message || 'Não foi possível carregar a grade de aprovação.');
+          return;
+        }
+      }
+
+      setError(backendMessage || 'Não foi possível carregar a grade de aprovação.');
     } finally {
       setLoading(false);
     }
-  }, [selectedClient?.id]);
+  }, [loadLegacyApprovalItems, selectedClient?.id]);
 
   useEffect(() => {
     loadItems();
