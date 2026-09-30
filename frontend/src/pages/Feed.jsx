@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Columns3, Share2, Sparkles, Pin, PinOff, CheckCircle2, XCircle, Clock3, MessageSquareText, MessageCircle, Instagram } from 'lucide-react';
+import { Grid3x3, Check, Link2, CalendarDays, ListOrdered, GripVertical, ChevronLeft, ChevronRight, Loader2, Plus, Pencil, EyeOff, Eye, Trash2, RotateCcw, RefreshCw, Radio, Share2, Sparkles, Pin, PinOff, CheckCircle2, XCircle, Clock3, MessageSquareText, Instagram } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -28,16 +28,13 @@ export default function Feed({ forcedView = null, toolMode = false }) {
   const canSocialMediaLink = hasPermission(user, 'social.link_social_media');
   const canCovers = hasPermission(user, 'social.covers');
   const canPublished = hasPermission(user, 'social.published');
-  const canCompare = hasPermission(user, 'social.compare');
   const canCalendar = hasPermission(user, 'social.calendar');
   const canConnections = hasPermission(user, 'social.connections');
-  const canMessages = hasPermission(user, 'social.messages');
   const requestedAllowed = requestedView === 'covers' ? canCovers
     : requestedView === 'published' ? canPublished
-      : requestedView === 'compare' ? canCompare
-        : requestedView === 'calendar' ? canCalendar
-          : true;
-  const activeView = forcedView || (requestedAllowed && ['calendar', 'published', 'compare', 'covers'].includes(requestedView) ? requestedView : 'grid');
+      : requestedView === 'calendar' ? canCalendar
+        : true;
+  const activeView = forcedView || (requestedAllowed && ['calendar', 'published', 'covers'].includes(requestedView) ? requestedView : 'grid');
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
   const [posts, setPosts] = useState([]);
@@ -304,9 +301,9 @@ export default function Feed({ forcedView = null, toolMode = false }) {
 
   useEffect(() => {
     if (!clientId) return;
-    if (canPublished || canCompare || canCovers) loadPublishedFeed(clientId);
+    if (canPublished || canCovers) loadPublishedFeed(clientId);
     if (canCovers) loadCoverAnalyses(clientId);
-  }, [clientId, canPublished, canCompare, canCovers]);
+  }, [clientId, canPublished, canCovers]);
 
   useEffect(() => {
     if (!clientId || !canCovers || coverAnalyzing) return;
@@ -744,25 +741,6 @@ export default function Feed({ forcedView = null, toolMode = false }) {
         >
           <Grid3x3 size={17} /> Planejado
         </button>
-        {canCompare && (
-        <button
-          onClick={() => switchView('compare')}
-          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            activeView === 'compare' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Columns3 size={17} /> Comparar
-        </button>
-        )}
-        {canMessages && (
-          <button
-            type="button"
-            onClick={() => navigate('/social-media/mensagens')}
-            className="flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-          >
-            <MessageCircle size={17} /> Mensagens
-          </button>
-        )}
       </div>}
 
       {clientId && activeView === 'grid' && (
@@ -914,34 +892,6 @@ export default function Feed({ forcedView = null, toolMode = false }) {
               />
             </div>
           )}
-        </div>
-      )}
-
-      {clientId && activeView === 'compare' && (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-800">Planejado x publicado</p>
-              <p className="text-xs text-slate-500">Use esta visão para conferir composição e sequência antes que o feed real se afaste do planejamento.</p>
-            </div>
-            {canConnections && (
-              <button type="button" onClick={syncInstagramFeed} disabled={syncingPublished} className="btn-secondary flex items-center justify-center gap-2 disabled:opacity-50">
-                {syncingPublished ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                Atualizar publicado
-              </button>
-            )}
-          </div>
-          {publishedError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{publishedError}</div>}
-          <div className="grid items-start gap-6 2xl:grid-cols-2">
-            <section className="min-w-0">
-              <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Planejado no ZebraHub</h3><span className="text-xs font-semibold text-slate-400">{posts.length} itens</span></div>
-              <InstagramProfileMockup client={currentClient} highlights={highlights} posts={posts} onPostClick={openFeedPost} showCoverBadges={false} />
-            </section>
-            <section className="min-w-0">
-              <div className="mb-3 flex items-center justify-between"><h3 className="font-bold text-slate-800">Publicado no Instagram</h3><span className="text-xs font-semibold text-slate-400">{publishedPosts.length} itens</span></div>
-              <InstagramProfileMockup client={publishedClient} highlights={highlights} posts={publishedPosts} onPostClick={openPublishedPost} showCoverBadges={false} />
-            </section>
-          </div>
         </div>
       )}
 
