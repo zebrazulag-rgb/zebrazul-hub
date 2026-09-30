@@ -286,6 +286,8 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
     const currentState = getApprovalState(task.id, task.agency_id);
     if (currentState?.client_status !== 'approved') {
       updateTaskWorkflow(task.id, task.agency_id, 'approval');
+      db.prepare(`UPDATE tasks SET approval_status = 'pending_approval', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+        .run(Number(task.id), Number(task.agency_id));
     }
   } else {
     db.prepare(`
@@ -296,7 +298,13 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
       WHERE task_id = ? AND agency_id = ?
     `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
     updateTaskWorkflow(task.id, task.agency_id, 'correction');
-    hideTaskFeed(task, 'correction');
+    db.prepare(`UPDATE tasks SET approval_status = 'changes_requested', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+      .run(Number(task.id), Number(task.agency_id));
+    try {
+      hideTaskFeed(task, 'correction');
+    } catch (feedError) {
+      console.warn('[DESIGNER_APPROVAL] Não foi possível ocultar o post durante a correção:', feedError.message);
+    }
   }
 
   return getApprovalState(task.id, task.agency_id);
@@ -429,6 +437,8 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
         WHERE task_id = ? AND agency_id = ?
       `).run(clientFeedback, now, Number(task.id), Number(task.agency_id));
       updateTaskWorkflow(task.id, task.agency_id, 'approved');
+      db.prepare(`UPDATE tasks SET approval_status = 'approved', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+        .run(Number(task.id), Number(task.agency_id));
       const refreshed = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(task.id), Number(task.agency_id));
       promoteTaskToFeed(refreshed);
     } else {
@@ -438,7 +448,13 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
         WHERE task_id = ? AND agency_id = ?
       `).run(clientFeedback, now, Number(task.id), Number(task.agency_id));
       updateTaskWorkflow(task.id, task.agency_id, 'correction');
-      hideTaskFeed(task, 'correction');
+      db.prepare(`UPDATE tasks SET approval_status = 'changes_requested', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+        .run(Number(task.id), Number(task.agency_id));
+      try {
+        hideTaskFeed(task, 'correction');
+      } catch (feedError) {
+        console.warn('[DESIGNER_APPROVAL] Não foi possível ocultar o post durante a correção do cliente:', feedError.message);
+      }
     }
   });
 

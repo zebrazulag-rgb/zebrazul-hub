@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, UsersRound, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
@@ -85,6 +85,22 @@ function statusTone(status) {
   return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
+function legacyApprovalState(item) {
+  const approvalStatus = String(item?.approval_status || '').toLowerCase();
+  const workflowStage = String(item?.workflow_stage || '').toLowerCase();
+
+  if (approvalStatus === 'approved') {
+    return { direction_status: 'approved', client_status: 'approved' };
+  }
+  if (approvalStatus === 'pending_approval' || approvalStatus === 'send') {
+    return { direction_status: 'approved', client_status: 'pending' };
+  }
+  if (approvalStatus === 'changes_requested' || workflowStage === 'correction') {
+    return { direction_status: 'changes_requested', client_status: 'waiting' };
+  }
+  return { direction_status: 'pending', client_status: 'waiting' };
+}
+
 export default function DesignerApproval() {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
@@ -102,6 +118,8 @@ export default function DesignerApproval() {
   const [linkNotice, setLinkNotice] = useState('');
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionFeedback, setCorrectionFeedback] = useState('');
+  const [actionError, setActionError] = useState('');
+  const hasLoadedRef = useRef(false);
 
   const loadLegacyApprovalItems = useCallback(async () => {
     if (!selectedClient?.id) {
@@ -138,10 +156,11 @@ export default function DesignerApproval() {
         const { data: mediaData } = await api.get(`/tasks/${candidate.id}/media`);
         const images = mediaToImages(mediaData?.media);
         if (!images.length) return null;
+        const inferred = legacyApprovalState(candidate);
         return {
           ...candidate,
-          direction_status: candidate.direction_status || 'pending',
-          client_status: candidate.client_status || 'waiting',
+          direction_status: candidate.direction_status || inferred.direction_status,
+          client_status: candidate.client_status || inferred.client_status,
           images,
           image_count: images.length,
         };
@@ -154,7 +173,7 @@ export default function DesignerApproval() {
   }, [selectedClient?.id, selectedClient?.name]);
 
   const loadItems = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+    if (!silent && !hasLoadedRef.current) setLoading(true);
     if (!silent) setError('');
     try {
       const { data } = await api.get('/tasks/approval-grid', {
@@ -179,6 +198,7 @@ export default function DesignerApproval() {
 
       setError(backendMessage || 'Não foi possível carregar a grade de aprovação.');
     } finally {
+      hasLoadedRef.current = true;
       if (!silent) setLoading(false);
     }
   }, [loadLegacyApprovalItems, selectedClient?.id]);
@@ -197,9 +217,13 @@ export default function DesignerApproval() {
   }, [selectedClient?.id]);
 
   useEffect(() => {
+    hasLoadedRef.current = false;
+    setItems([]);
+    setSelectedItem(null);
+    setActionError('');
     loadItems();
     loadApprovalLink();
-  }, [loadItems, loadApprovalLink]);
+  }, [loadItems, loadApprovalLink, selectedClient?.id]);
 
   useEffect(() => {
     if (!selectedClient?.id) {
@@ -267,6 +291,7 @@ export default function DesignerApproval() {
     setImageIndex(0);
     setCorrectionOpen(false);
     setCorrectionFeedback('');
+    setActionError('');
   }
 
   function replaceItemState(taskId, state) {
@@ -280,25 +305,79 @@ export default function DesignerApproval() {
 
   async function directionDecision(item, decision, feedback = '') {
     if (!item?.id || updatingId) return;
+
+    const previousState = {
+      direction_status: item.direction_status || 'pending',
+      direction_feedback: item.direction_feedback || null,
+      client_status: item.client_status || 'waiting',
+      client_feedback: item.client_feedback || null,
+      workflow_stage: item.workflow_stage || 'approval',
+      designer_completed: item.designer_completed,
+      approval_status: item.approval_status,
+    };
+    const optimisticState = decision === 'approved'
+      ? {
+          direction_status: 'approved',
+          direction_feedback: feedback || null,
+          client_status: 'pending',
+          client_feedback: null,
+          workflow_stage: 'approval',
+          designer_completed: 1,
+          approval_status: 'pending_approval',
+        }
+      : {
+          direction_status: 'changes_requested',
+          direction_feedback: feedback || null,
+          client_status: 'waiting',
+          client_feedback: null,
+          workflow_stage: 'correction',
+          designer_completed: 0,
+          approval_status: 'changes_requested',
+        };
+
     setUpdatingId(item.id);
     setError('');
+    setActionError('');
+    replaceItemState(item.id, optimisticState);
+
     try {
-      const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision, feedback });
-      const state = data?.state || (decision === 'approved'
-        ? { direction_status: 'approved', client_status: 'pending' }
-        : { direction_status: 'changes_requested', client_status: 'waiting', direction_feedback: feedback || null });
-      replaceItemState(item.id, {
-        ...state,
-        workflow_stage: decision === 'approved' ? 'approval' : 'correction',
-        designer_completed: decision === 'approved' ? 1 : 0,
-      });
+      let state = null;
+      try {
+        const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision, feedback });
+        state = data?.state || null;
+      } catch (primaryError) {
+        const status = Number(primaryError.response?.status || 0);
+        const message = String(primaryError.response?.data?.error || '');
+        const routeUnavailable = status === 404 || status === 405
+          || (status === 400 && /não está disponível para revisão|nao esta disponivel para revisao/i.test(message))
+          || /cannot (post|find)|tarefa nao encontrada|tarefa não encontrada/i.test(message);
+        if (!routeUnavailable) throw primaryError;
+
+        // Compatibilidade com backends anteriores: persiste a decisão usando
+        // os campos de fluxo que já existiam antes da aprovação em dois níveis.
+        await api.patch(`/tasks/${item.id}`, {
+          workflow_stage: decision === 'approved' ? 'approval' : 'correction',
+          approval_status: decision === 'approved' ? 'pending_approval' : 'changes_requested',
+          designer_completed: decision === 'approved' ? 1 : 0,
+        });
+        state = optimisticState;
+      }
+
+      replaceItemState(item.id, { ...optimisticState, ...(state || {}) });
       if (decision === 'changes_requested') {
         setCorrectionOpen(false);
         setCorrectionFeedback('');
       }
-      loadItems(true).catch(() => {});
+      // Não recarrega a grade imediatamente: isso evitava que um backend antigo
+      // sobrescrevesse o estado recém-aprovado com dados ainda defasados.
     } catch (requestError) {
-      setError(requestError.response?.data?.error || 'Não foi possível registrar a aprovação da direção.');
+      replaceItemState(item.id, previousState);
+      const message = requestError.response?.data?.error
+        || (decision === 'changes_requested'
+          ? 'Não foi possível registrar a correção.'
+          : 'Não foi possível registrar a aprovação da direção.');
+      setActionError(message);
+      setError(message);
     } finally {
       setUpdatingId(null);
     }
@@ -492,6 +571,9 @@ export default function DesignerApproval() {
                   )}
                   {selectedItem.client_feedback && (
                     <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Cliente:</strong> {selectedItem.client_feedback}</div>
+                  )}
+                  {actionError && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{actionError}</div>
                   )}
                   <Link to={`/designer?task_id=${selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
                 </div>

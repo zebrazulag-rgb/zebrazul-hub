@@ -365,7 +365,7 @@ router.get('/approval-grid', (req, res) => {
     SELECT
       t.id, t.agency_id, t.client_id, t.parent_task_id, t.task_type,
       t.title, t.content_type, t.content_tag, t.front_name, t.caption,
-      t.due_date, t.status, t.workflow_stage,
+      t.due_date, t.status, t.workflow_stage, t.approval_status,
       t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
       t.created_at, t.updated_at,
       c.name AS client_name, c.logo_color AS client_color
@@ -409,15 +409,35 @@ router.get('/approval-grid', (req, res) => {
   const rows = db.prepare(query).all(...params);
   const approvalStates = getApprovalStates(rows.map((row) => row.id), req.user.agency_id);
   const items = rows.map((row) => {
-    const approvalState = approvalStates.get(Number(row.id)) || {
-      direction_status: 'pending',
+    const persistedApprovalState = approvalStates.get(Number(row.id));
+    const legacyApprovalStatus = String(row.approval_status || '').toLowerCase();
+    const inferredLegacyState = legacyApprovalStatus === 'approved'
+      ? { direction_status: 'approved', client_status: 'approved' }
+      : (legacyApprovalStatus === 'pending_approval' || legacyApprovalStatus === 'send')
+          ? { direction_status: 'approved', client_status: 'pending' }
+          : (legacyApprovalStatus === 'changes_requested' || normalizeWorkflowStage(row.workflow_stage) === 'correction')
+              ? { direction_status: 'changes_requested', client_status: 'waiting' }
+              : { direction_status: 'pending', client_status: 'waiting' };
+    let approvalState = persistedApprovalState || {
+      ...inferredLegacyState,
       direction_feedback: null,
       direction_by: null,
       direction_at: null,
-      client_status: 'waiting',
       client_feedback: null,
       client_at: null,
     };
+    // Compatibilidade: se a decisão foi persistida por um backend anterior
+    // apenas em approval_status, ela não pode ser sobrescrita por um estado
+    // auxiliar antigo que ainda esteja como pending.
+    if (legacyApprovalStatus === 'approved') {
+      approvalState = { ...approvalState, direction_status: 'approved', client_status: 'approved' };
+    } else if ((legacyApprovalStatus === 'pending_approval' || legacyApprovalStatus === 'send')
+      && approvalState.direction_status === 'pending') {
+      approvalState = { ...approvalState, direction_status: 'approved', client_status: 'pending' };
+    } else if (legacyApprovalStatus === 'changes_requested'
+      || normalizeWorkflowStage(row.workflow_stage) === 'correction') {
+      approvalState = { ...approvalState, direction_status: 'changes_requested', client_status: 'waiting' };
+    }
     const gallery = parseGallery(row.media_gallery);
     const imageGallery = gallery.filter((item) => {
       const mime = String(item?.mime || item?.type || '').toLowerCase();
@@ -444,6 +464,7 @@ router.get('/approval-grid', (req, res) => {
       caption: row.caption,
       due_date: row.due_date,
       workflow_stage: normalizeWorkflowStage(row.workflow_stage),
+      approval_status: row.approval_status || null,
       client_name: row.client_name,
       client_color: row.client_color,
       images,
@@ -465,7 +486,7 @@ router.get('/approval-grid', (req, res) => {
 // Aprovação da direção acontece dentro do ZebraHub. Somente administração/direção
 // pode decidir; a aprovação positiva libera a peça para o link do cliente.
 router.post('/:id/direction-approval', (req, res) => {
-  const canApproveDirection = req.user.role === 'admin' || req.user.is_agency_owner || req.user.is_platform_owner;
+  const canApproveDirection = req.user.role === 'admin' || req.user.is_agency_owner || req.user.is_platform_owner || req.user.is_operations_head;
   if (!canApproveDirection) {
     return res.status(403).json({ error: 'A aprovação da direção é restrita à administração.' });
   }
@@ -925,6 +946,9 @@ router.put('/:id', (req, res) => {
   const previousStage = normalizeWorkflowStage(existing?.workflow_stage || workflowStageFromLegacy(existing?.status));
   if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage') && refreshedStage === 'approval' && previousStage !== 'approval') {
     resetApprovalForTask(refreshedTask);
+    db.prepare(`UPDATE tasks SET approval_status = 'completed', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+      .run(Number(refreshedTask.id), Number(req.user.agency_id));
+    refreshedTask.approval_status = 'completed';
   }
   const isDesignerTask = refreshedTask && refreshedTask.task_type !== 'video'
     && String(refreshedTask.front_name || '').trim().toLocaleLowerCase('pt-BR') !== 'site/lp';
