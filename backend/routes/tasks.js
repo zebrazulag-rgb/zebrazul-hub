@@ -274,7 +274,8 @@ function taskSummaryQuery(whereClause) {
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'pending') AS subtask_pending,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'in_progress') AS subtask_in_progress,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND COALESCE(st.designer_completed, 0) = 1) AS subtask_done,
-      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'posted') AS subtask_posted
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'posted') AS subtask_posted,
+      (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND (st.workflow_stage = 'correction' OR st.approval_status = 'changes_requested')) AS subtask_correction
     FROM tasks t
     LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
     LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
@@ -377,7 +378,7 @@ router.get('/approval-grid', (req, res) => {
       AND (
         t.workflow_stage IN ('approval', 'internal_approval', 'external_approval')
         OR (
-          t.workflow_stage IN ('approved', 'correction')
+          t.workflow_stage IN ('approved')
           AND EXISTS (
             SELECT 1 FROM designer_approval_states das
             WHERE das.task_id = t.id AND das.agency_id = t.agency_id
@@ -752,7 +753,7 @@ router.get('/:id', (req, res) => {
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.description, t.content_type, t.content_tag, t.front_name, t.caption, t.video_link,
-      t.due_date, t.status, t.workflow_stage, t.designer_completed, t.is_featured, t.attachment_mime, t.attachment_filename,
+      t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, COALESCE(p.feed_visible, 0) AS feed_post_visible, t.created_at, t.updated_at,
       CASE WHEN t.attachment_data IS NOT NULL AND length(t.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
@@ -769,7 +770,7 @@ router.get('/:id', (req, res) => {
 
   let subtaskQuery = `
     SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type, st.content_tag, st.front_name,
-           st.title, st.status, st.workflow_stage, st.designer_completed, st.due_date, st.attachment_filename, st.feed_post_id,
+           st.title, st.caption, st.status, st.workflow_stage, st.approval_status, st.designer_completed, st.due_date, st.attachment_filename, st.feed_post_id,
            COALESCE(sp.feed_visible, 0) AS feed_post_visible,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
            CASE WHEN st.media_gallery IS NOT NULL AND length(st.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery
@@ -785,6 +786,23 @@ router.get('/:id', (req, res) => {
   subtaskQuery += ' ORDER BY COALESCE(st.due_date, st.created_at) ASC';
   const subtaskRows = db.prepare(subtaskQuery).all(...subtaskParams);
   const subtasks = attachAssignees(subtaskRows, req.user.agency_id);
+
+  const approvalStates = getApprovalStates([task.id, ...subtasks.map((item) => item.id)], req.user.agency_id);
+  const taskApprovalState = approvalStates.get(Number(task.id));
+  if (taskApprovalState) {
+    task.direction_status = taskApprovalState.direction_status;
+    task.direction_feedback = taskApprovalState.direction_feedback;
+    task.client_status = taskApprovalState.client_status;
+    task.client_feedback = taskApprovalState.client_feedback;
+  }
+  subtasks.forEach((subtask) => {
+    const state = approvalStates.get(Number(subtask.id));
+    if (!state) return;
+    subtask.direction_status = state.direction_status;
+    subtask.direction_feedback = state.direction_feedback;
+    subtask.client_status = state.client_status;
+    subtask.client_feedback = state.client_feedback;
+  });
 
   res.json({ task, subtasks });
 });

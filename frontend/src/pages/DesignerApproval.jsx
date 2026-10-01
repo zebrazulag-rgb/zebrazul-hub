@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, UsersRound, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, UsersRound, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -16,7 +16,7 @@ const CONTENT_TYPE_LABELS = {
   print: 'Impresso',
 };
 
-const APPROVAL_STAGES = new Set(['approval', 'internal_approval', 'external_approval', 'approved', 'correction']);
+const APPROVAL_STAGES = new Set(['approval', 'internal_approval', 'external_approval', 'approved']);
 
 function isDesignerItem(item) {
   if (!item) return false;
@@ -104,6 +104,7 @@ function legacyApprovalState(item) {
 export default function DesignerApproval() {
   const { selectedClient } = useClientFilter();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -119,6 +120,9 @@ export default function DesignerApproval() {
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionFeedback, setCorrectionFeedback] = useState('');
   const [actionError, setActionError] = useState('');
+  const [captionDraft, setCaptionDraft] = useState('');
+  const [captionEditing, setCaptionEditing] = useState(false);
+  const [contentSaving, setContentSaving] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const loadLegacyApprovalItems = useCallback(async () => {
@@ -262,6 +266,21 @@ export default function DesignerApproval() {
     return () => window.clearInterval(interval);
   }, [loadItems]);
 
+  useEffect(() => {
+    let channel = null;
+    const refresh = () => loadItems(true).catch(() => {});
+    try {
+      channel = new BroadcastChannel('zebrahub-task-sync');
+      channel.onmessage = refresh;
+    } catch {
+      window.addEventListener('zebrahub:task-updated', refresh);
+    }
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('zebrahub:task-updated', refresh);
+    };
+  }, [loadItems]);
+
   const clientLabel = selectedClient?.name || 'Todos os clientes';
   const visibleItems = useMemo(() => {
     const filtered = mode === 'client'
@@ -301,6 +320,8 @@ export default function DesignerApproval() {
     setImageIndex(0);
     setCorrectionOpen(false);
     setCorrectionFeedback('');
+    setCaptionDraft(item?.caption || '');
+    setCaptionEditing(false);
     setActionError('');
   }
 
@@ -311,6 +332,17 @@ export default function DesignerApproval() {
     setSelectedItem((current) => current && Number(current.id) === Number(taskId)
       ? { ...current, ...state }
       : current);
+  }
+
+  function broadcastTaskUpdate(taskId, parentTaskId = null) {
+    const payload = { taskId: Number(taskId), parentTaskId: parentTaskId ? Number(parentTaskId) : null, at: Date.now() };
+    try {
+      const channel = new BroadcastChannel('zebrahub-task-sync');
+      channel.postMessage(payload);
+      channel.close();
+    } catch {
+      window.dispatchEvent(new CustomEvent('zebrahub:task-updated', { detail: payload }));
+    }
   }
 
   async function directionDecision(item, decision, feedback = '') {
@@ -359,7 +391,7 @@ export default function DesignerApproval() {
         const status = Number(primaryError.response?.status || 0);
         const message = String(primaryError.response?.data?.error || '');
         const routeUnavailable = status === 404 || status === 405
-          || (status === 400 && /não está disponível para revisão|nao esta disponivel para revisao/i.test(message))
+          || (status === 400 && /não está disponível para revisão|nao esta disponivel para revisao|etapa de fluxo inválida|etapa de fluxo invalida/i.test(message))
           || /cannot (post|find)|tarefa nao encontrada|tarefa não encontrada/i.test(message);
         if (!routeUnavailable) throw primaryError;
 
@@ -367,8 +399,12 @@ export default function DesignerApproval() {
         // de tarefas é PUT /tasks/:id (não PATCH). Primeiro tenta persistir todos
         // os campos disponíveis; se um backend ainda mais antigo não conhecer os
         // campos auxiliares de aprovação, reduz a atualização ao workflow_stage.
+        // Backends antigos usam internal_approval no lugar de approval.
+        // Para correção, tentamos correction e, se o servidor for ainda mais antigo,
+        // usamos in_progress + approval_status=changes_requested. A interface continua
+        // exibindo "Em correção" pelo approval_status.
         const legacyPayload = {
-          workflow_stage: decision === 'approved' ? 'approval' : 'correction',
+          workflow_stage: decision === 'approved' ? 'internal_approval' : 'correction',
           approval_status: decision === 'approved' ? 'pending_approval' : 'changes_requested',
           designer_completed: decision === 'approved' ? 1 : 0,
         };
@@ -377,16 +413,30 @@ export default function DesignerApproval() {
         } catch (legacyError) {
           const legacyMessage = String(legacyError.response?.data?.error || '');
           const legacyStatus = Number(legacyError.response?.status || 0);
-          const canRetryMinimal = legacyStatus === 400 && /aprova|designer|campo|inválid|invalid|column|coluna/i.test(legacyMessage);
+          const canRetryMinimal = legacyStatus === 400 && /aprova|designer|campo|etapa|inválid|invalid|column|coluna/i.test(legacyMessage);
           if (!canRetryMinimal) throw legacyError;
-          await api.put(`/tasks/${item.id}`, {
-            workflow_stage: decision === 'approved' ? 'approval' : 'correction',
-          });
+
+          if (decision === 'approved') {
+            await api.put(`/tasks/${item.id}`, { workflow_stage: 'internal_approval' });
+          } else {
+            try {
+              await api.put(`/tasks/${item.id}`, { workflow_stage: 'correction' });
+            } catch (correctionError) {
+              const correctionMessage = String(correctionError.response?.data?.error || '');
+              const correctionStatus = Number(correctionError.response?.status || 0);
+              if (!(correctionStatus === 400 && /etapa|inválid|invalid/i.test(correctionMessage))) throw correctionError;
+              await api.put(`/tasks/${item.id}`, {
+                workflow_stage: 'in_progress',
+                approval_status: 'changes_requested',
+              });
+            }
+          }
         }
         state = optimisticState;
       }
 
       replaceItemState(item.id, { ...optimisticState, ...(state || {}) });
+      broadcastTaskUpdate(item.id, item.parent_task_id);
       if (decision === 'approved') {
         // Depois que a direção aprova, seguimos automaticamente para a etapa
         // do cliente sem fechar a peça. Assim Arthur já enxerga o mesmo conteúdo
@@ -400,6 +450,11 @@ export default function DesignerApproval() {
       } else if (decision === 'changes_requested') {
         setCorrectionOpen(false);
         setCorrectionFeedback('');
+        // A correção volta para o Designer e abre a tarefa mãe quando houver.
+        const designerTaskId = item.parent_task_id || item.id;
+        setSelectedItem(null);
+        setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
+        navigate(`/designer?task_id=${designerTaskId}`);
       }
       // Não recarrega a grade imediatamente: isso evitava que um backend antigo
       // sobrescrevesse o estado recém-aprovado com dados ainda defasados.
@@ -416,6 +471,55 @@ export default function DesignerApproval() {
       setError(message);
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function saveCaption(item) {
+    if (!item?.id || contentSaving) return;
+    setContentSaving(true);
+    setActionError('');
+    const previousCaption = item.caption || '';
+    const nextCaption = captionDraft;
+    replaceItemState(item.id, { caption: nextCaption });
+    try {
+      await api.put(`/tasks/${item.id}`, { caption: nextCaption });
+      broadcastTaskUpdate(item.id, item.parent_task_id);
+      setCaptionEditing(false);
+    } catch (requestError) {
+      replaceItemState(item.id, { caption: previousCaption });
+      setCaptionDraft(previousCaption);
+      setActionError(requestError.response?.data?.error || 'Não foi possível salvar a legenda.');
+    } finally {
+      setContentSaving(false);
+    }
+  }
+
+  async function moveCarouselImage(item, fromIndex, toIndex) {
+    if (!item?.id || contentSaving || fromIndex === toIndex) return;
+    const currentImages = Array.isArray(item.images) ? item.images : [];
+    if (toIndex < 0 || toIndex >= currentImages.length) return;
+    const reordered = [...currentImages];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    setContentSaving(true);
+    setActionError('');
+    replaceItemState(item.id, { images: reordered, image_count: reordered.length });
+    setImageIndex(toIndex);
+    try {
+      await api.put(`/tasks/${item.id}`, {
+        media_gallery: reordered.map((image) => ({
+          data: image.data,
+          mime: image.mime || 'image/jpeg',
+          filename: image.filename || '',
+        })),
+      });
+      broadcastTaskUpdate(item.id, item.parent_task_id);
+    } catch (requestError) {
+      replaceItemState(item.id, { images: currentImages, image_count: currentImages.length });
+      setImageIndex(fromIndex);
+      setActionError(requestError.response?.data?.error || 'Não foi possível alterar a ordem do carrossel.');
+    } finally {
+      setContentSaving(false);
     }
   }
 
@@ -596,12 +700,48 @@ export default function DesignerApproval() {
                     {selectedItem.content_type && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{CONTENT_TYPE_LABELS[selectedItem.content_type] || selectedItem.content_type}</span>}
                     {selectedItem.parent_task_id && <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">Subtarefa</span>}
                   </div>
-                  {selectedItem.caption && (
+                  {selectedItem.images?.length > 1 && (
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Legenda</p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{selectedItem.caption}</p>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Ordem do carrossel</p>
+                        {contentSaving && <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Loader2 size={12} className="animate-spin" /> Salvando</span>}
+                      </div>
+                      <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                        {selectedItem.images.map((image, index) => (
+                          <div key={`${image.data}-${index}`} className={`relative w-20 shrink-0 overflow-hidden rounded-xl border ${imageIndex === index ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'}`}>
+                            <button type="button" onClick={() => setImageIndex(index)} className="block aspect-square w-full bg-slate-100">
+                              <img src={image.data} alt={`Slide ${index + 1}`} className="h-full w-full object-cover" />
+                            </button>
+                            <div className="grid grid-cols-2 border-t border-slate-100 bg-white">
+                              <button type="button" disabled={contentSaving || index === 0} onClick={() => moveCarouselImage(selectedItem, index, index - 1)} className="flex h-7 items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-25" aria-label={`Mover slide ${index + 1} para a esquerda`}><ChevronLeft size={13} /></button>
+                              <button type="button" disabled={contentSaving || index === selectedItem.images.length - 1} onClick={() => moveCarouselImage(selectedItem, index, index + 1)} className="flex h-7 items-center justify-center border-l border-slate-100 text-slate-500 hover:bg-slate-50 disabled:opacity-25" aria-label={`Mover slide ${index + 1} para a direita`}><ChevronRight size={13} /></button>
+                            </div>
+                            <span className="absolute left-1 top-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[9px] font-bold text-white">{index + 1}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Legenda</p>
+                      {!captionEditing && (
+                        <button type="button" onClick={() => { setCaptionDraft(selectedItem.caption || ''); setCaptionEditing(true); }} className="inline-flex items-center gap-1 text-xs font-bold text-[#0969ff] hover:underline"><Pencil size={12} /> Editar</button>
+                      )}
+                    </div>
+                    {captionEditing ? (
+                      <div className="mt-2">
+                        <textarea value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} rows={5} placeholder="Escreva a legenda desta publicação..." className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+                        <div className="mt-2 flex justify-end gap-2">
+                          <button type="button" disabled={contentSaving} onClick={() => { setCaptionDraft(selectedItem.caption || ''); setCaptionEditing(false); }} className="rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50">Cancelar</button>
+                          <button type="button" disabled={contentSaving} onClick={() => saveCaption(selectedItem)} className="inline-flex items-center gap-1 rounded-lg bg-[#0969ff] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{contentSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar legenda</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className={`mt-2 whitespace-pre-wrap text-sm leading-6 ${selectedItem.caption ? 'text-slate-600' : 'italic text-slate-400'}`}>{selectedItem.caption || 'Sem legenda definida.'}</p>
+                    )}
+                  </div>
                   {selectedItem.direction_feedback && (
                     <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Direção:</strong> {selectedItem.direction_feedback}</div>
                   )}
@@ -611,7 +751,7 @@ export default function DesignerApproval() {
                   {actionError && (
                     <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{actionError}</div>
                   )}
-                  <Link to={`/designer?task_id=${selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
+                  <Link to={`/designer?task_id=${selectedItem.parent_task_id || selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
                 </div>
 
                 <div className="border-t border-slate-100 p-5">

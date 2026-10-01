@@ -380,7 +380,7 @@ function getPublicApprovalItems(link) {
       AND t.client_id = ?
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
-      AND t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved', 'correction')
+      AND t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved')
       AND s.direction_status = 'approved'
       AND s.client_status IN ('pending', 'approved', 'changes_requested')
     ORDER BY COALESCE(t.updated_at, t.created_at) DESC

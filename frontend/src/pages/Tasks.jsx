@@ -46,12 +46,19 @@ function serverWorkflowStage(stage) {
 }
 
 function workflowStage(task) {
+  if (String(task?.approval_status || '').toLowerCase() === 'changes_requested') return 'correction';
   if (['internal_approval', 'external_approval'].includes(task?.workflow_stage)) return 'approval';
   if (task?.workflow_stage) return task.workflow_stage;
   if (task?.status === 'posted') return 'posted';
   if (task?.status === 'done') return 'in_progress';
   if (task?.status === 'in_progress') return 'in_progress';
   return 'todo';
+}
+
+function taskNeedsCorrection(task) {
+  return workflowStage(task) === 'correction'
+    || String(task?.approval_status || '').toLowerCase() === 'changes_requested'
+    || Number(task?.subtask_correction || 0) > 0;
 }
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
@@ -106,6 +113,17 @@ function sortTasks(items) {
     if (featuredDifference) return featuredDifference;
     return String(a.due_date || a.created_at || '').localeCompare(String(b.due_date || b.created_at || ''));
   });
+}
+
+function broadcastTaskUpdate(taskId, parentTaskId = null) {
+  const payload = { taskId: Number(taskId), parentTaskId: parentTaskId ? Number(parentTaskId) : null, at: Date.now() };
+  try {
+    const channel = new BroadcastChannel('zebrahub-task-sync');
+    channel.postMessage(payload);
+    channel.close();
+  } catch {
+    window.dispatchEvent(new CustomEvent('zebrahub:task-updated', { detail: payload }));
+  }
 }
 
 function buildMonthGrid(year, month) {
@@ -188,6 +206,13 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
             <div className="mt-2 flex flex-wrap gap-1.5">
               {t.content_tag && <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${CONTENT_TAG_CLASSES[t.content_tag] || CONTENT_TAG_CLASSES.Outro}`}>{t.content_tag}</span>}
               {t.content_type && <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500">{CONTENT_TYPE_LABELS[t.content_type] || t.content_type}</span>}
+            </div>
+          )}
+          {taskNeedsCorrection(t) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700">
+                <AlertTriangle size={10} /> {Number(t.subtask_correction || 0) > 0 ? `Correção pendente (${t.subtask_correction})` : 'Correção solicitada'}
+              </span>
             </div>
           )}
           {t.parent_task_id && (
@@ -372,6 +397,29 @@ export default function Tasks({ workspace = 'designer' }) {
     const interval = window.setInterval(() => loadTasks().catch(() => {}), 30000);
     return () => window.clearInterval(interval);
   }, [loadTasks]);
+
+  useEffect(() => {
+    let channel = null;
+    const sync = (event) => {
+      const detail = event?.data || event?.detail || {};
+      loadTasks().catch(() => {});
+      if (selectedTask?.id) {
+        const affectsSelected = Number(detail.taskId) === Number(selectedTask.id)
+          || Number(detail.parentTaskId) === Number(selectedTask.id);
+        if (affectsSelected) openTask(selectedTask.id);
+      }
+    };
+    try {
+      channel = new BroadcastChannel('zebrahub-task-sync');
+      channel.onmessage = sync;
+    } catch {
+      window.addEventListener('zebrahub:task-updated', sync);
+    }
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('zebrahub:task-updated', sync);
+    };
+  }, [loadTasks, selectedTask?.id]);
 
   async function exportCsv() {
     setCsvBusy(true);
@@ -561,6 +609,7 @@ export default function Tasks({ workspace = 'designer' }) {
         upsertTaskSummary(normalized);
         setSelectedTask((prev) => prev?.id === taskId ? { ...prev, ...normalized } : prev);
       }
+      broadcastTaskUpdate(taskId);
     } catch (error) {
       setTasks(previousTasks);
       setCalendarTasks(previousCalendarTasks);
@@ -613,6 +662,7 @@ export default function Tasks({ workspace = 'designer' }) {
 
     try {
       await api.put('/tasks/' + subtaskId, { workflow_stage: backendStage });
+      broadcastTaskUpdate(subtaskId, selectedTask?.id);
       loadTasks();
     } catch (error) {
       setSubtasks(previousSubtasks);
@@ -630,6 +680,7 @@ export default function Tasks({ workspace = 'designer' }) {
     setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: nextValue } : item));
     try {
       await api.put('/tasks/' + subtask.id, { designer_completed: nextValue });
+      broadcastTaskUpdate(subtask.id, selectedTask?.id);
       loadTasks();
     } catch (error) {
       setSubtasks(previousSubtasks);
@@ -650,6 +701,7 @@ export default function Tasks({ workspace = 'designer' }) {
 
     try {
       await api.put('/tasks/' + subtask.id, { assignee_ids: nextIds });
+      broadcastTaskUpdate(subtask.id, selectedTask?.id);
     } catch (error) {
       setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: previousAssignees } : item));
       setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, assignees: previousAssignees } : item));
@@ -737,6 +789,7 @@ export default function Tasks({ workspace = 'designer' }) {
         setSelectedTask((previous) => previous ? { ...previous, ...patch } : previous);
         upsertTaskSummary(data.task || { id, workflow_stage: 'approval' });
       }
+      broadcastTaskUpdate(id, source === 'subtask' ? selectedTask?.id : null);
       setFeedNotice('Enviado para aprovação. Se houver imagem, a peça já está na grade de Aprovação.');
     } catch (err) {
       setFeedError(err.response?.data?.error || 'Não foi possível enviar para aprovação.');
@@ -1363,7 +1416,7 @@ export default function Tasks({ workspace = 'designer' }) {
           defaultFrontName={defaultFrontName}
           allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
           onClose={() => { setShowForm(false); setDefaultTaskDate(''); }}
-          onSaved={(task) => { setShowForm(false); setDefaultTaskDate(''); upsertTaskSummary(task); loadTasks(); }}
+          onSaved={(task) => { setShowForm(false); setDefaultTaskDate(''); upsertTaskSummary(task); broadcastTaskUpdate(task?.id); loadTasks(); }}
         />
       )}
 
@@ -1377,7 +1430,7 @@ export default function Tasks({ workspace = 'designer' }) {
           defaultFrontName={defaultFrontName}
           allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
           onClose={() => setShowSubtaskForm(false)}
-          onSaved={() => { setShowSubtaskForm(false); openTask(selectedTask.id); loadTasks(); }}
+          onSaved={(task) => { setShowSubtaskForm(false); broadcastTaskUpdate(task?.id, selectedTask.id); openTask(selectedTask.id); loadTasks(); }}
         />
       )}
 
@@ -1394,6 +1447,7 @@ export default function Tasks({ workspace = 'designer' }) {
             setEditingTask(null);
             setSelectedTask(null);
             upsertTaskSummary(task);
+            broadcastTaskUpdate(task?.id);
             loadTasks();
           }}
         />
@@ -1408,8 +1462,9 @@ export default function Tasks({ workspace = 'designer' }) {
           defaultFrontName={defaultFrontName}
           allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
           onClose={() => setEditingSubtask(null)}
-          onSaved={() => {
+          onSaved={(task) => {
             setEditingSubtask(null);
+            broadcastTaskUpdate(task?.id, selectedTask?.id);
             if (selectedTask) openTask(selectedTask.id);
             loadTasks();
           }}
@@ -1521,6 +1576,14 @@ export default function Tasks({ workspace = 'designer' }) {
               <div className="mb-4 flex flex-wrap gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                 {selectedTask.content_tag && <span className={`rounded-full border px-2.5 py-1 font-bold ${CONTENT_TAG_CLASSES[selectedTask.content_tag] || CONTENT_TAG_CLASSES.Outro}`}>{selectedTask.content_tag}</span>}
                 {selectedTask.content_type && <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-600">{CONTENT_TYPE_LABELS[selectedTask.content_type] || selectedTask.content_type}</span>}
+              </div>
+            )}
+
+            {taskNeedsCorrection(selectedTask) && (
+              <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
+                <p className="flex items-center gap-2 font-bold"><AlertTriangle size={15} /> Correção pendente</p>
+                {selectedTask.direction_feedback && <p className="mt-1 text-xs leading-5 text-rose-700">{selectedTask.direction_feedback}</p>}
+                {Number(selectedTask.subtask_correction || 0) > 0 && <p className="mt-1 text-xs text-rose-600">{selectedTask.subtask_correction} subtarefa(s) precisam de ajuste.</p>}
               </div>
             )}
 
@@ -1642,7 +1705,7 @@ export default function Tasks({ workspace = 'designer' }) {
               <div className="space-y-2">
                 {subtasks.length === 0 && <p className="text-xs text-slate-300 text-center py-4">Nenhuma subtarefa ainda.</p>}
                 {subtasks.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2.5 bg-slate-50 rounded-lg px-3 py-2.5">
+                  <div key={s.id} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 ${taskNeedsCorrection(s) ? 'border-rose-200 bg-rose-50/70' : 'border-transparent bg-slate-50'}`}>
                     <button
                       onClick={() => canCreateTasks && toggleSubtaskCompleted(s)}
                       className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (Number(s.designer_completed || 0) === 1 ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400')}
@@ -1656,6 +1719,12 @@ export default function Tasks({ workspace = 'designer' }) {
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}
                       </div>
+                      {taskNeedsCorrection(s) && (
+                        <div className="mt-1.5">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold text-rose-700"><AlertTriangle size={10} /> Correção solicitada</span>
+                          {s.direction_feedback && <p className="mt-1 text-[11px] leading-4 text-rose-700">{s.direction_feedback}</p>}
+                        </div>
+                      )}
                       {!isSiteLP && canCreateTasks && s.task_type === 'post' && s.client_id && (
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                           {(s.has_attachment || s.has_gallery) ? (
