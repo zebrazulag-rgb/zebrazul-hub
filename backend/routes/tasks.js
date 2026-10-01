@@ -412,9 +412,10 @@ router.get('/approval-grid', (req, res) => {
   const items = rows.map((row) => {
     const persistedApprovalState = approvalStates.get(Number(row.id));
     const legacyApprovalStatus = String(row.approval_status || '').toLowerCase();
-    const inferredLegacyState = legacyApprovalStatus === 'approved'
+    const rawWorkflowStage = String(row.workflow_stage || '').toLowerCase();
+    const inferredLegacyState = legacyApprovalStatus === 'approved' || rawWorkflowStage === 'approved'
       ? { direction_status: 'approved', client_status: 'approved' }
-      : (legacyApprovalStatus === 'pending_approval' || legacyApprovalStatus === 'send')
+      : (legacyApprovalStatus === 'pending_approval' || legacyApprovalStatus === 'send' || rawWorkflowStage === 'external_approval')
           ? { direction_status: 'approved', client_status: 'pending' }
           : (legacyApprovalStatus === 'changes_requested' || normalizeWorkflowStage(row.workflow_stage) === 'correction')
               ? { direction_status: 'changes_requested', client_status: 'waiting' }
@@ -432,7 +433,7 @@ router.get('/approval-grid', (req, res) => {
     // auxiliar antigo que ainda esteja como pending.
     if (legacyApprovalStatus === 'approved') {
       approvalState = { ...approvalState, direction_status: 'approved', client_status: 'approved' };
-    } else if ((legacyApprovalStatus === 'pending_approval' || legacyApprovalStatus === 'send')
+    } else if ((legacyApprovalStatus === 'pending_approval' || legacyApprovalStatus === 'send' || rawWorkflowStage === 'external_approval')
       && approvalState.direction_status === 'pending') {
       approvalState = { ...approvalState, direction_status: 'approved', client_status: 'pending' };
     } else if (legacyApprovalStatus === 'changes_requested'
@@ -514,7 +515,10 @@ router.post('/:id/direction-approval', (req, res) => {
       decision,
       feedback: req.body?.feedback || null,
     });
-    return res.json({ ok: true, state });
+    const link = decision === 'approved' && task.client_id
+      ? getOrCreateClientApprovalLink({ agencyId: req.user.agency_id, clientId: task.client_id, createdBy: req.user.id })
+      : getClientApprovalLink(req.user.agency_id, task.client_id);
+    return res.json({ ok: true, state, link: link || null });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Não foi possível registrar a aprovação da direção.' });
   }
@@ -530,7 +534,7 @@ router.get('/approval-link/client/:clientId', (req, res) => {
 router.post('/approval-link/client/:clientId', (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!clientId || !ensureClientAccess(req, res, clientId)) return;
-  if (!['admin', 'team'].includes(req.user.role)) {
+  if (req.user.role === 'client') {
     return res.status(403).json({ error: 'Apenas a equipe pode gerar o link de aprovação do cliente.' });
   }
   const link = getOrCreateClientApprovalLink({

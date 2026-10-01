@@ -53,27 +53,36 @@ function mediaToImages(media) {
     : [];
 }
 
+function directionIsApproved(item) {
+  const approvalStatus = String(item?.approval_status || '').toLowerCase();
+  const workflowStage = String(item?.workflow_stage || '').toLowerCase();
+  return item?.direction_status === 'approved'
+    || ['pending_approval', 'send', 'approved'].includes(approvalStatus)
+    || workflowStage === 'external_approval'
+    || workflowStage === 'approved';
+}
+
 function statusForDirection(item) {
-  if (item?.direction_status === 'approved') return 'approved';
-  if (item?.direction_status === 'changes_requested') return 'rejected';
+  if (directionIsApproved(item)) return 'approved';
+  if (item?.direction_status === 'changes_requested' || String(item?.approval_status || '').toLowerCase() === 'changes_requested') return 'rejected';
   return 'pending_approval';
 }
 
 function statusForClient(item) {
-  if (item?.client_status === 'approved') return 'approved';
+  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return 'approved';
   if (item?.client_status === 'changes_requested') return 'rejected';
   return 'pending_approval';
 }
 
 function directionStatusLabel(item) {
-  if (item?.direction_status === 'approved') return 'Direção aprovada';
-  if (item?.direction_status === 'changes_requested') return 'Correção solicitada';
+  if (directionIsApproved(item)) return 'Direção aprovada';
+  if (item?.direction_status === 'changes_requested' || String(item?.approval_status || '').toLowerCase() === 'changes_requested') return 'Correção solicitada';
   return 'Aguardando direção';
 }
 
 function clientStatusLabel(item) {
-  if (item?.direction_status !== 'approved') return 'Aguardando direção';
-  if (item?.client_status === 'approved') return 'Cliente aprovou';
+  if (!directionIsApproved(item)) return 'Aguardando direção';
+  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return 'Cliente aprovou';
   if (item?.client_status === 'changes_requested') return 'Cliente pediu correção';
   return 'Aguardando cliente';
 }
@@ -124,6 +133,7 @@ export default function DesignerApproval() {
   const [captionEditing, setCaptionEditing] = useState(false);
   const [contentSaving, setContentSaving] = useState(false);
   const hasLoadedRef = useRef(false);
+  const syncSourceRef = useRef(`approval-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const loadLegacyApprovalItems = useCallback(async () => {
     if (!selectedClient?.id) {
@@ -183,7 +193,12 @@ export default function DesignerApproval() {
       const { data } = await api.get('/tasks/approval-grid', {
         params: selectedClient?.id ? { client_id: selectedClient.id } : {},
       });
-      setItems(Array.isArray(data?.items) ? data.items : []);
+      const nextItems = (Array.isArray(data?.items) ? data.items : []).map((item) => (
+        directionIsApproved(item) && item?.direction_status !== 'changes_requested'
+          ? { ...item, direction_status: 'approved', client_status: item?.client_status || 'pending' }
+          : item
+      ));
+      setItems(nextItems);
     } catch (requestError) {
       const status = Number(requestError.response?.status || 0);
       const backendMessage = String(requestError.response?.data?.error || '');
@@ -268,7 +283,11 @@ export default function DesignerApproval() {
 
   useEffect(() => {
     let channel = null;
-    const refresh = () => loadItems(true).catch(() => {});
+    const refresh = (event) => {
+      const source = event?.data?.source || event?.detail?.source;
+      if (source && source === syncSourceRef.current) return;
+      loadItems(true).catch(() => {});
+    };
     try {
       channel = new BroadcastChannel('zebrahub-task-sync');
       channel.onmessage = refresh;
@@ -284,7 +303,7 @@ export default function DesignerApproval() {
   const clientLabel = selectedClient?.name || 'Todos os clientes';
   const visibleItems = useMemo(() => {
     const filtered = mode === 'client'
-      ? items.filter((item) => item.direction_status === 'approved')
+      ? items.filter((item) => directionIsApproved(item))
       : items;
 
     // Feed em ordem de Instagram: conteúdos mais recentes primeiro (em cima)
@@ -335,7 +354,7 @@ export default function DesignerApproval() {
   }
 
   function broadcastTaskUpdate(taskId, parentTaskId = null) {
-    const payload = { taskId: Number(taskId), parentTaskId: parentTaskId ? Number(parentTaskId) : null, at: Date.now() };
+    const payload = { taskId: Number(taskId), parentTaskId: parentTaskId ? Number(parentTaskId) : null, at: Date.now(), source: syncSourceRef.current };
     try {
       const channel = new BroadcastChannel('zebrahub-task-sync');
       channel.postMessage(payload);
@@ -387,6 +406,7 @@ export default function DesignerApproval() {
       try {
         const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision, feedback });
         state = data?.state || null;
+        if (data?.link?.token) setApprovalLink(data.link);
       } catch (primaryError) {
         const status = Number(primaryError.response?.status || 0);
         const message = String(primaryError.response?.data?.error || '');
@@ -404,7 +424,7 @@ export default function DesignerApproval() {
         // usamos in_progress + approval_status=changes_requested. A interface continua
         // exibindo "Em correção" pelo approval_status.
         const legacyPayload = {
-          workflow_stage: decision === 'approved' ? 'internal_approval' : 'correction',
+          workflow_stage: decision === 'approved' ? 'external_approval' : 'correction',
           approval_status: decision === 'approved' ? 'pending_approval' : 'changes_requested',
           designer_completed: decision === 'approved' ? 1 : 0,
         };
@@ -417,7 +437,7 @@ export default function DesignerApproval() {
           if (!canRetryMinimal) throw legacyError;
 
           if (decision === 'approved') {
-            await api.put(`/tasks/${item.id}`, { workflow_stage: 'internal_approval' });
+            await api.put(`/tasks/${item.id}`, { workflow_stage: 'external_approval', approval_status: 'pending_approval' });
           } else {
             try {
               await api.put(`/tasks/${item.id}`, { workflow_stage: 'correction' });
@@ -549,7 +569,7 @@ export default function DesignerApproval() {
   }
 
   const currentImage = selectedItem?.images?.[imageIndex]?.data || null;
-  const selectedDirectionStatus = selectedItem?.direction_status || 'pending';
+  const selectedDirectionStatus = directionIsApproved(selectedItem) ? 'approved' : (selectedItem?.direction_status || 'pending');
   const selectedClientStatus = selectedItem?.client_status || 'waiting';
   const canDirectionApprove = mode === 'direction' && selectedDirectionStatus === 'pending';
 

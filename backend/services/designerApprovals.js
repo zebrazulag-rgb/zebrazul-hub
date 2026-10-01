@@ -369,20 +369,25 @@ function getPublicApprovalItems(link) {
     SELECT
       t.id, t.agency_id, t.client_id, t.parent_task_id, t.created_by, t.task_type,
       t.title, t.content_type, t.content_tag, t.front_name, t.caption,
-      t.due_date, t.status, t.workflow_stage,
+      t.due_date, t.status, t.workflow_stage, t.approval_status,
       t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
       t.feed_post_id, t.created_at, t.updated_at,
       s.direction_status, s.direction_feedback, s.direction_at,
       s.client_status, s.client_feedback, s.client_at
     FROM tasks t
-    JOIN designer_approval_states s ON s.task_id = t.id AND s.agency_id = t.agency_id
+    LEFT JOIN designer_approval_states s ON s.task_id = t.id AND s.agency_id = t.agency_id
     WHERE t.agency_id = ?
       AND t.client_id = ?
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
       AND t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved')
-      AND s.direction_status = 'approved'
-      AND s.client_status IN ('pending', 'approved', 'changes_requested')
+      AND (
+        s.direction_status = 'approved'
+        OR t.approval_status IN ('pending_approval', 'send', 'approved')
+        OR t.workflow_stage IN ('external_approval', 'approved')
+      )
+      AND COALESCE(s.client_status, CASE WHEN t.approval_status = 'approved' OR t.workflow_stage = 'approved' THEN 'approved' ELSE 'pending' END)
+          IN ('pending', 'approved', 'changes_requested')
     ORDER BY COALESCE(t.updated_at, t.created_at) DESC
   `).all(Number(link.agency_id), Number(link.client_id));
 
@@ -398,7 +403,9 @@ function getPublicApprovalItems(link) {
       due_date: task.due_date,
       workflow_stage: 'approval',
       direction_status: task.direction_status || 'approved',
-      client_status: task.client_status || 'pending',
+      direction_feedback: task.direction_feedback || null,
+      client_status: task.client_status || ((task.approval_status === 'approved' || task.workflow_stage === 'approved') ? 'approved' : 'pending'),
+      client_feedback: task.client_feedback || null,
       images,
       image_count: images.length,
       updated_at: task.updated_at,
@@ -420,9 +427,21 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
   `).get(Number(taskId), Number(link.agency_id), Number(link.client_id));
   if (!task) return { error: 'TASK_NOT_FOUND' };
 
-  const state = getApprovalState(task.id, task.agency_id);
+  let state = getApprovalState(task.id, task.agency_id);
+  const legacyReady = ['pending_approval', 'send', 'approved'].includes(String(task.approval_status || '').toLowerCase())
+    || ['external_approval', 'approved'].includes(String(task.workflow_stage || '').toLowerCase());
+  if ((!state || state.direction_status !== 'approved') && legacyReady) {
+    ensureApprovalState(task);
+    db.prepare(`
+      UPDATE designer_approval_states
+      SET direction_status = 'approved', client_status = CASE WHEN client_status = 'waiting' THEN 'pending' ELSE client_status END,
+          updated_at = datetime('now')
+      WHERE task_id = ? AND agency_id = ?
+    `).run(Number(task.id), Number(task.agency_id));
+    state = getApprovalState(task.id, task.agency_id);
+  }
   if (!state || state.direction_status !== 'approved') return { error: 'NOT_READY' };
-  if (!['approval', 'internal_approval', 'external_approval'].includes(String(task.workflow_stage || ''))) {
+  if (!['approval', 'internal_approval', 'external_approval', 'approved'].includes(String(task.workflow_stage || ''))) {
     return { error: 'NOT_READY' };
   }
 

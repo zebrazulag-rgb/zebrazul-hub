@@ -61,6 +61,10 @@ function taskNeedsCorrection(task) {
     || Number(task?.subtask_correction || 0) > 0;
 }
 
+function taskCorrectionFeedback(task) {
+  return String(task?.direction_feedback || task?.client_feedback || '').trim();
+}
+
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -1582,8 +1586,20 @@ export default function Tasks({ workspace = 'designer' }) {
             {taskNeedsCorrection(selectedTask) && (
               <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
                 <p className="flex items-center gap-2 font-bold"><AlertTriangle size={15} /> Correção pendente</p>
-                {selectedTask.direction_feedback && <p className="mt-1 text-xs leading-5 text-rose-700">{selectedTask.direction_feedback}</p>}
-                {Number(selectedTask.subtask_correction || 0) > 0 && <p className="mt-1 text-xs text-rose-600">{selectedTask.subtask_correction} subtarefa(s) precisam de ajuste.</p>}
+                {taskCorrectionFeedback(selectedTask) && <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-rose-700">{taskCorrectionFeedback(selectedTask)}</p>}
+                {Number(selectedTask.subtask_correction || 0) > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs font-semibold text-rose-700">{selectedTask.subtask_correction} subtarefa(s) precisam de ajuste:</p>
+                    {subtasks.filter(taskNeedsCorrection).map((subtask) => (
+                      <div key={`correction-${subtask.id}`} className="rounded-lg border border-rose-200 bg-white/80 px-2.5 py-2">
+                        <p className="text-xs font-bold text-rose-800">{subtask.title}</p>
+                        <p className={`mt-0.5 whitespace-pre-wrap text-[11px] leading-4 ${taskCorrectionFeedback(subtask) ? 'text-rose-700' : 'italic text-rose-400'}`}>
+                          {taskCorrectionFeedback(subtask) || 'Correção solicitada sem observação.'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1722,7 +1738,7 @@ export default function Tasks({ workspace = 'designer' }) {
                       {taskNeedsCorrection(s) && (
                         <div className="mt-1.5">
                           <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold text-rose-700"><AlertTriangle size={10} /> Correção solicitada</span>
-                          {s.direction_feedback && <p className="mt-1 text-[11px] leading-4 text-rose-700">{s.direction_feedback}</p>}
+                          {taskCorrectionFeedback(s) && <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-rose-700">{taskCorrectionFeedback(s)}</p>}
                         </div>
                       )}
                       {!isSiteLP && canCreateTasks && s.task_type === 'post' && s.client_id && (
