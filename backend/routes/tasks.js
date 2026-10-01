@@ -367,6 +367,8 @@ router.get('/approval-grid', (req, res) => {
       t.id, t.agency_id, t.client_id, t.parent_task_id, t.task_type,
       t.title, t.content_type, t.content_tag, t.front_name, t.caption,
       t.due_date, t.status, t.workflow_stage, t.approval_status,
+      t.direction_status, t.direction_feedback, t.direction_by, t.direction_at,
+      t.client_status, t.client_feedback, t.client_at,
       t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
       t.created_at, t.updated_at,
       c.name AS client_name, c.logo_color AS client_color
@@ -376,13 +378,12 @@ router.get('/approval-grid', (req, res) => {
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
       AND (
-        t.workflow_stage IN ('approval', 'internal_approval', 'external_approval')
-        OR (
-          t.workflow_stage IN ('approved')
-          AND EXISTS (
-            SELECT 1 FROM designer_approval_states das
-            WHERE das.task_id = t.id AND das.agency_id = t.agency_id
-          )
+        t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved')
+        OR t.direction_status = 'approved'
+        OR EXISTS (
+          SELECT 1 FROM designer_approval_states das
+          WHERE das.task_id = t.id AND das.agency_id = t.agency_id
+            AND das.direction_status IN ('pending', 'approved')
         )
       )
   `;
@@ -427,6 +428,20 @@ router.get('/approval-grid', (req, res) => {
       direction_at: null,
       client_feedback: null,
       client_at: null,
+    };
+    approvalState = {
+      ...approvalState,
+      direction_status: (row.direction_status && row.direction_status !== 'pending')
+        ? row.direction_status
+        : (approvalState.direction_status || row.direction_status || inferredLegacyState.direction_status),
+      direction_feedback: row.direction_feedback || approvalState.direction_feedback || null,
+      direction_by: row.direction_by || approvalState.direction_by || null,
+      direction_at: row.direction_at || approvalState.direction_at || null,
+      client_status: (row.client_status && row.client_status !== 'waiting')
+        ? row.client_status
+        : (approvalState.client_status || row.client_status || inferredLegacyState.client_status),
+      client_feedback: row.client_feedback || approvalState.client_feedback || null,
+      client_at: row.client_at || approvalState.client_at || null,
     };
     // Compatibilidade: se a decisão foi persistida por um backend anterior
     // apenas em approval_status, ela não pode ser sobrescrita por um estado
@@ -496,9 +511,13 @@ router.post('/:id/direction-approval', (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
   if (!ensureTaskAccess(req, res, task)) return;
-  if (!['approval', 'internal_approval', 'external_approval', 'approved', 'correction'].includes(String(task.workflow_stage || ''))) {
-    return res.status(400).json({ error: 'Esta peça não está disponível para revisão da direção.' });
+  const isDesignerTask = task.task_type !== 'video' && String(task.front_name || '').trim().toLocaleLowerCase('pt-BR') !== 'site/lp';
+  if (!isDesignerTask) {
+    return res.status(400).json({ error: 'Esta peça não pertence ao fluxo do Designer.' });
   }
+  // A própria grade de aprovação já controla o que pode chegar aqui. Não
+  // bloqueamos a decisão apenas por um nome de etapa legado, pois versões
+  // anteriores gravavam approval/internal_approval/external_approval de formas diferentes.
   if (!taskHasMedia(task)) {
     return res.status(400).json({ error: 'A peça precisa ter imagem para ser aprovada.' });
   }
@@ -757,7 +776,9 @@ router.get('/:id', (req, res) => {
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.description, t.content_type, t.content_tag, t.front_name, t.caption, t.video_link,
-      t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, t.attachment_mime, t.attachment_filename,
+      t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed,
+      t.direction_status, t.direction_feedback, t.direction_by, t.direction_at, t.client_status, t.client_feedback, t.client_at,
+      t.is_featured, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, COALESCE(p.feed_visible, 0) AS feed_post_visible, t.created_at, t.updated_at,
       CASE WHEN t.attachment_data IS NOT NULL AND length(t.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
       CASE WHEN t.media_gallery IS NOT NULL AND length(t.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery,
@@ -774,7 +795,9 @@ router.get('/:id', (req, res) => {
 
   let subtaskQuery = `
     SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type, st.content_tag, st.front_name,
-           st.title, st.caption, st.status, st.workflow_stage, st.approval_status, st.designer_completed, st.due_date, st.attachment_filename, st.feed_post_id,
+           st.title, st.caption, st.status, st.workflow_stage, st.approval_status, st.designer_completed,
+           st.direction_status, st.direction_feedback, st.direction_by, st.direction_at, st.client_status, st.client_feedback, st.client_at,
+           st.due_date, st.attachment_filename, st.feed_post_id,
            COALESCE(sp.feed_visible, 0) AS feed_post_visible,
            CASE WHEN st.attachment_data IS NOT NULL AND length(st.attachment_data) > 0 THEN 1 ELSE 0 END AS has_attachment,
            CASE WHEN st.media_gallery IS NOT NULL AND length(st.media_gallery) > 2 THEN 1 ELSE 0 END AS has_gallery
@@ -794,18 +817,18 @@ router.get('/:id', (req, res) => {
   const approvalStates = getApprovalStates([task.id, ...subtasks.map((item) => item.id)], req.user.agency_id);
   const taskApprovalState = approvalStates.get(Number(task.id));
   if (taskApprovalState) {
-    task.direction_status = taskApprovalState.direction_status;
-    task.direction_feedback = taskApprovalState.direction_feedback;
-    task.client_status = taskApprovalState.client_status;
-    task.client_feedback = taskApprovalState.client_feedback;
+    task.direction_status = taskApprovalState.direction_status || task.direction_status;
+    task.direction_feedback = taskApprovalState.direction_feedback || task.direction_feedback;
+    task.client_status = taskApprovalState.client_status || task.client_status;
+    task.client_feedback = taskApprovalState.client_feedback || task.client_feedback;
   }
   subtasks.forEach((subtask) => {
     const state = approvalStates.get(Number(subtask.id));
     if (!state) return;
-    subtask.direction_status = state.direction_status;
-    subtask.direction_feedback = state.direction_feedback;
-    subtask.client_status = state.client_status;
-    subtask.client_feedback = state.client_feedback;
+    subtask.direction_status = state.direction_status || subtask.direction_status;
+    subtask.direction_feedback = state.direction_feedback || subtask.direction_feedback;
+    subtask.client_status = state.client_status || subtask.client_status;
+    subtask.client_feedback = state.client_feedback || subtask.client_feedback;
   });
 
   res.json({ task, subtasks });
@@ -905,7 +928,8 @@ router.put('/:id', (req, res) => {
     'media_gallery', 'due_date', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ] : [
     'title', 'description', 'task_type', 'content_type', 'content_tag', 'front_name', 'caption', 'video_link',
-    'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'designer_completed', 'client_id',
+    'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'designer_completed',
+    'direction_status', 'direction_feedback', 'direction_by', 'direction_at', 'client_status', 'client_feedback', 'client_at', 'client_id',
     'is_featured', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ];
   const updates = [];
@@ -966,7 +990,9 @@ router.put('/:id', (req, res) => {
   const refreshedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   const refreshedStage = normalizeWorkflowStage(refreshedTask?.workflow_stage || workflowStageFromLegacy(refreshedTask?.status));
   const previousStage = normalizeWorkflowStage(existing?.workflow_stage || workflowStageFromLegacy(existing?.status));
-  if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage') && refreshedStage === 'approval' && previousStage !== 'approval') {
+  if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage') && refreshedStage === 'approval' && previousStage !== 'approval'
+    && !Object.prototype.hasOwnProperty.call(req.body, 'direction_status')
+    && !['pending_approval', 'approved', 'changes_requested'].includes(String(req.body.approval_status || '').toLowerCase())) {
     resetApprovalForTask(refreshedTask);
     db.prepare(`UPDATE tasks SET approval_status = 'completed', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
       .run(Number(refreshedTask.id), Number(req.user.agency_id));

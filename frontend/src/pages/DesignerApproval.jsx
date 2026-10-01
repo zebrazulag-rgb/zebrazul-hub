@@ -427,6 +427,13 @@ export default function DesignerApproval() {
           workflow_stage: decision === 'approved' ? 'external_approval' : 'correction',
           approval_status: decision === 'approved' ? 'pending_approval' : 'changes_requested',
           designer_completed: decision === 'approved' ? 1 : 0,
+          direction_status: decision === 'approved' ? 'approved' : 'changes_requested',
+          direction_feedback: feedback || null,
+          direction_by: user?.id || null,
+          direction_at: new Date().toISOString(),
+          client_status: decision === 'approved' ? 'pending' : 'waiting',
+          client_feedback: null,
+          client_at: null,
         };
         try {
           await api.put(`/tasks/${item.id}`, legacyPayload);
@@ -437,10 +444,10 @@ export default function DesignerApproval() {
           if (!canRetryMinimal) throw legacyError;
 
           if (decision === 'approved') {
-            await api.put(`/tasks/${item.id}`, { workflow_stage: 'external_approval', approval_status: 'pending_approval' });
+            await api.put(`/tasks/${item.id}`, { workflow_stage: 'external_approval', approval_status: 'pending_approval', direction_status: 'approved', direction_feedback: feedback || null, client_status: 'pending' });
           } else {
             try {
-              await api.put(`/tasks/${item.id}`, { workflow_stage: 'correction' });
+              await api.put(`/tasks/${item.id}`, { workflow_stage: 'correction', approval_status: 'changes_requested', direction_status: 'changes_requested', direction_feedback: feedback || null, client_status: 'waiting' });
             } catch (correctionError) {
               const correctionMessage = String(correctionError.response?.data?.error || '');
               const correctionStatus = Number(correctionError.response?.status || 0);
@@ -448,6 +455,9 @@ export default function DesignerApproval() {
               await api.put(`/tasks/${item.id}`, {
                 workflow_stage: 'in_progress',
                 approval_status: 'changes_requested',
+                direction_status: 'changes_requested',
+                direction_feedback: feedback || null,
+                client_status: 'waiting',
               });
             }
           }

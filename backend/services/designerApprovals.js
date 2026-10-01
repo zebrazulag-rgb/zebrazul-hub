@@ -114,7 +114,48 @@ function getApprovalState(taskId, agencyId) {
     FROM designer_approval_states
     WHERE task_id = ? AND agency_id = ?
   `).get(Number(taskId), Number(agencyId));
-  return row || null;
+
+  const task = db.prepare(`
+    SELECT id, agency_id, client_id, direction_status, direction_feedback,
+           direction_by, direction_at, client_status, client_feedback, client_at,
+           approval_status, workflow_stage, created_at, updated_at
+    FROM tasks
+    WHERE id = ? AND agency_id = ?
+    LIMIT 1
+  `).get(Number(taskId), Number(agencyId));
+
+  if (!row && !task) return null;
+
+  const legacyApprovalStatus = String(task?.approval_status || '').toLowerCase();
+  const legacyWorkflow = String(task?.workflow_stage || '').toLowerCase();
+  const inferredDirection = legacyApprovalStatus === 'approved' || legacyApprovalStatus === 'pending_approval'
+    || legacyApprovalStatus === 'send' || legacyWorkflow === 'external_approval' || legacyWorkflow === 'approved'
+      ? 'approved'
+      : legacyApprovalStatus === 'changes_requested' || legacyWorkflow === 'correction'
+        ? 'changes_requested'
+        : 'pending';
+  const inferredClient = legacyApprovalStatus === 'approved' || legacyWorkflow === 'approved'
+    ? 'approved'
+    : inferredDirection === 'approved' ? 'pending' : 'waiting';
+
+  return {
+    task_id: Number(task?.id || row?.task_id || taskId),
+    agency_id: Number(task?.agency_id || row?.agency_id || agencyId),
+    client_id: task?.client_id ?? row?.client_id ?? null,
+    direction_status: (task?.direction_status && task.direction_status !== 'pending')
+      ? task.direction_status
+      : (row?.direction_status || task?.direction_status || inferredDirection),
+    direction_feedback: task?.direction_feedback || row?.direction_feedback || null,
+    direction_by: task?.direction_by || row?.direction_by || null,
+    direction_at: task?.direction_at || row?.direction_at || null,
+    client_status: (task?.client_status && task.client_status !== 'waiting')
+      ? task.client_status
+      : (row?.client_status || task?.client_status || inferredClient),
+    client_feedback: task?.client_feedback || row?.client_feedback || null,
+    client_at: task?.client_at || row?.client_at || null,
+    created_at: row?.created_at || task?.created_at || null,
+    updated_at: row?.updated_at || task?.updated_at || null,
+  };
 }
 
 function getApprovalStates(taskIds, agencyId) {
@@ -122,15 +163,10 @@ function getApprovalStates(taskIds, agencyId) {
   const ids = [...new Set((taskIds || []).map(Number).filter(Boolean))];
   const map = new Map();
   if (!ids.length) return map;
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = db.prepare(`
-    SELECT task_id, agency_id, client_id, direction_status, direction_feedback,
-           direction_by, direction_at, client_status, client_feedback, client_at,
-           created_at, updated_at
-    FROM designer_approval_states
-    WHERE agency_id = ? AND task_id IN (${placeholders})
-  `).all(Number(agencyId), ...ids);
-  rows.forEach((row) => map.set(Number(row.task_id), row));
+  ids.forEach((taskId) => {
+    const state = getApprovalState(taskId, agencyId);
+    if (state) map.set(Number(taskId), state);
+  });
   return map;
 }
 
@@ -156,6 +192,14 @@ function resetApprovalForTask(task) {
       client_at = NULL,
       updated_at = datetime('now')
   `).run(Number(task.id), Number(task.agency_id), task.client_id ? Number(task.client_id) : null);
+
+  db.prepare(`
+    UPDATE tasks
+    SET direction_status = 'pending', direction_feedback = NULL, direction_by = NULL, direction_at = NULL,
+        client_status = 'waiting', client_feedback = NULL, client_at = NULL,
+        updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ?
+  `).run(Number(task.id), Number(task.agency_id));
 }
 
 function ensureApprovalState(task) {
@@ -283,6 +327,13 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
           updated_at = datetime('now')
       WHERE task_id = ? AND agency_id = ?
     `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
+    db.prepare(`
+      UPDATE tasks
+      SET direction_status = 'approved', direction_feedback = ?, direction_by = ?, direction_at = ?,
+          client_status = 'pending', client_feedback = NULL, client_at = NULL,
+          updated_at = datetime('now')
+      WHERE id = ? AND agency_id = ?
+    `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
     const currentState = getApprovalState(task.id, task.agency_id);
     if (currentState?.client_status !== 'approved') {
       updateTaskWorkflow(task.id, task.agency_id, 'approval');
@@ -296,6 +347,13 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
           client_status = 'waiting', client_feedback = NULL, client_at = NULL,
           updated_at = datetime('now')
       WHERE task_id = ? AND agency_id = ?
+    `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
+    db.prepare(`
+      UPDATE tasks
+      SET direction_status = 'changes_requested', direction_feedback = ?, direction_by = ?, direction_at = ?,
+          client_status = 'waiting', client_feedback = NULL, client_at = NULL,
+          updated_at = datetime('now')
+      WHERE id = ? AND agency_id = ?
     `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
     updateTaskWorkflow(task.id, task.agency_id, 'correction');
     db.prepare(`UPDATE tasks SET approval_status = 'changes_requested', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
@@ -372,8 +430,10 @@ function getPublicApprovalItems(link) {
       t.due_date, t.status, t.workflow_stage, t.approval_status,
       t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
       t.feed_post_id, t.created_at, t.updated_at,
-      s.direction_status, s.direction_feedback, s.direction_at,
-      s.client_status, s.client_feedback, s.client_at
+      t.direction_status AS task_direction_status, t.direction_feedback AS task_direction_feedback, t.direction_at AS task_direction_at,
+      t.client_status AS task_client_status, t.client_feedback AS task_client_feedback, t.client_at AS task_client_at,
+      s.direction_status AS state_direction_status, s.direction_feedback AS state_direction_feedback, s.direction_at AS state_direction_at,
+      s.client_status AS state_client_status, s.client_feedback AS state_client_feedback, s.client_at AS state_client_at
     FROM tasks t
     LEFT JOIN designer_approval_states s ON s.task_id = t.id AND s.agency_id = t.agency_id
     WHERE t.agency_id = ?
@@ -382,11 +442,13 @@ function getPublicApprovalItems(link) {
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
       AND t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved')
       AND (
-        s.direction_status = 'approved'
+        t.direction_status = 'approved'
+        OR s.direction_status = 'approved'
         OR t.approval_status IN ('pending_approval', 'send', 'approved')
         OR t.workflow_stage IN ('external_approval', 'approved')
       )
-      AND COALESCE(s.client_status, CASE WHEN t.approval_status = 'approved' OR t.workflow_stage = 'approved' THEN 'approved' ELSE 'pending' END)
+      AND COALESCE(NULLIF(NULLIF(t.client_status, ''), 'waiting'), s.client_status,
+          CASE WHEN t.approval_status = 'approved' OR t.workflow_stage = 'approved' THEN 'approved' ELSE 'pending' END)
           IN ('pending', 'approved', 'changes_requested')
     ORDER BY COALESCE(t.updated_at, t.created_at) DESC
   `).all(Number(link.agency_id), Number(link.client_id));
@@ -402,10 +464,14 @@ function getPublicApprovalItems(link) {
       caption: task.caption,
       due_date: task.due_date,
       workflow_stage: 'approval',
-      direction_status: task.direction_status || 'approved',
-      direction_feedback: task.direction_feedback || null,
-      client_status: task.client_status || ((task.approval_status === 'approved' || task.workflow_stage === 'approved') ? 'approved' : 'pending'),
-      client_feedback: task.client_feedback || null,
+      direction_status: (task.task_direction_status && task.task_direction_status !== 'pending')
+        ? task.task_direction_status
+        : (task.state_direction_status || task.task_direction_status || 'approved'),
+      direction_feedback: task.task_direction_feedback || task.state_direction_feedback || null,
+      client_status: (task.task_client_status && task.task_client_status !== 'waiting')
+        ? task.task_client_status
+        : (task.state_client_status || task.task_client_status || ((task.approval_status === 'approved' || task.workflow_stage === 'approved') ? 'approved' : 'pending')),
+      client_feedback: task.task_client_feedback || task.state_client_feedback || null,
       images,
       image_count: images.length,
       updated_at: task.updated_at,
@@ -455,6 +521,12 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
         SET client_status = 'approved', client_feedback = ?, client_at = ?, updated_at = datetime('now')
         WHERE task_id = ? AND agency_id = ?
       `).run(clientFeedback, now, Number(task.id), Number(task.agency_id));
+      db.prepare(`
+        UPDATE tasks
+        SET direction_status = 'approved', client_status = 'approved', client_feedback = ?, client_at = ?,
+            updated_at = datetime('now')
+        WHERE id = ? AND agency_id = ?
+      `).run(clientFeedback, now, Number(task.id), Number(task.agency_id));
       updateTaskWorkflow(task.id, task.agency_id, 'approved');
       db.prepare(`UPDATE tasks SET approval_status = 'approved', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
         .run(Number(task.id), Number(task.agency_id));
@@ -465,6 +537,12 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
         UPDATE designer_approval_states
         SET client_status = 'changes_requested', client_feedback = ?, client_at = ?, updated_at = datetime('now')
         WHERE task_id = ? AND agency_id = ?
+      `).run(clientFeedback, now, Number(task.id), Number(task.agency_id));
+      db.prepare(`
+        UPDATE tasks
+        SET direction_status = 'approved', client_status = 'changes_requested', client_feedback = ?, client_at = ?,
+            updated_at = datetime('now')
+        WHERE id = ? AND agency_id = ?
       `).run(clientFeedback, now, Number(task.id), Number(task.agency_id));
       updateTaskWorkflow(task.id, task.agency_id, 'correction');
       db.prepare(`UPDATE tasks SET approval_status = 'changes_requested', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)

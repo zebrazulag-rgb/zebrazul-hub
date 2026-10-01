@@ -62,7 +62,11 @@ function taskNeedsCorrection(task) {
 }
 
 function taskCorrectionFeedback(task) {
-  return String(task?.direction_feedback || task?.client_feedback || '').trim();
+  const clientStatus = String(task?.client_status || '').toLowerCase();
+  const directionStatus = String(task?.direction_status || '').toLowerCase();
+  if (clientStatus === 'changes_requested' && task?.client_feedback) return String(task.client_feedback).trim();
+  if (directionStatus === 'changes_requested' && task?.direction_feedback) return String(task.direction_feedback).trim();
+  return String(task?.client_feedback || task?.direction_feedback || '').trim();
 }
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };

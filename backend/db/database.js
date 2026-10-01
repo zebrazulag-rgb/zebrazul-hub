@@ -167,6 +167,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   goal TEXT,
   approval_status TEXT DEFAULT 'completed',
   designer_completed INTEGER DEFAULT 0,
+  direction_status TEXT DEFAULT 'pending',
+  direction_feedback TEXT,
+  direction_by INTEGER,
+  direction_at TEXT,
+  client_status TEXT DEFAULT 'waiting',
+  client_feedback TEXT,
+  client_at TEXT,
   is_featured INTEGER DEFAULT 0,
   attachment_data TEXT,
   attachment_mime TEXT,
@@ -670,6 +677,35 @@ CREATE TABLE IF NOT EXISTS moodboard_items (
   FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+
+CREATE TABLE IF NOT EXISTS competitor_collectors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL UNIQUE,
+  oauth_connection_id INTEGER,
+  instagram_account_id TEXT,
+  instagram_username TEXT,
+  instagram_name TEXT,
+  profile_picture_url TEXT,
+  configured_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (oauth_connection_id) REFERENCES meta_oauth_connections(id) ON DELETE SET NULL,
+  FOREIGN KEY (configured_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS competitor_provider_settings (
+  agency_id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'brightdata',
+  api_key_encrypted TEXT,
+  profile_dataset_id TEXT NOT NULL DEFAULT 'gd_l1vikfch901nx3by4',
+  posts_dataset_id TEXT DEFAULT 'gd_lk5ns7kz21pck8jpis',
+  configured_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (configured_by) REFERENCES users(id) ON DELETE SET NULL
+);
 
 CREATE TABLE IF NOT EXISTS competitors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1320,6 +1356,13 @@ tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
 tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
+tryAddColumn('tasks', 'direction_status', "TEXT DEFAULT 'pending'");
+tryAddColumn('tasks', 'direction_feedback', 'TEXT');
+tryAddColumn('tasks', 'direction_by', 'INTEGER');
+tryAddColumn('tasks', 'direction_at', 'TEXT');
+tryAddColumn('tasks', 'client_status', "TEXT DEFAULT 'waiting'");
+tryAddColumn('tasks', 'client_feedback', 'TEXT');
+tryAddColumn('tasks', 'client_at', 'TEXT');
 tryAddColumn('tasks', 'workflow_stage', "TEXT DEFAULT 'todo'");
 tryAddColumn('tasks', 'content_tag', 'TEXT');
 tryAddColumn('tasks', 'front_name', 'TEXT');
@@ -1357,9 +1400,8 @@ db.exec(`
       WHERE t.feed_post_id = posts.id AND t.agency_id = posts.agency_id
     )
 `);
-
-// A partir de setembro/2026, Designer usa uma única etapa de aprovação.
-// Migra registros antigos sem perder cards nem publicações já vinculadas à grade.
+// O Designer usa uma única etapa visual de aprovação. Mantemos compatibilidade
+// com registros antigos, mas normalizamos os dados persistidos para `approval`.
 db.exec(`
   UPDATE tasks
   SET workflow_stage = 'approval'
@@ -1371,6 +1413,7 @@ db.exec(`
   SET workflow_stage = 'approval'
   WHERE workflow_stage IN ('internal_approval', 'external_approval')
 `);
+
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
 
 // Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
@@ -1460,6 +1503,14 @@ function migrateTaskStatuses() {
           priority TEXT DEFAULT 'medium',
           goal TEXT,
           approval_status TEXT DEFAULT 'completed',
+          designer_completed INTEGER DEFAULT 0,
+          direction_status TEXT DEFAULT 'pending',
+          direction_feedback TEXT,
+          direction_by INTEGER,
+          direction_at TEXT,
+          client_status TEXT DEFAULT 'waiting',
+          client_feedback TEXT,
+          client_at TEXT,
           is_featured INTEGER DEFAULT 0,
           attachment_data TEXT,
           attachment_mime TEXT,
@@ -1481,7 +1532,8 @@ function migrateTaskStatuses() {
           id, agency_id, client_id, created_by, assignee_id, parent_task_id,
           task_type, title, description, content_type, caption, video_link,
           media_gallery, due_date, status, workflow_stage, content_tag, project_name, front_name, priority, goal,
-          approval_status, is_featured, attachment_data,
+          approval_status, designer_completed, direction_status, direction_feedback, direction_by, direction_at,
+          client_status, client_feedback, client_at, is_featured, attachment_data,
           attachment_mime, attachment_filename, feed_post_id, created_at, updated_at
         )
         SELECT
@@ -1491,7 +1543,9 @@ function migrateTaskStatuses() {
           video_link, media_gallery, due_date, status,
           COALESCE(workflow_stage, CASE WHEN status = 'posted' THEN 'posted' WHEN status = 'done' THEN 'approved' WHEN status = 'in_progress' THEN 'in_progress' ELSE 'todo' END),
           content_tag, project_name, front_name, COALESCE(priority, 'medium'), goal,
-          'completed', COALESCE(is_featured, 0),
+          COALESCE(approval_status, 'completed'), COALESCE(designer_completed, 0),
+          COALESCE(direction_status, 'pending'), direction_feedback, direction_by, direction_at,
+          COALESCE(client_status, 'waiting'), client_feedback, client_at, COALESCE(is_featured, 0),
           attachment_data, attachment_mime, attachment_filename, feed_post_id,
           created_at, updated_at
         FROM tasks;
@@ -1804,6 +1858,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_material_boards_agency_client ON material_boards(agency_id, client_id, is_active, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_moodboard_collections_client ON moodboard_collections(agency_id, client_id, is_active, position);
   CREATE INDEX IF NOT EXISTS idx_moodboard_items_collection ON moodboard_items(agency_id, client_id, collection_id, position);
+  CREATE INDEX IF NOT EXISTS idx_competitor_provider_settings_agency ON competitor_provider_settings(agency_id, provider);
   CREATE INDEX IF NOT EXISTS idx_competitors_client ON competitors(agency_id, client_id, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_competitor_snapshots_competitor ON competitor_snapshots(agency_id, client_id, competitor_id, captured_at DESC);
   CREATE INDEX IF NOT EXISTS idx_materials_agency_client ON materials(agency_id, client_id, is_active, created_at DESC);
