@@ -353,13 +353,26 @@ export default function DesignerApproval() {
           || /cannot (post|find)|tarefa nao encontrada|tarefa não encontrada/i.test(message);
         if (!routeUnavailable) throw primaryError;
 
-        // Compatibilidade com backends anteriores: persiste a decisão usando
-        // os campos de fluxo que já existiam antes da aprovação em dois níveis.
-        await api.patch(`/tasks/${item.id}`, {
+        // Compatibilidade com backends anteriores: a rota histórica de edição
+        // de tarefas é PUT /tasks/:id (não PATCH). Primeiro tenta persistir todos
+        // os campos disponíveis; se um backend ainda mais antigo não conhecer os
+        // campos auxiliares de aprovação, reduz a atualização ao workflow_stage.
+        const legacyPayload = {
           workflow_stage: decision === 'approved' ? 'approval' : 'correction',
           approval_status: decision === 'approved' ? 'pending_approval' : 'changes_requested',
           designer_completed: decision === 'approved' ? 1 : 0,
-        });
+        };
+        try {
+          await api.put(`/tasks/${item.id}`, legacyPayload);
+        } catch (legacyError) {
+          const legacyMessage = String(legacyError.response?.data?.error || '');
+          const legacyStatus = Number(legacyError.response?.status || 0);
+          const canRetryMinimal = legacyStatus === 400 && /aprova|designer|campo|inválid|invalid|column|coluna/i.test(legacyMessage);
+          if (!canRetryMinimal) throw legacyError;
+          await api.put(`/tasks/${item.id}`, {
+            workflow_stage: decision === 'approved' ? 'approval' : 'correction',
+          });
+        }
         state = optimisticState;
       }
 
@@ -372,10 +385,13 @@ export default function DesignerApproval() {
       // sobrescrevesse o estado recém-aprovado com dados ainda defasados.
     } catch (requestError) {
       replaceItemState(item.id, previousState);
-      const message = requestError.response?.data?.error
-        || (decision === 'changes_requested'
-          ? 'Não foi possível registrar a correção.'
-          : 'Não foi possível registrar a aprovação da direção.');
+      const backendError = requestError.response?.data?.error || requestError.response?.data?.message;
+      const message = backendError
+        || (requestError.response?.status
+          ? `${decision === 'changes_requested' ? 'Não foi possível registrar a correção' : 'Não foi possível registrar a aprovação da direção'} (erro ${requestError.response.status}).`
+          : (decision === 'changes_requested'
+            ? 'Não foi possível registrar a correção. Verifique a conexão com o servidor.'
+            : 'Não foi possível registrar a aprovação da direção. Verifique a conexão com o servidor.'));
       setActionError(message);
       setError(message);
     } finally {
