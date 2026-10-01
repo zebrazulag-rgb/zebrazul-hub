@@ -264,8 +264,18 @@ export default function DesignerApproval() {
 
   const clientLabel = selectedClient?.name || 'Todos os clientes';
   const visibleItems = useMemo(() => {
-    if (mode === 'client') return items.filter((item) => item.direction_status === 'approved');
-    return items;
+    const filtered = mode === 'client'
+      ? items.filter((item) => item.direction_status === 'approved')
+      : items;
+
+    // Feed em ordem de Instagram: conteúdos mais recentes primeiro (em cima)
+    // e os mais antigos descendo a grade.
+    return [...filtered].sort((a, b) => {
+      const aDate = new Date(a?.due_date || a?.scheduled_at || a?.created_at || 0).getTime() || 0;
+      const bDate = new Date(b?.due_date || b?.scheduled_at || b?.created_at || 0).getTime() || 0;
+      if (aDate !== bDate) return bDate - aDate;
+      return Number(b?.id || 0) - Number(a?.id || 0);
+    });
   }, [items, mode]);
   const profileClient = clientProfile || selectedClient;
   const approvalPosts = useMemo(() => visibleItems.map((item) => ({
@@ -377,7 +387,17 @@ export default function DesignerApproval() {
       }
 
       replaceItemState(item.id, { ...optimisticState, ...(state || {}) });
-      if (decision === 'changes_requested') {
+      if (decision === 'approved') {
+        // Depois que a direção aprova, seguimos automaticamente para a etapa
+        // do cliente sem fechar a peça. Assim Arthur já enxerga o mesmo conteúdo
+        // no modo Cliente e pode compartilhar o link imediatamente.
+        setMode('client');
+        setCorrectionOpen(false);
+        setCorrectionFeedback('');
+        if (!approvalLink?.token && selectedClient?.id) {
+          void createApprovalLink();
+        }
+      } else if (decision === 'changes_requested') {
         setCorrectionOpen(false);
         setCorrectionFeedback('');
       }
