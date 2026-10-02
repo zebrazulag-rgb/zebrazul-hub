@@ -267,9 +267,20 @@ function taskSummaryQuery(whereClause) {
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, t.attachment_filename, t.feed_post_id,
+      t.direction_status, t.direction_feedback, t.direction_by, t.direction_at,
+      t.client_status, t.client_feedback, t.client_at,
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
+      (
+        SELECT COALESCE(NULLIF(TRIM(st.client_feedback), ''), NULLIF(TRIM(st.direction_feedback), ''))
+        FROM tasks st
+        WHERE st.parent_task_id = t.id
+          AND st.agency_id = t.agency_id
+          AND (st.workflow_stage = 'correction' OR st.approval_status = 'changes_requested')
+        ORDER BY COALESCE(st.updated_at, st.created_at) DESC, st.id DESC
+        LIMIT 1
+      ) AS correction_feedback,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'pending') AS subtask_pending,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'in_progress') AS subtask_in_progress,
@@ -364,7 +375,7 @@ router.get('/approval-grid', (req, res) => {
   const { client_id } = req.query;
   let query = `
     SELECT
-      t.id, t.agency_id, t.client_id, t.parent_task_id, t.task_type,
+      t.id, t.agency_id, COALESCE(t.client_id, parent.client_id) AS client_id, t.parent_task_id, t.task_type,
       t.title, t.content_type, t.content_tag, t.front_name, t.caption,
       t.due_date, t.status, t.workflow_stage, t.approval_status,
       t.direction_status, t.direction_feedback, t.direction_by, t.direction_at,
@@ -373,7 +384,8 @@ router.get('/approval-grid', (req, res) => {
       t.created_at, t.updated_at,
       c.name AS client_name, c.logo_color AS client_color
     FROM tasks t
-    LEFT JOIN clients c ON c.id = t.client_id AND c.agency_id = t.agency_id
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    LEFT JOIN clients c ON c.id = COALESCE(t.client_id, parent.client_id) AND c.agency_id = t.agency_id
     WHERE t.agency_id = ?
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
@@ -396,13 +408,13 @@ router.get('/approval-grid', (req, res) => {
     )`;
     params.push(Number(req.user.id), Number(req.user.id));
   } else if (req.user.role === 'client') {
-    query += ' AND t.client_id = ?';
+    query += ' AND COALESCE(t.client_id, parent.client_id) = ?';
     params.push(Number(req.user.client_id));
   }
 
   if (client_id) {
     if (!ensureClientAccess(req, res, client_id)) return;
-    query += ' AND t.client_id = ?';
+    query += ' AND COALESCE(t.client_id, parent.client_id) = ?';
     params.push(Number(client_id));
   }
 
@@ -534,9 +546,10 @@ router.post('/:id/direction-approval', (req, res) => {
       decision,
       feedback: req.body?.feedback || null,
     });
-    const link = decision === 'approved' && task.client_id
-      ? getOrCreateClientApprovalLink({ agencyId: req.user.agency_id, clientId: task.client_id, createdBy: req.user.id })
-      : getClientApprovalLink(req.user.agency_id, task.client_id);
+    const effectiveClientId = Number(state?.client_id || task.client_id || 0) || null;
+    const link = decision === 'approved' && effectiveClientId
+      ? getOrCreateClientApprovalLink({ agencyId: req.user.agency_id, clientId: effectiveClientId, createdBy: req.user.id })
+      : (effectiveClientId ? getClientApprovalLink(req.user.agency_id, effectiveClientId) : null);
     return res.json({ ok: true, state, link: link || null });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Não foi possível registrar a aprovação da direção.' });

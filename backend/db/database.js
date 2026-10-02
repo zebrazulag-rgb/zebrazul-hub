@@ -1806,6 +1806,55 @@ const initializeAgencyScope = db.transaction(() => {
 });
 initializeAgencyScope();
 
+// Subtarefas antigas podiam ter sido criadas sem client_id. Isso quebrava o
+// fluxo de aprovação porque a direção aprovava a peça, mas a aba do cliente e
+// o link público filtravam pelo cliente diretamente na subtarefa. Herdamos o
+// cliente da tarefa mãe e mantemos o estado auxiliar de aprovação sincronizado.
+const inheritTaskClientScope = db.transaction(() => {
+  db.exec(`
+    UPDATE tasks
+    SET client_id = (
+      SELECT parent.client_id
+      FROM tasks parent
+      WHERE parent.id = tasks.parent_task_id
+        AND parent.agency_id = tasks.agency_id
+      LIMIT 1
+    )
+    WHERE client_id IS NULL
+      AND parent_task_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM tasks parent
+        WHERE parent.id = tasks.parent_task_id
+          AND parent.agency_id = tasks.agency_id
+          AND parent.client_id IS NOT NULL
+      )
+  `);
+
+  const hasDesignerApprovalStates = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'designer_approval_states' LIMIT 1").get();
+  if (hasDesignerApprovalStates) {
+    db.exec(`
+      UPDATE designer_approval_states
+      SET client_id = (
+        SELECT t.client_id
+        FROM tasks t
+        WHERE t.id = designer_approval_states.task_id
+          AND t.agency_id = designer_approval_states.agency_id
+        LIMIT 1
+      )
+      WHERE client_id IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM tasks t
+          WHERE t.id = designer_approval_states.task_id
+            AND t.agency_id = designer_approval_states.agency_id
+            AND t.client_id IS NOT NULL
+        )
+    `);
+  }
+});
+inheritTaskClientScope();
+
 // O módulo Comercial agora pertence a cada cliente. Registros criados na versão
 // anterior não tinham client_id. Quando uma agência possui apenas um cliente,
 // a associação é inequívoca e pode ser feita automaticamente sem perder dados.
@@ -1889,7 +1938,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '32', datetime('now'))
+   VALUES ('schema_version', '33', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

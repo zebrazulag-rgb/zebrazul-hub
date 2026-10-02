@@ -105,6 +105,32 @@ function defaultApprovalState(task) {
   };
 }
 
+function effectiveClientIdForTask(task) {
+  const directClientId = Number(task?.client_id || 0) || null;
+  if (directClientId) return directClientId;
+  const parentTaskId = Number(task?.parent_task_id || 0) || null;
+  if (!parentTaskId || !task?.agency_id) return null;
+  const parent = db.prepare(`
+    SELECT client_id
+    FROM tasks
+    WHERE id = ? AND agency_id = ?
+    LIMIT 1
+  `).get(parentTaskId, Number(task.agency_id));
+  return Number(parent?.client_id || 0) || null;
+}
+
+function persistInheritedClient(task) {
+  const effectiveClientId = effectiveClientIdForTask(task);
+  if (!effectiveClientId || Number(task?.client_id || 0) === effectiveClientId) return effectiveClientId;
+  db.prepare(`
+    UPDATE tasks
+    SET client_id = ?, updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ? AND client_id IS NULL
+  `).run(effectiveClientId, Number(task.id), Number(task.agency_id));
+  task.client_id = effectiveClientId;
+  return effectiveClientId;
+}
+
 function getApprovalState(taskId, agencyId) {
   ensureDesignerApprovalStorage();
   const row = db.prepare(`
@@ -173,6 +199,7 @@ function getApprovalStates(taskIds, agencyId) {
 function resetApprovalForTask(task) {
   if (!task?.id || !task?.agency_id) return;
   ensureDesignerApprovalStorage();
+  persistInheritedClient(task);
   db.prepare(`
     INSERT INTO designer_approval_states (
       task_id, agency_id, client_id,
@@ -203,11 +230,38 @@ function resetApprovalForTask(task) {
 }
 
 function ensureApprovalState(task) {
-  let state = getApprovalState(task.id, task.agency_id);
-  if (state) return state;
-  resetApprovalForTask(task);
-  state = getApprovalState(task.id, task.agency_id);
-  return state || defaultApprovalState(task);
+  persistInheritedClient(task);
+  const current = getApprovalState(task.id, task.agency_id) || defaultApprovalState(task);
+  const existingRow = db.prepare(`
+    SELECT task_id
+    FROM designer_approval_states
+    WHERE task_id = ? AND agency_id = ?
+    LIMIT 1
+  `).get(Number(task.id), Number(task.agency_id));
+
+  if (!existingRow) {
+    db.prepare(`
+      INSERT INTO designer_approval_states (
+        task_id, agency_id, client_id,
+        direction_status, direction_feedback, direction_by, direction_at,
+        client_status, client_feedback, client_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `).run(
+      Number(task.id),
+      Number(task.agency_id),
+      current.client_id ? Number(current.client_id) : null,
+      current.direction_status || 'pending',
+      current.direction_feedback || null,
+      current.direction_by ? Number(current.direction_by) : null,
+      current.direction_at || null,
+      current.client_status || 'waiting',
+      current.client_feedback || null,
+      current.client_at || null
+    );
+  }
+
+  return getApprovalState(task.id, task.agency_id) || current;
 }
 
 function legacyStatusForWorkflow(stage) {
@@ -315,6 +369,7 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
   if (!task?.id || !task?.agency_id) throw new Error('Tarefa inválida');
   if (!['approved', 'changes_requested'].includes(decision)) throw new Error('Decisão inválida');
 
+  persistInheritedClient(task);
   ensureApprovalState(task);
   const now = new Date().toISOString();
   const directionFeedback = String(feedback || '').trim() || null;
@@ -425,7 +480,7 @@ function getPublicApprovalItems(link) {
   ensureDesignerApprovalStorage();
   const rows = db.prepare(`
     SELECT
-      t.id, t.agency_id, t.client_id, t.parent_task_id, t.created_by, t.task_type,
+      t.id, t.agency_id, COALESCE(t.client_id, parent.client_id) AS client_id, t.parent_task_id, t.created_by, t.task_type,
       t.title, t.content_type, t.content_tag, t.front_name, t.caption,
       t.due_date, t.status, t.workflow_stage, t.approval_status,
       t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
@@ -435,9 +490,10 @@ function getPublicApprovalItems(link) {
       s.direction_status AS state_direction_status, s.direction_feedback AS state_direction_feedback, s.direction_at AS state_direction_at,
       s.client_status AS state_client_status, s.client_feedback AS state_client_feedback, s.client_at AS state_client_at
     FROM tasks t
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
     LEFT JOIN designer_approval_states s ON s.task_id = t.id AND s.agency_id = t.agency_id
     WHERE t.agency_id = ?
-      AND t.client_id = ?
+      AND COALESCE(t.client_id, parent.client_id) = ?
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
       AND t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved')
@@ -487,12 +543,15 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
   if (!link) return { error: 'LINK_NOT_FOUND' };
 
   const task = db.prepare(`
-    SELECT * FROM tasks
-    WHERE id = ? AND agency_id = ? AND client_id = ?
+    SELECT t.*
+    FROM tasks t
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    WHERE t.id = ? AND t.agency_id = ? AND COALESCE(t.client_id, parent.client_id) = ?
     LIMIT 1
   `).get(Number(taskId), Number(link.agency_id), Number(link.client_id));
   if (!task) return { error: 'TASK_NOT_FOUND' };
 
+  persistInheritedClient(task);
   let state = getApprovalState(task.id, task.agency_id);
   const legacyReady = ['pending_approval', 'send', 'approved'].includes(String(task.approval_status || '').toLowerCase())
     || ['external_approval', 'approved'].includes(String(task.workflow_stage || '').toLowerCase());
