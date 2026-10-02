@@ -38,6 +38,12 @@ function workflowStageFromTask(task) {
   return 'todo';
 }
 
+function serverWorkflowStage(stage) {
+  // Compatibilidade com versões do backend que ainda distinguem
+  // a aprovação interna da etapa visual única "Em aprovação".
+  return stage === 'approval' ? 'internal_approval' : stage;
+}
+
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -179,7 +185,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
         due_date: form.due_date || null,
         assignee_ids: form.assignee_ids,
         client_id: form.client_id || null,
-        workflow_stage: form.workflow_stage
+        workflow_stage: serverWorkflowStage(form.workflow_stage)
       };
 
       if (canFeatureTask) payload.is_featured = form.is_featured ? 1 : 0;
