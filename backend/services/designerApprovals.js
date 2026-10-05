@@ -342,6 +342,9 @@ function promoteTaskToFeed(task) {
   const mediaMime = images[0]?.mime || task.attachment_mime || 'image/jpeg';
   const contentType = normalizeFeedContentType(task.content_type);
   const creatorId = Number(task.created_by || 0) || null;
+  const clientStatus = String(task.client_status || '').toLowerCase();
+  const postStatus = clientStatus === 'approved' ? 'approved' : 'pending_approval';
+  const postWorkflow = clientStatus === 'approved' ? 'approved' : 'approval';
 
   if (task.feed_post_id) {
     const existing = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?').get(Number(task.feed_post_id), Number(task.agency_id));
@@ -349,8 +352,8 @@ function promoteTaskToFeed(task) {
       db.prepare(`
         UPDATE posts
         SET title = ?, caption = ?, content_type = ?, media_data = ?, media_mime = ?, media_gallery = ?,
-            scheduled_at = COALESCE(?, scheduled_at), status = 'draft', workflow_stage = 'approved',
-            feed_visible = 1, updated_at = datetime('now')
+            scheduled_at = COALESCE(?, scheduled_at), status = ?, workflow_stage = ?,
+            feed_visible = 1, client_feedback = ?, updated_at = datetime('now')
         WHERE id = ? AND agency_id = ?
       `).run(
         task.title,
@@ -360,6 +363,9 @@ function promoteTaskToFeed(task) {
         mediaMime,
         galleryJson,
         task.due_date || null,
+        postStatus,
+        postWorkflow,
+        task.client_feedback || null,
         Number(existing.id),
         Number(task.agency_id)
       );
@@ -370,8 +376,8 @@ function promoteTaskToFeed(task) {
   const info = db.prepare(`
     INSERT INTO posts (
       agency_id, client_id, created_by, title, caption, content_type, platforms,
-      media_data, media_mime, media_gallery, scheduled_at, status, workflow_stage, feed_visible
-    ) VALUES (?, ?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, 'draft', 'approved', 1)
+      media_data, media_mime, media_gallery, scheduled_at, status, workflow_stage, feed_visible, client_feedback
+    ) VALUES (?, ?, ?, ?, ?, ?, '["instagram"]', ?, ?, ?, ?, ?, ?, 1, ?)
   `).run(
     Number(task.agency_id),
     Number(task.client_id),
@@ -382,7 +388,10 @@ function promoteTaskToFeed(task) {
     mediaData,
     mediaMime,
     galleryJson,
-    task.due_date || null
+    task.due_date || null,
+    postStatus,
+    postWorkflow,
+    task.client_feedback || null
   );
 
   db.prepare(`
@@ -435,6 +444,17 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
       updateTaskWorkflow(task.id, task.agency_id, 'approval');
       db.prepare(`UPDATE tasks SET approval_status = 'pending_approval', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
         .run(Number(task.id), Number(task.agency_id));
+
+      // A aprovação da direção já libera a peça para o cliente. Espelhamos a
+      // tarefa na grade pública neste momento, em vez de esperar a decisão do
+      // cliente. O link compartilhado passa a usar apenas o fluxo /public/feed.
+      try {
+        const refreshed = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?')
+          .get(Number(task.id), Number(task.agency_id));
+        promoteTaskToFeed(refreshed);
+      } catch (feedError) {
+        console.warn('[DESIGNER_APPROVAL] Não foi possível liberar a peça na grade do cliente:', feedError.message);
+      }
     }
   } else {
     db.prepare(`
@@ -561,6 +581,51 @@ function getLegacyClientApprovalLink(agencyId, clientId) {
   }
 }
 
+function syncClientApprovalTasksToFeed(agencyId, clientId) {
+  const normalizedAgencyId = Number(agencyId);
+  const normalizedClientId = Number(clientId);
+  if (!normalizedAgencyId || !normalizedClientId) return;
+
+  const rows = db.prepare(`
+    SELECT t.*, COALESCE(t.client_id, parent.client_id) AS resolved_client_id
+    FROM tasks t
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    WHERE t.agency_id = ?
+      AND COALESCE(t.client_id, parent.client_id) = ?
+    ORDER BY t.id ASC
+  `).all(normalizedAgencyId, normalizedClientId);
+
+  for (const task of rows) {
+    const directionStatus = String(task.direction_status || '').toLowerCase();
+    const clientStatus = String(task.client_status || '').toLowerCase();
+    const approvalStatus = String(task.approval_status || '').toLowerCase();
+    const workflowStage = String(task.workflow_stage || '').toLowerCase();
+    const isDesignerTask = String(task.task_type || '').toLowerCase() !== 'video'
+      && String(task.front_name || '').trim().toLowerCase() !== 'site/lp';
+    const correction = clientStatus === 'changes_requested'
+      || approvalStatus === 'changes_requested'
+      || workflowStage === 'correction';
+    const releasedByDirection = directionStatus === 'approved'
+      || ['pending_approval', 'send', 'approved'].includes(approvalStatus)
+      || ['approval', 'internal_approval', 'external_approval', 'approved'].includes(workflowStage);
+
+    if (!isDesignerTask || correction || !releasedByDirection) continue;
+
+    try {
+      if (!task.client_id && task.resolved_client_id) {
+        db.prepare(`
+          UPDATE tasks SET client_id = ?, updated_at = datetime('now')
+          WHERE id = ? AND agency_id = ? AND client_id IS NULL
+        `).run(Number(task.resolved_client_id), Number(task.id), normalizedAgencyId);
+        task.client_id = Number(task.resolved_client_id);
+      }
+      promoteTaskToFeed(task);
+    } catch (error) {
+      console.warn(`[DESIGNER_APPROVAL] Peça #${task.id} não pôde ser sincronizada para a grade:`, error.message);
+    }
+  }
+}
+
 function getClientApprovalLink(agencyId, clientId) {
   const normalizedAgencyId = Number(agencyId);
   const normalizedClientId = Number(clientId);
@@ -596,6 +661,10 @@ function getOrCreateClientApprovalLink({ agencyId, clientId, createdBy }) {
   const normalizedAgencyId = Number(agencyId);
   const normalizedClientId = Number(clientId);
   if (!normalizedAgencyId || !normalizedClientId) return null;
+
+  // Antes de entregar o link, garante que todas as peças já liberadas pela
+  // direção estejam espelhadas na grade pública, inclusive aprovações antigas.
+  syncClientApprovalTasksToFeed(normalizedAgencyId, normalizedClientId);
 
   const existing = getClientApprovalLink(normalizedAgencyId, normalizedClientId);
   if (existing) return existing;

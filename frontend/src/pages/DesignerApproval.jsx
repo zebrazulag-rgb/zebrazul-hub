@@ -377,7 +377,7 @@ export default function DesignerApproval() {
   })), [visibleItems, mode]);
 
   const clientApprovalUrl = approvalLink?.token
-    ? `${window.location.origin}/aprovacao-cliente/${approvalLink.token}`
+    ? `${window.location.origin}/grade/${approvalLink.token}`
     : '';
 
   function openItem(item) {
@@ -681,7 +681,7 @@ export default function DesignerApproval() {
     setLinkNotice('');
     try {
       // Usa a infraestrutura de link público que já é estável no cadastro do
-      // cliente. A página /aprovacao-cliente aceita esse mesmo token no backend.
+      // cliente. A rota pública /grade/:token já usa esse mesmo feed_share_token.
       const { data } = await api.post(`/clients/${selectedClient.id}/feed-share`);
       const token = String(data?.token || '').trim();
       if (!token) throw new Error('O servidor não devolveu o token do cliente.');

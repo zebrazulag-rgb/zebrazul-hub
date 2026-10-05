@@ -172,8 +172,10 @@ router.get('/feed/:token', (req, res) => {
     SELECT id, title, caption, content_type, media_data, media_mime, media_gallery, scheduled_at, status, client_feedback,
            COALESCE(is_pinned, 0) AS is_pinned
     FROM posts
-    WHERE client_id = ? AND COALESCE(feed_visible, 1) = 1 AND scheduled_at IS NOT NULL AND status IN ('pending_approval','approved','rejected','scheduled','draft')
-    ORDER BY COALESCE(is_pinned, 0) DESC, scheduled_at DESC, id DESC
+    WHERE client_id = ? AND COALESCE(feed_visible, 1) = 1
+      AND (scheduled_at IS NOT NULL OR status = 'pending_approval')
+      AND status IN ('pending_approval','approved','rejected','scheduled','draft')
+    ORDER BY COALESCE(is_pinned, 0) DESC, COALESCE(scheduled_at, updated_at, created_at) DESC, id DESC
   `).all(client.id);
 
   res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: posts.map(normalizePost) });
@@ -195,6 +197,9 @@ router.put('/feed/:token/posts/:postId', (req, res) => {
   if (!['approved', 'rejected'].includes(status)) {
     return res.status(400).json({ error: 'Status inválido' });
   }
+  if (status === 'rejected' && !clientFeedback) {
+    return res.status(400).json({ error: 'Escreva o que precisa ser corrigido antes de solicitar ajustes.' });
+  }
 
   const post = db.prepare(`
     SELECT id, title, status
@@ -203,34 +208,104 @@ router.put('/feed/:token/posts/:postId', (req, res) => {
       AND client_id = ?
       AND agency_id = ?
       AND COALESCE(feed_visible, 1) = 1
-      AND scheduled_at IS NOT NULL
+      AND (scheduled_at IS NOT NULL OR status = 'pending_approval')
     LIMIT 1
   `).get(Number(req.params.postId), Number(client.id), Number(client.agency_id));
   if (!post) return res.status(404).json({ error: 'Conteúdo não encontrado nesta grade' });
 
-  db.prepare(`
-    UPDATE posts
-    SET status = ?, client_feedback = ?, updated_at = datetime('now')
-    WHERE id = ? AND client_id = ? AND agency_id = ?
-  `).run(status, clientFeedback, Number(post.id), Number(client.id), Number(client.agency_id));
+  const now = new Date().toISOString();
+  const task = db.prepare(`
+    SELECT id
+    FROM tasks
+    WHERE feed_post_id = ? AND agency_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(Number(post.id), Number(client.agency_id));
+
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      UPDATE posts
+      SET status = ?, client_feedback = ?,
+          workflow_stage = ?, feed_visible = ?, updated_at = datetime('now')
+      WHERE id = ? AND client_id = ? AND agency_id = ?
+    `).run(
+      status,
+      clientFeedback,
+      status === 'approved' ? 'approved' : 'correction',
+      status === 'approved' ? 1 : 0,
+      Number(post.id), Number(client.id), Number(client.agency_id)
+    );
+
+    if (task?.id) {
+      const approved = status === 'approved';
+      db.prepare(`
+        UPDATE tasks
+        SET direction_status = 'approved',
+            client_status = ?, client_feedback = ?, client_at = ?,
+            approval_status = ?, workflow_stage = ?, designer_completed = ?, status = ?,
+            updated_at = datetime('now')
+        WHERE id = ? AND agency_id = ?
+      `).run(
+        approved ? 'approved' : 'changes_requested',
+        clientFeedback,
+        now,
+        approved ? 'approved' : 'changes_requested',
+        approved ? 'approved' : 'correction',
+        approved ? 1 : 0,
+        approved ? 'done' : 'in_progress',
+        Number(task.id), Number(client.agency_id)
+      );
+
+      try {
+        const stateExists = db.prepare(`
+          SELECT task_id FROM designer_approval_states
+          WHERE task_id = ? AND agency_id = ? LIMIT 1
+        `).get(Number(task.id), Number(client.agency_id));
+        if (stateExists) {
+          db.prepare(`
+            UPDATE designer_approval_states
+            SET direction_status = 'approved', client_status = ?, client_feedback = ?, client_at = ?,
+                updated_at = datetime('now')
+            WHERE task_id = ? AND agency_id = ?
+          `).run(
+            approved ? 'approved' : 'changes_requested',
+            clientFeedback,
+            now,
+            Number(task.id), Number(client.agency_id)
+          );
+        }
+      } catch (stateError) {
+        console.warn('[PUBLIC_FEED_APPROVAL] Não foi possível sincronizar estado auxiliar:', stateError.message);
+      }
+    }
+  });
+
+  transaction();
 
   recordActivity({
     agencyId: client.agency_id,
-    actorName: 'CLIENTE · GRADE',
+    actorName: `CLIENTE · ${client.name || 'GRADE'}`,
     clientId: client.id,
-    module: 'social',
+    module: task?.id ? 'designer' : 'social',
     action: status === 'approved' ? 'approved' : 'changes_requested',
-    entityType: 'post',
-    entityId: post.id,
+    entityType: task?.id ? 'task' : 'post',
+    entityId: task?.id ? Number(task.id) : Number(post.id),
     entityLabel: post.title,
     summary: status === 'approved' ? 'Aprovou um conteúdo pela grade' : 'Solicitou ajustes em um conteúdo pela grade',
-    details: { source: 'public_feed', previous_status: post.status, new_status: status, client_feedback: clientFeedback },
+    details: { source: 'public_feed', previous_status: post.status, new_status: status, client_feedback: clientFeedback, post_id: Number(post.id) },
     path: `/public/feed/${req.params.token}/posts/${post.id}`,
     method: 'PUT',
   });
 
-  res.json({ ok: true, post_id: Number(post.id), status, client_feedback: clientFeedback });
+  return res.json({
+    ok: true,
+    post_id: Number(post.id),
+    task_id: task?.id ? Number(task.id) : null,
+    status,
+    client_feedback: clientFeedback,
+  });
 });
+
 
 
 // Link operacional do Social Media: grade completa do cliente com ações

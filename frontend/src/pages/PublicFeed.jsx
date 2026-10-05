@@ -45,6 +45,10 @@ export default function PublicFeed() {
 
   async function decide(status) {
     if (!openPost?.id || !['approved', 'rejected'].includes(status)) return;
+    if (status === 'rejected' && !approvalFeedback.trim()) {
+      setApprovalNotice('Escreva o que precisa ser corrigido antes de solicitar ajustes.');
+      return;
+    }
     setApprovalLoading(true);
     setApprovalNotice('');
     try {
@@ -54,8 +58,10 @@ export default function PublicFeed() {
       });
       const updated = { ...openPost, status: data.status, client_feedback: data.client_feedback };
       setOpenPost(updated);
-      setPosts((current) => current.map((item) => Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item));
-      setApprovalNotice(status === 'approved' ? 'Conteúdo aprovado com sucesso.' : 'Ajustes solicitados com sucesso.');
+      setPosts((current) => status === 'rejected'
+        ? current.filter((item) => Number(item.id) !== Number(updated.id))
+        : current.map((item) => Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item));
+      setApprovalNotice(status === 'approved' ? 'Conteúdo aprovado com sucesso.' : 'Ajustes solicitados com sucesso. A peça voltou para correção.');
     } catch (err) {
       setApprovalNotice(err.response?.data?.error || 'Não foi possível registrar sua decisão.');
     } finally {
@@ -105,7 +111,7 @@ export default function PublicFeed() {
                 value={approvalFeedback}
                 onChange={(event) => setApprovalFeedback(event.target.value)}
                 rows={3}
-                placeholder="Comentário ou ajuste (opcional)"
+                placeholder="Descreva o ajuste. Obrigatório ao solicitar correção."
                 className="mt-3 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
               />
 
