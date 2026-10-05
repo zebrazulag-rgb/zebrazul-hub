@@ -254,9 +254,25 @@ export default function DesignerApproval() {
       setApprovalLink(null);
       return;
     }
+
+    // O link de aprovação reutiliza o token público de grade do cliente, que já
+    // existe há mais tempo no ZebraHub e não depende da tabela auxiliar de
+    // designer_approval_links. Primeiro tentamos a rota específica de aprovação
+    // por compatibilidade; se ela falhar, usamos a rota estável de feed-share.
     try {
       const { data } = await api.get(`/tasks/approval-link/client/${selectedClient.id}`);
-      setApprovalLink(data?.link || null);
+      if (data?.link?.token) {
+        setApprovalLink(data.link);
+        return;
+      }
+    } catch {
+      // segue para o fallback estável abaixo
+    }
+
+    try {
+      const { data } = await api.post(`/clients/${selectedClient.id}/feed-share`);
+      const token = String(data?.token || '').trim();
+      setApprovalLink(token ? { token, storage: 'feed_share' } : null);
     } catch {
       setApprovalLink(null);
     }
@@ -664,11 +680,17 @@ export default function DesignerApproval() {
     setLinkLoading(true);
     setLinkNotice('');
     try {
-      const { data } = await api.post(`/tasks/approval-link/client/${selectedClient.id}`);
-      setApprovalLink(data?.link || null);
+      // Usa a infraestrutura de link público que já é estável no cadastro do
+      // cliente. A página /aprovacao-cliente aceita esse mesmo token no backend.
+      const { data } = await api.post(`/clients/${selectedClient.id}/feed-share`);
+      const token = String(data?.token || '').trim();
+      if (!token) throw new Error('O servidor não devolveu o token do cliente.');
+      setApprovalLink({ token, storage: 'feed_share' });
       setLinkNotice('Link do cliente pronto.');
     } catch (requestError) {
-      setLinkNotice(requestError.response?.data?.error || 'Não foi possível gerar o link.');
+      const status = requestError.response?.status;
+      const serverMessage = requestError.response?.data?.error;
+      setLinkNotice(serverMessage || requestError.message || `Não foi possível gerar o link${status ? ` (HTTP ${status})` : ''}.`);
     } finally {
       setLinkLoading(false);
     }

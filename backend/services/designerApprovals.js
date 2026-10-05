@@ -566,17 +566,17 @@ function getClientApprovalLink(agencyId, clientId) {
   const normalizedClientId = Number(clientId);
   if (!normalizedAgencyId || !normalizedClientId) return null;
 
-  // O link atual fica no próprio cliente. Essa coluna é criada pela migração
-  // central de database.js e evita depender da tabela legada de aprovação,
-  // que pode ter schemas diferentes entre instalações antigas do ZebraHub.
+  // Fonte canônica do link: clients.feed_share_token. Esta coluna já faz parte
+  // do fluxo público de grade do ZebraHub e existe nos bancos antigos, evitando
+  // qualquer dependência de migration nova ou da tabela designer_approval_links.
   const client = db.prepare(`
-    SELECT id, agency_id, approval_share_token
+    SELECT id, agency_id, feed_share_token
     FROM clients
     WHERE id = ? AND agency_id = ?
     LIMIT 1
   `).get(normalizedClientId, normalizedAgencyId);
 
-  const token = String(client?.approval_share_token || '').trim();
+  const token = String(client?.feed_share_token || '').trim();
   if (!client || !token) return null;
 
   return {
@@ -588,9 +588,10 @@ function getClientApprovalLink(agencyId, clientId) {
     created_by: null,
     created_at: null,
     updated_at: null,
-    storage: 'client',
+    storage: 'feed_share',
   };
 }
+
 function getOrCreateClientApprovalLink({ agencyId, clientId, createdBy }) {
   const normalizedAgencyId = Number(agencyId);
   const normalizedClientId = Number(clientId);
@@ -600,22 +601,19 @@ function getOrCreateClientApprovalLink({ agencyId, clientId, createdBy }) {
   if (existing) return existing;
 
   const client = db.prepare(`
-    SELECT id
+    SELECT id, feed_share_token
     FROM clients
     WHERE id = ? AND agency_id = ?
     LIMIT 1
   `).get(normalizedClientId, normalizedAgencyId);
   if (!client) return null;
 
-  // Mesmo padrão já usado em outros links públicos do ZebraHub: token aleatório
-  // persistido no registro do cliente. O UPDATE condicional preserva o token caso
-  // dois requests tentem criá-lo ao mesmo tempo.
-  const token = crypto.randomBytes(24).toString('hex');
+  const token = crypto.randomBytes(16).toString('hex');
   db.prepare(`
     UPDATE clients
-    SET approval_share_token = CASE
-      WHEN approval_share_token IS NULL OR TRIM(approval_share_token) = '' THEN ?
-      ELSE approval_share_token
+    SET feed_share_token = CASE
+      WHEN feed_share_token IS NULL OR TRIM(feed_share_token) = '' THEN ?
+      ELSE feed_share_token
     END
     WHERE id = ? AND agency_id = ?
   `).run(token, normalizedClientId, normalizedAgencyId);
@@ -623,11 +621,40 @@ function getOrCreateClientApprovalLink({ agencyId, clientId, createdBy }) {
   void createdBy;
   return getClientApprovalLink(normalizedAgencyId, normalizedClientId);
 }
+
 function getLinkByToken(token) {
   const value = String(token || '').trim();
   if (!value) return null;
 
-  // Formato atual: token dedicado salvo diretamente no cliente.
+  // O mesmo token usado pela grade pública também é aceito na aprovação do
+  // Designer. Assim a geração do link não depende de uma tabela auxiliar.
+  try {
+    const client = db.prepare(`
+      SELECT id, agency_id, feed_share_token
+      FROM clients
+      WHERE feed_share_token = ?
+      LIMIT 1
+    `).get(value);
+    if (client) {
+      return {
+        id: null,
+        agency_id: Number(client.agency_id),
+        client_id: Number(client.id),
+        token: value,
+        active: 1,
+        created_by: null,
+        created_at: null,
+        updated_at: null,
+        storage: 'feed_share',
+      };
+    }
+  } catch (error) {
+    console.warn('[DESIGNER_APPROVAL_LINK] Não foi possível consultar feed_share_token:', error.message);
+  }
+
+  // Compatibilidade com a versão que usou approval_share_token. A consulta é
+  // protegida porque bancos que não receberam essa coluna não podem derrubar o
+  // fluxo atual.
   try {
     const client = db.prepare(`
       SELECT id, agency_id, approval_share_token
@@ -649,15 +676,13 @@ function getLinkByToken(token) {
       };
     }
   } catch (error) {
-    console.warn('[DESIGNER_APPROVAL_LINK] Token no cliente indisponível:', error.message);
+    // esperado em bancos anteriores à migration de approval_share_token
   }
 
-  // Compatibilidade com os tokens assinados usados temporariamente em uma
-  // versão anterior do fluxo.
   const stateless = parseStatelessApprovalToken(value);
   if (stateless) return stateless;
 
-  // Compatibilidade com links aleatórios antigos da designer_approval_links.
+  // Compatibilidade final com links históricos da tabela auxiliar.
   try {
     ensureDesignerApprovalStorage();
     return db.prepare(`
@@ -671,6 +696,7 @@ function getLinkByToken(token) {
     return null;
   }
 }
+
 function getPublicClientProfile(link) {
   if (!link) return null;
   return db.prepare(`
