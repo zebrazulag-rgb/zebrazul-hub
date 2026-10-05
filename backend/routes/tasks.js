@@ -3,6 +3,7 @@ const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
 const { persistMedia, externalizeGallery } = require('../services/mediaStorage');
 const {
+  getApprovalState,
   getApprovalStates,
   resetApprovalForTask,
   setDirectionDecision,
@@ -579,6 +580,87 @@ router.post('/:id/direction-approval', (req, res) => {
     return res.json({ ok: true, state, link: link || null });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Não foi possível registrar a aprovação da direção.' });
+  }
+});
+
+// Persistência explícita do feedback de correção da Direção.
+// Esta rota mantém o texto sincronizado tanto na própria tarefa quanto no
+// estado auxiliar de aprovação, evitando que o feedback se perca entre telas.
+router.put('/:id/correction-feedback', (req, res) => {
+  const canApproveDirection = req.user.role === 'admin' || req.user.is_agency_owner || req.user.is_platform_owner || req.user.is_operations_head;
+  if (!canApproveDirection) {
+    return res.status(403).json({ error: 'O feedback da direção é restrito à administração.' });
+  }
+
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, task)) return;
+
+  const feedback = String(req.body?.feedback || '').trim();
+  if (!feedback) return res.status(400).json({ error: 'Escreva o feedback da correção.' });
+
+  const now = new Date().toISOString();
+  const effectiveClientId = Number(task.client_id || 0) || (() => {
+    if (!task.parent_task_id) return null;
+    const parent = db.prepare('SELECT client_id FROM tasks WHERE id = ? AND agency_id = ?').get(Number(task.parent_task_id), Number(task.agency_id));
+    return Number(parent?.client_id || 0) || null;
+  })();
+
+  const persistFeedback = db.transaction(() => {
+    if (effectiveClientId && !task.client_id) {
+      db.prepare('UPDATE tasks SET client_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND agency_id = ?')
+        .run(effectiveClientId, Number(task.id), Number(task.agency_id));
+    }
+
+    db.prepare(`
+      INSERT INTO designer_approval_states (
+        task_id, agency_id, client_id,
+        direction_status, direction_feedback, direction_by, direction_at,
+        client_status, client_feedback, client_at,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, 'changes_requested', ?, ?, ?, 'waiting', NULL, NULL, datetime('now'), datetime('now'))
+      ON CONFLICT(task_id) DO UPDATE SET
+        agency_id = excluded.agency_id,
+        client_id = COALESCE(excluded.client_id, designer_approval_states.client_id),
+        direction_status = 'changes_requested',
+        direction_feedback = excluded.direction_feedback,
+        direction_by = excluded.direction_by,
+        direction_at = excluded.direction_at,
+        client_status = 'waiting',
+        updated_at = datetime('now')
+    `).run(
+      Number(task.id),
+      Number(task.agency_id),
+      effectiveClientId,
+      feedback,
+      Number(req.user.id),
+      now
+    );
+
+    db.prepare(`
+      UPDATE tasks
+      SET direction_status = 'changes_requested', direction_feedback = ?, direction_by = ?, direction_at = ?,
+          client_status = 'waiting', approval_status = 'changes_requested', workflow_stage = 'correction',
+          designer_completed = 0, status = 'in_progress', updated_at = datetime('now')
+      WHERE id = ? AND agency_id = ?
+    `).run(feedback, Number(req.user.id), now, Number(task.id), Number(task.agency_id));
+  });
+
+  try {
+    persistFeedback();
+    const state = getApprovalState(Number(task.id), Number(task.agency_id));
+    return res.json({
+      ok: true,
+      state: {
+        ...(state || {}),
+        direction_status: 'changes_requested',
+        direction_feedback: feedback,
+        correction_feedback: feedback,
+        correction_source: 'direction',
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Não foi possível salvar o feedback da correção.' });
   }
 });
 

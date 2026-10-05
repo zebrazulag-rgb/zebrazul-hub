@@ -501,20 +501,40 @@ export default function DesignerApproval() {
       }
 
       if (decision === 'changes_requested' && normalizedFeedback) {
-        const responseFeedback = String(state?.direction_feedback || '').trim();
-        if (!responseFeedback) {
-          try {
-            await api.put(`/tasks/${item.id}`, {
-              approval_status: 'changes_requested',
-              direction_status: 'changes_requested',
-              direction_feedback: normalizedFeedback,
-              client_status: 'waiting',
-            });
-          } catch (feedbackPersistError) {
-            throw feedbackPersistError;
-          }
+        // Grava o texto por uma rota dedicada depois da decisão. Assim o feedback
+        // fica sincronizado na tarefa e no estado de aprovação, inclusive quando
+        // existe algum registro legado da peça.
+        try {
+          const { data: persistedFeedback } = await api.put(`/tasks/${item.id}/correction-feedback`, {
+            feedback: normalizedFeedback,
+          });
+          state = {
+            ...(state || {}),
+            ...(persistedFeedback?.state || {}),
+            direction_feedback: normalizedFeedback,
+            correction_feedback: normalizedFeedback,
+            correction_source: 'direction',
+            direction_status: 'changes_requested',
+          };
+        } catch (feedbackPersistError) {
+          const feedbackStatus = Number(feedbackPersistError.response?.status || 0);
+          if (![404, 405].includes(feedbackStatus)) throw feedbackPersistError;
+          // Compatibilidade durante deploy: se a rota dedicada ainda não estiver
+          // disponível, mantém a persistência pelo endpoint genérico.
+          await api.put(`/tasks/${item.id}`, {
+            approval_status: 'changes_requested',
+            direction_status: 'changes_requested',
+            direction_feedback: normalizedFeedback,
+            client_status: 'waiting',
+          });
+          state = {
+            ...(state || {}),
+            direction_feedback: normalizedFeedback,
+            correction_feedback: normalizedFeedback,
+            correction_source: 'direction',
+            direction_status: 'changes_requested',
+          };
         }
-        state = { ...(state || {}), direction_feedback: normalizedFeedback, direction_status: 'changes_requested' };
       }
 
       replaceItemState(item.id, { ...optimisticState, ...(state || {}) });
@@ -551,6 +571,40 @@ export default function DesignerApproval() {
             : 'Não foi possível registrar a aprovação da direção. Verifique a conexão com o servidor.'));
       setActionError(message);
       setError(message);
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function saveExistingCorrectionFeedback(item) {
+    if (!item?.id || updatingId) return;
+    const normalizedFeedback = String(correctionFeedback || '').trim();
+    if (!normalizedFeedback) {
+      setActionError('Escreva o feedback da correção antes de salvar.');
+      return;
+    }
+
+    setUpdatingId(item.id);
+    setActionError('');
+    try {
+      const { data } = await api.put(`/tasks/${item.id}/correction-feedback`, {
+        feedback: normalizedFeedback,
+      });
+      const nextState = {
+        ...(data?.state || {}),
+        direction_status: 'changes_requested',
+        direction_feedback: normalizedFeedback,
+        correction_feedback: normalizedFeedback,
+        correction_source: 'direction',
+        workflow_stage: 'correction',
+        approval_status: 'changes_requested',
+      };
+      replaceItemState(item.id, nextState);
+      broadcastTaskUpdate(item.id, item.parent_task_id);
+      setCorrectionOpen(false);
+      setCorrectionFeedback('');
+    } catch (requestError) {
+      setActionError(requestError.response?.data?.error || 'Não foi possível salvar o feedback da correção.');
     } finally {
       setUpdatingId(null);
     }
@@ -633,6 +687,7 @@ export default function DesignerApproval() {
   const currentImage = selectedItem?.images?.[imageIndex]?.data || null;
   const selectedDirectionStatus = directionIsApproved(selectedItem) ? 'approved' : (selectedItem?.direction_status || 'pending');
   const selectedClientStatus = selectedItem?.client_status || 'waiting';
+  const canManageDirection = user?.role === 'admin' || user?.is_agency_owner || user?.is_platform_owner || user?.is_operations_head;
   const canDirectionApprove = mode === 'direction' && selectedDirectionStatus === 'pending';
 
   return (
@@ -791,11 +846,51 @@ export default function DesignerApproval() {
                 <div className="flex-1 space-y-5 overflow-y-auto p-5">
                   {isCorrectionItem(selectedItem) && (
                     <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
-                      <div className="flex items-center gap-2">
-                        <MessageSquareWarning size={17} className="shrink-0 text-rose-600" />
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-700">Feedback da correção · {correctionSourceFor(selectedItem)}</p>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <MessageSquareWarning size={17} className="shrink-0 text-rose-600" />
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-700">Feedback da correção · {correctionSourceFor(selectedItem)}</p>
+                        </div>
+                        {correctionSourceFor(selectedItem) === 'Direção' && canManageDirection && !correctionOpen && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCorrectionFeedback(correctionFeedbackFor(selectedItem) || '');
+                              setCorrectionOpen(true);
+                              setActionError('');
+                            }}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-white/80"
+                          >
+                            <Pencil size={12} /> {correctionFeedbackFor(selectedItem) ? 'Editar' : 'Adicionar feedback'}
+                          </button>
+                        )}
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-6">{correctionFeedbackFor(selectedItem) || 'Correção solicitada sem observação.'}</p>
+                      {!correctionOpen && (
+                        <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-6">{correctionFeedbackFor(selectedItem) || 'O texto desta correção antiga não ficou salvo. Adicione o feedback para o Designer visualizar.'}</p>
+                      )}
+                      {correctionOpen && mode === 'correction' && correctionSourceFor(selectedItem) === 'Direção' && canManageDirection && (
+                        <div className="mt-3">
+                          <textarea
+                            value={correctionFeedback}
+                            onChange={(event) => setCorrectionFeedback(event.target.value)}
+                            rows={4}
+                            autoFocus
+                            placeholder="Escreva exatamente o que o Designer precisa corrigir..."
+                            className="w-full resize-none rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-rose-400"
+                          />
+                          <div className="mt-2 flex justify-end gap-2">
+                            <button type="button" onClick={() => { setCorrectionOpen(false); setCorrectionFeedback(''); }} className="rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-white">Cancelar</button>
+                            <button
+                              type="button"
+                              disabled={updatingId === selectedItem.id || !correctionFeedback.trim()}
+                              onClick={() => saveExistingCorrectionFeedback(selectedItem)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+                            >
+                              {updatingId === selectedItem.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar feedback
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
