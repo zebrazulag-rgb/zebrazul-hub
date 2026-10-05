@@ -366,6 +366,11 @@ export default function DesignerApproval() {
 
   async function directionDecision(item, decision, feedback = '') {
     if (!item?.id || updatingId) return;
+    const normalizedFeedback = String(feedback || '').trim();
+    if (decision === 'changes_requested' && !normalizedFeedback) {
+      setActionError('Escreva o que precisa ser corrigido antes de enviar.');
+      return;
+    }
 
     const previousState = {
       direction_status: item.direction_status || 'pending',
@@ -379,7 +384,7 @@ export default function DesignerApproval() {
     const optimisticState = decision === 'approved'
       ? {
           direction_status: 'approved',
-          direction_feedback: feedback || null,
+          direction_feedback: normalizedFeedback || null,
           client_status: 'pending',
           client_feedback: null,
           workflow_stage: 'approval',
@@ -388,7 +393,7 @@ export default function DesignerApproval() {
         }
       : {
           direction_status: 'changes_requested',
-          direction_feedback: feedback || null,
+          direction_feedback: normalizedFeedback || null,
           client_status: 'waiting',
           client_feedback: null,
           workflow_stage: 'correction',
@@ -404,7 +409,7 @@ export default function DesignerApproval() {
     try {
       let state = null;
       try {
-        const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision, feedback });
+        const { data } = await api.post(`/tasks/${item.id}/direction-approval`, { decision, feedback: normalizedFeedback });
         state = data?.state || null;
         if (data?.link?.token) setApprovalLink(data.link);
       } catch (primaryError) {
@@ -428,7 +433,7 @@ export default function DesignerApproval() {
           approval_status: decision === 'approved' ? 'pending_approval' : 'changes_requested',
           designer_completed: decision === 'approved' ? 1 : 0,
           direction_status: decision === 'approved' ? 'approved' : 'changes_requested',
-          direction_feedback: feedback || null,
+          direction_feedback: normalizedFeedback || null,
           direction_by: user?.id || null,
           direction_at: new Date().toISOString(),
           client_status: decision === 'approved' ? 'pending' : 'waiting',
@@ -444,10 +449,10 @@ export default function DesignerApproval() {
           if (!canRetryMinimal) throw legacyError;
 
           if (decision === 'approved') {
-            await api.put(`/tasks/${item.id}`, { workflow_stage: 'external_approval', approval_status: 'pending_approval', direction_status: 'approved', direction_feedback: feedback || null, client_status: 'pending' });
+            await api.put(`/tasks/${item.id}`, { workflow_stage: 'external_approval', approval_status: 'pending_approval', direction_status: 'approved', direction_feedback: normalizedFeedback || null, client_status: 'pending' });
           } else {
             try {
-              await api.put(`/tasks/${item.id}`, { workflow_stage: 'correction', approval_status: 'changes_requested', direction_status: 'changes_requested', direction_feedback: feedback || null, client_status: 'waiting' });
+              await api.put(`/tasks/${item.id}`, { workflow_stage: 'correction', approval_status: 'changes_requested', direction_status: 'changes_requested', direction_feedback: normalizedFeedback || null, client_status: 'waiting' });
             } catch (correctionError) {
               const correctionMessage = String(correctionError.response?.data?.error || '');
               const correctionStatus = Number(correctionError.response?.status || 0);
@@ -456,13 +461,30 @@ export default function DesignerApproval() {
                 workflow_stage: 'in_progress',
                 approval_status: 'changes_requested',
                 direction_status: 'changes_requested',
-                direction_feedback: feedback || null,
+                direction_feedback: normalizedFeedback || null,
                 client_status: 'waiting',
               });
             }
           }
         }
         state = optimisticState;
+      }
+
+      if (decision === 'changes_requested' && normalizedFeedback) {
+        const responseFeedback = String(state?.direction_feedback || '').trim();
+        if (!responseFeedback) {
+          try {
+            await api.put(`/tasks/${item.id}`, {
+              approval_status: 'changes_requested',
+              direction_status: 'changes_requested',
+              direction_feedback: normalizedFeedback,
+              client_status: 'waiting',
+            });
+          } catch (feedbackPersistError) {
+            throw feedbackPersistError;
+          }
+        }
+        state = { ...(state || {}), direction_feedback: normalizedFeedback, direction_status: 'changes_requested' };
       }
 
       replaceItemState(item.id, { ...optimisticState, ...(state || {}) });
@@ -819,7 +841,7 @@ export default function DesignerApproval() {
                       />
                       <div className="mt-2 flex justify-end gap-2">
                         <button type="button" onClick={() => { setCorrectionOpen(false); setCorrectionFeedback(''); }} className="rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-white">Cancelar</button>
-                        <button type="button" disabled={updatingId === selectedItem.id} onClick={() => directionDecision(selectedItem, 'changes_requested', correctionFeedback)} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50">Enviar correção</button>
+                        <button type="button" disabled={updatingId === selectedItem.id || !correctionFeedback.trim()} onClick={() => directionDecision(selectedItem, 'changes_requested', correctionFeedback)} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50">Enviar correção</button>
                       </div>
                     </div>
                   )}

@@ -272,14 +272,27 @@ function taskSummaryQuery(whereClause) {
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
       t.created_at, t.updated_at,
       c.name AS client_name,
-      (
-        SELECT COALESCE(NULLIF(TRIM(st.client_feedback), ''), NULLIF(TRIM(st.direction_feedback), ''))
-        FROM tasks st
-        WHERE st.parent_task_id = t.id
-          AND st.agency_id = t.agency_id
-          AND (st.workflow_stage = 'correction' OR st.approval_status = 'changes_requested')
-        ORDER BY COALESCE(st.updated_at, st.created_at) DESC, st.id DESC
-        LIMIT 1
+      COALESCE(
+        CASE
+          WHEN t.workflow_stage = 'correction' OR t.approval_status = 'changes_requested' THEN
+            COALESCE(NULLIF(TRIM(t.client_feedback), ''), NULLIF(TRIM(t.direction_feedback), ''))
+          ELSE NULL
+        END,
+        (
+          SELECT COALESCE(
+            NULLIF(TRIM(st.client_feedback), ''),
+            NULLIF(TRIM(st.direction_feedback), ''),
+            NULLIF(TRIM(das.client_feedback), ''),
+            NULLIF(TRIM(das.direction_feedback), '')
+          )
+          FROM tasks st
+          LEFT JOIN designer_approval_states das ON das.task_id = st.id AND das.agency_id = st.agency_id
+          WHERE st.parent_task_id = t.id
+            AND st.agency_id = t.agency_id
+            AND (st.workflow_stage = 'correction' OR st.approval_status = 'changes_requested')
+          ORDER BY COALESCE(st.updated_at, st.created_at) DESC, st.id DESC
+          LIMIT 1
+        )
       ) AS correction_feedback,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id) AS subtask_total,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.agency_id = t.agency_id AND st.status = 'pending') AS subtask_pending,
@@ -834,14 +847,21 @@ router.get('/:id', (req, res) => {
     task.direction_feedback = taskApprovalState.direction_feedback || task.direction_feedback;
     task.client_status = taskApprovalState.client_status || task.client_status;
     task.client_feedback = taskApprovalState.client_feedback || task.client_feedback;
+    task.correction_feedback = taskApprovalState.correction_feedback || task.correction_feedback || null;
+  } else {
+    task.correction_feedback = String(task.client_feedback || task.direction_feedback || '').trim() || null;
   }
   subtasks.forEach((subtask) => {
     const state = approvalStates.get(Number(subtask.id));
-    if (!state) return;
-    subtask.direction_status = state.direction_status || subtask.direction_status;
-    subtask.direction_feedback = state.direction_feedback || subtask.direction_feedback;
-    subtask.client_status = state.client_status || subtask.client_status;
-    subtask.client_feedback = state.client_feedback || subtask.client_feedback;
+    if (state) {
+      subtask.direction_status = state.direction_status || subtask.direction_status;
+      subtask.direction_feedback = state.direction_feedback || subtask.direction_feedback;
+      subtask.client_status = state.client_status || subtask.client_status;
+      subtask.client_feedback = state.client_feedback || subtask.client_feedback;
+      subtask.correction_feedback = state.correction_feedback || null;
+    } else {
+      subtask.correction_feedback = String(subtask.client_feedback || subtask.direction_feedback || '').trim() || null;
+    }
   });
 
   res.json({ task, subtasks });

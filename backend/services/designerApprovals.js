@@ -164,7 +164,7 @@ function getApprovalState(taskId, agencyId) {
     ? 'approved'
     : inferredDirection === 'approved' ? 'pending' : 'waiting';
 
-  return {
+  const state = {
     task_id: Number(task?.id || row?.task_id || taskId),
     agency_id: Number(task?.agency_id || row?.agency_id || agencyId),
     client_id: task?.client_id ?? row?.client_id ?? null,
@@ -182,6 +182,14 @@ function getApprovalState(taskId, agencyId) {
     created_at: row?.created_at || task?.created_at || null,
     updated_at: row?.updated_at || task?.updated_at || null,
   };
+  const clientFeedback = String(state.client_feedback || '').trim();
+  const directionFeedback = String(state.direction_feedback || '').trim();
+  state.correction_feedback = state.client_status === 'changes_requested' && clientFeedback
+    ? clientFeedback
+    : state.direction_status === 'changes_requested' && directionFeedback
+      ? directionFeedback
+      : (clientFeedback || directionFeedback || null);
+  return state;
 }
 
 function getApprovalStates(taskIds, agencyId) {
@@ -373,6 +381,9 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
   ensureApprovalState(task);
   const now = new Date().toISOString();
   const directionFeedback = String(feedback || '').trim() || null;
+  if (decision === 'changes_requested' && !directionFeedback) {
+    throw new Error('Informe o que precisa ser corrigido antes de enviar a correção.');
+  }
 
   if (decision === 'approved') {
     db.prepare(`
@@ -571,6 +582,9 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
   }
 
   const clientFeedback = String(feedback || '').trim() || null;
+  if (decision === 'changes_requested' && !clientFeedback) {
+    throw new Error('Informe o que precisa ser corrigido antes de enviar a correção.');
+  }
   const now = new Date().toISOString();
 
   const transaction = db.transaction(() => {

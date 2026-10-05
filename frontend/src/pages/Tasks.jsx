@@ -64,9 +64,12 @@ function taskNeedsCorrection(task) {
 function taskCorrectionFeedback(task) {
   const clientStatus = String(task?.client_status || '').toLowerCase();
   const directionStatus = String(task?.direction_status || '').toLowerCase();
-  if (clientStatus === 'changes_requested' && task?.client_feedback) return String(task.client_feedback).trim();
-  if (directionStatus === 'changes_requested' && task?.direction_feedback) return String(task.direction_feedback).trim();
-  return String(task?.client_feedback || task?.direction_feedback || '').trim();
+  const clientFeedback = String(task?.client_feedback || '').trim();
+  const directionFeedback = String(task?.direction_feedback || '').trim();
+  const correctionFeedback = String(task?.correction_feedback || '').trim();
+  if (clientStatus === 'changes_requested' && clientFeedback) return clientFeedback;
+  if (directionStatus === 'changes_requested' && directionFeedback) return directionFeedback;
+  return clientFeedback || directionFeedback || correctionFeedback;
 }
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
