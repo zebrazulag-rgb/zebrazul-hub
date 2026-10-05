@@ -1,12 +1,6 @@
 const express = require('express');
 const db = require('../db/database');
 const { recordActivity } = require('../services/activity');
-const {
-  getLinkByToken,
-  getPublicClientProfile,
-  getPublicApprovalItems,
-  setClientDecision,
-} = require('../services/designerApprovals');
 
 const router = express.Router();
 
@@ -404,21 +398,300 @@ router.get('/task-calendar/:token', (req, res) => {
 
 
 // Aprovação pública das peças do Squad -> Designer.
-// O link é por cliente e só expõe peças que já passaram pela aprovação da direção.
+// IMPORTANTE: este fluxo resolve o token diretamente no cadastro do cliente.
+// Assim ele não depende da tabela legada designer_approval_links nem do estado
+// interno usado pela tela autenticada.
+function tableColumns(tableName) {
+  try {
+    return new Set(db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => String(column.name)));
+  } catch {
+    return new Set();
+  }
+}
+
+function resolveDesignerApprovalClient(token) {
+  const value = String(token || '').trim();
+  if (!value) return null;
+
+  const profileFields = `
+    id, agency_id, name, logo_color, avatar_data, bio,
+    instagram_username, instagram_display_name,
+    instagram_posts_count, instagram_followers_count, instagram_following_count,
+    instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action
+  `;
+
+  // Caminho principal: é exatamente o token gerado por /clients/:id/feed-share.
+  try {
+    const client = db.prepare(`
+      SELECT ${profileFields}
+      FROM clients
+      WHERE feed_share_token = ?
+      LIMIT 1
+    `).get(value);
+    if (client) return client;
+  } catch (error) {
+    console.warn('[PUBLIC_DESIGNER_APPROVAL] feed_share_token indisponível:', error.message);
+  }
+
+  // Compatibilidade com a tentativa anterior de token exclusivo de aprovação.
+  const clientColumns = tableColumns('clients');
+  if (clientColumns.has('approval_share_token')) {
+    try {
+      const client = db.prepare(`
+        SELECT ${profileFields}
+        FROM clients
+        WHERE approval_share_token = ?
+        LIMIT 1
+      `).get(value);
+      if (client) return client;
+    } catch (error) {
+      console.warn('[PUBLIC_DESIGNER_APPROVAL] approval_share_token indisponível:', error.message);
+    }
+  }
+
+  // Compatibilidade final com links históricos.
+  try {
+    const linkColumns = tableColumns('designer_approval_links');
+    if (linkColumns.has('token') && linkColumns.has('client_id')) {
+      const hasAgencyId = linkColumns.has('agency_id');
+      const agencyJoin = hasAgencyId ? 'AND c.agency_id = l.agency_id' : '';
+      const activeFilter = linkColumns.has('active') ? 'AND COALESCE(l.active, 1) = 1' : '';
+      const client = db.prepare(`
+        SELECT c.id, c.agency_id, c.name, c.logo_color, c.avatar_data, c.bio,
+               c.instagram_username, c.instagram_display_name,
+               c.instagram_posts_count, c.instagram_followers_count, c.instagram_following_count,
+               c.instagram_link, c.instagram_primary_action, c.instagram_secondary_action, c.instagram_tertiary_action
+        FROM designer_approval_links l
+        JOIN clients c ON c.id = l.client_id ${agencyJoin}
+        WHERE l.token = ? ${activeFilter}
+        LIMIT 1
+      `).get(value);
+      if (client) return client;
+    }
+  } catch (error) {
+    console.warn('[PUBLIC_DESIGNER_APPROVAL] link legado indisponível:', error.message);
+  }
+
+  return null;
+}
+
+function publicApprovalImages(task) {
+  const gallery = parseGallery(task?.media_gallery).filter((item) => {
+    const data = String(item?.data || item?.url || item?.src || '');
+    const mime = String(item?.mime || item?.type || '').toLowerCase();
+    return Boolean(data) && (
+      mime.startsWith('image/') ||
+      data.startsWith('data:image/') ||
+      /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(data)
+    );
+  }).map((item) => ({
+    data: item.data || item.url || item.src || '',
+    mime: item.mime || item.type || 'image/jpeg',
+    filename: item.filename || item.name || '',
+  }));
+
+  if (gallery.length) return gallery;
+
+  const attachmentData = String(task?.attachment_data || '');
+  const attachmentMime = String(task?.attachment_mime || '').toLowerCase();
+  const attachmentIsImage = Boolean(attachmentData) && (
+    attachmentMime.startsWith('image/') ||
+    attachmentData.startsWith('data:image/') ||
+    /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(attachmentData)
+  );
+
+  return attachmentIsImage
+    ? [{ data: attachmentData, mime: task?.attachment_mime || 'image/jpeg', filename: task?.attachment_filename || '' }]
+    : [];
+}
+
+function designerApprovalReady(task) {
+  const directionStatus = String(task?.direction_status || '').toLowerCase();
+  const approvalStatus = String(task?.approval_status || '').toLowerCase();
+  const workflowStage = String(task?.workflow_stage || '').toLowerCase();
+  return directionStatus === 'approved'
+    || ['pending_approval', 'send', 'approved'].includes(approvalStatus)
+    || ['external_approval', 'approved'].includes(workflowStage);
+}
+
+function getDesignerApprovalItemsDirect(client) {
+  if (!client?.id || !client?.agency_id) return [];
+
+  const rows = db.prepare(`
+    SELECT t.*, COALESCE(t.client_id, parent.client_id) AS resolved_client_id
+    FROM tasks t
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    WHERE t.agency_id = ?
+      AND COALESCE(t.client_id, parent.client_id) = ?
+    ORDER BY COALESCE(t.updated_at, t.created_at) DESC, t.id DESC
+  `).all(Number(client.agency_id), Number(client.id));
+
+  return rows
+    .filter((task) => String(task.task_type || '').toLowerCase() !== 'video')
+    .filter((task) => String(task.front_name || '').trim().toLowerCase() !== 'site/lp')
+    .filter(designerApprovalReady)
+    .map((task) => {
+      const images = publicApprovalImages(task);
+      const clientStatusRaw = String(task.client_status || '').toLowerCase();
+      const approvalStatus = String(task.approval_status || '').toLowerCase();
+      const workflowStage = String(task.workflow_stage || '').toLowerCase();
+      const clientStatus = clientStatusRaw && clientStatusRaw !== 'waiting'
+        ? clientStatusRaw
+        : ((approvalStatus === 'approved' || workflowStage === 'approved') ? 'approved' : 'pending');
+
+      return {
+        id: Number(task.id),
+        parent_task_id: task.parent_task_id ? Number(task.parent_task_id) : null,
+        title: task.title,
+        content_type: task.content_type,
+        content_tag: task.content_tag,
+        caption: task.caption,
+        due_date: task.due_date,
+        workflow_stage: 'approval',
+        direction_status: String(task.direction_status || '').toLowerCase() === 'changes_requested' ? 'changes_requested' : 'approved',
+        direction_feedback: task.direction_feedback || null,
+        client_status: clientStatus,
+        client_feedback: task.client_feedback || null,
+        images,
+        image_count: images.length,
+        updated_at: task.updated_at,
+      };
+    })
+    .filter((item) => item.image_count > 0);
+}
+
+function updateTaskClientDecisionDirect({ client, taskId, decision, feedback }) {
+  const task = db.prepare(`
+    SELECT t.*, COALESCE(t.client_id, parent.client_id) AS resolved_client_id
+    FROM tasks t
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    WHERE t.id = ?
+      AND t.agency_id = ?
+      AND COALESCE(t.client_id, parent.client_id) = ?
+    LIMIT 1
+  `).get(Number(taskId), Number(client.agency_id), Number(client.id));
+
+  if (!task) return { error: 'TASK_NOT_FOUND' };
+  if (!designerApprovalReady(task)) return { error: 'NOT_READY' };
+
+  const normalizedFeedback = String(feedback || '').trim() || null;
+  if (decision === 'changes_requested' && !normalizedFeedback) {
+    throw new Error('Informe o que precisa ser corrigido antes de enviar a correção.');
+  }
+
+  const taskColumns = tableColumns('tasks');
+  const updates = [];
+  const values = [];
+  const add = (column, value) => {
+    if (!taskColumns.has(column)) return;
+    updates.push(`${column} = ?`);
+    values.push(value);
+  };
+
+  add('direction_status', 'approved');
+  add('client_status', decision === 'approved' ? 'approved' : 'changes_requested');
+  add('client_feedback', normalizedFeedback);
+  add('client_at', new Date().toISOString());
+  add('approval_status', decision === 'approved' ? 'approved' : 'changes_requested');
+  add('workflow_stage', decision === 'approved' ? 'approved' : 'correction');
+  add('designer_completed', decision === 'approved' ? 1 : 0);
+  if (taskColumns.has('updated_at')) updates.push(`updated_at = datetime('now')`);
+
+  if (updates.length) {
+    db.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ? AND agency_id = ?`)
+      .run(...values, Number(task.id), Number(client.agency_id));
+  }
+
+  // Mantém a tabela auxiliar sincronizada quando ela existe, sem torná-la
+  // requisito para o link público funcionar.
+  try {
+    const stateColumns = tableColumns('designer_approval_states');
+    if (stateColumns.has('task_id') && stateColumns.has('agency_id')) {
+      const existing = db.prepare(`
+        SELECT task_id FROM designer_approval_states
+        WHERE task_id = ? AND agency_id = ? LIMIT 1
+      `).get(Number(task.id), Number(client.agency_id));
+      if (existing) {
+        const stateUpdates = [];
+        const stateValues = [];
+        const addState = (column, value) => {
+          if (!stateColumns.has(column)) return;
+          stateUpdates.push(`${column} = ?`);
+          stateValues.push(value);
+        };
+        addState('direction_status', 'approved');
+        addState('client_status', decision === 'approved' ? 'approved' : 'changes_requested');
+        addState('client_feedback', normalizedFeedback);
+        addState('client_at', new Date().toISOString());
+        if (stateColumns.has('updated_at')) stateUpdates.push(`updated_at = datetime('now')`);
+        if (stateUpdates.length) {
+          db.prepare(`UPDATE designer_approval_states SET ${stateUpdates.join(', ')} WHERE task_id = ? AND agency_id = ?`)
+            .run(...stateValues, Number(task.id), Number(client.agency_id));
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[PUBLIC_DESIGNER_APPROVAL] Não foi possível sincronizar estado auxiliar:', error.message);
+  }
+
+  // Se já existe um post espelhado na grade, mantém o status coerente.
+  if (task.feed_post_id) {
+    try {
+      const postColumns = tableColumns('posts');
+      const postUpdates = [];
+      const postValues = [];
+      const addPost = (column, value) => {
+        if (!postColumns.has(column)) return;
+        postUpdates.push(`${column} = ?`);
+        postValues.push(value);
+      };
+      addPost('status', decision === 'approved' ? 'approved' : 'rejected');
+      addPost('workflow_stage', decision === 'approved' ? 'approved' : 'correction');
+      addPost('client_feedback', normalizedFeedback);
+      addPost('feed_visible', decision === 'approved' ? 1 : 0);
+      if (postColumns.has('updated_at')) postUpdates.push(`updated_at = datetime('now')`);
+      if (postUpdates.length) {
+        db.prepare(`UPDATE posts SET ${postUpdates.join(', ')} WHERE id = ? AND agency_id = ?`)
+          .run(...postValues, Number(task.feed_post_id), Number(client.agency_id));
+      }
+    } catch (error) {
+      console.warn('[PUBLIC_DESIGNER_APPROVAL] Não foi possível sincronizar post:', error.message);
+    }
+  }
+
+  return {
+    ok: true,
+    decision,
+    task_id: Number(task.id),
+    state: {
+      id: Number(task.id),
+      task_id: Number(task.id),
+      direction_status: 'approved',
+      client_status: decision === 'approved' ? 'approved' : 'changes_requested',
+      client_feedback: normalizedFeedback,
+    },
+  };
+}
+
 router.get('/designer-approval/:token', (req, res) => {
-  const link = getLinkByToken(req.params.token);
-  if (!link) return res.status(404).json({ error: 'Link de aprovação inválido ou desativado.' });
+  try {
+    const client = resolveDesignerApprovalClient(req.params.token);
+    if (!client) return res.status(404).json({ error: 'Link de aprovação inválido ou desativado.' });
 
-  const client = getPublicClientProfile(link);
-  if (!client) return res.status(404).json({ error: 'Cliente não encontrado para este link.' });
-
-  const items = getPublicApprovalItems(link);
-  return res.json({
-    client,
-    highlights: getVisibleFeedHighlights(client.id, client.agency_id),
-    items,
-    total: items.length,
-  });
+    const items = getDesignerApprovalItemsDirect(client);
+    return res.json({
+      client,
+      highlights: getVisibleFeedHighlights(client.id, client.agency_id),
+      items,
+      total: items.length,
+    });
+  } catch (error) {
+    console.error('[PUBLIC_DESIGNER_APPROVAL] Falha ao carregar link:', error);
+    return res.status(500).json({
+      error: 'Não foi possível carregar a aprovação do cliente.',
+      code: 'PUBLIC_DESIGNER_APPROVAL_LOAD_FAILED',
+    });
+  }
 });
 
 router.put('/designer-approval/:token/items/:taskId', (req, res) => {
@@ -428,38 +701,37 @@ router.put('/designer-approval/:token/items/:taskId', (req, res) => {
   }
 
   try {
-    const result = setClientDecision({
-      token: req.params.token,
+    const client = resolveDesignerApprovalClient(req.params.token);
+    if (!client) return res.status(404).json({ error: 'Link de aprovação inválido ou desativado.' });
+
+    const result = updateTaskClientDecisionDirect({
+      client,
       taskId: Number(req.params.taskId),
       decision,
       feedback: req.body?.feedback || null,
     });
 
-    if (result?.error === 'LINK_NOT_FOUND') return res.status(404).json({ error: 'Link de aprovação inválido ou desativado.' });
     if (result?.error === 'TASK_NOT_FOUND') return res.status(404).json({ error: 'Peça não encontrada neste link.' });
     if (result?.error === 'NOT_READY') return res.status(409).json({ error: 'Esta peça ainda não está liberada para aprovação do cliente.' });
 
-    const link = getLinkByToken(req.params.token);
-    const client = link ? getPublicClientProfile(link) : null;
-    if (link && client) {
-      recordActivity({
-        agencyId: link.agency_id,
-        actorName: `CLIENTE · ${client.name || 'APROVAÇÃO'}`,
-        clientId: link.client_id,
-        module: 'designer',
-        action: decision === 'approved' ? 'approved' : 'changes_requested',
-        entityType: 'task',
-        entityId: Number(req.params.taskId),
-        entityLabel: `Peça #${req.params.taskId}`,
-        summary: decision === 'approved' ? 'Aprovou uma peça do Designer' : 'Solicitou correção em uma peça do Designer',
-        details: { source: 'designer_public_approval', feedback: req.body?.feedback || null },
-        path: `/public/designer-approval/${req.params.token}/items/${req.params.taskId}`,
-        method: 'PUT',
-      });
-    }
+    recordActivity({
+      agencyId: client.agency_id,
+      actorName: `CLIENTE · ${client.name || 'APROVAÇÃO'}`,
+      clientId: client.id,
+      module: 'designer',
+      action: decision === 'approved' ? 'approved' : 'changes_requested',
+      entityType: 'task',
+      entityId: Number(req.params.taskId),
+      entityLabel: `Peça #${req.params.taskId}`,
+      summary: decision === 'approved' ? 'Aprovou uma peça do Designer' : 'Solicitou correção em uma peça do Designer',
+      details: { source: 'designer_public_approval', feedback: req.body?.feedback || null },
+      path: `/public/designer-approval/${req.params.token}/items/${req.params.taskId}`,
+      method: 'PUT',
+    });
 
     return res.json(result);
   } catch (error) {
+    console.error('[PUBLIC_DESIGNER_APPROVAL] Falha ao registrar decisão:', error);
     return res.status(400).json({ error: error.message || 'Não foi possível registrar esta decisão.' });
   }
 });

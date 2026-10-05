@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, MessageSquareWarning, X } from 'lucide-react';
 import axios from 'axios';
@@ -6,7 +6,18 @@ import { attachMediaResolver } from '../utils/mediaUrl';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 
-const publicApi = attachMediaResolver(axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' }));
+const configuredApiBase = String(import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
+const productionApiBase = 'https://zebrazul-hub-production.up.railway.app/api';
+
+function publicApiCandidates(preferredBase = null) {
+  const bases = [preferredBase, configuredApiBase, productionApiBase]
+    .map((value) => String(value || '').trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  return [...new Set(bases)].map((baseURL) => ({
+    baseURL,
+    api: attachMediaResolver(axios.create({ baseURL })),
+  }));
+}
 
 function clientStatus(item) {
   if (item?.client_status === 'approved') return 'approved';
@@ -27,15 +38,48 @@ export default function PublicDesignerApproval() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const activeApiBaseRef = useRef(null);
+
   useEffect(() => {
-    publicApi.get(`/public/designer-approval/${token}`)
-      .then(({ data }) => {
-        setClient(data?.client || null);
-        setHighlights(data?.highlights || []);
-        setItems(data?.items || []);
-      })
-      .catch((requestError) => setError(requestError.response?.data?.error || 'Este link não é válido ou expirou.'))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function loadApproval() {
+      setLoading(true);
+      setError('');
+      let lastError = null;
+
+      for (const candidate of publicApiCandidates(activeApiBaseRef.current)) {
+        try {
+          const { data } = await candidate.api.get(`/public/designer-approval/${token}`);
+          // Quando /api cai por engano no SPA da Vercel, a resposta pode ser
+          // HTML com HTTP 200. Só aceitamos o payload real da API.
+          if (!data || typeof data !== 'object' || !data.client) {
+            throw new Error('Resposta inválida da API de aprovação.');
+          }
+          if (cancelled) return;
+          activeApiBaseRef.current = candidate.baseURL;
+          setClient(data.client || null);
+          setHighlights(data.highlights || []);
+          setItems(data.items || []);
+          return;
+        } catch (requestError) {
+          lastError = requestError;
+        }
+      }
+
+      if (cancelled) return;
+      const serverMessage = lastError?.response?.data?.error;
+      const status = lastError?.response?.status;
+      setError(serverMessage || (status
+        ? `Não foi possível abrir este link de aprovação (HTTP ${status}).`
+        : 'Não foi possível conectar ao servidor de aprovação.'));
+    }
+
+    loadApproval().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => { cancelled = true; };
   }, [token]);
 
   const posts = useMemo(() => items.map((item) => ({
@@ -61,17 +105,29 @@ export default function PublicDesignerApproval() {
     setDecisionLoading(true);
     setNotice('');
     try {
-      const { data } = await publicApi.put(`/public/designer-approval/${token}/items/${openItem.id}`, {
-        decision,
-        feedback: feedback.trim() || null,
-      });
-      const state = data?.state || {};
+      let response = null;
+      let lastError = null;
+      for (const candidate of publicApiCandidates(activeApiBaseRef.current)) {
+        try {
+          response = await candidate.api.put(`/public/designer-approval/${token}/items/${openItem.id}`, {
+            decision,
+            feedback: feedback.trim() || null,
+          });
+          activeApiBaseRef.current = candidate.baseURL;
+          break;
+        } catch (requestError) {
+          lastError = requestError;
+        }
+      }
+      if (!response) throw lastError || new Error('Servidor de aprovação indisponível.');
+
+      const state = response.data?.state || {};
       const updated = { ...openItem, ...state };
       setOpenItem(updated);
       setItems((current) => current.map((entry) => Number(entry.id) === Number(updated.id) ? { ...entry, ...state } : entry));
       setNotice(decision === 'approved' ? 'Peça aprovada. Ela continuará visível com o selo de aprovado.' : 'Correção solicitada.');
     } catch (requestError) {
-      setNotice(requestError.response?.data?.error || 'Não foi possível registrar sua decisão.');
+      setNotice(requestError?.response?.data?.error || requestError?.message || 'Não foi possível registrar sua decisão.');
     } finally {
       setDecisionLoading(false);
     }
