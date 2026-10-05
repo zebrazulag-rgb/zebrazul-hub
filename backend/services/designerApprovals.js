@@ -464,64 +464,158 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
   return getApprovalState(task.id, task.agency_id);
 }
 
+function approvalLinkSecret() {
+  return String(
+    process.env.CLIENT_APPROVAL_SECRET ||
+    process.env.JWT_SECRET ||
+    'zebrazul-hub-dev-secret-troque-em-producao'
+  );
+}
+
+function buildStatelessApprovalToken(agencyId, clientId) {
+  const normalizedAgencyId = Number(agencyId);
+  const normalizedClientId = Number(clientId);
+  if (!normalizedAgencyId || !normalizedClientId) return null;
+
+  const payload = Buffer.from(JSON.stringify({
+    v: 2,
+    a: normalizedAgencyId,
+    c: normalizedClientId,
+  })).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', approvalLinkSecret())
+    .update(payload)
+    .digest('base64url');
+
+  return `zba2.${payload}.${signature}`;
+}
+
+function parseStatelessApprovalToken(token) {
+  const value = String(token || '').trim();
+  const parts = value.split('.');
+  if (parts.length !== 3 || parts[0] !== 'zba2') return null;
+
+  const [, payload, signature] = parts;
+  const expected = crypto
+    .createHmac('sha256', approvalLinkSecret())
+    .update(payload)
+    .digest('base64url');
+
+  const receivedBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    receivedBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+  ) return null;
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    const agencyId = Number(decoded?.a);
+    const clientId = Number(decoded?.c);
+    if (Number(decoded?.v) !== 2 || !agencyId || !clientId) return null;
+
+    // O token assinado não basta sozinho: o cliente ainda precisa existir e
+    // pertencer à agência informada. Isso impede tokens válidos apontando para
+    // um tenant diferente.
+    const client = db.prepare(`
+      SELECT id, agency_id
+      FROM clients
+      WHERE id = ? AND agency_id = ?
+      LIMIT 1
+    `).get(clientId, agencyId);
+    if (!client) return null;
+
+    return {
+      id: null,
+      agency_id: agencyId,
+      client_id: clientId,
+      token: value,
+      active: 1,
+      created_by: null,
+      created_at: null,
+      updated_at: null,
+      stateless: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getLegacyClientApprovalLink(agencyId, clientId) {
+  try {
+    ensureDesignerApprovalStorage();
+    return db.prepare(`
+      SELECT id, agency_id, client_id, token, active, created_by, created_at, updated_at
+      FROM designer_approval_links
+      WHERE agency_id = ? AND client_id = ? AND active = 1
+        AND token IS NOT NULL AND TRIM(token) <> ''
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(Number(agencyId), Number(clientId)) || null;
+  } catch (error) {
+    // Bancos antigos podem ter uma versão incompatível da tabela. O link
+    // assinado abaixo não depende dessa tabela, então uma migração legada não
+    // pode mais impedir o compartilhamento com o cliente.
+    console.warn('[DESIGNER_APPROVAL_LINK] Link legado indisponível:', error.message);
+    return null;
+  }
+}
+
 function getClientApprovalLink(agencyId, clientId) {
-  ensureDesignerApprovalStorage();
-  return db.prepare(`
-    SELECT id, agency_id, client_id, token, active, created_by, created_at, updated_at
-    FROM designer_approval_links
-    WHERE agency_id = ? AND client_id = ? AND active = 1
-      AND token IS NOT NULL AND TRIM(token) <> ''
-    ORDER BY id DESC
+  const normalizedAgencyId = Number(agencyId);
+  const normalizedClientId = Number(clientId);
+  if (!normalizedAgencyId || !normalizedClientId) return null;
+
+  const client = db.prepare(`
+    SELECT id, agency_id
+    FROM clients
+    WHERE id = ? AND agency_id = ?
     LIMIT 1
-  `).get(Number(agencyId), Number(clientId)) || null;
+  `).get(normalizedClientId, normalizedAgencyId);
+  if (!client) return null;
+
+  // Sempre devolve o novo link assinado. Links antigos continuam válidos pelo
+  // fallback de getLinkByToken(), mas não participam mais da geração atual.
+  // Assim esta rota não depende de INSERT, UPDATE, constraint ou schema legado.
+  const token = buildStatelessApprovalToken(normalizedAgencyId, normalizedClientId);
+  return token ? {
+    id: null,
+    agency_id: normalizedAgencyId,
+    client_id: normalizedClientId,
+    token,
+    active: 1,
+    created_by: null,
+    created_at: null,
+    updated_at: null,
+    stateless: true,
+  } : null;
 }
 
 function getOrCreateClientApprovalLink({ agencyId, clientId, createdBy }) {
-  ensureDesignerApprovalStorage();
-  const normalizedAgencyId = Number(agencyId);
-  const normalizedClientId = Number(clientId);
-  const normalizedCreatedBy = createdBy ? Number(createdBy) : null;
-
-  const existing = getClientApprovalLink(normalizedAgencyId, normalizedClientId);
-  if (existing) return existing;
-
-  // Não dependemos de UNIQUE(agency_id, client_id) porque bancos mais antigos
-  // podem ter sido criados antes dessa constraint existir. Nesses casos o
-  // antigo UPSERT falhava e a tela mostrava "Não foi possível gerar o link".
-  const inactiveOrLegacy = db.prepare(`
-    SELECT id
-    FROM designer_approval_links
-    WHERE agency_id = ? AND client_id = ?
-    ORDER BY id DESC
-    LIMIT 1
-  `).get(normalizedAgencyId, normalizedClientId);
-
-  const token = crypto.randomBytes(24).toString('hex');
-  if (inactiveOrLegacy?.id) {
-    db.prepare(`
-      UPDATE designer_approval_links
-      SET token = ?, active = 1, created_by = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(token, normalizedCreatedBy, Number(inactiveOrLegacy.id));
-  } else {
-    db.prepare(`
-      INSERT INTO designer_approval_links
-        (agency_id, client_id, token, active, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, 1, ?, datetime('now'), datetime('now'))
-    `).run(normalizedAgencyId, normalizedClientId, token, normalizedCreatedBy);
-  }
-
-  return getClientApprovalLink(normalizedAgencyId, normalizedClientId);
+  // O link atual é determinístico e assinado. Não há INSERT/UPDATE para gerar
+  // o link, eliminando a falha observada em bancos antigos com schema legado.
+  // createdBy é mantido na assinatura da função por compatibilidade com as rotas.
+  void createdBy;
+  return getClientApprovalLink(agencyId, clientId);
 }
 
 function getLinkByToken(token) {
-  ensureDesignerApprovalStorage();
-  return db.prepare(`
-    SELECT id, agency_id, client_id, token, active, created_by, created_at, updated_at
-    FROM designer_approval_links
-    WHERE token = ? AND active = 1
-    LIMIT 1
-  `).get(String(token || '')) || null;
+  const stateless = parseStatelessApprovalToken(token);
+  if (stateless) return stateless;
+
+  // Compatibilidade com links aleatórios já compartilhados antes desta versão.
+  try {
+    ensureDesignerApprovalStorage();
+    return db.prepare(`
+      SELECT id, agency_id, client_id, token, active, created_by, created_at, updated_at
+      FROM designer_approval_links
+      WHERE token = ? AND active = 1
+      LIMIT 1
+    `).get(String(token || '')) || null;
+  } catch (error) {
+    console.warn('[DESIGNER_APPROVAL_LINK] Não foi possível consultar link legado:', error.message);
+    return null;
+  }
 }
 
 function getPublicClientProfile(link) {
