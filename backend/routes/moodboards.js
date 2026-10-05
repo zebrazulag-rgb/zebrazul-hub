@@ -96,9 +96,9 @@ function serializeBoard(clientId, agencyId, userId) {
     SELECT concept, feeling, avoid_notes, canvas_json, updated_at
     FROM moodboard_profiles
     WHERE agency_id = ? AND client_id = ?
-  `).get(agencyId, clientId) || { concept: '', feeling: '', avoid_notes: '', canvas_json: '{"version":2,"elements":{},"frames":[]}', updated_at: null };
+  `).get(agencyId, clientId) || { concept: '', feeling: '', avoid_notes: '', canvas_json: '{"version":2,"elements":{},"frames":[],"shapes":[]}', updated_at: null };
 
-  let canvas = { version: 2, elements: {}, frames: [] };
+  let canvas = { version: 2, elements: {}, frames: [], shapes: [] };
   try {
     const parsed = JSON.parse(profile.canvas_json || '{}');
     if (parsed && typeof parsed === 'object') {
@@ -106,6 +106,7 @@ function serializeBoard(clientId, agencyId, userId) {
         version: 2,
         elements: parsed.elements && typeof parsed.elements === 'object' ? parsed.elements : {},
         frames: Array.isArray(parsed.frames) ? parsed.frames.slice(0, 100) : [],
+        shapes: Array.isArray(parsed.shapes) ? parsed.shapes.slice(0, 500) : [],
       };
     }
   } catch {}
@@ -150,7 +151,7 @@ router.put('/profile', (req, res) => {
   const concept = req.body.concept !== undefined ? cleanText(req.body.concept, 700) : cleanText(current.concept, 700);
   const feeling = req.body.feeling !== undefined ? cleanText(req.body.feeling, 700) : cleanText(current.feeling, 700);
   const avoidNotes = req.body.avoid_notes !== undefined ? cleanText(req.body.avoid_notes, 1200) : cleanText(current.avoid_notes, 1200);
-  let canvasJson = current.canvas_json || '{"version":2,"elements":{},"frames":[]}';
+  let canvasJson = current.canvas_json || '{"version":2,"elements":{},"frames":[],"shapes":[]}';
   if (req.body.canvas !== undefined) {
     const value = req.body.canvas && typeof req.body.canvas === 'object' ? req.body.canvas : {};
     const safe = {
@@ -159,6 +160,7 @@ router.put('/profile', (req, res) => {
         ? Object.fromEntries(Object.entries(value.elements).slice(0, 1000))
         : {},
       frames: Array.isArray(value.frames) ? value.frames.slice(0, 100) : [],
+      shapes: Array.isArray(value.shapes) ? value.shapes.slice(0, 500) : [],
     };
     canvasJson = JSON.stringify(safe).slice(0, 2000000);
   }
