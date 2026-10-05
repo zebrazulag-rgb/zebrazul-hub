@@ -1415,6 +1415,7 @@ db.exec(`
 `);
 
 tryAddColumn('clients', 'feed_share_token', 'TEXT');
+tryAddColumn('clients', 'approval_share_token', 'TEXT');
 
 // Fundação multiagência / cobranding. As colunas são adicionadas sem apagar
 // registros existentes e, logo abaixo, todos os dados atuais são vinculados
@@ -1893,6 +1894,7 @@ if (tableHasColumn('commercial_leads', 'stage_key')) {
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_agency ON users(agency_id, role);
   CREATE INDEX IF NOT EXISTS idx_clients_agency ON clients(agency_id, status, name);
+  CREATE INDEX IF NOT EXISTS idx_clients_approval_share_token ON clients(approval_share_token);
   CREATE INDEX IF NOT EXISTS idx_tasks_agency ON tasks(agency_id, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_tasks_featured ON tasks(agency_id, is_featured, status, due_date);
   CREATE INDEX IF NOT EXISTS idx_commercial_leads_stage ON commercial_leads(agency_id, stage, updated_at);

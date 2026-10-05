@@ -679,6 +679,9 @@ router.get('/approval-link/client/:clientId', (req, res) => {
           clientId,
           createdBy: req.user.id,
         });
+    if (!link?.token) {
+      return res.status(500).json({ error: 'O link de aprovação não pôde ser criado para este cliente.' });
+    }
     return res.json({ link });
   } catch (error) {
     console.error('[DESIGNER_APPROVAL_LINK] Erro ao carregar/criar link:', error);
@@ -699,6 +702,9 @@ router.post('/approval-link/client/:clientId', (req, res) => {
       clientId,
       createdBy: req.user.id,
     });
+    if (!link?.token) {
+      return res.status(500).json({ error: 'O link de aprovação não pôde ser criado para este cliente.' });
+    }
     return res.json({ link });
   } catch (error) {
     console.error('[DESIGNER_APPROVAL_LINK] Erro ao gerar link:', error);

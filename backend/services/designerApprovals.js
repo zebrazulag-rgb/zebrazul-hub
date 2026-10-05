@@ -566,19 +566,20 @@ function getClientApprovalLink(agencyId, clientId) {
   const normalizedClientId = Number(clientId);
   if (!normalizedAgencyId || !normalizedClientId) return null;
 
+  // O link atual fica no próprio cliente. Essa coluna é criada pela migração
+  // central de database.js e evita depender da tabela legada de aprovação,
+  // que pode ter schemas diferentes entre instalações antigas do ZebraHub.
   const client = db.prepare(`
-    SELECT id, agency_id
+    SELECT id, agency_id, approval_share_token
     FROM clients
     WHERE id = ? AND agency_id = ?
     LIMIT 1
   `).get(normalizedClientId, normalizedAgencyId);
-  if (!client) return null;
 
-  // Sempre devolve o novo link assinado. Links antigos continuam válidos pelo
-  // fallback de getLinkByToken(), mas não participam mais da geração atual.
-  // Assim esta rota não depende de INSERT, UPDATE, constraint ou schema legado.
-  const token = buildStatelessApprovalToken(normalizedAgencyId, normalizedClientId);
-  return token ? {
+  const token = String(client?.approval_share_token || '').trim();
+  if (!client || !token) return null;
+
+  return {
     id: null,
     agency_id: normalizedAgencyId,
     client_id: normalizedClientId,
@@ -587,23 +588,76 @@ function getClientApprovalLink(agencyId, clientId) {
     created_by: null,
     created_at: null,
     updated_at: null,
-    stateless: true,
-  } : null;
+    storage: 'client',
+  };
 }
-
 function getOrCreateClientApprovalLink({ agencyId, clientId, createdBy }) {
-  // O link atual é determinístico e assinado. Não há INSERT/UPDATE para gerar
-  // o link, eliminando a falha observada em bancos antigos com schema legado.
-  // createdBy é mantido na assinatura da função por compatibilidade com as rotas.
-  void createdBy;
-  return getClientApprovalLink(agencyId, clientId);
-}
+  const normalizedAgencyId = Number(agencyId);
+  const normalizedClientId = Number(clientId);
+  if (!normalizedAgencyId || !normalizedClientId) return null;
 
+  const existing = getClientApprovalLink(normalizedAgencyId, normalizedClientId);
+  if (existing) return existing;
+
+  const client = db.prepare(`
+    SELECT id
+    FROM clients
+    WHERE id = ? AND agency_id = ?
+    LIMIT 1
+  `).get(normalizedClientId, normalizedAgencyId);
+  if (!client) return null;
+
+  // Mesmo padrão já usado em outros links públicos do ZebraHub: token aleatório
+  // persistido no registro do cliente. O UPDATE condicional preserva o token caso
+  // dois requests tentem criá-lo ao mesmo tempo.
+  const token = crypto.randomBytes(24).toString('hex');
+  db.prepare(`
+    UPDATE clients
+    SET approval_share_token = CASE
+      WHEN approval_share_token IS NULL OR TRIM(approval_share_token) = '' THEN ?
+      ELSE approval_share_token
+    END
+    WHERE id = ? AND agency_id = ?
+  `).run(token, normalizedClientId, normalizedAgencyId);
+
+  void createdBy;
+  return getClientApprovalLink(normalizedAgencyId, normalizedClientId);
+}
 function getLinkByToken(token) {
-  const stateless = parseStatelessApprovalToken(token);
+  const value = String(token || '').trim();
+  if (!value) return null;
+
+  // Formato atual: token dedicado salvo diretamente no cliente.
+  try {
+    const client = db.prepare(`
+      SELECT id, agency_id, approval_share_token
+      FROM clients
+      WHERE approval_share_token = ?
+      LIMIT 1
+    `).get(value);
+    if (client) {
+      return {
+        id: null,
+        agency_id: Number(client.agency_id),
+        client_id: Number(client.id),
+        token: value,
+        active: 1,
+        created_by: null,
+        created_at: null,
+        updated_at: null,
+        storage: 'client',
+      };
+    }
+  } catch (error) {
+    console.warn('[DESIGNER_APPROVAL_LINK] Token no cliente indisponível:', error.message);
+  }
+
+  // Compatibilidade com os tokens assinados usados temporariamente em uma
+  // versão anterior do fluxo.
+  const stateless = parseStatelessApprovalToken(value);
   if (stateless) return stateless;
 
-  // Compatibilidade com links aleatórios já compartilhados antes desta versão.
+  // Compatibilidade com links aleatórios antigos da designer_approval_links.
   try {
     ensureDesignerApprovalStorage();
     return db.prepare(`
@@ -611,13 +665,12 @@ function getLinkByToken(token) {
       FROM designer_approval_links
       WHERE token = ? AND active = 1
       LIMIT 1
-    `).get(String(token || '')) || null;
+    `).get(value) || null;
   } catch (error) {
     console.warn('[DESIGNER_APPROVAL_LINK] Não foi possível consultar link legado:', error.message);
     return null;
   }
 }
-
 function getPublicClientProfile(link) {
   if (!link) return null;
   return db.prepare(`
