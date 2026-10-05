@@ -39,9 +39,39 @@ function ensureDesignerApprovalStorage() {
       FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     );
+  `);
+
+  // Algumas instalações já possuíam uma versão antiga da tabela de links.
+  // CREATE TABLE IF NOT EXISTS não acrescenta colunas em tabelas existentes,
+  // então garantimos aqui a compatibilidade sem apagar nenhum link já criado.
+  const linkColumns = new Set(
+    db.prepare(`PRAGMA table_info(designer_approval_links)`).all().map((column) => String(column.name))
+  );
+  const ensureLinkColumn = (name, definition) => {
+    if (linkColumns.has(name)) return;
+    db.exec(`ALTER TABLE designer_approval_links ADD COLUMN ${name} ${definition}`);
+    linkColumns.add(name);
+  };
+
+  ensureLinkColumn('agency_id', 'INTEGER');
+  ensureLinkColumn('client_id', 'INTEGER');
+  ensureLinkColumn('token', 'TEXT');
+  ensureLinkColumn('active', 'INTEGER NOT NULL DEFAULT 1');
+  ensureLinkColumn('created_by', 'INTEGER');
+  ensureLinkColumn('created_at', 'TEXT');
+  ensureLinkColumn('updated_at', 'TEXT');
+
+  db.exec(`
+    UPDATE designer_approval_links
+    SET active = COALESCE(active, 1),
+        created_at = COALESCE(created_at, datetime('now')),
+        updated_at = COALESCE(updated_at, created_at, datetime('now'));
 
     CREATE INDEX IF NOT EXISTS idx_designer_approval_links_token
       ON designer_approval_links(token);
+
+    CREATE INDEX IF NOT EXISTS idx_designer_approval_links_agency_client
+      ON designer_approval_links(agency_id, client_id);
   `);
 }
 
@@ -440,27 +470,48 @@ function getClientApprovalLink(agencyId, clientId) {
     SELECT id, agency_id, client_id, token, active, created_by, created_at, updated_at
     FROM designer_approval_links
     WHERE agency_id = ? AND client_id = ? AND active = 1
+      AND token IS NOT NULL AND TRIM(token) <> ''
+    ORDER BY id DESC
     LIMIT 1
   `).get(Number(agencyId), Number(clientId)) || null;
 }
 
 function getOrCreateClientApprovalLink({ agencyId, clientId, createdBy }) {
   ensureDesignerApprovalStorage();
-  const existing = getClientApprovalLink(agencyId, clientId);
+  const normalizedAgencyId = Number(agencyId);
+  const normalizedClientId = Number(clientId);
+  const normalizedCreatedBy = createdBy ? Number(createdBy) : null;
+
+  const existing = getClientApprovalLink(normalizedAgencyId, normalizedClientId);
   if (existing) return existing;
 
-  const token = crypto.randomBytes(24).toString('hex');
-  db.prepare(`
-    INSERT INTO designer_approval_links (agency_id, client_id, token, active, created_by)
-    VALUES (?, ?, ?, 1, ?)
-    ON CONFLICT(agency_id, client_id) DO UPDATE SET
-      token = excluded.token,
-      active = 1,
-      created_by = excluded.created_by,
-      updated_at = datetime('now')
-  `).run(Number(agencyId), Number(clientId), token, createdBy ? Number(createdBy) : null);
+  // Não dependemos de UNIQUE(agency_id, client_id) porque bancos mais antigos
+  // podem ter sido criados antes dessa constraint existir. Nesses casos o
+  // antigo UPSERT falhava e a tela mostrava "Não foi possível gerar o link".
+  const inactiveOrLegacy = db.prepare(`
+    SELECT id
+    FROM designer_approval_links
+    WHERE agency_id = ? AND client_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(normalizedAgencyId, normalizedClientId);
 
-  return getClientApprovalLink(agencyId, clientId);
+  const token = crypto.randomBytes(24).toString('hex');
+  if (inactiveOrLegacy?.id) {
+    db.prepare(`
+      UPDATE designer_approval_links
+      SET token = ?, active = 1, created_by = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(token, normalizedCreatedBy, Number(inactiveOrLegacy.id));
+  } else {
+    db.prepare(`
+      INSERT INTO designer_approval_links
+        (agency_id, client_id, token, active, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, 1, ?, datetime('now'), datetime('now'))
+    `).run(normalizedAgencyId, normalizedClientId, token, normalizedCreatedBy);
+  }
+
+  return getClientApprovalLink(normalizedAgencyId, normalizedClientId);
 }
 
 function getLinkByToken(token) {

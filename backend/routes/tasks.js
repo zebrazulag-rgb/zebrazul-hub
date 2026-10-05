@@ -667,8 +667,23 @@ router.put('/:id/correction-feedback', (req, res) => {
 router.get('/approval-link/client/:clientId', (req, res) => {
   const clientId = Number(req.params.clientId);
   if (!clientId || !ensureClientAccess(req, res, clientId)) return;
-  const link = getClientApprovalLink(req.user.agency_id, clientId);
-  return res.json({ link });
+
+  try {
+    // Para a equipe, o link deve simplesmente existir ao abrir a aba Cliente.
+    // Assim não dependemos de um clique extra em "Gerar link" para liberar a
+    // aprovação externa. Usuários cliente continuam apenas consultando.
+    const link = req.user.role === 'client'
+      ? getClientApprovalLink(req.user.agency_id, clientId)
+      : getOrCreateClientApprovalLink({
+          agencyId: req.user.agency_id,
+          clientId,
+          createdBy: req.user.id,
+        });
+    return res.json({ link });
+  } catch (error) {
+    console.error('[DESIGNER_APPROVAL_LINK] Erro ao carregar/criar link:', error);
+    return res.status(500).json({ error: 'Não foi possível preparar o link de aprovação do cliente.' });
+  }
 });
 
 router.post('/approval-link/client/:clientId', (req, res) => {
@@ -677,12 +692,18 @@ router.post('/approval-link/client/:clientId', (req, res) => {
   if (req.user.role === 'client') {
     return res.status(403).json({ error: 'Apenas a equipe pode gerar o link de aprovação do cliente.' });
   }
-  const link = getOrCreateClientApprovalLink({
-    agencyId: req.user.agency_id,
-    clientId,
-    createdBy: req.user.id,
-  });
-  return res.json({ link });
+
+  try {
+    const link = getOrCreateClientApprovalLink({
+      agencyId: req.user.agency_id,
+      clientId,
+      createdBy: req.user.id,
+    });
+    return res.json({ link });
+  } catch (error) {
+    console.error('[DESIGNER_APPROVAL_LINK] Erro ao gerar link:', error);
+    return res.status(500).json({ error: 'Não foi possível preparar o link de aprovação do cliente.' });
+  }
 });
 
 // Métricas leves do painel. Cada registro é contabilizado individualmente,
