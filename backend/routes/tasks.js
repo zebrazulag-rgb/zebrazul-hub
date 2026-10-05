@@ -403,12 +403,17 @@ router.get('/approval-grid', (req, res) => {
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
       AND (
-        t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved')
-        OR t.direction_status = 'approved'
+        t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved', 'correction')
+        OR LOWER(COALESCE(t.approval_status, '')) = 'changes_requested'
+        OR t.direction_status IN ('approved', 'changes_requested')
+        OR t.client_status = 'changes_requested'
         OR EXISTS (
           SELECT 1 FROM designer_approval_states das
           WHERE das.task_id = t.id AND das.agency_id = t.agency_id
-            AND das.direction_status IN ('pending', 'approved')
+            AND (
+              das.direction_status IN ('pending', 'approved', 'changes_requested')
+              OR das.client_status = 'changes_requested'
+            )
         )
       )
   `;
@@ -518,6 +523,14 @@ router.get('/approval-grid', (req, res) => {
       client_status: approvalState.client_status || 'waiting',
       client_feedback: approvalState.client_feedback || null,
       client_at: approvalState.client_at || null,
+      correction_feedback: approvalState.client_status === 'changes_requested'
+        ? (approvalState.client_feedback || approvalState.direction_feedback || null)
+        : (approvalState.direction_status === 'changes_requested'
+            ? (approvalState.direction_feedback || approvalState.client_feedback || null)
+            : null),
+      correction_source: approvalState.client_status === 'changes_requested'
+        ? 'client'
+        : (approvalState.direction_status === 'changes_requested' ? 'direction' : null),
       updated_at: row.updated_at,
     };
   }).filter((item) => item.image_count > 0);

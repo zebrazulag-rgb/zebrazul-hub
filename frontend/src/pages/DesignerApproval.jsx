@@ -16,7 +16,7 @@ const CONTENT_TYPE_LABELS = {
   print: 'Impresso',
 };
 
-const APPROVAL_STAGES = new Set(['approval', 'internal_approval', 'external_approval', 'approved']);
+const APPROVAL_STAGES = new Set(['approval', 'internal_approval', 'external_approval', 'approved', 'correction']);
 
 function isDesignerItem(item) {
   if (!item) return false;
@@ -85,6 +85,33 @@ function clientStatusLabel(item) {
   if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return 'Cliente aprovou';
   if (item?.client_status === 'changes_requested') return 'Cliente pediu correção';
   return 'Aguardando cliente';
+}
+
+function isCorrectionItem(item) {
+  const approvalStatus = String(item?.approval_status || '').toLowerCase();
+  const workflowStage = String(item?.workflow_stage || '').toLowerCase();
+  return item?.direction_status === 'changes_requested'
+    || item?.client_status === 'changes_requested'
+    || approvalStatus === 'changes_requested'
+    || workflowStage === 'correction';
+}
+
+function correctionFeedbackFor(item) {
+  if (!item) return '';
+  return String(
+    item.correction_feedback
+    || (item.client_status === 'changes_requested' ? item.client_feedback : '')
+    || (item.direction_status === 'changes_requested' ? item.direction_feedback : '')
+    || item.client_feedback
+    || item.direction_feedback
+    || ''
+  ).trim();
+}
+
+function correctionSourceFor(item) {
+  if (item?.correction_source) return item.correction_source === 'client' ? 'Cliente' : 'Direção';
+  if (item?.client_status === 'changes_requested') return 'Cliente';
+  return 'Direção';
 }
 
 function statusTone(status) {
@@ -301,10 +328,13 @@ export default function DesignerApproval() {
   }, [loadItems]);
 
   const clientLabel = selectedClient?.name || 'Todos os clientes';
+  const correctionCount = useMemo(() => items.filter(isCorrectionItem).length, [items]);
   const visibleItems = useMemo(() => {
-    const filtered = mode === 'client'
-      ? items.filter((item) => directionIsApproved(item))
-      : items;
+    const filtered = mode === 'correction'
+      ? items.filter(isCorrectionItem)
+      : mode === 'client'
+        ? items.filter((item) => directionIsApproved(item) && !isCorrectionItem(item))
+        : items.filter((item) => !isCorrectionItem(item));
 
     // Feed em ordem de Instagram: conteúdos mais recentes primeiro (em cima)
     // e os mais antigos descendo a grade.
@@ -325,7 +355,7 @@ export default function DesignerApproval() {
       ? item.images.map((image) => ({ data: image.data, mime: image.mime, filename: image.filename }))
       : [],
     content_type: Number(item.image_count || item.images?.length || 0) > 1 ? 'carrossel' : (item.content_type || 'feed'),
-    status: mode === 'direction' ? statusForDirection(item) : statusForClient(item),
+    status: mode === 'correction' ? 'rejected' : (mode === 'direction' ? statusForDirection(item) : statusForClient(item)),
     workflow_stage: null,
     scheduled_at: item.due_date || item.scheduled_at || item.created_at || null,
   })), [visibleItems, mode]);
@@ -629,6 +659,16 @@ export default function DesignerApproval() {
             >
               Cliente
             </button>
+            <button
+              type="button"
+              onClick={() => setMode('correction')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'correction' ? 'bg-rose-600 text-white' : 'text-rose-600 hover:bg-rose-50'}`}
+            >
+              Correções
+              {correctionCount > 0 && (
+                <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-black ${mode === 'correction' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-700'}`}>{correctionCount}</span>
+              )}
+            </button>
           </div>
           <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm">
             <Images size={16} className="text-[#0969ff]" /> {visibleItems.length} {visibleItems.length === 1 ? 'peça' : 'peças'}
@@ -640,6 +680,13 @@ export default function DesignerApproval() {
         <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <CheckCircle2 size={18} className="shrink-0 text-blue-600" />
           <div><strong>Aprovação da direção</strong> · {user?.name || 'Arthur'} revisa e aprova aqui dentro do ZebraHub. A peça aprovada continua visível com selo e é liberada para o cliente.</div>
+        </div>
+      ) : mode === 'correction' ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+          <MessageSquareWarning size={19} className="mt-0.5 shrink-0 text-rose-600" />
+          <div>
+            <strong>Correções do Designer</strong> · Peças devolvidas pela Direção ou pelo Cliente aparecem aqui com o feedback completo. Abra a peça para ler a orientação e depois vá direto para a tarefa para fazer o ajuste.
+          </div>
         </div>
       ) : (
         <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
@@ -682,10 +729,16 @@ export default function DesignerApproval() {
         <div className="flex min-h-[420px] items-center justify-center rounded-[24px] border border-slate-200 bg-white text-sm text-slate-400">Carregando aprovação...</div>
       ) : visibleItems.length === 0 ? (
         <div className="flex min-h-[420px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0969ff]"><Check size={24} /></div>
-          <h2 className="mt-4 text-lg font-bold text-slate-900">Nada aguardando aprovação</h2>
-          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">No Squad → Designer, envie uma tarefa ou subtarefa com imagem para “Em aprovação”.</p>
-          <Link to="/designer" className="mt-5 rounded-xl bg-[#0969ff] px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700">Abrir Designer</Link>
+          <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${mode === 'correction' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-[#0969ff]'}`}>
+            {mode === 'correction' ? <MessageSquareWarning size={24} /> : <Check size={24} />}
+          </div>
+          <h2 className="mt-4 text-lg font-bold text-slate-900">{mode === 'correction' ? 'Nenhuma correção pendente' : 'Nada aguardando aprovação'}</h2>
+          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">
+            {mode === 'correction'
+              ? 'Quando a Direção ou o Cliente solicitar um ajuste, a peça e o feedback aparecem aqui automaticamente.'
+              : 'No Squad → Designer, envie uma tarefa ou subtarefa com imagem para “Em aprovação”.'}
+          </p>
+          <Link to="/designer" className={`mt-5 rounded-xl px-4 py-2.5 text-sm font-bold text-white ${mode === 'correction' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[#0969ff] hover:bg-blue-700'}`}>Abrir Designer</Link>
         </div>
       ) : (
         <div className="flex justify-center py-1">
@@ -736,6 +789,16 @@ export default function DesignerApproval() {
                 </div>
 
                 <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                  {isCorrectionItem(selectedItem) && (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
+                      <div className="flex items-center gap-2">
+                        <MessageSquareWarning size={17} className="shrink-0 text-rose-600" />
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-700">Feedback da correção · {correctionSourceFor(selectedItem)}</p>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-6">{correctionFeedbackFor(selectedItem) || 'Correção solicitada sem observação.'}</p>
+                    </div>
+                  )}
+
                   <div className="grid gap-2">
                     <div className={`rounded-xl border px-3 py-3 ${statusTone(selectedDirectionStatus)}`}>
                       <p className="text-[10px] font-black uppercase tracking-[0.14em] opacity-70">Direção</p>
@@ -794,10 +857,10 @@ export default function DesignerApproval() {
                       <p className={`mt-2 whitespace-pre-wrap text-sm leading-6 ${selectedItem.caption ? 'text-slate-600' : 'italic text-slate-400'}`}>{selectedItem.caption || 'Sem legenda definida.'}</p>
                     )}
                   </div>
-                  {selectedItem.direction_feedback && (
+                  {!isCorrectionItem(selectedItem) && selectedItem.direction_feedback && (
                     <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Direção:</strong> {selectedItem.direction_feedback}</div>
                   )}
-                  {selectedItem.client_feedback && (
+                  {!isCorrectionItem(selectedItem) && selectedItem.client_feedback && (
                     <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Cliente:</strong> {selectedItem.client_feedback}</div>
                   )}
                   {actionError && (
@@ -807,7 +870,14 @@ export default function DesignerApproval() {
                 </div>
 
                 <div className="border-t border-slate-100 p-5">
-                  {mode === 'direction' ? (
+                  {mode === 'correction' ? (
+                    <Link
+                      to={`/designer?task_id=${selectedItem.parent_task_id || selectedItem.id}`}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
+                    >
+                      <Pencil size={16} /> Abrir tarefa e corrigir
+                    </Link>
+                  ) : mode === 'direction' ? (
                     canDirectionApprove ? (
                       <div className="grid grid-cols-2 gap-2">
                         <button
