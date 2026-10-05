@@ -66,7 +66,7 @@ function taskCorrectionFeedback(task) {
   const directionStatus = String(task?.direction_status || '').toLowerCase();
   if (clientStatus === 'changes_requested' && task?.client_feedback) return String(task.client_feedback).trim();
   if (directionStatus === 'changes_requested' && task?.direction_feedback) return String(task.direction_feedback).trim();
-  return String(task?.client_feedback || task?.direction_feedback || task?.correction_feedback || '').trim();
+  return String(task?.client_feedback || task?.direction_feedback || '').trim();
 }
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
@@ -217,13 +217,10 @@ function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
             </div>
           )}
           {taskNeedsCorrection(t) && (
-            <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2">
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700">
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700">
                 <AlertTriangle size={10} /> {Number(t.subtask_correction || 0) > 0 ? `Correção pendente (${t.subtask_correction})` : 'Correção solicitada'}
               </span>
-              {taskCorrectionFeedback(t) && (
-                <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-4 text-rose-700">{taskCorrectionFeedback(t)}</p>
-              )}
             </div>
           )}
           {t.parent_task_id && (
@@ -314,6 +311,7 @@ export default function Tasks({ workspace = 'designer' }) {
   const [defaultTaskDate, setDefaultTaskDate] = useState('');
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [openCorrectionFeedbackId, setOpenCorrectionFeedbackId] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [editingSubtask, setEditingSubtask] = useState(null);
   const [subtasks, setSubtasks] = useState([]);
@@ -353,6 +351,10 @@ export default function Tasks({ workspace = 'designer' }) {
   });
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showOverdueOnly, setShowOverdueOnly] = useState(() => searchParams.get('atrasadas') === '1');
+
+  useEffect(() => {
+    setOpenCorrectionFeedbackId(null);
+  }, [selectedTask?.id]);
 
   useEffect(() => {
     if (!showTaskActions) return undefined;
@@ -1744,8 +1746,24 @@ export default function Tasks({ workspace = 'designer' }) {
                       </div>
                       {taskNeedsCorrection(s) && (
                         <div className="mt-1.5">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold text-rose-700"><AlertTriangle size={10} /> Correção solicitada</span>
-                          {taskCorrectionFeedback(s) && <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-rose-700">{taskCorrectionFeedback(s)}</p>}
+                          <button
+                            type="button"
+                            onClick={() => setOpenCorrectionFeedbackId((current) => current === s.id ? null : s.id)}
+                            aria-expanded={openCorrectionFeedbackId === s.id}
+                            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold text-rose-700 transition hover:bg-rose-100"
+                            title="Clique para ver o feedback da correção"
+                          >
+                            <AlertTriangle size={10} /> Correção solicitada
+                            <ChevronDown size={11} className={`transition-transform ${openCorrectionFeedbackId === s.id ? 'rotate-180' : ''}`} />
+                          </button>
+                          {openCorrectionFeedbackId === s.id && (
+                            <div className="mt-2 rounded-lg border border-rose-200 bg-white px-2.5 py-2 shadow-sm">
+                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-rose-500">Feedback da correção</p>
+                              <p className={`whitespace-pre-wrap text-[11px] leading-4 ${taskCorrectionFeedback(s) ? 'text-rose-700' : 'italic text-rose-400'}`}>
+                                {taskCorrectionFeedback(s) || 'Correção solicitada sem observação.'}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
                       {!isSiteLP && canCreateTasks && s.task_type === 'post' && s.client_id && (
