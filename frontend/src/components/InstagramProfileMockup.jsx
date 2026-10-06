@@ -29,7 +29,7 @@ function formatMetric(value) {
   return new Intl.NumberFormat('pt-BR').format(number);
 }
 
-export default function InstagramProfileMockup({ client, posts, highlights = [], onPostClick, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
+export default function InstagramProfileMockup({ client, posts, highlights = [], onPostClick, renderHoverActions, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
   const username = client?.instagram_username || client?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || 'perfil';
   const displayName = client?.instagram_display_name || client?.name || 'Nome do perfil';
   const postsCount = client?.instagram_posts_count ?? posts.length;
@@ -138,7 +138,14 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
             const workflowStatus = sourceType === 'planned' ? workflowStageMeta(post.workflow_stage) : null;
             const ApprovalIcon = approvalStatus?.icon || null;
             return (
-              <button key={`${sourceType}-${sourceId}`} onClick={() => onPostClick?.(post)} className="group relative aspect-[4/5] overflow-hidden bg-slate-100 text-left">
+              <div
+                key={`${sourceType}-${sourceId}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onPostClick?.(post)}
+                onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPostClick?.(post); } }}
+                className="group relative aspect-[4/5] cursor-pointer overflow-hidden bg-slate-100 text-left"
+              >
                 {mediaSrc ? (video && String(post.media_mime || post.media_gallery?.[0]?.mime || '').startsWith('video/') ? <video src={mediaSrc} className="h-full w-full object-cover bg-black" muted playsInline preload="metadata" /> : <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />) : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
                 {Number(post.is_pinned || 0) === 1 && (
                   <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-amber-950 shadow" title="Fixado no topo">
@@ -174,7 +181,18 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                     <ApprovalIcon size={10} /> {approvalStatus.label}
                   </span>
                 )}
-              </button>
+                {renderHoverActions && (() => {
+                  const actions = renderHoverActions(post);
+                  return actions ? (
+                    <div
+                      onClick={(event) => event.stopPropagation()}
+                      className="absolute inset-x-0 bottom-0 z-20 flex translate-y-1 flex-col gap-1.5 bg-gradient-to-t from-black/80 via-black/55 to-transparent p-2 pt-8 opacity-0 transition duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+                    >
+                      {actions}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
             );
           })}
         </div>

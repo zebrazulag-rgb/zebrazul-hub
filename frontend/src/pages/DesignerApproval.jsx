@@ -766,6 +766,32 @@ export default function DesignerApproval() {
     }
   }
 
+  // Ações rápidas ao passar o mouse sobre a peça (sem abrir o modal), só na aba Direção.
+  function renderHoverActions(item) {
+    if (mode !== 'direction' || !canManageDirection || !item?.id) return null;
+    const busy = Boolean(updatingId);
+    const btn = 'inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold shadow transition disabled:opacity-50';
+    if (isCorrectionItem(item)) return null;
+    if (isHeldForDirection(item)) {
+      return (
+        <button type="button" disabled={busy} onClick={() => sendToClient(item)} className={`${btn} w-full bg-violet-600 text-white hover:bg-violet-700`}>
+          {updatingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Enviar ao cliente
+        </button>
+      );
+    }
+    if (directionIsApproved(item)) return null;
+    return (
+      <div className="flex gap-1.5">
+        <button type="button" disabled={busy} onClick={() => { openItem(item); setCorrectionOpen(true); }} className={`${btn} bg-white/95 text-rose-700 hover:bg-white`}>
+          <MessageSquareWarning size={13} /> Correção
+        </button>
+        <button type="button" disabled={busy} onClick={() => directionDecision(item, 'approved')} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}>
+          {updatingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />} Aprovar
+        </button>
+      </div>
+    );
+  }
+
   const currentImage = selectedItem?.images?.[imageIndex]?.data || null;
   const selectedDirectionStatus = directionIsApproved(selectedItem) ? 'approved' : (selectedItem?.direction_status || 'pending');
   const selectedClientStatus = selectedItem?.client_status || 'waiting';
@@ -894,6 +920,7 @@ export default function DesignerApproval() {
             highlights={highlights}
             posts={approvalPosts}
             onPostClick={openItem}
+            renderHoverActions={renderHoverActions}
             sourceType="planned"
             showCoverBadges={false}
             editable={canEditProfile}
