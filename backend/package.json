@@ -12,6 +12,7 @@
     "restore": "node scripts/restore.js",
     "check:storage": "node scripts/check-storage.js",
     "check:media": "node scripts/check-media.js",
+    "report:orphan-media": "node scripts/report-orphan-media.js",
     "health": "node -e \"console.log(JSON.stringify(require('./db/health').getHealthStatus(), null, 2))\""
   },
   "dependencies": {
