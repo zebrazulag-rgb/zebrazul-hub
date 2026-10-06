@@ -217,29 +217,22 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/moodboards')) return method === 'GET' ? 'tasks.view' : 'tasks.create';
   if (path.startsWith('/competitors')) return 'compass.view';
   if (path === '/tasks' || path.startsWith('/tasks/')) {
+    // [FASE 1.5] Check de produção do designer: marcar/desmarcar a própria subtarefa exige apenas
+    // visualizar tarefas, e não "Criar e editar tarefas". Antes, qualquer escrita em /tasks/* caía em
+    // tasks.create, bloqueando designers com cargo personalizado antes de a rota rodar.
+    // Cobre os DOIS caminhos (PATCH dedicado e PUT só com designer_completed), pois o front usa o PUT.
+    // Clientes ficam de fora. A checagem de "subtarefa atribuída a você" continua dentro das rotas
+    // (routes/tasks.js), então esta exceção só remove o bloqueio genérico e não concede edição.
+    if (req.user?.role !== 'client') {
+      if (method === 'PATCH' && /^\/tasks\/\d+\/designer-completed$/.test(path)) return 'tasks.view';
+      if (method === 'PUT' && /^\/tasks\/\d+$/.test(path) && req.body && typeof req.body === 'object') {
+        const keys = Object.keys(req.body);
+        if (keys.length === 1 && keys[0] === 'designer_completed') return 'tasks.view';
+      }
+    }
     if (path.includes('/import')) return 'tasks.import';
     if (path.includes('/export')) return 'tasks.export';
     if (path.includes('/calendar-share')) return 'tasks.share_calendar';
-
-    // Marcar/desmarcar a conclusão de produção de uma subtarefa não deve exigir
-    // a permissão ampla de criar/editar tarefas. A autorização fina (subtarefa,
-    // responsável atribuído e valor válido) continua sendo feita em tasks.js.
-    // Mantemos compatibilidade com os dois contratos porque o frontend usa PUT
-    // para tolerar deploys front/back fora de sincronia, enquanto a rota PATCH
-    // dedicada continua disponível em versões mais novas da API.
-    const bodyKeys = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
-      ? Object.keys(req.body)
-      : [];
-    const isDesignerCompletionPut = method === 'PUT'
-      && /^\/tasks\/\d+$/.test(path)
-      && bodyKeys.length === 1
-      && bodyKeys[0] === 'designer_completed';
-    const isDesignerCompletionPatch = method === 'PATCH'
-      && /^\/tasks\/\d+\/designer-completed$/.test(path)
-      && bodyKeys.length === 1
-      && ['completed', 'designer_completed'].includes(bodyKeys[0]);
-
-    if (isDesignerCompletionPut || isDesignerCompletionPatch) return 'tasks.view';
     return method === 'GET' ? 'tasks.view' : 'tasks.create';
   }
   if (path === '/posts' || path.startsWith('/posts/')) {
