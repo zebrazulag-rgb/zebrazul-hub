@@ -20,6 +20,7 @@ import {
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import ManagerPanel from '../components/ManagerPanel.jsx';
 
 function isoDate(date) {
   const y = date.getFullYear();
@@ -172,6 +173,8 @@ export default function Dashboard() {
   }, [period, referenceDate, selectedClient?.id, user?.id, user?.role, user?.is_operations_head]);
 
   const isCommercialTeam = Boolean(user?.is_commercial_team);
+  // Gestão (admin ou chefia de operações) vê o Painel do Gestor: visão da agência inteira, focada em decisões.
+  const isManager = !isCommercialTeam && (user?.role === 'admin' || Number(user?.is_operations_head) === 1);
   const pendingApproval = posts.filter((p) => p.status === 'pending_approval');
   const completionRate = taskStats.total ? Math.round((taskStats.done / taskStats.total) * 100) : 0;
   const activeClients = clients.filter((c) => c.status === 'active').length;
@@ -269,6 +272,7 @@ export default function Dashboard() {
           <div className="max-w-2xl">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 lg:text-[28px]">Painel</h1>
             <p className="mt-1 text-xs font-medium capitalize tracking-wide text-slate-400">{formatDate(new Date())}</p>
+            {isManager && <p className="mt-1 text-xs text-slate-400">Visão da agência inteira. Não depende do filtro de cliente.</p>}
           </div>
 
           <div className="flex flex-wrap gap-2.5">
@@ -282,6 +286,9 @@ export default function Dashboard() {
         </div>
       </section>
 
+      {isManager && <ManagerPanel />}
+
+      {!isManager && (
       <section className={`grid grid-cols-2 gap-4 ${isCommercialTeam ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
         {contentStats.map((stat) => (
           <Link key={stat.label} to={stat.href} className="group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.045)] transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
@@ -297,6 +304,7 @@ export default function Dashboard() {
           </Link>
         ))}
       </section>
+      )}
 
       {(featuredTasks.length > 0 || user?.role === 'admin' || user?.role === 'team') && (
         <section className="surface-card p-5">

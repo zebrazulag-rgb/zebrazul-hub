@@ -214,6 +214,7 @@ function apiPermissionForRequest(req) {
     if (/^\/clients\/\d+\/accounts$/.test(path)) return 'social.connections';
     return method === 'GET' ? null : 'settings.clients';
   }
+  if (path === '/manager-dashboard' || path.startsWith('/manager-dashboard/')) return 'dashboard.view';
   if (path.startsWith('/moodboards')) return method === 'GET' ? 'tasks.view' : 'tasks.create';
   if (path.startsWith('/competitors')) return 'compass.view';
   if (path === '/tasks' || path.startsWith('/tasks/')) {
