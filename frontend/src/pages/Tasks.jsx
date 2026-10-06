@@ -309,6 +309,7 @@ export default function Tasks({ workspace = 'designer' }) {
   const [tasks, setTasks] = useState([]);
   const [calendarTasks, setCalendarTasks] = useState([]);
   const [backlogTasks, setBacklogTasks] = useState([]);
+  const [formBacklog, setFormBacklog] = useState(false);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -654,14 +655,14 @@ export default function Tasks({ workspace = 'designer' }) {
   }
 
   // Backlog: ideias/demandas que ainda não entraram no fluxo. Não contam em nenhum total.
-  async function setBacklog(taskId, toBacklog) {
+  async function setBacklog(taskId, toBacklog, stage = null) {
     setTaskError('');
     try {
-      await api.put('/tasks/' + taskId, { is_backlog: toBacklog ? 1 : 0 });
+      await api.put('/tasks/' + taskId, { is_backlog: toBacklog ? 1 : 0, ...(stage ? { workflow_stage: serverWorkflowStage(stage) } : {}) });
       setSelectedTask((previous) => previous?.id === taskId ? null : previous);
       broadcastTaskUpdate(taskId);
       await loadTasks();
-      setCalendarFeedback(toBacklog ? 'Tarefa movida para o Backlog.' : 'Tarefa enviada para o fluxo (A fazer).');
+      setCalendarFeedback(toBacklog ? 'Tarefa movida para o Backlog.' : 'Tarefa enviada para o fluxo.');
       window.setTimeout(() => setCalendarFeedback(''), 2600);
     } catch (error) {
       setTaskError(error.response?.data?.error || 'Não foi possível mover a tarefa.');
@@ -971,6 +972,15 @@ export default function Tasks({ workspace = 'designer' }) {
     setDragOverCol(null);
     const taskId = Number(e.dataTransfer.getData('text/task-id'));
     if (!taskId) return;
+    const fromBacklog = backlogTasks.some((t) => t.id === taskId);
+    if (columnKey === 'backlog') {
+      if (!fromBacklog && canCreateTasks) setBacklog(taskId, true);
+      return;
+    }
+    if (fromBacklog) {
+      if (canCreateTasks) setBacklog(taskId, false, columnKey);
+      return;
+    }
     const task = tasks.find((t) => t.id === taskId);
     if (task && workflowStage(task) !== columnKey) updateStatus(taskId, columnKey);
   }
@@ -1005,7 +1015,7 @@ export default function Tasks({ workspace = 'designer' }) {
     pending: tasks.filter((task) => workflowStage(task) === 'todo').length + subtaskOverview.pending,
     inProgress: tasks.filter((task) => ['in_progress', 'correction', 'approval'].includes(workflowStage(task))).length + subtaskOverview.inProgress,
     overdue: tasks.filter(isTaskOverdue).length,
-    done: tasks.filter((task) => ['approved', 'scheduled'].includes(workflowStage(task))).length + (subtaskOverview.done - subtaskOverview.posted),
+    done: tasks.filter((task) => ['approved', 'scheduled'].includes(workflowStage(task))).length + Math.max(0, subtaskOverview.done - subtaskOverview.posted),
     posted: tasks.filter((task) => workflowStage(task) === 'posted').length + subtaskOverview.posted,
   };
 
@@ -1305,9 +1315,6 @@ export default function Tasks({ workspace = 'designer' }) {
               <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
                 <Calendar size={14} /> Calendário
               </button>
-              <button onClick={() => setView('backlog')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'backlog' ? 'segmented-control-button-active' : '')} title="Ideias e demandas fora do fluxo. Não entram na contagem.">
-                <Inbox size={14} /> Backlog{backlogTasks.length ? ` (${backlogTasks.length})` : ''}
-              </button>
             </div>
             {view === 'calendar' && canShareTaskCalendar && effectiveClientId && (
               <button
@@ -1328,6 +1335,32 @@ export default function Tasks({ workspace = 'designer' }) {
 
       {view === 'kanban' && (
         <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3">
+          {!showOverdueOnly && (
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOverCol('backlog'); }}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={(e) => handleDrop(e, 'backlog')}
+              className={'w-[min(86vw,310px)] shrink-0 snap-start min-h-[420px] rounded-[24px] border border-dashed border-slate-300/80 bg-slate-100/40 p-3 transition ' + (dragOverCol === 'backlog' ? 'border-[#0969ff]/40 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
+            >
+              <div className="mb-3 flex items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="badge bg-slate-200 text-slate-600"><Inbox size={11} className="mr-1 inline" />Backlog</span>
+                  {canCreateTasks && (
+                    <button type="button" onClick={() => { setFormBacklog(true); setDefaultTaskDate(''); setShowForm(true); }} className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-slate-700" title="Adicionar ao backlog"><Plus size={14} /></button>
+                  )}
+                </div>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-400 shadow-sm" title="Não entra na contagem">{visibleBacklog.length}</span>
+              </div>
+              <div className="space-y-3 min-h-[60px]">
+                {visibleBacklog.map((t) => (
+                  <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={canCreateTasks ? handleDragStart : null} onToggleFeatured={null} />
+                ))}
+                {visibleBacklog.length === 0 && (
+                  <p className="text-xs text-slate-300 text-center py-6">Ideias fora do fluxo. Arraste para "A fazer" quando for a hora.</p>
+                )}
+              </div>
+            </div>
+          )}
           {visibleStatusColumns.map((col) => (
             <div
               key={col.key}
@@ -1350,36 +1383,6 @@ export default function Tasks({ workspace = 'designer' }) {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {view === 'backlog' && (
-        <div className="space-y-3">
-          <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">
-            <Inbox size={18} className="mt-0.5 shrink-0 text-slate-400" />
-            <div><strong className="text-slate-800">Backlog</strong> · ideias e demandas que ainda não entraram no fluxo. Não aparecem no Kanban, no calendário, nos totais acima nem no Painel. Quando for a hora, clique em <strong>Enviar para A fazer</strong>.</div>
-          </div>
-          {calendarFeedback && <div className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">{calendarFeedback}</div>}
-          {visibleBacklog.length === 0 ? (
-            <div className="rounded-[24px] border border-dashed border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-400">
-              Backlog vazio. {canCreateTasks ? 'Use "Nova demanda" para guardar uma ideia aqui.' : ''}
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleBacklog.map((t) => (
-                <div key={t.id} className="space-y-2">
-                  <TaskCard task={t} onClick={() => openTask(t.id)} onDragStart={null} onToggleFeatured={null} />
-                  {canCreateTasks && (
-                    <button
-                      type="button"
-                      onClick={() => setBacklog(t.id, false)}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#0969ff]/40 hover:bg-[#eef5ff] hover:text-[#0969ff]"
-                    ><ArrowRightCircle size={14} /> Enviar para A fazer</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -1525,12 +1528,12 @@ export default function Tasks({ workspace = 'designer' }) {
           clients={clients}
           defaultClientId={effectiveClientId}
           defaultDueDate={defaultTaskDate}
-          defaultBacklog={view === 'backlog'}
+          defaultBacklog={formBacklog}
           userRole={user?.role}
           defaultFrontName={defaultFrontName}
           allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
-          onClose={() => { setShowForm(false); setDefaultTaskDate(''); }}
-          onSaved={(task) => { setShowForm(false); setDefaultTaskDate(''); upsertTaskSummary(task); broadcastTaskUpdate(task?.id); loadTasks(); }}
+          onClose={() => { setShowForm(false); setFormBacklog(false); setDefaultTaskDate(''); }}
+          onSaved={(task) => { setShowForm(false); setFormBacklog(false); setDefaultTaskDate(''); upsertTaskSummary(task); broadcastTaskUpdate(task?.id); loadTasks(); }}
         />
       )}
 
