@@ -6,6 +6,8 @@ import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
+import FeedProfileEditorModal from '../components/FeedProfileEditorModal.jsx';
+import { hasPermission } from '../permissions.js';
 
 const CONTENT_TYPE_LABELS = {
   feed: 'Estático',
@@ -149,6 +151,7 @@ export default function DesignerApproval() {
   const [updatingId, setUpdatingId] = useState(null);
   const [clientProfile, setClientProfile] = useState(null);
   const [highlights, setHighlights] = useState([]);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [mode, setMode] = useState('direction');
   const [approvalLink, setApprovalLink] = useState(null);
   const [linkLoading, setLinkLoading] = useState(false);
@@ -362,6 +365,12 @@ export default function DesignerApproval() {
     });
   }, [items, mode]);
   const profileClient = clientProfile || selectedClient;
+  const canEditProfile = Boolean(
+    selectedClient?.id
+    && user
+    && user.role !== 'client'
+    && hasPermission(user, 'social.feed_create')
+  );
   const approvalPosts = useMemo(() => visibleItems.map((item) => ({
     ...item,
     content_id: item.id,
@@ -826,8 +835,21 @@ export default function DesignerApproval() {
             onPostClick={openItem}
             sourceType="planned"
             showCoverBadges={false}
+            editable={canEditProfile}
+            onEdit={() => setEditingProfile(true)}
           />
         </div>
+      )}
+
+      {editingProfile && canEditProfile && (
+        <FeedProfileEditorModal
+          client={profileClient}
+          postsCount={approvalPosts.length}
+          highlights={highlights}
+          onHighlightsChange={setHighlights}
+          onSaved={(updated) => setClientProfile(updated)}
+          onClose={() => setEditingProfile(false)}
+        />
       )}
 
       {selectedItem && (

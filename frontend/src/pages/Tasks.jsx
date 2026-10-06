@@ -725,9 +725,10 @@ export default function Tasks({ workspace = 'designer' }) {
       setSubtasks(previousSubtasks);
       setCalendarTasks(previousCalendarTasks);
       const status = error.response?.status;
+      console.error('[designer-check]', status, error.response?.data || error.message);
+      const serverMessage = error.response?.data?.error;
       setTaskError(
-        error.response?.data?.error
-        || `Não foi possível atualizar a conclusão do designer${status ? ` (HTTP ${status})` : ''}.`
+        `${serverMessage || 'Não foi possível atualizar a conclusão do designer'}${status ? ` (HTTP ${status})` : ' (sem resposta do servidor)'}`
       );
     }
   }
@@ -1758,6 +1759,9 @@ export default function Tasks({ workspace = 'designer' }) {
                   </button>
                 )}
               </div>
+              {taskError && (
+                <p role="alert" className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{taskError}</p>
+              )}
               <div className="space-y-2">
                 {subtasks.length === 0 && <p className="text-xs text-slate-300 text-center py-4">Nenhuma subtarefa ainda.</p>}
                 {subtasks.map((s) => (
