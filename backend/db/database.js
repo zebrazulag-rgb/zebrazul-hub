@@ -9,7 +9,13 @@ fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 // Migração automática da instalação antiga: se um banco existia dentro da pasta
 // do código e agora DATABASE_PATH aponta para um volume persistente vazio,
 // transfere o banco antigo antes de abrir a aplicação.
-if (databasePath !== legacyDatabasePath && !fs.existsSync(databasePath) && fs.existsSync(legacyDatabasePath)) {
+// [FASE 1] A cópia automática agora exige ALLOW_LEGACY_DB_COPY=true. Antes, um volume
+// vazio recebia silenciosamente qualquer .sqlite que estivesse na pasta do código.
+const allowLegacyDbCopy = String(process.env.ALLOW_LEGACY_DB_COPY || 'false').toLowerCase() === 'true';
+if (databasePath !== legacyDatabasePath && !fs.existsSync(databasePath) && fs.existsSync(legacyDatabasePath) && !allowLegacyDbCopy) {
+  console.warn('[DB] Banco legado encontrado na pasta do código, mas NÃO foi copiado para o volume. Defina ALLOW_LEGACY_DB_COPY=true apenas se essa migração for intencional.');
+}
+if (allowLegacyDbCopy && databasePath !== legacyDatabasePath && !fs.existsSync(databasePath) && fs.existsSync(legacyDatabasePath)) {
   fs.copyFileSync(legacyDatabasePath, databasePath);
   for (const suffix of ['-wal', '-shm']) {
     const source = legacyDatabasePath + suffix;
@@ -1386,20 +1392,8 @@ db.exec(`
   WHERE workflow_stage IS NULL OR trim(workflow_stage) = ''
 `);
 
-db.exec(`
-  UPDATE posts
-  SET workflow_stage = (
-    SELECT t.workflow_stage
-    FROM tasks t
-    WHERE t.feed_post_id = posts.id AND t.agency_id = posts.agency_id
-    LIMIT 1
-  )
-  WHERE (workflow_stage IS NULL OR trim(workflow_stage) = '')
-    AND EXISTS (
-      SELECT 1 FROM tasks t
-      WHERE t.feed_post_id = posts.id AND t.agency_id = posts.agency_id
-    )
-`);
+// [FASE 1] O UPDATE de posts.workflow_stage (que usa tasks.agency_id) foi movido para
+// depois de initializeAgencyScope(), pois a coluna agency_id só existe após os tryAddColumn.
 // O Designer usa uma única etapa visual de aprovação. Mantemos compatibilidade
 // com registros antigos, mas normalizamos os dados persistidos para `approval`.
 db.exec(`
@@ -1806,6 +1800,22 @@ const initializeAgencyScope = db.transaction(() => {
   }
 });
 initializeAgencyScope();
+
+// [FASE 1] Movido de cima: precisa de tasks.agency_id e posts.agency_id já criadas e preenchidas.
+db.exec(`
+  UPDATE posts
+  SET workflow_stage = (
+    SELECT t.workflow_stage
+    FROM tasks t
+    WHERE t.feed_post_id = posts.id AND t.agency_id = posts.agency_id
+    LIMIT 1
+  )
+  WHERE (workflow_stage IS NULL OR trim(workflow_stage) = '')
+    AND EXISTS (
+      SELECT 1 FROM tasks t
+      WHERE t.feed_post_id = posts.id AND t.agency_id = posts.agency_id
+    )
+`);
 
 // Subtarefas antigas podiam ter sido criadas sem client_id. Isso quebrava o
 // fluxo de aprovação porque a direção aprovava a peça, mas a aba do cliente e

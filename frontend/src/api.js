@@ -21,10 +21,20 @@ api.interceptors.response.use(
     return res;
   },
   (err) => {
-    if (err.response?.status === 401) {
+    // [FASE 1] Só trata como "sessão expirada" quando existia uma sessão e a falha NÃO veio
+    // do próprio login. Antes, senha errada recarregava a tela e apagava a mensagem de erro,
+    // e páginas públicas (links de aprovação) podiam ser jogadas para /login.
+    const status = err.response?.status;
+    const requestUrl = String(err.config?.url || '');
+    const isLoginRequest = requestUrl.includes('/auth/login');
+    const hadSession = Boolean(localStorage.getItem('zebrazul_token'));
+
+    if (status === 401 && hadSession && !isLoginRequest) {
       localStorage.removeItem('zebrazul_token');
       localStorage.removeItem('zebrazul_user');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login?expired=1');
+      }
     }
     return Promise.reject(err);
   }

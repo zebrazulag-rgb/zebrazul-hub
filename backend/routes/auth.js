@@ -1,5 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const { checkLoginAllowed, recordLoginFailure, recordLoginSuccess } = require('../middleware/loginRateLimit');
+const { comparePassword } = require('../utils/passwordCompare');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const {
@@ -133,10 +135,18 @@ function attachUserAccess(users, agencyId) {
   });
 }
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const email = normalizeEmail(req.body.email);
   const { password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email e senha sao obrigatorios' });
+
+  // [FASE 1] Limite de tentativas (veja middleware/loginRateLimit.js).
+  const gate = checkLoginAllowed(req, email);
+  if (gate.blocked) {
+    res.setHeader('Retry-After', String(gate.retryAfterSeconds));
+    const minutes = Math.ceil(gate.retryAfterSeconds / 60);
+    return res.status(429).json({ error: `Muitas tentativas de login. Tente novamente em ${minutes} minuto(s).` });
+  }
 
   const agency = resolveAgency(req);
   if (!agency) return res.status(401).json({ error: 'Agência não encontrada' });
@@ -147,13 +157,15 @@ router.post('/login', (req, res) => {
   if (!user) {
     user = db.prepare('SELECT * FROM users WHERE lower(email) = ? AND is_platform_owner = 1').get(email);
   }
-  if (!user) return res.status(401).json({ error: 'Credenciais invalidas' });
+  if (!user) { recordLoginFailure(req, email); return res.status(401).json({ error: 'Credenciais invalidas' }); }
 
   const userAgency = db.prepare('SELECT status FROM agencies WHERE id = ?').get(user.agency_id);
   if (!userAgency || userAgency.status !== 'active') return res.status(403).json({ error: 'Agência suspensa ou indisponível' });
 
-  const valid = bcrypt.compareSync(password, user.password_hash);
-  if (!valid) return res.status(401).json({ error: 'Credenciais invalidas' });
+  // [FASE 1] compare fora da thread principal (bcrypt nativo; fallback bcryptjs). Ver utils/passwordCompare.js.
+  const valid = await comparePassword(password, user.password_hash);
+  if (!valid) { recordLoginFailure(req, email); return res.status(401).json({ error: 'Credenciais invalidas' }); }
+  recordLoginSuccess(req, email);
 
   const token = jwt.sign({ id: user.id, agency_id: user.agency_id }, JWT_SECRET, { expiresIn: '7d' });
   recordActivity({

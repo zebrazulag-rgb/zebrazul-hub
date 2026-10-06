@@ -11,6 +11,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // [FASE 1] Aviso quando o api.js redireciona por sessão expirada (/login?expired=1).
+  const sessionExpired = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('expired') === '1';
   const { login } = useAuth();
   const { agency } = useTenant();
   const navigate = useNavigate();
@@ -76,6 +78,7 @@ export default function Login() {
             </div>
           </div>
 
+          {sessionExpired && !error && <p className="rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">Sua sessão expirou. Entre novamente para continuar.</p>}
           {error && <p className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p>}
 
           <button type="submit" disabled={loading}

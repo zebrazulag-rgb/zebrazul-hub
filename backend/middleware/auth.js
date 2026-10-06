@@ -3,7 +3,28 @@ const db = require('../db/database');
 const { publicAgency } = require('../services/tenant');
 const { getPermissionSetForUser, roleKeyForUser, roleNameForUser, hasPermission } = require('../services/permissions');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'zebrazul-hub-dev-secret-troque-em-producao';
+// [FASE 1] Em produção o servidor se recusa a iniciar sem um JWT_SECRET próprio.
+// Antes, a ausência da variável fazia o sistema assinar tokens com uma string pública.
+const DEV_FALLBACK_JWT_SECRET = 'zebrazul-hub-dev-secret-troque-em-producao';
+const configuredJwtSecret = String(process.env.JWT_SECRET || '').trim();
+const runningInProduction = String(process.env.NODE_ENV || 'production').toLowerCase() === 'production';
+const allowInsecureJwt = String(process.env.ALLOW_INSECURE_JWT_FALLBACK || 'false').toLowerCase() === 'true';
+
+if (runningInProduction && (!configuredJwtSecret || configuredJwtSecret === DEV_FALLBACK_JWT_SECRET)) {
+  if (!allowInsecureJwt) {
+    throw new Error(
+      [
+        'INICIALIZACAO BLOQUEADA: JWT_SECRET nao configurado (ou igual ao valor publico de desenvolvimento).',
+        'Defina JWT_SECRET com um valor aleatorio longo nas variaveis do Railway.',
+        'ATENCAO: antes de trocar, leia APLICAR.md (impacto no cofre de senhas e tokens Meta/Instagram).',
+        'Saida de emergencia temporaria: ALLOW_INSECURE_JWT_FALLBACK=true (NAO recomendado).'
+      ].join('\n')
+    );
+  }
+  console.warn('[SEGURANCA] ALLOW_INSECURE_JWT_FALLBACK=true: tokens assinados com chave publica. Corrija o quanto antes.');
+}
+
+const JWT_SECRET = configuredJwtSecret || DEV_FALLBACK_JWT_SECRET;
 
 function getUserClientIds(userId, agencyId) {
   return db.prepare(`

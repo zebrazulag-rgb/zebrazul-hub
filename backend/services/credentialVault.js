@@ -7,10 +7,15 @@ function normalizedSecret(value) {
   return String(value || '').trim();
 }
 
+// [FASE 1] O valor público antigo continua como ÚLTIMO candidato, apenas para DESCRIPTOGRAFAR
+// itens que tenham sido salvos quando o sistema rodava sem JWT_SECRET. Nunca é usado para
+// criptografar se houver PASSWORD_VAULT_KEY ou JWT_SECRET configurados (o primeiro candidato vence).
+const LEGACY_PUBLIC_FALLBACK = 'zebrazul-hub-dev-secret-troque-em-producao';
+
 function secretCandidates() {
   const dedicated = normalizedSecret(process.env.PASSWORD_VAULT_KEY);
-  const jwtSecret = normalizedSecret(process.env.JWT_SECRET || 'zebrazul-hub-dev-secret-troque-em-producao');
-  return [...new Set([dedicated, jwtSecret].filter(Boolean))];
+  const jwtSecret = normalizedSecret(process.env.JWT_SECRET);
+  return [...new Set([dedicated, jwtSecret, LEGACY_PUBLIC_FALLBACK].filter(Boolean))];
 }
 
 function deriveKey(secret) {
