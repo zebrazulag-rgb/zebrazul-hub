@@ -263,6 +263,39 @@ function addTaskRecordToFeed(task, userId, agencyId) {
   return { postId: Number(info.lastInsertRowid), action: 'created' };
 }
 
+function syncTaskMediaToLinkedFeedPost(task, agencyId) {
+  if (!task?.feed_post_id) return { synced: false, reason: 'no_linked_post' };
+
+  const existingPost = db.prepare('SELECT id FROM posts WHERE id = ? AND agency_id = ?')
+    .get(Number(task.feed_post_id), Number(agencyId));
+  if (!existingPost) return { synced: false, reason: 'post_not_found' };
+
+  const gallery = parseGallery(task.media_gallery);
+  const first = gallery[0] || (task.attachment_data ? {
+    data: task.attachment_data,
+    mime: task.attachment_mime || 'image/jpeg',
+    filename: task.attachment_filename || '',
+  } : null);
+  const hasMedia = Boolean(first?.data);
+
+  db.prepare(`
+    UPDATE posts
+    SET media_data = ?, media_mime = ?, media_gallery = ?,
+        feed_visible = CASE WHEN ? = 1 THEN feed_visible ELSE 0 END,
+        updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ?
+  `).run(
+    first?.data || null,
+    first?.mime || null,
+    gallery.length ? JSON.stringify(gallery) : null,
+    hasMedia ? 1 : 0,
+    Number(existingPost.id),
+    Number(agencyId)
+  );
+
+  return { synced: true, postId: Number(existingPost.id), hasMedia };
+}
+
 function taskSummaryQuery(whereClause) {
   return `
     SELECT
@@ -1040,6 +1073,53 @@ router.post('/', (req, res) => {
   res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 
+// Designers can check/uncheck only their own subtasks without needing the broader
+// task-edit permission. This avoids routing a simple production checkbox through
+// the full task update flow.
+router.patch('/:id/designer-completed', requireRole('admin', 'team'), (req, res) => {
+  const task = db.prepare(`
+    SELECT id, agency_id, client_id, parent_task_id, designer_completed
+    FROM tasks
+    WHERE id = ? AND agency_id = ?
+  `).get(req.params.id, req.user.agency_id);
+
+  if (!task) return res.status(404).json({ error: 'Subtarefa não encontrada' });
+  if (!task.parent_task_id) {
+    return res.status(400).json({ error: 'O check de produção é exclusivo para subtarefas' });
+  }
+
+  const isPrivileged = req.user.role === 'admin' || Number(req.user.is_operations_head) === 1;
+  if (!isPrivileged) {
+    const assigned = db.prepare(`
+      SELECT 1 FROM task_assignees
+      WHERE task_id = ? AND user_id = ?
+    `).get(Number(task.id), Number(req.user.id));
+    if (!assigned) {
+      return res.status(403).json({ error: 'Você só pode marcar como concluída uma subtarefa atribuída a você' });
+    }
+  }
+
+  const rawValue = Object.prototype.hasOwnProperty.call(req.body || {}, 'completed')
+    ? req.body.completed
+    : req.body?.designer_completed;
+  if (![0, 1, true, false, '0', '1'].includes(rawValue)) {
+    return res.status(400).json({ error: 'Conclusão do designer inválida' });
+  }
+
+  const completed = Number(rawValue) === 1 || rawValue === true ? 1 : 0;
+  db.prepare(`
+    UPDATE tasks
+    SET designer_completed = ?, updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ?
+  `).run(completed, Number(task.id), Number(req.user.agency_id));
+
+  return res.json({
+    ok: true,
+    task: getTaskSummary(Number(task.id), Number(req.user.agency_id)),
+    designer_completed: completed,
+  });
+});
+
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!existing) return res.status(404).json({ error: 'Tarefa nao encontrada' });
@@ -1089,13 +1169,19 @@ router.put('/:id', (req, res) => {
   ];
   const updates = [];
   const values = [];
+  const mediaGalleryProvided = Object.prototype.hasOwnProperty.call(req.body, 'media_gallery');
+  const normalizedMediaGallery = mediaGalleryProvided ? externalizeGallery(req.body.media_gallery) : null;
 
   for (const field of allowedFields) {
     if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
     if (field === 'status' && Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage')) continue;
+    // When the gallery is sent, it becomes the single source of truth for task media.
+    // attachment_* is rebuilt from the first remaining image below so a deleted image
+    // cannot survive in a legacy fallback column.
+    if (mediaGalleryProvided && ['attachment_data', 'attachment_mime', 'attachment_filename'].includes(field)) continue;
     updates.push(`${field} = ?`);
     if (field === 'media_gallery') {
-      values.push(serializeExternalGallery(req.body.media_gallery));
+      values.push(normalizedMediaGallery.length ? JSON.stringify(normalizedMediaGallery) : null);
     } else if (field === 'attachment_data') {
       values.push(persistMedia(req.body.attachment_data, req.body.attachment_mime || existing.attachment_mime || 'application/octet-stream'));
     } else if (field === 'title') {
@@ -1111,6 +1197,16 @@ router.put('/:id', (req, res) => {
     } else {
       values.push(req.body[field] === '' ? null : req.body[field]);
     }
+  }
+
+  if (mediaGalleryProvided) {
+    const firstMedia = normalizedMediaGallery[0] || null;
+    updates.push('attachment_data = ?', 'attachment_mime = ?', 'attachment_filename = ?');
+    values.push(
+      firstMedia?.data || null,
+      firstMedia?.mime || null,
+      firstMedia?.filename || null
+    );
   }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'workflow_stage')) {
@@ -1131,6 +1227,7 @@ router.put('/:id', (req, res) => {
     values.push(workflowStageFromLegacy(String(req.body.status)));
   }
 
+  const mediaChanged = mediaGalleryProvided || Object.prototype.hasOwnProperty.call(req.body, 'attachment_data');
   const updateTask = db.transaction(() => {
     if (updates.length) {
       db.prepare(`UPDATE tasks SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
@@ -1138,6 +1235,13 @@ router.put('/:id', (req, res) => {
     }
     if (Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')) {
       setAssignees(req.params.id, req.body.assignee_ids);
+    }
+    if (mediaChanged) {
+      const taskWithUpdatedMedia = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?')
+        .get(req.params.id, req.user.agency_id);
+      if (taskWithUpdatedMedia?.feed_post_id) {
+        syncTaskMediaToLinkedFeedPost(taskWithUpdatedMedia, req.user.agency_id);
+      }
     }
   });
   updateTask();

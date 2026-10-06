@@ -687,19 +687,31 @@ export default function Tasks({ workspace = 'designer' }) {
     }
   }
 
+  function canToggleSubtaskCompleted(subtask) {
+    if (!subtask?.id || !user) return false;
+    if (user.role === 'admin' || Number(user.is_operations_head) === 1) return true;
+    if (user.role !== 'team') return false;
+    return (subtask.assignees || []).some((assignee) => Number(assignee.id) === Number(user.id));
+  }
+
   async function toggleSubtaskCompleted(subtask) {
-    if (!subtask?.id) return;
+    if (!subtask?.id || !canToggleSubtaskCompleted(subtask)) return;
     const nextValue = Number(subtask.designer_completed || 0) === 1 ? 0 : 1;
     const previousSubtasks = subtasks;
+    const previousCalendarTasks = calendarTasks;
     setTaskError('');
     setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: nextValue } : item));
     setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: nextValue } : item));
     try {
-      await api.put('/tasks/' + subtask.id, { designer_completed: nextValue });
+      const { data } = await api.patch('/tasks/' + subtask.id + '/designer-completed', { completed: nextValue });
+      const savedValue = Number(data?.designer_completed ?? nextValue);
+      setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: savedValue } : item));
+      setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: savedValue } : item));
       broadcastTaskUpdate(subtask.id, selectedTask?.id);
       loadTasks();
     } catch (error) {
       setSubtasks(previousSubtasks);
+      setCalendarTasks(previousCalendarTasks);
       setTaskError(error.response?.data?.error || 'Não foi possível atualizar a conclusão do designer.');
     }
   }
@@ -1735,9 +1747,11 @@ export default function Tasks({ workspace = 'designer' }) {
                 {subtasks.map((s) => (
                   <div key={s.id} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 ${taskNeedsCorrection(s) ? 'border-rose-200 bg-rose-50/70' : 'border-transparent bg-slate-50'}`}>
                     <button
-                      onClick={() => canCreateTasks && toggleSubtaskCompleted(s)}
-                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (Number(s.designer_completed || 0) === 1 ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400')}
-                      title={Number(s.designer_completed || 0) === 1 ? 'Marcar como pendente de produção' : 'Marcar produção como concluída'}
+                      type="button"
+                      onClick={() => toggleSubtaskCompleted(s)}
+                      disabled={!canToggleSubtaskCompleted(s)}
+                      className={'w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ' + (Number(s.designer_completed || 0) === 1 ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400') + (!canToggleSubtaskCompleted(s) ? ' cursor-not-allowed opacity-40' : '')}
+                      title={!canToggleSubtaskCompleted(s) ? 'Somente o responsável desta subtarefa pode marcar a produção' : (Number(s.designer_completed || 0) === 1 ? 'Marcar como pendente de produção' : 'Marcar produção como concluída')}
                     >
                       {Number(s.designer_completed || 0) === 1 && <span className="text-white text-[10px]">✓</span>}
                     </button>
