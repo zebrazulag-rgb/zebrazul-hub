@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
+import { Plus, Calendar, ListPlus, Trash2, Copy, Grid3x3, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, Video, FileText, Pencil, ListTree, ListChecks, Clock3, CheckCircle2, Star, Send, Download, Upload, FileSpreadsheet, RotateCcw, Link2, Paperclip, UserRound, MessageSquareText, AlertTriangle, Eye, EyeOff, SlidersHorizontal, Inbox, ArrowRightCircle } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -308,6 +308,7 @@ export default function Tasks({ workspace = 'designer' }) {
   const [view, setView] = useState('kanban');
   const [tasks, setTasks] = useState([]);
   const [calendarTasks, setCalendarTasks] = useState([]);
+  const [backlogTasks, setBacklogTasks] = useState([]);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -397,10 +398,13 @@ export default function Tasks({ workspace = 'designer' }) {
 
   const loadTasks = useCallback(async () => {
     const params = effectiveClientId ? ('?client_id=' + effectiveClientId) : '';
-    const [taskResponse, calendarResponse] = await Promise.all([
+    const backlogParams = (effectiveClientId ? ('?client_id=' + effectiveClientId + '&') : '?') + 'backlog=1';
+    const [taskResponse, calendarResponse, backlogResponse] = await Promise.all([
       api.get('/tasks' + params),
       api.get('/tasks/calendar' + params),
+      api.get('/tasks' + backlogParams).catch(() => ({ data: { tasks: [] } })),
     ]);
+    setBacklogTasks(sortTasks((backlogResponse.data.tasks || []).filter(belongsToWorkspace)));
     setTasks(sortTasks((taskResponse.data.tasks || []).filter(belongsToWorkspace)));
     setCalendarTasks((calendarResponse.data.tasks || []).filter(belongsToWorkspace));
   }, [effectiveClientId, belongsToWorkspace]);
@@ -646,6 +650,21 @@ export default function Tasks({ workspace = 'designer' }) {
       setCalendarTasks(previousCalendarTasks);
       setSelectedTask(previousSelectedTask);
       setTaskError(error.response?.data?.error || 'Não foi possível atualizar a etapa da tarefa.');
+    }
+  }
+
+  // Backlog: ideias/demandas que ainda não entraram no fluxo. Não contam em nenhum total.
+  async function setBacklog(taskId, toBacklog) {
+    setTaskError('');
+    try {
+      await api.put('/tasks/' + taskId, { is_backlog: toBacklog ? 1 : 0 });
+      setSelectedTask((previous) => previous?.id === taskId ? null : previous);
+      broadcastTaskUpdate(taskId);
+      await loadTasks();
+      setCalendarFeedback(toBacklog ? 'Tarefa movida para o Backlog.' : 'Tarefa enviada para o fluxo (A fazer).');
+      window.setTimeout(() => setCalendarFeedback(''), 2600);
+    } catch (error) {
+      setTaskError(error.response?.data?.error || 'Não foi possível mover a tarefa.');
     }
   }
 
@@ -969,6 +988,7 @@ export default function Tasks({ workspace = 'designer' }) {
     ? STATUS_COLUMNS.filter((column) => !['approved', 'scheduled', 'posted'].includes(column.key))
     : (hidePosted ? STATUS_COLUMNS.filter((column) => column.key !== 'posted') : STATUS_COLUMNS);
   const hasActiveFilters = Object.values(filters).some(Boolean);
+  const visibleBacklog = backlogTasks.filter((task) => taskMatchesFilters(task, { ...filters, status: '' }));
 
   const canModifySelectedTask = Boolean(selectedTask && canCreateTasks);
 
@@ -1285,6 +1305,9 @@ export default function Tasks({ workspace = 'designer' }) {
               <button onClick={() => setView('calendar')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'calendar' ? 'segmented-control-button-active' : '')}>
                 <Calendar size={14} /> Calendário
               </button>
+              <button onClick={() => setView('backlog')} className={'segmented-control-button flex items-center gap-1.5 ' + (view === 'backlog' ? 'segmented-control-button-active' : '')} title="Ideias e demandas fora do fluxo. Não entram na contagem.">
+                <Inbox size={14} /> Backlog{backlogTasks.length ? ` (${backlogTasks.length})` : ''}
+              </button>
             </div>
             {view === 'calendar' && canShareTaskCalendar && effectiveClientId && (
               <button
@@ -1327,6 +1350,36 @@ export default function Tasks({ workspace = 'designer' }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {view === 'backlog' && (
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-600">
+            <Inbox size={18} className="mt-0.5 shrink-0 text-slate-400" />
+            <div><strong className="text-slate-800">Backlog</strong> · ideias e demandas que ainda não entraram no fluxo. Não aparecem no Kanban, no calendário, nos totais acima nem no Painel. Quando for a hora, clique em <strong>Enviar para A fazer</strong>.</div>
+          </div>
+          {calendarFeedback && <div className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">{calendarFeedback}</div>}
+          {visibleBacklog.length === 0 ? (
+            <div className="rounded-[24px] border border-dashed border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-400">
+              Backlog vazio. {canCreateTasks ? 'Use "Nova demanda" para guardar uma ideia aqui.' : ''}
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {visibleBacklog.map((t) => (
+                <div key={t.id} className="space-y-2">
+                  <TaskCard task={t} onClick={() => openTask(t.id)} onDragStart={null} onToggleFeatured={null} />
+                  {canCreateTasks && (
+                    <button
+                      type="button"
+                      onClick={() => setBacklog(t.id, false)}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#0969ff]/40 hover:bg-[#eef5ff] hover:text-[#0969ff]"
+                    ><ArrowRightCircle size={14} /> Enviar para A fazer</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1472,6 +1525,7 @@ export default function Tasks({ workspace = 'designer' }) {
           clients={clients}
           defaultClientId={effectiveClientId}
           defaultDueDate={defaultTaskDate}
+          defaultBacklog={view === 'backlog'}
           userRole={user?.role}
           defaultFrontName={defaultFrontName}
           allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
@@ -1705,6 +1759,14 @@ export default function Tasks({ workspace = 'designer' }) {
             </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
+              {canCreateTasks && !selectedTask.parent_task_id && (
+                <button
+                  onClick={() => setBacklog(selectedTask.id, Number(selectedTask.is_backlog) !== 1)}
+                  className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
+                  {Number(selectedTask.is_backlog) === 1 ? <><ArrowRightCircle size={15} /> Enviar para A fazer</> : <><Inbox size={15} /> Mover para o Backlog</>}
+                </button>
+              )}
               {canCreateTasks && !selectedTask.parent_task_id && (
                 <button
                   onClick={() => toggleFeatured(selectedTask.id, Number(selectedTask.is_featured) !== 1)}

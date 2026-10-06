@@ -297,11 +297,15 @@ function syncTaskMediaToLinkedFeedPost(task, agencyId) {
   return { synced: true, postId: Number(existingPost.id), hasMedia };
 }
 
+// Tarefa (ou subtarefa de tarefa) que NÃO está no backlog. Usar em toda métrica/lista operacional.
+const NOT_IN_BACKLOG = `COALESCE(t.is_backlog, 0) = 0
+        AND (t.parent_task_id IS NULL OR t.parent_task_id NOT IN (SELECT bt.id FROM tasks bt WHERE COALESCE(bt.is_backlog, 0) = 1))`;
+
 function taskSummaryQuery(whereClause) {
   return `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, t.attachment_filename, t.feed_post_id,
+      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, COALESCE(t.is_backlog, 0) AS is_backlog, t.attachment_filename, t.feed_post_id,
       t.direction_status, t.direction_feedback, t.direction_by, t.direction_at,
       t.client_status, t.client_feedback, t.client_at,
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
@@ -358,6 +362,7 @@ router.get('/', (req, res) => {
       SELECT t.id, t.client_id, t.parent_task_id, t.due_date, t.status, t.is_featured
       FROM tasks t
       WHERE t.agency_id = ?
+        AND ${NOT_IN_BACKLOG}
     `;
     const compactParams = [req.user.agency_id];
 
@@ -387,7 +392,8 @@ router.get('/', (req, res) => {
     return res.json({ tasks: db.prepare(compactQuery).all(...compactParams) });
   }
 
-  let query = taskSummaryQuery('WHERE t.parent_task_id IS NULL AND t.agency_id = ?');
+  // Backlog fica fora de tudo por padrão (contadores, kanban, painel). Só aparece com ?backlog=1.
+  let query = taskSummaryQuery(`WHERE t.parent_task_id IS NULL AND t.agency_id = ? AND COALESCE(t.is_backlog, 0) = ${req.query.backlog === '1' ? 1 : 0}`);
   const params = [req.user.agency_id];
 
   if (req.user.role === 'team' && !req.user.is_operations_head) {
@@ -435,6 +441,7 @@ router.get('/approval-grid', (req, res) => {
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
     LEFT JOIN clients c ON c.id = COALESCE(t.client_id, parent.client_id) AND c.agency_id = t.agency_id
     WHERE t.agency_id = ?
+      AND ${NOT_IN_BACKLOG}
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
       AND (
@@ -861,6 +868,7 @@ router.get('/calendar', (req, res) => {
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
     LEFT JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
     WHERE t.agency_id = ? AND t.due_date IS NOT NULL
+      AND ${NOT_IN_BACKLOG}
   `;
   const params = [req.user.agency_id];
 
@@ -983,7 +991,7 @@ router.get('/:id', (req, res) => {
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
       t.title, t.description, t.content_type, t.content_tag, t.front_name, t.caption, t.video_link,
-      t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed,
+      t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, COALESCE(t.is_backlog, 0) AS is_backlog,
       t.direction_status, t.direction_feedback, t.direction_by, t.direction_at, t.client_status, t.client_feedback, t.client_at,
       t.is_featured, t.attachment_mime, t.attachment_filename,
       t.feed_post_id, COALESCE(p.feed_visible, 0) AS feed_post_visible, t.created_at, t.updated_at,
@@ -1051,7 +1059,7 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const {
     title, description, task_type, content_type, content_tag, front_name, caption, video_link, media_gallery,
-    due_date, assignee_ids, status, workflow_stage, client_id, is_featured,
+    due_date, assignee_ids, status, workflow_stage, client_id, is_featured, is_backlog,
     attachment_data, attachment_mime, attachment_filename, parent_task_id
   } = req.body;
   if (!String(title || '').trim()) return res.status(400).json({ error: 'Titulo e obrigatorio' });
@@ -1079,8 +1087,8 @@ router.post('/', (req, res) => {
 
   const createTask = db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, content_tag, front_name, caption, video_link, media_gallery, due_date, status, workflow_stage, is_featured, attachment_data, attachment_mime, attachment_filename)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, content_tag, front_name, caption, video_link, media_gallery, due_date, status, workflow_stage, is_featured, is_backlog, attachment_data, attachment_mime, attachment_filename)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.user.agency_id, finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
       content_type || null, content_tag || null, front_name || null, caption || null, video_link || null,
@@ -1089,6 +1097,7 @@ router.post('/', (req, res) => {
       legacyStatusForWorkflow(finalWorkflowStage),
       finalWorkflowStage,
       req.user.role === 'client' || parent_task_id ? 0 : (Number(is_featured) === 1 ? 1 : 0),
+      req.user.role === 'client' || parent_task_id ? 0 : (Number(is_backlog) === 1 ? 1 : 0),
       persistMedia(attachment_data, attachment_mime || 'application/octet-stream'), attachment_mime || null, attachment_filename || null
     );
     setAssignees(info.lastInsertRowid, finalAssigneeIds);
@@ -1212,7 +1221,7 @@ router.put('/:id', (req, res) => {
     'title', 'description', 'task_type', 'content_type', 'content_tag', 'front_name', 'caption', 'video_link',
     'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'designer_completed',
     'direction_status', 'direction_feedback', 'direction_by', 'direction_at', 'client_status', 'client_feedback', 'client_at', 'client_id',
-    'is_featured', 'attachment_data', 'attachment_mime', 'attachment_filename'
+    'is_featured', 'is_backlog', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ];
   const updates = [];
   const values = [];
@@ -1235,6 +1244,8 @@ router.put('/:id', (req, res) => {
       values.push(String(req.body.title).trim());
     } else if (field === 'client_id') {
       values.push(req.body.client_id ? Number(req.body.client_id) : null);
+    } else if (field === 'is_backlog') {
+      values.push(Number(req.body.is_backlog) === 1 || req.body.is_backlog === true ? 1 : 0);
     } else if (field === 'is_featured') {
       values.push(Number(req.body.is_featured) === 1 ? 1 : 0);
     } else if (field === 'designer_completed') {

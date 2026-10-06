@@ -406,6 +406,8 @@ router.get('/task-calendar/:token', (req, res) => {
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
     WHERE t.agency_id = ? AND t.client_id = ?
       AND t.due_date BETWEEN ? AND ?
+      AND COALESCE(t.is_backlog, 0) = 0
+      AND COALESCE(parent.is_backlog, 0) = 0
   `;
   const params = [Number(share.agency_id), Number(share.client_id), start, end];
   if (!Number(share.include_posted)) query += ` AND t.status <> 'posted'`;

@@ -1362,6 +1362,7 @@ tryAddColumn('tasks', 'media_gallery', 'TEXT');
 tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
 tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
+tryAddColumn('tasks', 'is_backlog', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'direction_status', "TEXT DEFAULT 'pending'");
 tryAddColumn('tasks', 'direction_feedback', 'TEXT');
 tryAddColumn('tasks', 'direction_by', 'INTEGER');

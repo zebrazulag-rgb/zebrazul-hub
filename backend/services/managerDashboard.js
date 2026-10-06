@@ -123,6 +123,8 @@ function buildManagerDashboard(db, { agencyId, today, options = {} } = {}) {
     LEFT JOIN tasks p ON p.id = t.parent_task_id AND p.agency_id = t.agency_id
     ${approvalJoin}
     WHERE t.agency_id = ?
+      AND COALESCE(t.is_backlog, 0) = 0
+      AND COALESCE(p.is_backlog, 0) = 0
       AND NOT EXISTS (SELECT 1 FROM tasks ch WHERE ch.parent_task_id = t.id AND ch.agency_id = t.agency_id)
       AND (t.client_id IS NULL OR c.status = 'active')
       AND (t.status != 'posted' OR substr(COALESCE(t.due_date, t.updated_at), 1, 10) >= ?)

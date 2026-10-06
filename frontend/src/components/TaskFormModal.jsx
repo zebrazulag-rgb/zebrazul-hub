@@ -79,7 +79,7 @@ function AutoGrowTextarea({ value, onChange, minHeight = 110, className = '', ..
   );
 }
 
-export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, defaultFrontName = '', allowedTaskTypes = ['basic', 'post'], parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
+export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, defaultFrontName = '', defaultBacklog = false, allowedTaskTypes = ['basic', 'post'], parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
   const isEditing = Boolean(taskToEdit?.id);
   const visibleTaskTypes = TASK_TYPES.filter((item) => allowedTaskTypes.includes(item.value));
   const initialForm = {
@@ -189,6 +189,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
       };
 
       if (canFeatureTask) payload.is_featured = form.is_featured ? 1 : 0;
+      if (!isEditing && defaultBacklog && !parentTaskId) payload.is_backlog = 1;
 
       if (!isEditing || mediaDirty) {
         payload.media_gallery = form.media_gallery;
