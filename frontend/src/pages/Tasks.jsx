@@ -422,7 +422,8 @@ export default function Tasks({ workspace = 'designer' }) {
       if (selectedTask?.id) {
         const affectsSelected = Number(detail.taskId) === Number(selectedTask.id)
           || Number(detail.parentTaskId) === Number(selectedTask.id);
-        if (affectsSelected) openTask(selectedTask.id);
+        // Atualização silenciosa: não reabre o modal nem zera a rolagem das subtarefas.
+        if (affectsSelected) refreshOpenTask(selectedTask.id);
       }
     };
     try {
@@ -593,6 +594,20 @@ export default function Tasks({ workspace = 'designer' }) {
     } catch (error) {
       setTaskError(error.response?.data?.error || 'Não foi possível abrir esta tarefa.');
       setSelectedTask((previous) => previous?.id === taskId ? null : previous);
+    }
+  }
+
+  // Recarrega os dados da tarefa aberta SEM mostrar o carregamento e sem esvaziar
+  // a lista de subtarefas, para o modal manter a posição de rolagem do usuário.
+  async function refreshOpenTask(taskId) {
+    try {
+      const { data } = await api.get('/tasks/' + taskId);
+      setSelectedTask((previous) => previous?.id === taskId
+        ? { ...previous, ...data.task, request_files: data.request_files || previous.request_files || [], request_events: data.request_events || previous.request_events || [] }
+        : previous);
+      setSubtasks(data.subtasks || []);
+    } catch {
+      // Falha silenciosa: a tela já tem o estado otimista e o próximo ciclo sincroniza.
     }
   }
 
@@ -1510,7 +1525,7 @@ export default function Tasks({ workspace = 'designer' }) {
           onSaved={(task) => {
             setEditingSubtask(null);
             broadcastTaskUpdate(task?.id, selectedTask?.id);
-            if (selectedTask) openTask(selectedTask.id);
+            if (selectedTask) refreshOpenTask(selectedTask.id);
             loadTasks();
           }}
         />
