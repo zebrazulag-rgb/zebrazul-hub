@@ -220,6 +220,26 @@ function apiPermissionForRequest(req) {
     if (path.includes('/import')) return 'tasks.import';
     if (path.includes('/export')) return 'tasks.export';
     if (path.includes('/calendar-share')) return 'tasks.share_calendar';
+
+    // Marcar/desmarcar a conclusão de produção de uma subtarefa não deve exigir
+    // a permissão ampla de criar/editar tarefas. A autorização fina (subtarefa,
+    // responsável atribuído e valor válido) continua sendo feita em tasks.js.
+    // Mantemos compatibilidade com os dois contratos porque o frontend usa PUT
+    // para tolerar deploys front/back fora de sincronia, enquanto a rota PATCH
+    // dedicada continua disponível em versões mais novas da API.
+    const bodyKeys = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? Object.keys(req.body)
+      : [];
+    const isDesignerCompletionPut = method === 'PUT'
+      && /^\/tasks\/\d+$/.test(path)
+      && bodyKeys.length === 1
+      && bodyKeys[0] === 'designer_completed';
+    const isDesignerCompletionPatch = method === 'PATCH'
+      && /^\/tasks\/\d+\/designer-completed$/.test(path)
+      && bodyKeys.length === 1
+      && ['completed', 'designer_completed'].includes(bodyKeys[0]);
+
+    if (isDesignerCompletionPut || isDesignerCompletionPatch) return 'tasks.view';
     return method === 'GET' ? 'tasks.view' : 'tasks.create';
   }
   if (path === '/posts' || path.startsWith('/posts/')) {
