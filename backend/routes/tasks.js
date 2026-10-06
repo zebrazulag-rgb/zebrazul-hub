@@ -1123,8 +1123,29 @@ router.patch('/:id/designer-completed', requireRole('admin', 'team'), (req, res)
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!existing) return res.status(404).json({ error: 'Tarefa nao encontrada' });
-  if (!ensureTaskAccess(req, res, existing)) return;
-  if (!ensureModifyTask(req, res, existing)) return;
+
+  const requestKeys = Object.keys(req.body || {});
+  const isDesignerCheckOnly = existing.parent_task_id
+    && requestKeys.length === 1
+    && requestKeys[0] === 'designer_completed';
+
+  if (isDesignerCheckOnly && req.user.role === 'team' && !req.user.is_operations_head) {
+    // A designer may check a subtask explicitly assigned to them. We also accept
+    // assignment inherited from the parent demand because older ZebraHub tasks
+    // sometimes stored the responsible designer only on the parent task.
+    const assigned = db.prepare(`
+      SELECT 1
+      FROM task_assignees
+      WHERE user_id = ? AND task_id IN (?, ?)
+      LIMIT 1
+    `).get(Number(req.user.id), Number(existing.id), Number(existing.parent_task_id));
+    if (!assigned) {
+      return res.status(403).json({ error: 'Você só pode marcar uma subtarefa atribuída a você' });
+    }
+  } else {
+    if (!ensureTaskAccess(req, res, existing)) return;
+    if (!ensureModifyTask(req, res, existing)) return;
+  }
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'title') && !String(req.body.title || '').trim()) {
     return res.status(400).json({ error: 'Titulo e obrigatorio' });

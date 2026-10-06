@@ -691,7 +691,16 @@ export default function Tasks({ workspace = 'designer' }) {
     if (!subtask?.id || !user) return false;
     if (user.role === 'admin' || Number(user.is_operations_head) === 1) return true;
     if (user.role !== 'team') return false;
-    return (subtask.assignees || []).some((assignee) => Number(assignee.id) === Number(user.id));
+
+    const directlyAssigned = (subtask.assignees || []).some(
+      (assignee) => Number(assignee.id) === Number(user.id)
+    );
+    const inheritedFromParent = Number(subtask.parent_task_id) === Number(selectedTask?.id)
+      && (selectedTask?.assignees || []).some(
+        (assignee) => Number(assignee.id) === Number(user.id)
+      );
+
+    return directlyAssigned || inheritedFromParent;
   }
 
   async function toggleSubtaskCompleted(subtask) {
@@ -703,8 +712,11 @@ export default function Tasks({ workspace = 'designer' }) {
     setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: nextValue } : item));
     setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: nextValue } : item));
     try {
-      const { data } = await api.patch('/tasks/' + subtask.id + '/designer-completed', { completed: nextValue });
-      const savedValue = Number(data?.designer_completed ?? nextValue);
+      // Use the existing task update endpoint. It is already deployed and supports
+      // designer_completed, avoiding a separate PATCH route that can 404 behind
+      // older API deployments/proxies.
+      const { data } = await api.put('/tasks/' + subtask.id, { designer_completed: nextValue });
+      const savedValue = Number(data?.task?.designer_completed ?? nextValue);
       setSubtasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: savedValue } : item));
       setCalendarTasks((prev) => prev.map((item) => item.id === subtask.id ? { ...item, designer_completed: savedValue } : item));
       broadcastTaskUpdate(subtask.id, selectedTask?.id);
@@ -712,7 +724,11 @@ export default function Tasks({ workspace = 'designer' }) {
     } catch (error) {
       setSubtasks(previousSubtasks);
       setCalendarTasks(previousCalendarTasks);
-      setTaskError(error.response?.data?.error || 'Não foi possível atualizar a conclusão do designer.');
+      const status = error.response?.status;
+      setTaskError(
+        error.response?.data?.error
+        || `Não foi possível atualizar a conclusão do designer${status ? ` (HTTP ${status})` : ''}.`
+      );
     }
   }
 
