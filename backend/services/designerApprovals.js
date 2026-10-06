@@ -411,6 +411,22 @@ function hideTaskFeed(task, stage = 'correction') {
   `).run(stage, Number(task.feed_post_id), Number(task.agency_id));
 }
 
+// Peça aprovada pela direção que ainda NÃO foi enviada ao cliente. Marcação sem
+// coluna nova: direção aprovada + client_status 'waiting' + approval_status que
+// não indica envio. Peças já enviadas (client_status 'pending'/'approved'/...)
+// ou legadas (approval_status pending_approval/send/approved) nunca são "retidas".
+function isHeldForDirection(task) {
+  if (!task) return false;
+  const direction = String(task.direction_status || '').toLowerCase();
+  const client = String(task.client_status || 'waiting').toLowerCase() || 'waiting';
+  const approval = String(task.approval_status || '').toLowerCase();
+  const stage = String(task.workflow_stage || '').toLowerCase();
+  return direction === 'approved'
+    && client === 'waiting'
+    && !['pending_approval', 'send', 'approved'].includes(approval)
+    && !['external_approval', 'approved'].includes(stage);
+}
+
 function setDirectionDecision({ task, userId, decision, feedback = null }) {
   ensureDesignerApprovalStorage();
   if (!task?.id || !task?.agency_id) throw new Error('Tarefa inválida');
@@ -428,33 +444,26 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
     db.prepare(`
       UPDATE designer_approval_states
       SET direction_status = 'approved', direction_feedback = ?, direction_by = ?, direction_at = ?,
-          client_status = 'pending', client_feedback = NULL, client_at = NULL,
+          client_status = 'waiting', client_feedback = NULL, client_at = NULL,
           updated_at = datetime('now')
       WHERE task_id = ? AND agency_id = ?
     `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
     db.prepare(`
       UPDATE tasks
       SET direction_status = 'approved', direction_feedback = ?, direction_by = ?, direction_at = ?,
-          client_status = 'pending', client_feedback = NULL, client_at = NULL,
+          client_status = 'waiting', client_feedback = NULL, client_at = NULL,
           updated_at = datetime('now')
       WHERE id = ? AND agency_id = ?
     `).run(directionFeedback, Number(userId), now, Number(task.id), Number(task.agency_id));
-    const currentState = getApprovalState(task.id, task.agency_id);
-    if (currentState?.client_status !== 'approved') {
-      updateTaskWorkflow(task.id, task.agency_id, 'approval');
-      db.prepare(`UPDATE tasks SET approval_status = 'pending_approval', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
-        .run(Number(task.id), Number(task.agency_id));
-
-      // A aprovação da direção já libera a peça para o cliente. Espelhamos a
-      // tarefa na grade pública neste momento, em vez de esperar a decisão do
-      // cliente. O link compartilhado passa a usar apenas o fluxo /public/feed.
-      try {
-        const refreshed = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?')
-          .get(Number(task.id), Number(task.agency_id));
-        promoteTaskToFeed(refreshed);
-      } catch (feedError) {
-        console.warn('[DESIGNER_APPROVAL] Não foi possível liberar a peça na grade do cliente:', feedError.message);
-      }
+    // A aprovação da direção NÃO libera a peça ao cliente. Ela fica retida na
+    // área da direção até alguém usar "Enviar ao cliente" (sendToClient).
+    updateTaskWorkflow(task.id, task.agency_id, 'approval');
+    db.prepare(`UPDATE tasks SET approval_status = 'completed', updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+      .run(Number(task.id), Number(task.agency_id));
+    try {
+      hideTaskFeed(task, 'approval');
+    } catch (feedError) {
+      console.warn('[DESIGNER_APPROVAL] Não foi possível ocultar o post retido:', feedError.message);
     }
   } else {
     db.prepare(`
@@ -482,6 +491,40 @@ function setDirectionDecision({ task, userId, decision, feedback = null }) {
   }
 
   return getApprovalState(task.id, task.agency_id);
+}
+
+// Libera ao cliente uma peça já aprovada pela direção (ação explícita).
+function sendToClient({ task }) {
+  ensureDesignerApprovalStorage();
+  if (!task?.id || !task?.agency_id) throw new Error('Tarefa inválida');
+  persistInheritedClient(task);
+  const fresh = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(task.id), Number(task.agency_id));
+  if (!fresh) throw new Error('Tarefa inválida');
+  const state = getApprovalState(fresh.id, fresh.agency_id);
+  if (!state || state.direction_status !== 'approved') {
+    throw new Error('A direção precisa aprovar a peça antes de enviar ao cliente.');
+  }
+  if (!fresh.client_id) throw new Error('A peça precisa estar vinculada a um cliente.');
+  if (!isHeldForDirection(fresh)) {
+    return { ok: true, already_sent: true, state };
+  }
+
+  ensureApprovalState(fresh);
+  db.prepare(`
+    UPDATE designer_approval_states
+    SET client_status = 'pending', client_feedback = NULL, client_at = NULL, updated_at = datetime('now')
+    WHERE task_id = ? AND agency_id = ?
+  `).run(Number(fresh.id), Number(fresh.agency_id));
+  db.prepare(`
+    UPDATE tasks
+    SET client_status = 'pending', client_feedback = NULL, client_at = NULL,
+        approval_status = 'pending_approval', updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ?
+  `).run(Number(fresh.id), Number(fresh.agency_id));
+  updateTaskWorkflow(fresh.id, fresh.agency_id, 'approval');
+  const refreshed = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(fresh.id), Number(fresh.agency_id));
+  promoteTaskToFeed(refreshed);
+  return { ok: true, already_sent: false, state: getApprovalState(fresh.id, fresh.agency_id) };
 }
 
 function approvalLinkSecret() {
@@ -609,7 +652,7 @@ function syncClientApprovalTasksToFeed(agencyId, clientId) {
       || ['pending_approval', 'send', 'approved'].includes(approvalStatus)
       || ['approval', 'internal_approval', 'external_approval', 'approved'].includes(workflowStage);
 
-    if (!isDesignerTask || correction || !releasedByDirection) continue;
+    if (!isDesignerTask || correction || !releasedByDirection || isHeldForDirection(task)) continue;
 
     try {
       if (!task.client_id && task.resolved_client_id) {
@@ -808,7 +851,9 @@ function getPublicApprovalItems(link) {
         OR t.workflow_stage IN ('external_approval', 'approved')
       )
       AND COALESCE(NULLIF(NULLIF(t.client_status, ''), 'waiting'), s.client_status,
-          CASE WHEN t.approval_status = 'approved' OR t.workflow_stage = 'approved' THEN 'approved' ELSE 'pending' END)
+          CASE WHEN t.approval_status = 'approved' OR t.workflow_stage = 'approved' THEN 'approved'
+               WHEN t.approval_status IN ('pending_approval', 'send') OR t.workflow_stage = 'external_approval' THEN 'pending'
+               ELSE 'waiting' END)
           IN ('pending', 'approved', 'changes_requested')
     ORDER BY COALESCE(t.updated_at, t.created_at) DESC
   `).all(Number(link.agency_id), Number(link.client_id));
@@ -870,6 +915,9 @@ function setClientDecision({ token, taskId, decision, feedback = null }) {
     state = getApprovalState(task.id, task.agency_id);
   }
   if (!state || state.direction_status !== 'approved') return { error: 'NOT_READY' };
+  if (isHeldForDirection({ ...task, direction_status: state.direction_status, client_status: state.client_status })) {
+    return { error: 'NOT_READY' };
+  }
   if (!['approval', 'internal_approval', 'external_approval', 'approved'].includes(String(task.workflow_stage || ''))) {
     return { error: 'NOT_READY' };
   }
@@ -936,6 +984,8 @@ module.exports = {
   getApprovalStates,
   resetApprovalForTask,
   setDirectionDecision,
+  sendToClient,
+  isHeldForDirection,
   getClientApprovalLink,
   getOrCreateClientApprovalLink,
   getLinkByToken,

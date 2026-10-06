@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { recordActivity } = require('../services/activity');
+const { isHeldForDirection } = require('../services/designerApprovals');
 
 const router = express.Router();
 
@@ -584,6 +585,8 @@ function designerApprovalReady(task) {
   const directionStatus = String(task?.direction_status || '').toLowerCase();
   const approvalStatus = String(task?.approval_status || '').toLowerCase();
   const workflowStage = String(task?.workflow_stage || '').toLowerCase();
+  // Aprovada pela direção mas ainda não enviada ao cliente: não é pública.
+  if (isHeldForDirection(task)) return false;
   return directionStatus === 'approved'
     || ['pending_approval', 'send', 'approved'].includes(approvalStatus)
     || ['external_approval', 'approved'].includes(workflowStage);

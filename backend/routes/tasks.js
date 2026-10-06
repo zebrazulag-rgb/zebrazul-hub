@@ -7,6 +7,7 @@ const {
   getApprovalStates,
   resetApprovalForTask,
   setDirectionDecision,
+  sendToClient,
   getClientApprovalLink,
   getOrCreateClientApprovalLink,
 } = require('../services/designerApprovals');
@@ -613,6 +614,31 @@ router.post('/:id/direction-approval', (req, res) => {
     return res.json({ ok: true, state, link: link || null });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Não foi possível registrar a aprovação da direção.' });
+  }
+});
+
+// Envio explícito ao cliente: só depois da aprovação da direção, e só por quem
+// pode decidir pela direção. Sem isso a peça fica retida na área da direção.
+router.post('/:id/send-to-client', (req, res) => {
+  const canApproveDirection = req.user.role === 'admin' || req.user.is_agency_owner || req.user.is_platform_owner || req.user.is_operations_head;
+  if (!canApproveDirection) {
+    return res.status(403).json({ error: 'O envio ao cliente é restrito à administração.' });
+  }
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, task)) return;
+  if (!taskHasMedia(task)) {
+    return res.status(400).json({ error: 'A peça precisa ter imagem para ser enviada.' });
+  }
+  try {
+    const result = sendToClient({ task });
+    const clientId = Number(result.state?.client_id || task.client_id || 0) || null;
+    const link = clientId
+      ? getOrCreateClientApprovalLink({ agencyId: req.user.agency_id, clientId, createdBy: req.user.id })
+      : null;
+    return res.json({ ok: true, state: result.state, already_sent: !!result.already_sent, link: link || null });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Não foi possível enviar ao cliente.' });
   }
 });
 

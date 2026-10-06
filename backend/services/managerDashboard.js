@@ -74,6 +74,8 @@ function phaseOf(row) {
   if (stage === 'approval') {
     if (direction !== 'approved') return { phase: 'approval_direction' };
     if (client === 'approved') return { phase: 'ready' };
+    // Aprovada pela direção e ainda não enviada ao cliente: está nas mãos do gestor.
+    if (client === 'waiting' && legacyApproval !== 'pending_approval' && legacyApproval !== 'send') return { phase: 'approval_held' };
     return { phase: 'approval_client' };
   }
   if (stage === 'approved' || stage === 'scheduled') return { phase: 'ready', scheduled: stage === 'scheduled' };
@@ -81,7 +83,7 @@ function phaseOf(row) {
   return { phase: 'todo' };
 }
 
-const OPEN_PHASES = new Set(['todo', 'in_progress', 'correction', 'approval_direction', 'approval_client']);
+const OPEN_PHASES = new Set(['todo', 'in_progress', 'correction', 'approval_direction', 'approval_held', 'approval_client']);
 
 function excerpt(text, max = 140) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
@@ -192,11 +194,14 @@ function buildManagerDashboard(db, { agencyId, today, options = {} } = {}) {
       detail = `Correção pedida pelo ${item.source}${item.idle_days ? ` · há ${plural(item.idle_days, 'dia', 'dias')}` : ''}`;
     } else if (item.late_days > 0) {
       type = 'overdue'; severity = 3; days = item.late_days;
-      const where = { approval_direction: 'aguardando sua aprovação', approval_client: 'aguardando o cliente', todo: 'não iniciada', in_progress: 'em andamento' }[item.phase] || '';
+      const where = { approval_direction: 'aguardando sua aprovação', approval_held: 'aprovada, falta enviar ao cliente', approval_client: 'aguardando o cliente', todo: 'não iniciada', in_progress: 'em andamento' }[item.phase] || '';
       detail = `Atrasada ${plural(item.late_days, 'dia', 'dias')}${where ? ` · ${where}` : ''}`;
     } else if (item.phase === 'approval_direction') {
       type = 'approval_direction'; severity = item.idle_days >= 3 ? 3 : 2; days = item.idle_days;
       detail = item.idle_days ? `Aguardando sua aprovação há ${plural(item.idle_days, 'dia', 'dias')}` : 'Aguardando sua aprovação';
+    } else if (item.phase === 'approval_held') {
+      type = 'send_to_client'; severity = item.idle_days >= 2 ? 3 : 2; days = item.idle_days;
+      detail = item.idle_days ? `Aprovada há ${plural(item.idle_days, 'dia', 'dias')} · falta enviar ao cliente` : 'Aprovada · falta enviar ao cliente';
     } else if (item.phase === 'approval_client' && item.idle_days >= cfg.clientWaitDays) {
       type = 'approval_client'; severity = item.idle_days >= 5 ? 3 : 2; days = item.idle_days;
       detail = `Cliente não respondeu há ${plural(item.idle_days, 'dia', 'dias')} · vale cobrar`;
@@ -209,7 +214,7 @@ function buildManagerDashboard(db, { agencyId, today, options = {} } = {}) {
   queue.sort((a, b) => b.severity - a.severity || b.days - a.days || a.id - b.id);
   abandoned.sort((a, b) => b.days - a.days);
 
-  const counts = { correction: 0, overdue: 0, approval_direction: 0, approval_client: 0, stalled: 0 };
+  const counts = { correction: 0, overdue: 0, approval_direction: 0, send_to_client: 0, approval_client: 0, stalled: 0 };
   queue.forEach((q) => { counts[q.type] += 1; });
 
   // ---------- Carga da equipe ----------
@@ -225,7 +230,7 @@ function buildManagerDashboard(db, { agencyId, today, options = {} } = {}) {
       entry.open += 1;
       if (item.late_days > 0) entry.overdue += 1;
       if (item.phase === 'correction') entry.correction += 1;
-      if (item.phase === 'approval_direction' || item.phase === 'approval_client') entry.waiting_approval += 1;
+      if (['approval_direction', 'approval_held', 'approval_client'].includes(item.phase)) entry.waiting_approval += 1;
       if (item.due_date && item.due_date >= todayDay && item.due_date <= windowEnd) entry.due_next_days += 1;
     });
   });
@@ -236,7 +241,7 @@ function buildManagerDashboard(db, { agencyId, today, options = {} } = {}) {
   team.sort((a, b) => (b.user_id === null && b.open > 0) - (a.user_id === null && a.open > 0));
 
   // ---------- Fluxo ----------
-  const phaseOrder = ['todo', 'in_progress', 'correction', 'approval_direction', 'approval_client', 'ready'];
+  const phaseOrder = ['todo', 'in_progress', 'correction', 'approval_direction', 'approval_held', 'approval_client', 'ready'];
   const funnel = phaseOrder.map((phase) => {
     const list = items.filter((i) => i.phase === phase && !i.abandoned);
     const avg = list.length ? Math.round((list.reduce((s, i) => s + i.idle_days, 0) / list.length) * 10) / 10 : 0;
@@ -314,6 +319,7 @@ function buildManagerDashboard(db, { agencyId, today, options = {} } = {}) {
     summary: {
       decisions: queue.length,
       approval_direction: counts.approval_direction,
+      send_to_client: counts.send_to_client,
       correction: counts.correction,
       overdue: counts.overdue,
       approval_client_waiting: counts.approval_client,

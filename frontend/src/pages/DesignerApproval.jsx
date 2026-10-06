@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, UsersRound, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -64,6 +64,19 @@ function directionIsApproved(item) {
     || workflowStage === 'approved';
 }
 
+// Aprovada pela direção, mas ainda NÃO enviada ao cliente (fica na área da direção).
+// Mesma regra do backend (isHeldForDirection).
+function isHeldForDirection(item) {
+  if (!item) return false;
+  const client = String(item.client_status || 'waiting').toLowerCase() || 'waiting';
+  const approvalStatus = String(item.approval_status || '').toLowerCase();
+  const workflowStage = String(item.workflow_stage || '').toLowerCase();
+  return item.direction_status === 'approved'
+    && client === 'waiting'
+    && !['pending_approval', 'send', 'approved'].includes(approvalStatus)
+    && !['external_approval', 'approved'].includes(workflowStage);
+}
+
 function statusForDirection(item) {
   if (directionIsApproved(item)) return 'approved';
   if (item?.direction_status === 'changes_requested' || String(item?.approval_status || '').toLowerCase() === 'changes_requested') return 'rejected';
@@ -77,7 +90,8 @@ function statusForClient(item) {
 }
 
 function directionStatusLabel(item) {
-  if (directionIsApproved(item)) return 'Direção aprovada';
+  if (isHeldForDirection(item)) return 'Aprovada · não enviada ao cliente';
+  if (directionIsApproved(item)) return 'Direção aprovada · enviada ao cliente';
   if (item?.direction_status === 'changes_requested' || String(item?.approval_status || '').toLowerCase() === 'changes_requested') return 'Correção solicitada';
   return 'Aguardando direção';
 }
@@ -348,11 +362,12 @@ export default function DesignerApproval() {
 
   const clientLabel = selectedClient?.name || 'Todos os clientes';
   const correctionCount = useMemo(() => items.filter(isCorrectionItem).length, [items]);
+  const heldCount = useMemo(() => items.filter((item) => isHeldForDirection(item) && !isCorrectionItem(item)).length, [items]);
   const visibleItems = useMemo(() => {
     const filtered = mode === 'correction'
       ? items.filter(isCorrectionItem)
       : mode === 'client'
-        ? items.filter((item) => directionIsApproved(item) && !isCorrectionItem(item))
+        ? items.filter((item) => directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item))
         : items.filter((item) => !isCorrectionItem(item));
 
     // Feed em ordem de Instagram: conteúdos mais recentes primeiro (em cima)
@@ -440,11 +455,11 @@ export default function DesignerApproval() {
       ? {
           direction_status: 'approved',
           direction_feedback: normalizedFeedback || null,
-          client_status: 'pending',
+          client_status: 'waiting',
           client_feedback: null,
           workflow_stage: 'approval',
           designer_completed: 1,
-          approval_status: 'pending_approval',
+          approval_status: 'completed',
         }
       : {
           direction_status: 'changes_requested',
@@ -484,14 +499,14 @@ export default function DesignerApproval() {
         // usamos in_progress + approval_status=changes_requested. A interface continua
         // exibindo "Em correção" pelo approval_status.
         const legacyPayload = {
-          workflow_stage: decision === 'approved' ? 'external_approval' : 'correction',
-          approval_status: decision === 'approved' ? 'pending_approval' : 'changes_requested',
+          workflow_stage: decision === 'approved' ? 'approval' : 'correction',
+          approval_status: decision === 'approved' ? 'completed' : 'changes_requested',
           designer_completed: decision === 'approved' ? 1 : 0,
           direction_status: decision === 'approved' ? 'approved' : 'changes_requested',
           direction_feedback: normalizedFeedback || null,
           direction_by: user?.id || null,
           direction_at: new Date().toISOString(),
-          client_status: decision === 'approved' ? 'pending' : 'waiting',
+          client_status: 'waiting',
           client_feedback: null,
           client_at: null,
         };
@@ -504,7 +519,7 @@ export default function DesignerApproval() {
           if (!canRetryMinimal) throw legacyError;
 
           if (decision === 'approved') {
-            await api.put(`/tasks/${item.id}`, { workflow_stage: 'external_approval', approval_status: 'pending_approval', direction_status: 'approved', direction_feedback: normalizedFeedback || null, client_status: 'pending' });
+            await api.put(`/tasks/${item.id}`, { workflow_stage: 'approval', approval_status: 'completed', direction_status: 'approved', direction_feedback: normalizedFeedback || null, client_status: 'waiting' });
           } else {
             try {
               await api.put(`/tasks/${item.id}`, { workflow_stage: 'correction', approval_status: 'changes_requested', direction_status: 'changes_requested', direction_feedback: normalizedFeedback || null, client_status: 'waiting' });
@@ -565,15 +580,10 @@ export default function DesignerApproval() {
       replaceItemState(item.id, { ...optimisticState, ...(state || {}) });
       broadcastTaskUpdate(item.id, item.parent_task_id);
       if (decision === 'approved') {
-        // Depois que a direção aprova, seguimos automaticamente para a etapa
-        // do cliente sem fechar a peça. Assim Arthur já enxerga o mesmo conteúdo
-        // no modo Cliente e pode compartilhar o link imediatamente.
-        setMode('client');
+        // A aprovação da direção NÃO envia ao cliente. A peça permanece na área
+        // da direção, aprovada, até o botão "Enviar ao cliente" ser usado.
         setCorrectionOpen(false);
         setCorrectionFeedback('');
-        if (!approvalLink?.token && selectedClient?.id) {
-          void createApprovalLink();
-        }
       } else if (decision === 'changes_requested') {
         setCorrectionOpen(false);
         setCorrectionFeedback('');
@@ -599,6 +609,47 @@ export default function DesignerApproval() {
     } finally {
       setUpdatingId(null);
     }
+  }
+
+  async function sendToClient(item) {
+    if (!item?.id || updatingId) return;
+    setUpdatingId(item.id);
+    setActionError('');
+    try {
+      const { data } = await api.post(`/tasks/${item.id}/send-to-client`);
+      const sent = { client_status: 'pending', approval_status: 'pending_approval', workflow_stage: 'approval', ...(data?.state || {}) };
+      replaceItemState(item.id, { ...sent, approval_status: 'pending_approval' });
+      if (data?.link?.token) setApprovalLink(data.link);
+      broadcastTaskUpdate(item.id, item.parent_task_id);
+      setLinkNotice('Peça enviada ao cliente.');
+    } catch (requestError) {
+      const backendError = requestError.response?.data?.error;
+      setActionError(backendError || `Não foi possível enviar ao cliente${requestError.response?.status ? ` (erro ${requestError.response.status})` : ''}.`);
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function sendAllHeldToClient() {
+    if (updatingId) return;
+    const held = items.filter((entry) => isHeldForDirection(entry) && !isCorrectionItem(entry));
+    if (!held.length) return;
+    if (!window.confirm(`Enviar ${held.length} ${held.length === 1 ? 'peça aprovada' : 'peças aprovadas'} ao cliente?`)) return;
+    setUpdatingId('bulk');
+    setError('');
+    let failed = 0;
+    for (const entry of held) {
+      try {
+        const { data } = await api.post(`/tasks/${entry.id}/send-to-client`);
+        replaceItemState(entry.id, { ...(data?.state || {}), client_status: 'pending', approval_status: 'pending_approval', workflow_stage: 'approval' });
+        broadcastTaskUpdate(entry.id, entry.parent_task_id);
+      } catch {
+        failed += 1;
+      }
+    }
+    if (failed) setError(`${failed} ${failed === 1 ? 'peça não pôde' : 'peças não puderam'} ser enviada${failed === 1 ? '' : 's'} ao cliente.`);
+    else setLinkNotice('Peças enviadas ao cliente.');
+    setUpdatingId(null);
   }
 
   async function saveExistingCorrectionFeedback(item) {
@@ -765,7 +816,17 @@ export default function DesignerApproval() {
       {mode === 'direction' ? (
         <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <CheckCircle2 size={18} className="shrink-0 text-blue-600" />
-          <div><strong>Aprovação da direção</strong> · {user?.name || 'Arthur'} revisa e aprova aqui dentro do ZebraHub. A peça aprovada continua visível com selo e é liberada para o cliente.</div>
+          <div className="flex-1"><strong>Aprovação da direção</strong> · {user?.name || 'Arthur'} revisa e aprova aqui dentro do ZebraHub. A peça aprovada fica retida nesta área e só vai ao cliente quando você clicar em <strong>Enviar ao cliente</strong>.</div>
+          {canManageDirection && heldCount > 0 && (
+            <button
+              type="button"
+              disabled={Boolean(updatingId)}
+              onClick={sendAllHeldToClient}
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {updatingId === 'bulk' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Enviar {heldCount} ao cliente
+            </button>
+          )}
         </div>
       ) : mode === 'correction' ? (
         <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
@@ -1033,7 +1094,17 @@ export default function DesignerApproval() {
                         >{updatingId === selectedItem.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={17} />} Aprovar</button>
                       </div>
                     ) : (
-                      <div className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold ${selectedDirectionStatus === 'changes_requested' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 size={17} /> {directionStatusLabel(selectedItem)}</div>
+                      <div className="space-y-2">
+                        <div className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold ${selectedDirectionStatus === 'changes_requested' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}><CheckCircle2 size={17} /> {directionStatusLabel(selectedItem)}</div>
+                        {canManageDirection && isHeldForDirection(selectedItem) && (
+                          <button
+                            type="button"
+                            disabled={Boolean(updatingId)}
+                            onClick={() => sendToClient(selectedItem)}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-violet-700 disabled:opacity-50"
+                          >{updatingId === selectedItem.id ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Enviar ao cliente</button>
+                        )}
+                      </div>
                     )
                   ) : (
                     <div className="rounded-xl bg-violet-50 px-4 py-3 text-center text-sm font-semibold text-violet-700">A decisão do cliente acontece pelo link externo.</div>

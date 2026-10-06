@@ -41,6 +41,7 @@ const TYPE_META = {
   correction: { label: 'Correção', icon: MessageSquareWarning, bar: 'bg-rose-500', chip: 'bg-rose-50 text-rose-700', ring: 'text-rose-600 bg-rose-50' },
   overdue: { label: 'Atrasada', icon: AlertCircle, bar: 'bg-red-500', chip: 'bg-red-50 text-red-700', ring: 'text-red-600 bg-red-50' },
   approval_direction: { label: 'Sua aprovação', icon: CheckCircle2, bar: 'bg-[#0969ff]', chip: 'bg-blue-50 text-[#0969ff]', ring: 'text-[#0969ff] bg-blue-50' },
+  send_to_client: { label: 'Enviar ao cliente', icon: CheckCircle2, bar: 'bg-violet-500', chip: 'bg-violet-50 text-violet-700', ring: 'text-violet-600 bg-violet-50' },
   approval_client: { label: 'Cobrar cliente', icon: Clock, bar: 'bg-amber-400', chip: 'bg-amber-50 text-amber-700', ring: 'text-amber-600 bg-amber-50' },
   stalled: { label: 'Parada', icon: Hourglass, bar: 'bg-slate-300', chip: 'bg-slate-100 text-slate-600', ring: 'text-slate-500 bg-slate-100' },
   abandoned: { label: 'Abandonada', icon: Archive, bar: 'bg-slate-200', chip: 'bg-slate-100 text-slate-500', ring: 'text-slate-400 bg-slate-100' },
@@ -51,6 +52,7 @@ const FILTERS = [
   { key: 'correction', label: 'Correções' },
   { key: 'overdue', label: 'Atrasadas' },
   { key: 'approval_direction', label: 'Sua aprovação' },
+  { key: 'send_to_client', label: 'Enviar ao cliente' },
   { key: 'approval_client', label: 'Cobrar cliente' },
   { key: 'stalled', label: 'Paradas' },
 ];
@@ -60,6 +62,7 @@ const PHASE_LABEL = {
   in_progress: 'Em andamento',
   correction: 'Em correção',
   approval_direction: 'Sua aprovação',
+  approval_held: 'Aprovada · reter',
   approval_client: 'Com o cliente',
   ready: 'Pronto',
 };
@@ -167,7 +170,7 @@ export default function ManagerPanel() {
   const riskClients = clients.filter((c) => c.level !== 'green');
   const visibleClients = showAllClients ? clients : riskClients.slice(0, 8);
   const maxOpen = Math.max(1, ...team.map((t) => t.open));
-  const bottleneck = [...funnel].filter((f) => f.count > 0 && ['todo', 'in_progress', 'approval_direction', 'approval_client'].includes(f.phase))
+  const bottleneck = [...funnel].filter((f) => f.count > 0 && ['todo', 'in_progress', 'approval_direction', 'approval_held', 'approval_client'].includes(f.phase))
     .sort((a, b) => b.avg_idle_days - a.avg_idle_days)[0];
 
   function openClient(client) {
