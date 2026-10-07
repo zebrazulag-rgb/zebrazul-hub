@@ -1363,6 +1363,8 @@ tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
 tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'is_backlog', 'INTEGER DEFAULT 0');
+tryAddColumn('tasks', 'posted_at', 'TEXT');
+tryAddColumn('tasks', 'posted_by', 'INTEGER');
 
 // Pontuação de saúde do cliente (avaliação interna do gestor, critérios em services/clientHealth.js).
 db.exec(`

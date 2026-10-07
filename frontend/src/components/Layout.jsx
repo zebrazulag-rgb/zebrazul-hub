@@ -19,6 +19,7 @@ import {
   Search,
   Check,
   CheckCircle2,
+  CalendarCheck,
   PanelLeftClose,
   PanelLeftOpen,
   FolderOpen,
@@ -415,6 +416,7 @@ export default function Layout({ children }) {
     { to: '/designer', label: 'Designer', icon: Palette, permission: 'tasks.view', group: 'squad' },
     { to: '/site-lp', label: 'Site/LP', icon: Code2, permission: 'tasks.view', group: 'squad' },
     { to: '/aprovacao', label: 'Aprovação', icon: CheckCircle2, permission: 'tasks.view' },
+    { to: '/agendamento', label: 'Agendamento', icon: CalendarCheck, permission: 'social.view' },
     { to: '/moodboard', label: 'Moodboard', icon: Grid3x3, permission: 'tasks.view' },
     { to: '/concorrentes', label: 'Concorrentes', icon: Search, permission: 'compass.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
@@ -456,7 +458,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/moodboard','/concorrentes','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/agendamento','/moodboard','/concorrentes','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -474,6 +476,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
     if (path.startsWith('/site-lp')) return 'Site/LP';
     if (path.startsWith('/aprovacao')) return 'Aprovação';
+    if (path.startsWith('/agendamento')) return 'Agendamento';
     if (path.startsWith('/moodboard')) return 'Moodboard';
     if (path.startsWith('/concorrentes')) return 'Concorrentes';
     if (path.startsWith('/conversas')) return 'Conversas';
@@ -1113,6 +1116,7 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
   if (path.startsWith('/site-lp')) return 'Site/LP';
   if (path.startsWith('/aprovacao')) return 'Aprovação';
+  if (path.startsWith('/agendamento')) return 'Agendamento';
   if (path.startsWith('/moodboard')) return 'Moodboard';
   if (path.startsWith('/concorrentes')) return 'Concorrentes';
   if (path.startsWith('/bussola')) return 'Bússola';

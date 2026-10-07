@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
 import DesignerApproval from './pages/DesignerApproval.jsx';
+import Scheduling from './pages/Scheduling.jsx';
 import Moodboard from './pages/Moodboard.jsx';
 import SiteLP from './pages/SiteLP.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
@@ -120,6 +121,7 @@ export default function App() {
       <Route path="/conversas" element={<Navigate to="/" replace />} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><DesignerApproval /></ProtectedRoute>} />
+      <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><Scheduling /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<Navigate to="/social-media/feed" replace />} />
       <Route path="/aprovacao/videos/:id" element={<Navigate to="/social-media/feed" replace />} />
       <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />

@@ -217,6 +217,10 @@ function apiPermissionForRequest(req) {
   if (path === '/manager-dashboard' || path.startsWith('/manager-dashboard/')) return 'dashboard.view';
   if (path.startsWith('/moodboards')) return method === 'GET' ? 'tasks.view' : 'tasks.create';
   if (path.startsWith('/competitors')) return 'compass.view';
+  if (path === '/tasks/schedule-queue' || /^\/tasks\/\d+\/schedule-status$/.test(path)) {
+    // Fila de agendamento da Social Media: basta ver o módulo Social Media ou as tarefas.
+    return ['social.view', 'tasks.view'];
+  }
   if (path === '/tasks' || path.startsWith('/tasks/')) {
     // [FASE 1.5] Check de produção do designer: marcar/desmarcar a própria subtarefa exige apenas
     // visualizar tarefas, e não "Criar e editar tarefas". Antes, qualquer escrita em /tasks/* caía em

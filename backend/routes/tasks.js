@@ -422,6 +422,121 @@ router.get('/', (req, res) => {
 
 
 
+// ---------------------------------------------------------------------------
+// Fila de agendamento (Social Media): peças aprovadas pelo cliente, prontas para
+// agendar/postar. Acesso por cliente (não por responsável da tarefa).
+// ---------------------------------------------------------------------------
+const SCHEDULE_STAGES = ['approved', 'scheduled', 'posted'];
+
+function scheduleImages(row) {
+  const gallery = parseGallery(row.media_gallery).filter((item) => {
+    const mime = String(item?.mime || item?.type || '').toLowerCase();
+    const data = String(item?.data || item?.url || item?.src || '').toLowerCase();
+    return mime.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(data) || data.startsWith('data:image/') || data.startsWith('/api/media/');
+  });
+  if (gallery.length) {
+    return gallery.map((item) => ({ data: item.data || item.url || item.src, mime: item.mime || item.type || 'image/jpeg', filename: item.filename || '' }));
+  }
+  const mime = String(row.attachment_mime || '').toLowerCase();
+  if (row.attachment_data && (mime.startsWith('image/') || String(row.attachment_data).startsWith('data:image/') || String(row.attachment_data).startsWith('/api/media/'))) {
+    return [{ data: row.attachment_data, mime: row.attachment_mime || 'image/jpeg', filename: row.attachment_filename || '' }];
+  }
+  return [];
+}
+
+router.get('/schedule-queue', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  const { client_id } = req.query;
+  if (client_id && !canAccessClient(req.user, Number(client_id))) {
+    return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  }
+
+  let query = `
+    SELECT t.id, t.parent_task_id, COALESCE(t.client_id, parent.client_id) AS client_id,
+           t.title, t.caption, t.content_type, t.due_date, t.workflow_stage, t.client_at, t.posted_at,
+           t.updated_at, t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
+           c.name AS client_name, c.logo_color AS client_color, parent.title AS parent_title
+    FROM tasks t
+    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
+    LEFT JOIN clients c ON c.id = COALESCE(t.client_id, parent.client_id) AND c.agency_id = t.agency_id
+    WHERE t.agency_id = ?
+      AND COALESCE(t.is_backlog, 0) = 0
+      AND COALESCE(parent.is_backlog, 0) = 0
+      AND t.task_type != 'video'
+      AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
+      AND (t.client_status = 'approved' OR t.approval_status = 'approved')
+      AND (
+        t.workflow_stage IN ('approved', 'scheduled')
+        OR (t.workflow_stage = 'posted' AND substr(COALESCE(t.posted_at, t.updated_at), 1, 10) >= date('now', '-45 days'))
+      )
+  `;
+  const params = [req.user.agency_id];
+  if (client_id) {
+    query += ' AND COALESCE(t.client_id, parent.client_id) = ?';
+    params.push(Number(client_id));
+  } else if (req.user.role === 'team' && !req.user.is_operations_head) {
+    const ids = (req.user.client_ids || []).map(Number).filter(Boolean);
+    if (!ids.length) return res.json({ items: [], counts: { approved: 0, scheduled: 0, posted: 0 } });
+    query += ` AND COALESCE(t.client_id, parent.client_id) IN (${ids.map(() => '?').join(',')})`;
+    params.push(...ids);
+  }
+  query += ` ORDER BY CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date ASC, t.id ASC`;
+
+  const counts = { approved: 0, scheduled: 0, posted: 0 };
+  const items = db.prepare(query).all(...params).map((row) => {
+    counts[row.workflow_stage] = (counts[row.workflow_stage] || 0) + 1;
+    const images = row.workflow_stage === 'posted' ? [] : scheduleImages(row);
+    return {
+      id: row.id,
+      parent_task_id: row.parent_task_id,
+      parent_title: row.parent_title,
+      client_id: row.client_id,
+      client_name: row.client_name,
+      client_color: row.client_color,
+      title: row.title,
+      caption: row.caption || '',
+      content_type: row.content_type,
+      due_date: row.due_date,
+      stage: row.workflow_stage,
+      approved_at: row.client_at,
+      posted_at: row.posted_at,
+      images,
+      image_count: images.length,
+    };
+  });
+  return res.json({ items, counts });
+});
+
+// Social Media move a peça aprovada entre: para agendar -> agendada -> postada (e desfaz).
+router.post('/:id/schedule-status', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  const stage = String(req.body?.stage || '');
+  if (!SCHEDULE_STAGES.includes(stage)) return res.status(400).json({ error: 'Etapa inválida.' });
+
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  let clientId = task.client_id;
+  if (!clientId && task.parent_task_id) {
+    clientId = db.prepare('SELECT client_id FROM tasks WHERE id = ? AND agency_id = ?').get(task.parent_task_id, req.user.agency_id)?.client_id;
+  }
+  if (!canAccessClient(req.user, Number(clientId))) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  const approvedByClient = task.client_status === 'approved' || task.approval_status === 'approved';
+  if (!approvedByClient || !SCHEDULE_STAGES.includes(task.workflow_stage)) {
+    return res.status(400).json({ error: 'Somente peças aprovadas pelo cliente podem ser agendadas ou postadas.' });
+  }
+
+  db.prepare(`
+    UPDATE tasks
+    SET workflow_stage = ?, status = ?, designer_completed = 1,
+        posted_at = CASE WHEN ? = 'posted' THEN datetime('now') ELSE NULL END,
+        posted_by = CASE WHEN ? = 'posted' THEN ? ELSE NULL END,
+        updated_at = datetime('now')
+    WHERE id = ? AND agency_id = ?
+  `).run(stage, legacyStatusForWorkflow(stage), stage, stage, Number(req.user.id), Number(task.id), Number(req.user.agency_id));
+  const updated = db.prepare('SELECT id, workflow_stage, status, posted_at FROM tasks WHERE id = ?').get(task.id);
+  return res.json({ ok: true, task: updated });
+});
+
 // Grade visual de aprovação do Squad -> Designer.
 // A grade é derivada diretamente das tarefas/subtarefas em "Em aprovação",
 // portanto não depende da grade editorial do Social Media.
