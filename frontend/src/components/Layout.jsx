@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -42,6 +42,7 @@ import { formChanged } from '../utils/formState.js';
 import zebraHubLogo from '../assets/logo-hub-white.png';
 import { isBeeClient } from '../utils/beeClientAccess.js';
 import NotificationBell from './NotificationBell.jsx';
+import ClientHealthModal, { HEALTH_LEVELS } from './ClientHealthModal.jsx';
 import { anyPermission, hasPermission } from '../permissions.js';
 import { getTenantSlug } from '../tenant';
 
@@ -55,6 +56,9 @@ export default function Layout({ children }) {
   const [roleClientRecord, setRoleClientRecord] = useState(null);
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
+  const [healthByClient, setHealthByClient] = useState({});
+  const [canEditHealth, setCanEditHealth] = useState(false);
+  const [healthModalClient, setHealthModalClient] = useState(null);
   const [instagramHeaderConnection, setInstagramHeaderConnection] = useState(null);
   const [instagramHeaderLoading, setInstagramHeaderLoading] = useState(false);
   const clientPickerRef = useRef(null);
@@ -175,6 +179,19 @@ export default function Layout({ children }) {
     });
     return () => { active = false; };
   }, [user?.id, user?.role, user?.is_commercial_team, user?.client_ids?.join(','), selectedClient?.id, setSelectedClient]);
+
+  const loadHealth = useCallback(() => {
+    if (!user || user.role === 'client' || user.is_commercial_team) return Promise.resolve();
+    return api.get('/client-health').then((res) => {
+      const map = {};
+      (res.data?.scores || []).forEach((item) => { map[item.client_id] = item; });
+      setHealthByClient(map);
+      setCanEditHealth(Boolean(res.data?.can_edit));
+    }).catch(() => {});
+  }, [user?.id, user?.role, user?.is_commercial_team]);
+
+  useEffect(() => { loadHealth(); }, [loadHealth]);
+  useEffect(() => { if (clientPickerOpen) loadHealth(); }, [clientPickerOpen, loadHealth]);
 
   useEffect(() => {
     const clientId = user?.role === 'client' ? user?.client_id : selectedClient?.id;
@@ -485,6 +502,26 @@ export default function Layout({ children }) {
         .some((value) => String(value).toLocaleLowerCase('pt-BR').includes(normalizedClientSearch)))
     : clients;
 
+  // Selo de saúde do cliente no seletor. Clicar no selo abre a avaliação sem trocar de cliente.
+  function renderHealthBadge(client) {
+    if (user?.role === 'client' || user?.is_commercial_team) return null;
+    const item = healthByClient[client.id];
+    const meta = HEALTH_LEVELS[item?.level || 'none'];
+    if (!item && !canEditHealth) return null;
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        title={item ? `Saúde: ${meta.label} (${item.total}/100). Clique para ver a avaliação` : 'Sem pontuação. Clique para avaliar'}
+        onClick={(event) => { event.stopPropagation(); setClientPickerOpen(false); setHealthModalClient(client); }}
+        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); setClientPickerOpen(false); setHealthModalClient(client); } }}
+        className={`inline-flex h-6 min-w-[34px] shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-black ${meta.badge} ${item ? '' : 'border border-dashed border-slate-300 !bg-transparent !text-slate-400'}`}
+      >
+        {item ? item.total : '+'}
+      </span>
+    );
+  }
+
   function chooseClient(client) {
     setSelectedClient(client);
     setClientPickerOpen(false);
@@ -602,6 +639,7 @@ export default function Layout({ children }) {
                             <p className="truncate text-sm font-medium text-slate-800">{client.name}</p>
                             {client.segment && <p className="truncate text-[11px] text-slate-400">{client.segment}</p>}
                           </div>
+                          {renderHealthBadge(client)}
                           {isSelected && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
                         </button>
                       );
@@ -824,6 +862,7 @@ export default function Layout({ children }) {
                           <button key={client.id} type="button" onClick={() => chooseClient(client)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
                             <ClientAvatar client={client} allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
                             <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-slate-800">{client.name}</p>{client.segment && <p className="truncate text-[11px] text-slate-400">{client.segment}</p>}</div>
+                            {renderHealthBadge(client)}
                             {isSelected && <Check size={16} style={{ color: agencyPrimary }} />}
                           </button>
                         );
@@ -948,6 +987,14 @@ export default function Layout({ children }) {
             </div>
           </div>
         </div>
+      )}
+
+      {healthModalClient && (
+        <ClientHealthModal
+          client={healthModalClient}
+          onClose={() => setHealthModalClient(null)}
+          onSaved={loadHealth}
+        />
       )}
 
       {showProfile && (

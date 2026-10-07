@@ -1363,6 +1363,31 @@ tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
 tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'is_backlog', 'INTEGER DEFAULT 0');
+
+// Pontuação de saúde do cliente (avaliação interna do gestor, critérios em services/clientHealth.js).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS client_health_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    scores TEXT NOT NULL DEFAULT '{}',
+    notes TEXT,
+    total INTEGER,
+    updated_by INTEGER,
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (agency_id, client_id)
+  );
+  CREATE TABLE IF NOT EXISTS client_health_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    scores TEXT NOT NULL DEFAULT '{}',
+    total INTEGER,
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_client_health_history_client ON client_health_history (agency_id, client_id, id);
+`);
 tryAddColumn('tasks', 'direction_status', "TEXT DEFAULT 'pending'");
 tryAddColumn('tasks', 'direction_feedback', 'TEXT');
 tryAddColumn('tasks', 'direction_by', 'INTEGER');
