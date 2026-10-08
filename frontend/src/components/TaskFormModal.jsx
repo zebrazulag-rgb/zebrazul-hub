@@ -325,27 +325,30 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
                   placeholder="Legenda com CTA e hashtags..."
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1">Mídia (pode anexar mais de uma)</label>
-                <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
-                  <ImagePlus size={16} />
-                  Clique para anexar imagens
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
-                </label>
-                {form.media_gallery.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {form.media_gallery.map((m, idx) => (
-                      <div key={idx} className="relative">
-                        <img src={m.data} alt="" className="w-14 h-14 rounded-lg object-cover" />
-                        <button type="button" onClick={() => removeMedia(idx)} className="absolute -top-1.5 -right-1.5 bg-white rounded-full shadow p-0.5 text-red-500">
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </>
+          )}
+          {/* Mídia: sempre visível em posts e também em qualquer tarefa que já tenha imagem, para permitir remover/trocar. */}
+          {(isPost || initialFormRef.current.media_gallery.length > 0 || form.media_gallery.length > 0) && (
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Mídia (pode anexar mais de uma)</label>
+            <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
+              <ImagePlus size={16} />
+              Clique para anexar imagens
+              <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+            </label>
+            {form.media_gallery.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {form.media_gallery.map((m, idx) => (
+                  <div key={idx} className="relative">
+                    <img src={m.data} alt="" className="w-16 h-16 rounded-lg object-cover" />
+                    <button type="button" onClick={() => removeMedia(idx)} className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full border border-red-200 bg-white text-red-500 shadow hover:bg-red-50" title="Remover imagem" aria-label="Remover imagem">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           )}
 
           {!isPost && (
