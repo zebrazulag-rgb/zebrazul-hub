@@ -324,9 +324,10 @@ export default function Audiovisual() {
         video_count: form.video_count,
         raw_links: linksFromText(form.raw_links_text),
         recorded_date: form.recorded_date,
+        skip_videos: !PRODUCTION_ENABLED,
       });
       setCompleteModal(null);
-      setNotice(data.calendar_warning ? `Gravação concluída. Google Agenda: ${data.calendar_warning}` : `${form.video_count} vídeo(s) criados na produção.`);
+      setNotice(data.calendar_warning ? `Gravação concluída. Google Agenda: ${data.calendar_warning}` : (PRODUCTION_ENABLED ? `${form.video_count} vídeo(s) criados na produção.` : 'Gravação marcada como realizada.'));
       await loadData({ quiet: true });
       setTab(PRODUCTION_ENABLED ? 'production' : 'agenda');
     } catch (requestError) {
@@ -1456,13 +1457,13 @@ function RecordingModal({ form, setForm, clients, saving, onClose, onSave }) {
 
 function CompleteRecordingModal({ form, setForm, saving, onClose, onSave }) {
   return (
-    <ModalShell title={`Concluir gravação · ${form.client_name}`} subtitle="Ao concluir, o ZebraHub cria automaticamente as demandas individuais dos vídeos." onClose={onClose} saving={saving}>
+    <ModalShell title={`Concluir gravação · ${form.client_name}`} subtitle={PRODUCTION_ENABLED ? 'Ao concluir, o ZebraHub cria automaticamente as demandas individuais dos vídeos.' : 'Marca a gravação como realizada. Nenhuma demanda de vídeo é criada.'} onClose={onClose} saving={saving}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input label="Data real da gravação" type="date" value={form.recorded_date} onChange={(value) => setForm({ ...form, recorded_date: value })} />
         <Input label="Quantos vídeos foram gravados? *" type="number" min="1" value={form.video_count} onChange={(value) => setForm({ ...form, video_count: value })} />
         <div className="sm:col-span-2"><TextArea label="Links dos vídeos brutos" value={form.raw_links_text} onChange={(value) => setForm({ ...form, raw_links_text: value })} placeholder="Um link por linha — Google Drive, Frame.io, Dropbox..." rows={4} /></div>
       </div>
-      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel="Concluir e criar vídeos" />
+      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel={PRODUCTION_ENABLED ? 'Concluir e criar vídeos' : 'Marcar como gravado'} />
     </ModalShell>
   );
 }

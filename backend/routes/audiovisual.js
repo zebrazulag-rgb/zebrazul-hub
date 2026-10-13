@@ -698,8 +698,10 @@ router.post('/recordings/:id/complete', requireAny(['audiovisual.manage']), asyn
   const recordedDate = validDate(req.body.recorded_date) || String(recording.scheduled_start).slice(0, 10);
   const recordedAt = `${recordedDate}T${String(recording.scheduled_start).slice(11, 19) || '12:00:00'}`;
 
+  // skip_videos: só registra que a gravação aconteceu, sem criar vídeos na produção.
+  const skipVideos = req.body.skip_videos === true || req.body.skip_videos === 'true';
   const existingVideos = db.prepare('SELECT * FROM audiovisual_videos WHERE recording_id = ? ORDER BY video_number').all(recording.id);
-  if (videoCount < existingVideos.length) {
+  if (!skipVideos && videoCount < existingVideos.length) {
     return res.status(400).json({ error: `Esta gravação já possui ${existingVideos.length} vídeos cadastrados. Informe no mínimo esse total.` });
   }
 
@@ -715,7 +717,7 @@ router.post('/recordings/:id/complete', requireAny(['audiovisual.manage']), asyn
         agency_id, client_id, recording_id, video_number, title, status, created_by
       ) VALUES (?, ?, ?, ?, ?, 'recorded', ?)
     `);
-    for (let number = existingVideos.length + 1; number <= videoCount; number += 1) {
+    for (let number = existingVideos.length + 1; !skipVideos && number <= videoCount; number += 1) {
       insert.run(
         req.user.agency_id,
         recording.client_id,

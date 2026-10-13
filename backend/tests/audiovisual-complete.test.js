@@ -1,0 +1,32 @@
+const os = require('os'); const fs = require('fs'); const path = require('path');
+const test = require('node:test'); const assert = require('node:assert/strict');
+const tmpDir = fs.mkdtempSync(path.join(process.env.TEST_TMP_DIR || os.tmpdir(), 'zh-av-'));
+process.env.NODE_ENV = 'development'; process.env.DATABASE_PATH = path.join(tmpDir, 'z.sqlite'); process.env.AUTO_BACKUP_ON_START = 'false';
+const authPath = require.resolve('../middleware/auth.js'); const realAuth = require(authPath);
+let CUR = { id: 1, role: 'admin', client_ids: [] };
+require.cache[authPath].exports = { ...realAuth, authRequired: (req, res, next) => { req.user = CUR; next(); } };
+const permPath = require.resolve('../services/permissions.js');
+require.cache[permPath] = { id: permPath, filename: permPath, loaded: true, exports: { ...require(permPath), hasPermission: () => true } };
+const db = require('../db/database'); const express = require('express');
+const agencyId = Number(db.prepare('SELECT id FROM agencies ORDER BY id LIMIT 1').get().id); CUR.agency_id = agencyId;
+const uid = Number(db.prepare('INSERT INTO users (agency_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)').run(agencyId, 'U', 'u@t.com', 'x', 'admin').lastInsertRowid);
+const cid = Number(db.prepare("INSERT INTO clients (agency_id, name, status) VALUES (?, 'Cli', 'active')").run(agencyId).lastInsertRowid);
+const mk = () => Number(db.prepare("INSERT INTO audiovisual_recordings (agency_id, client_id, created_by, title, scheduled_start, status) VALUES (?, ?, ?, 'G', '2026-10-13T14:00:00', 'scheduled')").run(agencyId, cid, uid).lastInsertRowid);
+const app = express(); app.use(express.json()); app.use('/a', require('../routes/audiovisual'));
+let server, base;
+test.before(async () => { await new Promise((r) => { server = app.listen(0, r); }); base = `http://127.0.0.1:${server.address().port}/a`; });
+test.after(() => server.close());
+const post = (id, body) => fetch(`${base}/recordings/${id}/complete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const count = (id) => db.prepare('SELECT COUNT(*) n FROM audiovisual_videos WHERE recording_id = ?').get(id).n;
+test('skip_videos marca como gravada sem criar vídeos', async () => {
+  const id = mk();
+  const r = await post(id, { video_count: 4, skip_videos: true });
+  assert.equal(r.status, 200);
+  assert.equal(db.prepare('SELECT status, video_count FROM audiovisual_recordings WHERE id = ?').get(id).status, 'recorded');
+  assert.equal(count(id), 0);
+});
+test('sem skip_videos continua criando os vídeos', async () => {
+  const id = mk();
+  assert.equal((await post(id, { video_count: 2 })).status, 200);
+  assert.equal(count(id), 2);
+});
