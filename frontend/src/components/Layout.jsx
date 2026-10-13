@@ -521,7 +521,10 @@ export default function Layout({ children }) {
     const current = demandByClient[client.id] || null;
     const next = order[(order.indexOf(current) + 1) % order.length];
     setDemandByClient((prev) => { const copy = { ...prev }; if (next) copy[client.id] = next; else delete copy[client.id]; return copy; });
-    api.put(`/client-health/${client.id}/demand`, { demand_level: next }).catch(() => loadHealth());
+    api.put(`/client-health/${client.id}/demand`, { demand_level: next }).catch((err) => {
+      window.alert(err?.response?.data?.error || 'Não foi possível salvar a demanda. Verifique se o backend foi atualizado (Railway).');
+      loadHealth();
+    });
   }
 
   function renderDemandBadge(client) {

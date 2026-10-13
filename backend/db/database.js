@@ -1365,6 +1365,7 @@ tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'is_backlog', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'posted_at', 'TEXT');
 tryAddColumn('tasks', 'posted_by', 'INTEGER');
+tryAddColumn('clients', 'demand_level', 'TEXT');
 
 // Pontuação de saúde do cliente (avaliação interna do gestor, critérios em services/clientHealth.js).
 db.exec(`
@@ -1677,7 +1678,6 @@ function migrateFinancialEntries() {
   tryAddColumn('financial_entries', 'payment_method', 'TEXT');
   tryAddColumn('financial_entries', 'recurring', 'INTEGER DEFAULT 0');
   tryAddColumn('financial_entries', 'notes', 'TEXT');
-  tryAddColumn('clients', 'demand_level', 'TEXT');
 
   if (tableHasColumn('financial_entries', 'is_recurring') && tableHasColumn('financial_entries', 'recurring')) {
     db.exec(`
