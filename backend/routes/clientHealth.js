@@ -34,7 +34,24 @@ function shape(row) {
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM client_health_scores WHERE agency_id = ?').all(req.user.agency_id)
     .filter((row) => canAccessClient(req.user, row.client_id));
-  res.json({ criteria: CRITERIA, can_edit: isManager(req.user), scores: rows.map(shape) });
+  const demand = {};
+  db.prepare("SELECT id, demand_level FROM clients WHERE agency_id = ? AND demand_level IS NOT NULL AND demand_level != ''").all(req.user.agency_id)
+    .filter((row) => canAccessClient(req.user, row.id))
+    .forEach((row) => { demand[row.id] = row.demand_level; });
+  res.json({ criteria: CRITERIA, can_edit: isManager(req.user), scores: rows.map(shape), demand });
+});
+
+// Demanda de atenção do cliente: A (alta), B (média), C (baixa) ou vazio. Só o gestor define.
+router.put('/:clientId/demand', (req, res) => {
+  if (!isManager(req.user)) return res.status(403).json({ error: 'Somente o gestor pode classificar a demanda.' });
+  const clientId = Number(req.params.clientId);
+  const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(clientId, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const raw = req.body?.demand_level;
+  const level = raw === null || raw === '' || raw === undefined ? null : String(raw).toUpperCase();
+  if (level !== null && !['A', 'B', 'C'].includes(level)) return res.status(400).json({ error: 'Use A, B ou C.' });
+  db.prepare('UPDATE clients SET demand_level = ? WHERE id = ? AND agency_id = ?').run(level, clientId, req.user.agency_id);
+  res.json({ client_id: clientId, demand_level: level });
 });
 
 router.get('/:clientId', (req, res) => {

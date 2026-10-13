@@ -59,6 +59,7 @@ export default function Layout({ children }) {
   const [clientSearch, setClientSearch] = useState('');
   const [healthByClient, setHealthByClient] = useState({});
   const [canEditHealth, setCanEditHealth] = useState(false);
+  const [demandByClient, setDemandByClient] = useState({});
   const [healthModalClient, setHealthModalClient] = useState(null);
   const [instagramHeaderConnection, setInstagramHeaderConnection] = useState(null);
   const [instagramHeaderLoading, setInstagramHeaderLoading] = useState(false);
@@ -188,6 +189,7 @@ export default function Layout({ children }) {
       (res.data?.scores || []).forEach((item) => { map[item.client_id] = item; });
       setHealthByClient(map);
       setCanEditHealth(Boolean(res.data?.can_edit));
+      setDemandByClient(res.data?.demand || {});
     }).catch(() => {});
   }, [user?.id, user?.role, user?.is_commercial_team]);
 
@@ -506,6 +508,41 @@ export default function Layout({ children }) {
     : clients;
 
   // Selo de saúde do cliente no seletor. Clicar no selo abre a avaliação sem trocar de cliente.
+  const DEMAND_META = {
+    A: { label: 'Alta demanda', cls: 'bg-rose-100 text-rose-700' },
+    B: { label: 'Demanda média', cls: 'bg-amber-100 text-amber-700' },
+    C: { label: 'Baixa demanda', cls: 'bg-emerald-100 text-emerald-700' },
+  };
+
+  // Clicar alterna: vazio -> A -> B -> C -> vazio (somente gestor).
+  function cycleDemand(client) {
+    if (!canEditHealth) return;
+    const order = [null, 'A', 'B', 'C'];
+    const current = demandByClient[client.id] || null;
+    const next = order[(order.indexOf(current) + 1) % order.length];
+    setDemandByClient((prev) => { const copy = { ...prev }; if (next) copy[client.id] = next; else delete copy[client.id]; return copy; });
+    api.put(`/client-health/${client.id}/demand`, { demand_level: next }).catch(() => loadHealth());
+  }
+
+  function renderDemandBadge(client) {
+    if (user?.role === 'client' || user?.is_commercial_team) return null;
+    const level = demandByClient[client.id];
+    if (!level && !canEditHealth) return null;
+    const meta = level ? DEMAND_META[level] : null;
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        title={meta ? `${meta.label} (A = alta, B = média, C = baixa).${canEditHealth ? ' Clique para alterar' : ''}` : 'Sem classificação de demanda. Clique para definir A, B ou C'}
+        onClick={(event) => { event.stopPropagation(); cycleDemand(client); }}
+        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); cycleDemand(client); } }}
+        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-black ${meta ? meta.cls : 'border border-dashed border-slate-300 text-slate-400'}`}
+      >
+        {level || '·'}
+      </span>
+    );
+  }
+
   function renderHealthBadge(client) {
     if (user?.role === 'client' || user?.is_commercial_team) return null;
     const item = healthByClient[client.id];
@@ -642,6 +679,7 @@ export default function Layout({ children }) {
                             <p className="truncate text-sm font-medium text-slate-800">{client.name}</p>
                             {client.segment && <p className="truncate text-[11px] text-slate-400">{client.segment}</p>}
                           </div>
+                          {renderDemandBadge(client)}
                           {renderHealthBadge(client)}
                           {isSelected && <Check size={16} className="shrink-0" style={{ color: agencyPrimary }} />}
                         </button>
@@ -865,7 +903,8 @@ export default function Layout({ children }) {
                           <button key={client.id} type="button" onClick={() => chooseClient(client)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
                             <ClientAvatar client={client} allClientsColor={agencyPrimary} sizeClass="h-9 w-9" />
                             <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-slate-800">{client.name}</p>{client.segment && <p className="truncate text-[11px] text-slate-400">{client.segment}</p>}</div>
-                            {renderHealthBadge(client)}
+                            {renderDemandBadge(client)}
+                          {renderHealthBadge(client)}
                             {isSelected && <Check size={16} style={{ color: agencyPrimary }} />}
                           </button>
                         );
