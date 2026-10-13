@@ -131,6 +131,10 @@ function StatusPill({ status }) {
   return <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${className}`}>{label}</span>;
 }
 
+// Linha de produção (Gravado > Em edição > Aprovado > Datado > Agendado) pausada por enquanto.
+// Para reativar, troque para true. Nenhum dado é apagado.
+const PRODUCTION_ENABLED = false;
+
 export default function Audiovisual() {
   const { user } = useAuth();
   const [tab, setTab] = useState('overview');
@@ -324,7 +328,7 @@ export default function Audiovisual() {
       setCompleteModal(null);
       setNotice(data.calendar_warning ? `Gravação concluída. Google Agenda: ${data.calendar_warning}` : `${form.video_count} vídeo(s) criados na produção.`);
       await loadData({ quiet: true });
-      setTab('production');
+      setTab(PRODUCTION_ENABLED ? 'production' : 'agenda');
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível concluir a gravação.');
     } finally {
@@ -624,7 +628,7 @@ export default function Audiovisual() {
   const tabs = [
     ['overview', 'Painel'],
     ['agenda', 'Agenda'],
-    ['production', 'Produção'],
+    ...(PRODUCTION_ENABLED ? [['production', 'Produção']] : []),
     ['clients', 'Clientes'],
   ];
 
@@ -735,7 +739,7 @@ export default function Audiovisual() {
         />
       )}
 
-      {tab === 'production' && (
+      {PRODUCTION_ENABLED && tab === 'production' && (
         <ProductionTab
           videos={videos}
           canEdit={canEdit}
