@@ -900,21 +900,18 @@ export default function DesignerApproval() {
         </div>
       ) : loading ? (
         <div className="flex min-h-[420px] items-center justify-center rounded-[24px] border border-slate-200 bg-white text-sm text-slate-400">Carregando aprovação...</div>
-      ) : visibleItems.length === 0 ? (
-        <div className="flex min-h-[420px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center">
-          <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${mode === 'correction' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-[#0969ff]'}`}>
-            {mode === 'correction' ? <MessageSquareWarning size={24} /> : <Check size={24} />}
-          </div>
-          <h2 className="mt-4 text-lg font-bold text-slate-900">{mode === 'correction' ? 'Nenhuma correção pendente' : 'Nada aguardando aprovação'}</h2>
-          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">
-            {mode === 'correction'
-              ? 'Quando a Direção ou o Cliente solicitar um ajuste, a peça e o feedback aparecem aqui automaticamente.'
-              : 'No Squad → Designer, envie uma tarefa ou subtarefa com imagem para “Em aprovação”.'}
-          </p>
-          <Link to="/designer" className={`mt-5 rounded-xl px-4 py-2.5 text-sm font-bold text-white ${mode === 'correction' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[#0969ff] hover:bg-blue-700'}`}>Abrir Designer</Link>
-        </div>
       ) : (
-        <div className="flex justify-center py-1">
+        <div className="flex flex-col items-center gap-3 py-1">
+          {visibleItems.length === 0 && (
+            <div className="flex w-full max-w-[560px] items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3">
+              <p className="text-sm text-slate-500">
+                {mode === 'correction'
+                  ? 'Nenhuma correção pendente. O feed abaixo segue editável.'
+                  : 'Nada aguardando aprovação. O feed abaixo segue editável: ajuste foto, bio e destaques.'}
+              </p>
+              <Link to="/designer" className="shrink-0 rounded-lg bg-[#0969ff] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Abrir Designer</Link>
+            </div>
+          )}
           <InstagramProfileMockup
             client={profileClient || { name: clientLabel }}
             highlights={highlights}
