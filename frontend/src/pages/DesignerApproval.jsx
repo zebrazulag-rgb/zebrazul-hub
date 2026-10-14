@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
+import { Check, CheckCircle2, Plus, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import FeedProfileEditorModal from '../components/FeedProfileEditorModal.jsx';
+import TaskFormModal from '../components/TaskFormModal.jsx';
 import { hasPermission } from '../permissions.js';
 
 const CONTENT_TYPE_LABELS = {
@@ -166,6 +167,9 @@ export default function DesignerApproval() {
   const [clientProfile, setClientProfile] = useState(null);
   const [highlights, setHighlights] = useState([]);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [showAddPiece, setShowAddPiece] = useState(false);
+  const [teamUsers, setTeamUsers] = useState([]);
+  const [clientList, setClientList] = useState([]);
   const [mode, setMode] = useState('direction');
   const [approvalLink, setApprovalLink] = useState(null);
   const [linkLoading, setLinkLoading] = useState(false);
@@ -360,15 +364,28 @@ export default function DesignerApproval() {
     };
   }, [loadItems]);
 
+  const canAddPiece = Boolean(selectedClient?.id && user && user.role !== 'client' && hasPermission(user, 'tasks.create'));
+  useEffect(() => {
+    if (!showAddPiece) return;
+    Promise.all([api.get('/auth/team-users'), api.get('/clients')])
+      .then(([teamResponse, clientResponse]) => {
+        setTeamUsers(teamResponse.data.users || []);
+        setClientList(clientResponse.data.clients || []);
+      })
+      .catch(() => {});
+  }, [showAddPiece]);
+
   const clientLabel = selectedClient?.name || 'Todos os clientes';
   const correctionCount = useMemo(() => items.filter(isCorrectionItem).length, [items]);
   const heldCount = useMemo(() => items.filter((item) => isHeldForDirection(item) && !isCorrectionItem(item)).length, [items]);
   const visibleItems = useMemo(() => {
+    // Peças já agendadas/postadas pela Social Media saem da área de aprovação.
+    const active = items.filter((item) => !['scheduled', 'posted'].includes(String(item?.workflow_stage || '').toLowerCase()));
     const filtered = mode === 'correction'
-      ? items.filter(isCorrectionItem)
+      ? active.filter(isCorrectionItem)
       : mode === 'client'
-        ? items.filter((item) => directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item))
-        : items.filter((item) => !isCorrectionItem(item));
+        ? active.filter((item) => directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item))
+        : active.filter((item) => !isCorrectionItem(item));
 
     // Feed em ordem de Instagram: conteúdos mais recentes primeiro (em cima)
     // e os mais antigos descendo a grade.
@@ -833,6 +850,13 @@ export default function DesignerApproval() {
               )}
             </button>
           </div>
+          {canAddPiece && (
+            <button
+              type="button"
+              onClick={() => setShowAddPiece(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700"
+            ><Plus size={16} /> Adicionar peça</button>
+          )}
           <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm">
             <Images size={16} className="text-[#0969ff]" /> {visibleItems.length} {visibleItems.length === 1 ? 'peça' : 'peças'}
           </div>
@@ -924,6 +948,23 @@ export default function DesignerApproval() {
             onEdit={() => setEditingProfile(true)}
           />
         </div>
+      )}
+
+      {showAddPiece && canAddPiece && (
+        <TaskFormModal
+          teamUsers={teamUsers}
+          clients={clientList.length ? clientList : [selectedClient]}
+          defaultClientId={selectedClient.id}
+          defaultWorkflowStage="approval"
+          allowedTaskTypes={['post']}
+          userRole={user?.role}
+          onClose={() => setShowAddPiece(false)}
+          onSaved={(task) => {
+            setShowAddPiece(false);
+            try { new BroadcastChannel('zebrahub-task-sync').postMessage({ source: syncSourceRef.current, taskId: task?.id }); } catch { /* sem BroadcastChannel */ }
+            loadItems(true).catch(() => {});
+          }}
+        />
       )}
 
       {editingProfile && canEditProfile && (

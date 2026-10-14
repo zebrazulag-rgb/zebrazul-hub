@@ -79,7 +79,7 @@ function AutoGrowTextarea({ value, onChange, minHeight = 110, className = '', ..
   );
 }
 
-export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, defaultFrontName = '', defaultBacklog = false, allowedTaskTypes = ['basic', 'post'], parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
+export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, defaultFrontName = '', defaultBacklog = false, defaultWorkflowStage = '', allowedTaskTypes = ['basic', 'post'], parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
   const isEditing = Boolean(taskToEdit?.id);
   const visibleTaskTypes = TASK_TYPES.filter((item) => allowedTaskTypes.includes(item.value));
   const initialForm = {
@@ -94,7 +94,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
     due_date: taskToEdit?.due_date ? taskToEdit.due_date.slice(0, 10) : (defaultDueDate || todayISO()),
     assignee_ids: taskToEdit?.assignees?.map((a) => a.id) || [],
     client_id: taskToEdit?.client_id || defaultClientId || '',
-    workflow_stage: workflowStageFromTask(taskToEdit),
+    workflow_stage: taskToEdit ? workflowStageFromTask(taskToEdit) : (defaultWorkflowStage || workflowStageFromTask(null)),
     is_featured: Number(taskToEdit?.is_featured) === 1,
     attachment_data: taskToEdit?.attachment_data || '',
     attachment_mime: taskToEdit?.attachment_mime || '',

@@ -84,6 +84,15 @@ test('marcar como postado e desfazer', async () => {
   assert.equal(row.workflow_stage, 'approved'); assert.equal(row.status, 'done'); assert.equal(row.posted_at, null);
 });
 
+test('peça agendada/postada não volta para a área de aprovação (approval-grid)', async () => {
+  db.prepare("UPDATE tasks SET direction_status = 'approved' WHERE id IN (?, ?)").run(sch, pst);
+  const { status, body } = await call('GET', `/approval-grid?client_id=${cA}`);
+  assert.equal(status, 200);
+  const ids = body.items.map((i) => i.id);
+  assert.ok(!ids.includes(sch) && !ids.includes(pst));
+  assert.ok(ids.includes(ok));
+});
+
 test('não deixa agendar/postar peça que o cliente não aprovou', async () => {
   const r = await call('POST', `/${naoAprov}/schedule-status`, { stage: 'posted' });
   assert.equal(r.status, 400);
@@ -98,4 +107,21 @@ test('cliente (login de cliente) não acessa; equipe só vê clientes com acesso
   assert.deepEqual(body.items.map((i) => i.id), [outro]);
   assert.equal((await call('GET', `/schedule-queue?client_id=${cA}`)).status, 403);
   assert.equal((await call('POST', `/${ok}/schedule-status`, { stage: 'posted' })).status, 403);
+});
+
+test('peça criada direto na Aprovação (post em aprovação com imagem) aparece na grade da direção', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const created = await call('POST', '/', {
+    task_type: 'post', title: 'Peça direta', caption: 'Legenda', content_type: 'feed', client_id: cA,
+    workflow_stage: 'internal_approval', due_date: '2026-10-20',
+    media_gallery: [{ data: PNG, mime: 'image/png', filename: 'a.png' }], attachment_data: PNG, attachment_mime: 'image/png', attachment_filename: 'a.png',
+  });
+  assert.ok([200, 201].includes(created.status), JSON.stringify(created.body));
+  const id = created.body.task.id;
+  const { body } = await call('GET', `/approval-grid?client_id=${cA}`);
+  const item = body.items.find((i) => i.id === id);
+  assert.ok(item, 'peça deve aparecer na grade');
+  assert.equal(item.workflow_stage, 'approval');
+  assert.equal(item.direction_status, 'pending');
+  assert.equal(item.image_count, 1);
 });
