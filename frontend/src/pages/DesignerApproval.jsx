@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, Plus, Trash2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
+import { Check, CheckCircle2, Hand, Plus, Trash2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -168,6 +168,7 @@ export default function DesignerApproval() {
   const [highlights, setHighlights] = useState([]);
   const [editingProfile, setEditingProfile] = useState(false);
   const [showAddPiece, setShowAddPiece] = useState(false);
+  const [reorderMode, setReorderMode] = useState(false);
   const [teamUsers, setTeamUsers] = useState([]);
   const [clientList, setClientList] = useState([]);
   const [mode, setMode] = useState('direction');
@@ -387,13 +388,19 @@ export default function DesignerApproval() {
         ? active.filter((item) => directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item))
         : active.filter((item) => !isCorrectionItem(item));
 
-    // Feed em ordem de Instagram: conteúdos mais recentes primeiro (em cima)
-    // e os mais antigos descendo a grade.
+    // Ordem manual (mãozinha) quando existir; peças novas, sem posição, entram no topo.
+    // Sem ordem manual: Instagram, conteúdos mais recentes primeiro.
     return [...filtered].sort((a, b) => {
+      const aPos = a?.grid_position;
+      const bPos = b?.grid_position;
+      const aHas = aPos !== null && aPos !== undefined;
+      const bHas = bPos !== null && bPos !== undefined;
+      if (aHas && bHas && aPos !== bPos) return aPos - bPos;
+      if (aHas !== bHas) return aHas ? 1 : -1;
       const aDate = new Date(a?.due_date || a?.scheduled_at || a?.created_at || 0).getTime() || 0;
       const bDate = new Date(b?.due_date || b?.scheduled_at || b?.created_at || 0).getTime() || 0;
       if (aDate !== bDate) return bDate - aDate;
-      return Number(b?.id || 0) - Number(a?.id || 0);
+      return String(b?.id || '').localeCompare(String(a?.id || ''), undefined, { numeric: true });
     });
   }, [items, mode]);
   const profileClient = clientProfile || selectedClient;
@@ -628,16 +635,48 @@ export default function DesignerApproval() {
     }
   }
 
+  const itemKey = (entry) => (entry.legacy_post ? `post:${entry.post_id}` : `task:${entry.id}`);
+
+  async function reorderPieces(fromId, toId) {
+    if (!selectedClient?.id) return;
+    // Parte da ordem atual de TODAS as peças do cliente, move a arrastada para a posição da outra e salva tudo.
+    const sortedAll = [...items].sort((a, b) => {
+      const ai = visibleItems.findIndex((entry) => String(entry.id) === String(a.id));
+      const bi = visibleItems.findIndex((entry) => String(entry.id) === String(b.id));
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return 0;
+    });
+    const fromIndex = sortedAll.findIndex((entry) => String(entry.id) === String(fromId));
+    const toIndex = sortedAll.findIndex((entry) => String(entry.id) === String(toId));
+    if (fromIndex === -1 || toIndex === -1) return;
+    const next = [...sortedAll];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    const positions = new Map(next.map((entry, index) => [String(entry.id), index]));
+    setItems((current) => current.map((entry) => ({ ...entry, grid_position: positions.get(String(entry.id)) ?? entry.grid_position })));
+    try {
+      await api.put('/tasks/approval-grid/order', { client_id: selectedClient.id, keys: next.map(itemKey) });
+    } catch (requestError) {
+      const message = requestError.response?.data?.error || 'Não foi possível salvar a nova ordem.';
+      setActionError(message);
+      window.alert(message);
+      loadItems(true).catch(() => {});
+    }
+  }
+
   async function deletePiece(item) {
     if (!item?.id || updatingId) return;
     if (!window.confirm(`Excluir a peça "${item.title || 'sem título'}"? Essa ação não pode ser desfeita.`)) return;
     setUpdatingId(item.id);
     setActionError('');
     try {
-      await api.delete(`/tasks/${item.id}`, { params: { piece: 1 } });
-      setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
-      setSelectedItem((current) => (current && Number(current.id) === Number(item.id) ? null : current));
-      broadcastTaskUpdate(item.id, item.parent_task_id);
+      if (item.legacy_post) await api.delete(`/posts/${item.post_id}`);
+      else await api.delete(`/tasks/${item.id}`, { params: { piece: 1 } });
+      setItems((current) => current.filter((entry) => String(entry.id) !== String(item.id)));
+      setSelectedItem((current) => (current && String(current.id) === String(item.id) ? null : current));
+      if (!item.legacy_post) broadcastTaskUpdate(item.id, item.parent_task_id);
       setLinkNotice('Peça excluída.');
     } catch (requestError) {
       const message = requestError.response?.data?.error || `Não foi possível excluir a peça${requestError.response?.status ? ` (erro ${requestError.response.status})` : ''}.`;
@@ -805,6 +844,7 @@ export default function DesignerApproval() {
 
   // Ações rápidas ao passar o mouse sobre a peça (sem abrir o modal), só na aba Direção.
   function renderDecisionActions(item) {
+    if (item?.legacy_post) return null;
     if (mode !== 'direction' || !canManageDirection || !item?.id) return null;
     const busy = Boolean(updatingId);
     const btn = 'inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold shadow transition disabled:opacity-50';
@@ -892,6 +932,13 @@ export default function DesignerApproval() {
               )}
             </button>
           </div>
+          {canAddPiece && visibleItems.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setReorderMode((current) => !current)}
+              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold shadow-sm transition ${reorderMode ? 'border-[#0969ff] bg-blue-50 text-[#0969ff]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+            ><Hand size={16} /> {reorderMode ? 'Concluir ordem' : 'Reordenar'}</button>
+          )}
           {canAddPiece && (
             <button
               type="button"
@@ -968,6 +1015,9 @@ export default function DesignerApproval() {
         <div className="flex min-h-[420px] items-center justify-center rounded-[24px] border border-slate-200 bg-white text-sm text-slate-400">Carregando aprovação...</div>
       ) : (
         <div className="flex flex-col items-center gap-3 py-1">
+          {reorderMode && (
+            <div className="flex w-full max-w-[560px] items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-900"><Hand size={16} className="shrink-0" /> Arraste uma peça e solte sobre outra para mudar de lugar. A ordem é salva automaticamente.</div>
+          )}
           {visibleItems.length === 0 && (
             <div className="flex w-full max-w-[560px] items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3">
               <p className="text-sm text-slate-500">
@@ -984,6 +1034,8 @@ export default function DesignerApproval() {
             posts={approvalPosts}
             onPostClick={openItem}
             renderHoverActions={renderHoverActions}
+            reorderMode={reorderMode && canAddPiece}
+            onReorder={reorderPieces}
             sourceType="planned"
             showCoverBadges={false}
             editable={canEditProfile}
@@ -1148,7 +1200,7 @@ export default function DesignerApproval() {
                   <div>
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Legenda</p>
-                      {!captionEditing && (
+                      {!captionEditing && !selectedItem.legacy_post && (
                         <button type="button" onClick={() => { setCaptionDraft(selectedItem.caption || ''); setCaptionEditing(true); }} className="inline-flex items-center gap-1 text-xs font-bold text-[#0969ff] hover:underline"><Pencil size={12} /> Editar</button>
                       )}
                     </div>
@@ -1173,7 +1225,11 @@ export default function DesignerApproval() {
                   {actionError && (
                     <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{actionError}</div>
                   )}
-                  <Link to={`/designer?task_id=${selectedItem.parent_task_id || selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
+                  {selectedItem.legacy_post ? (
+                    <p className="text-xs text-slate-400">Post da grade do Social Media (sem tarefa). Somente visualização.</p>
+                  ) : (
+                    <Link to={`/designer?task_id=${selectedItem.parent_task_id || selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
+                  )}
                   {canDeletePiece && (
                     <button
                       type="button"
@@ -1184,6 +1240,7 @@ export default function DesignerApproval() {
                   )}
                 </div>
 
+                {!selectedItem.legacy_post && (
                 <div className="border-t border-slate-100 p-5">
                   {mode === 'correction' ? (
                     <Link
@@ -1241,6 +1298,7 @@ export default function DesignerApproval() {
                     </div>
                   )}
                 </div>
+                )}
               </aside>
             </div>
           </div>

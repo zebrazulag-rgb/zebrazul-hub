@@ -1390,6 +1390,14 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_client_health_history_client ON client_health_history (agency_id, client_id, id);
+
+  CREATE TABLE IF NOT EXISTS approval_grid_order (
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    item_key TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (agency_id, client_id, item_key)
+  );
 `);
 tryAddColumn('tasks', 'direction_status', "TEXT DEFAULT 'pending'");
 tryAddColumn('tasks', 'direction_feedback', 'TEXT');

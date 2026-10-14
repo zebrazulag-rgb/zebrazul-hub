@@ -1,4 +1,5 @@
-import {ArrowLeft, Bell, Grid3x3, Images, Link2, MoreVertical, SquareUserRound, UserPlus, Pin, CheckCircle2, Clock3, XCircle} from 'lucide-react';
+import { useState } from 'react';
+import {ArrowLeft, Bell, Grid3x3, Hand, Images, Link2, MoreVertical, SquareUserRound, UserPlus, Pin, CheckCircle2, Clock3, XCircle} from 'lucide-react';
 import { coverAnalysisKey, coverStatusMeta, isVideoContent } from './FeedCoverDashboard.jsx';
 
 
@@ -29,13 +30,15 @@ function formatMetric(value) {
   return new Intl.NumberFormat('pt-BR').format(number);
 }
 
-export default function InstagramProfileMockup({ client, posts, highlights = [], onPostClick, renderHoverActions, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
+export default function InstagramProfileMockup({ client, posts, highlights = [], onPostClick, renderHoverActions, reorderMode = false, onReorder, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
   const username = client?.instagram_username || client?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || 'perfil';
   const displayName = client?.instagram_display_name || client?.name || 'Nome do perfil';
   const postsCount = client?.instagram_posts_count ?? posts.length;
   const followers = client?.instagram_followers_count ?? 0;
   const following = client?.instagram_following_count ?? 0;
   const profileLink = client?.instagram_link || '';
+  const [draggingKey, setDraggingKey] = useState(null);
+  const [overKey, setOverKey] = useState(null);
 
   return (
     <div className="instagram-profile-mockup w-full min-w-0 max-w-[620px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-xl sm:rounded-[28px]">
@@ -142,10 +145,20 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                 key={`${sourceType}-${sourceId}`}
                 role="button"
                 tabIndex={0}
-                onClick={() => onPostClick?.(post)}
-                onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPostClick?.(post); } }}
-                className="group relative aspect-[4/5] cursor-pointer overflow-hidden bg-slate-100 text-left"
+                onClick={() => { if (!reorderMode) onPostClick?.(post); }}
+                onKeyDown={(event) => { if (!reorderMode && event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPostClick?.(post); } }}
+                draggable={reorderMode}
+                onDragStart={(event) => { if (!reorderMode) return; setDraggingKey(String(sourceId)); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(sourceId)); }}
+                onDragOver={(event) => { if (!reorderMode || draggingKey === null) return; event.preventDefault(); if (overKey !== String(sourceId)) setOverKey(String(sourceId)); }}
+                onDrop={(event) => { if (!reorderMode || draggingKey === null) return; event.preventDefault(); const from = draggingKey; setDraggingKey(null); setOverKey(null); if (from !== String(sourceId)) onReorder?.(from, String(sourceId)); }}
+                onDragEnd={() => { setDraggingKey(null); setOverKey(null); }}
+                className={`group relative aspect-[4/5] overflow-hidden bg-slate-100 text-left ${reorderMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${draggingKey === String(sourceId) ? 'opacity-40' : ''} ${reorderMode && overKey === String(sourceId) && draggingKey !== String(sourceId) ? 'ring-4 ring-inset ring-[#0969ff]' : ''}`}
               >
+                {reorderMode && (
+                  <span className="pointer-events-none absolute left-1/2 top-1/2 z-30 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white opacity-80 shadow-lg backdrop-blur group-hover:opacity-100" title="Arraste para mudar de lugar">
+                    <Hand size={22} />
+                  </span>
+                )}
                 {mediaSrc ? (video && String(post.media_mime || post.media_gallery?.[0]?.mime || '').startsWith('video/') ? <video src={mediaSrc} className="h-full w-full object-cover bg-black" muted playsInline preload="metadata" /> : <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />) : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
                 {Number(post.is_pinned || 0) === 1 && (
                   <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-amber-950 shadow" title="Fixado no topo">
@@ -181,7 +194,7 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                     <ApprovalIcon size={10} /> {approvalStatus.label}
                   </span>
                 )}
-                {renderHoverActions && (() => {
+                {renderHoverActions && !reorderMode && (() => {
                   const actions = renderHoverActions(post);
                   return actions ? (
                     <div

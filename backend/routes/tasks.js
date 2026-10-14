@@ -693,7 +693,77 @@ router.get('/approval-grid', (req, res) => {
     };
   }).filter((item) => item.image_count > 0);
 
+  // Posts antigos da grade do Social Media (que não nasceram de uma tarefa) também aparecem
+  // na grade do cliente selecionado, somente para visualização.
+  if (client_id && req.user.role !== 'client') {
+    const legacyPosts = db.prepare(`
+      SELECT p.id, p.client_id, p.title, p.caption, p.content_type, p.media_data, p.media_mime, p.media_gallery,
+             p.scheduled_at, p.status, p.client_feedback, p.created_at, p.updated_at
+      FROM posts p
+      WHERE p.agency_id = ? AND p.client_id = ?
+        AND COALESCE(p.feed_visible, 1) = 1
+        AND p.status IN ('approved', 'scheduled', 'pending_approval')
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.feed_post_id = p.id AND t.agency_id = p.agency_id)
+      ORDER BY COALESCE(p.scheduled_at, p.updated_at, p.created_at) DESC, p.id DESC
+    `).all(Number(req.user.agency_id), Number(client_id));
+    for (const post of legacyPosts) {
+      const gallery = parseGallery(post.media_gallery).filter((entry) => String(entry?.data || entry?.url || '').length > 0);
+      const images = gallery.length
+        ? gallery
+        : (post.media_data ? [{ data: post.media_data, mime: post.media_mime || 'image/jpeg', filename: '' }] : []);
+      if (!images.length) continue;
+      const clientApproved = post.status === 'approved' || post.status === 'scheduled';
+      items.push({
+        id: `post-${post.id}`,
+        post_id: post.id,
+        legacy_post: true,
+        client_id: post.client_id,
+        parent_task_id: null,
+        title: post.title,
+        content_type: post.content_type,
+        content_tag: null,
+        caption: post.caption || '',
+        due_date: post.scheduled_at ? String(post.scheduled_at).slice(0, 10) : null,
+        workflow_stage: 'approved',
+        approval_status: clientApproved ? 'approved' : 'pending_approval',
+        direction_status: 'approved',
+        direction_feedback: null,
+        client_status: clientApproved ? 'approved' : 'pending',
+        client_feedback: post.client_feedback || null,
+        images,
+        image_count: images.length,
+        created_at: post.created_at,
+        updated_at: post.updated_at,
+      });
+    }
+  }
+
+  if (client_id) {
+    const positions = new Map(db.prepare('SELECT item_key, position FROM approval_grid_order WHERE agency_id = ? AND client_id = ?')
+      .all(Number(req.user.agency_id), Number(client_id)).map((row) => [row.item_key, Number(row.position)]));
+    for (const item of items) {
+      const key = item.legacy_post ? `post:${item.post_id}` : `task:${item.id}`;
+      item.grid_position = positions.has(key) ? positions.get(key) : null;
+    }
+  }
+
   return res.json({ items, total: items.length });
+});
+
+// Ordem manual das peças na grade de Aprovação (mão que move). Guarda a ordem completa do cliente.
+router.put('/approval-grid/order', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  const clientId = Number(req.body?.client_id);
+  if (!clientId || !ensureClientAccess(req, res, clientId)) return;
+  const keys = Array.isArray(req.body?.keys) ? req.body.keys.map(String).filter((key) => /^(task|post):\d+$/.test(key)) : [];
+  if (!keys.length || keys.length > 1000) return res.status(400).json({ error: 'Ordem inválida.' });
+  const unique = [...new Set(keys)];
+  db.transaction(() => {
+    db.prepare('DELETE FROM approval_grid_order WHERE agency_id = ? AND client_id = ?').run(Number(req.user.agency_id), clientId);
+    const insert = db.prepare('INSERT INTO approval_grid_order (agency_id, client_id, item_key, position) VALUES (?, ?, ?, ?)');
+    unique.forEach((key, index) => insert.run(Number(req.user.agency_id), clientId, key, index));
+  })();
+  res.json({ ok: true, total: unique.length });
 });
 
 // Aprovação da direção acontece dentro do ZebraHub. Somente administração/direção

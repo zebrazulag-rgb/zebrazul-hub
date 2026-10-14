@@ -143,3 +143,33 @@ test('excluir peça pela Aprovação: apaga a peça e o post ligado; bloqueia se
   assert.equal(blocked.status, 409);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE id IN (?, ?)').get(parent, child).n, 2);
 });
+
+test('posts antigos do feed (sem tarefa) aparecem na grade interna só do cliente escolhido', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const mkPost = (title, status, client = cA) => Number(db.prepare("INSERT INTO posts (agency_id, client_id, created_by, title, status, scheduled_at, media_data, media_mime) VALUES (?, ?, ?, ?, ?, '2026-09-10T12:00:00', ?, 'image/png')").run(agencyId, client, uid, title, status, PNG).lastInsertRowid);
+  const antigo = mkPost('Post antigo', 'approved');
+  const outroCliente = mkPost('De outro cliente', 'approved', cB);
+  const ligado = mkPost('Ligado a tarefa', 'approved');
+  db.prepare('UPDATE tasks SET feed_post_id = ? WHERE id = ?').run(ligado, ok);
+  const { body } = await call('GET', `/approval-grid?client_id=${cA}`);
+  const legacy = body.items.filter((i) => i.legacy_post);
+  assert.ok(legacy.some((i) => i.post_id === antigo && i.client_status === 'approved' && i.image_count === 1));
+  assert.ok(!legacy.some((i) => i.post_id === outroCliente || i.post_id === ligado));
+  const semFiltro = await call('GET', '/approval-grid');
+  assert.ok(!semFiltro.body.items.some((i) => i.legacy_post));
+});
+
+test('ordem manual da grade: salva, volta em grid_position e valida entrada', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const a = mk('Ordem A'); const b = mk('Ordem B');
+  const r = await call('PUT', '/approval-grid/order', { client_id: cA, keys: [`task:${b}`, `task:${a}`] });
+  assert.equal(r.status, 200);
+  const { body } = await call('GET', `/approval-grid?client_id=${cA}`);
+  const pa = body.items.find((i) => i.id === a).grid_position;
+  const pb = body.items.find((i) => i.id === b).grid_position;
+  assert.equal(pb, 0); assert.equal(pa, 1);
+  assert.equal((await call('PUT', '/approval-grid/order', { client_id: cA, keys: ['x'] })).status, 400);
+  CUR = { id: 7, role: 'team', agency_id: agencyId, client_ids: [cB], is_operations_head: 0 };
+  assert.equal((await call('PUT', '/approval-grid/order', { client_id: cA, keys: [`task:${a}`] })).status, 403);
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+});
