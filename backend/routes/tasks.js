@@ -559,6 +559,7 @@ router.get('/approval-grid', (req, res) => {
       AND ${NOT_IN_BACKLOG}
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
+      AND LOWER(COALESCE(t.workflow_stage, '')) NOT IN ('scheduled', 'posted')
       AND (
         t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved', 'correction')
         OR LOWER(COALESCE(t.approval_status, '')) = 'changes_requested'
@@ -1457,7 +1458,22 @@ router.delete('/:id', (req, res) => {
   if (!ensureTaskAccess(req, res, task)) return;
   const completeTask = db.prepare('SELECT id, agency_id, client_id, created_by, status FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!ensureModifyTask(req, res, completeTask)) return;
-  db.prepare('DELETE FROM tasks WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
+  // piece=1: exclusão de uma peça pela grade de Aprovação. Não apaga em cascata as subtarefas.
+  if (req.query.piece === '1') {
+    const subtasks = Number(db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ? AND agency_id = ?').get(task.id, req.user.agency_id)?.total || 0);
+    if (subtasks > 0) {
+      return res.status(409).json({ error: `Esta peça tem ${subtasks} subtarefa(s). Exclua pelo Squad para não perder as subtarefas.` });
+    }
+  }
+  const linked = db.prepare('SELECT feed_post_id FROM tasks WHERE id = ? AND agency_id = ?').get(task.id, req.user.agency_id);
+  db.transaction(() => {
+    db.prepare('DELETE FROM tasks WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
+    // Remove também o post da grade editorial que nasceu desta tarefa (se nenhuma outra tarefa o usa).
+    if (linked?.feed_post_id) {
+      const stillUsed = db.prepare('SELECT 1 FROM tasks WHERE feed_post_id = ? AND agency_id = ? LIMIT 1').get(linked.feed_post_id, req.user.agency_id);
+      if (!stillUsed) db.prepare('DELETE FROM posts WHERE id = ? AND agency_id = ?').run(linked.feed_post_id, req.user.agency_id);
+    }
+  })();
   res.json({ ok: true });
 });
 

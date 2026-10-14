@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, Plus, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
+import { Check, CheckCircle2, Plus, Trash2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -628,6 +628,26 @@ export default function DesignerApproval() {
     }
   }
 
+  async function deletePiece(item) {
+    if (!item?.id || updatingId) return;
+    if (!window.confirm(`Excluir a peça "${item.title || 'sem título'}"? Essa ação não pode ser desfeita.`)) return;
+    setUpdatingId(item.id);
+    setActionError('');
+    try {
+      await api.delete(`/tasks/${item.id}`, { params: { piece: 1 } });
+      setItems((current) => current.filter((entry) => Number(entry.id) !== Number(item.id)));
+      setSelectedItem((current) => (current && Number(current.id) === Number(item.id) ? null : current));
+      broadcastTaskUpdate(item.id, item.parent_task_id);
+      setLinkNotice('Peça excluída.');
+    } catch (requestError) {
+      const message = requestError.response?.data?.error || `Não foi possível excluir a peça${requestError.response?.status ? ` (erro ${requestError.response.status})` : ''}.`;
+      setActionError(message);
+      window.alert(message);
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
   async function sendToClient(item) {
     if (!item?.id || updatingId) return;
     setUpdatingId(item.id);
@@ -784,7 +804,7 @@ export default function DesignerApproval() {
   }
 
   // Ações rápidas ao passar o mouse sobre a peça (sem abrir o modal), só na aba Direção.
-  function renderHoverActions(item) {
+  function renderDecisionActions(item) {
     if (mode !== 'direction' || !canManageDirection || !item?.id) return null;
     const busy = Boolean(updatingId);
     const btn = 'inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold shadow transition disabled:opacity-50';
@@ -805,6 +825,28 @@ export default function DesignerApproval() {
         <button type="button" disabled={busy} onClick={() => directionDecision(item, 'approved')} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}>
           {updatingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />} Aprovar
         </button>
+      </div>
+    );
+  }
+
+  const canDeletePiece = Boolean(user && user.role !== 'client' && hasPermission(user, 'tasks.create'));
+
+  function renderHoverActions(item) {
+    const decision = renderDecisionActions(item);
+    if (!decision && !canDeletePiece) return null;
+    return (
+      <div className="flex items-end gap-1.5">
+        <div className="min-w-0 flex-1">{decision}</div>
+        {canDeletePiece && item?.id && (
+          <button
+            type="button"
+            title="Excluir peça"
+            aria-label="Excluir peça"
+            disabled={Boolean(updatingId)}
+            onClick={() => deletePiece(item)}
+            className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/95 text-rose-600 shadow transition hover:bg-rose-600 hover:text-white disabled:opacity-50"
+          ><Trash2 size={14} /></button>
+        )}
       </div>
     );
   }
@@ -1132,6 +1174,14 @@ export default function DesignerApproval() {
                     <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{actionError}</div>
                   )}
                   <Link to={`/designer?task_id=${selectedItem.parent_task_id || selectedItem.id}`} className="inline-flex text-sm font-semibold text-[#0969ff] hover:underline">Abrir tarefa no Designer</Link>
+                  {canDeletePiece && (
+                    <button
+                      type="button"
+                      disabled={Boolean(updatingId)}
+                      onClick={() => deletePiece(selectedItem)}
+                      className="flex items-center gap-1.5 text-sm font-semibold text-rose-600 hover:underline disabled:opacity-50"
+                    ><Trash2 size={14} /> Excluir peça</button>
+                  )}
                 </div>
 
                 <div className="border-t border-slate-100 p-5">

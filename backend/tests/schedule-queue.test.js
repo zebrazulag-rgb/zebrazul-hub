@@ -125,3 +125,21 @@ test('peça criada direto na Aprovação (post em aprovação com imagem) aparec
   assert.equal(item.direction_status, 'pending');
   assert.equal(item.image_count, 1);
 });
+
+test('excluir peça pela Aprovação: apaga a peça e o post ligado; bloqueia se tiver subtarefas', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const postId = Number(db.prepare("INSERT INTO posts (agency_id, client_id, created_by, title, status) VALUES (?, ?, ?, 'p', 'draft')").run(agencyId, cA, uid).lastInsertRowid);
+  const solo = mk('Para excluir');
+  db.prepare('UPDATE tasks SET feed_post_id = ? WHERE id = ?').run(postId, solo);
+  const r = await call('DELETE', `/${solo}?piece=1`);
+  assert.equal(r.status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE id = ?').get(solo).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM posts WHERE id = ?').get(postId).n, 0);
+
+  const parent = mk('Pai');
+  const child = mk('Filho');
+  db.prepare('UPDATE tasks SET parent_task_id = ? WHERE id = ?').run(parent, child);
+  const blocked = await call('DELETE', `/${parent}?piece=1`);
+  assert.equal(blocked.status, 409);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM tasks WHERE id IN (?, ?)').get(parent, child).n, 2);
+});
