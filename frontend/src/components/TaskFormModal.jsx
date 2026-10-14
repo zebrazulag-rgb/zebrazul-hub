@@ -107,8 +107,11 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
   const [error, setError] = useState('');
   const [mediaDirty, setMediaDirty] = useState(!isEditing);
 
-  async function handleFileChange(e) {
-    const files = Array.from(e.target.files || []);
+  const [dragging, setDragging] = useState(false);
+  const mediaVisibleRef = useRef(false);
+  const addFilesRef = useRef(null);
+
+  async function addFiles(files) {
     if (!files.length) return;
     const converted = await Promise.all(files.map(async (file) => ({
       data: await fileToBase64(file), mime: file.type, filename: file.name
@@ -116,8 +119,11 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
     setMediaDirty(true);
     setForm((f) => {
       const gallery = [...f.media_gallery, ...converted];
+      const firstImageName = String(converted[0]?.filename || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
       return {
         ...f,
+        // título vazio: sugere o nome do arquivo para agilizar
+        title: f.title.trim() ? f.title : firstImageName,
         media_gallery: gallery,
         // mantém o primeiro item também como attachment_data (usado no envio pro Feed)
         attachment_data: f.attachment_data || converted[0].data,
@@ -126,6 +132,45 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
       };
     });
   }
+  addFilesRef.current = addFiles;
+
+  async function handleFileChange(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    await addFiles(files);
+  }
+
+  // Arrastar e soltar (ou colar com Ctrl+V) imagens em qualquer lugar do formulário.
+  function imageFilesFrom(list) {
+    return Array.from(list || []).filter((file) => String(file.type || '').startsWith('image/'));
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setDragging(false);
+    if (!mediaVisibleRef.current) return;
+    addFiles(imageFilesFrom(event.dataTransfer?.files));
+  }
+
+  function handleDragOver(event) {
+    if (!mediaVisibleRef.current) return;
+    if (Array.from(event.dataTransfer?.types || []).includes('Files')) {
+      event.preventDefault();
+      setDragging(true);
+    }
+  }
+
+  useEffect(() => {
+    function onPaste(event) {
+      if (!mediaVisibleRef.current) return;
+      const images = imageFilesFrom(event.clipboardData?.files);
+      if (!images.length) return;
+      event.preventDefault();
+      addFilesRef.current?.(images);
+    }
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
 
   function removeMedia(idx) {
     setMediaDirty(true);
@@ -238,7 +283,15 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
 
   return (
     <ModalBackdrop onClose={handleRequestClose} disabled={saving} className="z-[60]">
-      <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[94vh] overflow-hidden shadow-2xl">
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false); }}
+        onDrop={handleDrop}
+        className={`relative bg-white rounded-2xl w-full max-w-5xl max-h-[94vh] overflow-hidden shadow-2xl ${dragging ? 'ring-4 ring-zebrazul-400' : ''}`}
+      >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-zebrazul-600/10 text-lg font-bold text-zebrazul-700 backdrop-blur-[1px]">Solte a arte aqui</div>
+        )}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl">
           <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
           <div className="flex items-center gap-2">
@@ -328,12 +381,12 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
             </>
           )}
           {/* Mídia: sempre visível em posts e também em qualquer tarefa que já tenha imagem, para permitir remover/trocar. */}
-          {(isPost || initialFormRef.current.media_gallery.length > 0 || form.media_gallery.length > 0) && (
+          {(mediaVisibleRef.current = (isPost || initialFormRef.current.media_gallery.length > 0 || form.media_gallery.length > 0)) && (
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1">Mídia (pode anexar mais de uma)</label>
             <label className="flex items-center gap-2 justify-center border-2 border-dashed border-slate-300 rounded-lg py-3 cursor-pointer hover:border-zebrazul-400 transition-colors text-sm text-slate-500">
               <ImagePlus size={16} />
-              Clique para anexar imagens
+              Arraste a arte para cá, cole (Ctrl+V) ou clique para anexar
               <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
             </label>
             {form.media_gallery.length > 0 && (
