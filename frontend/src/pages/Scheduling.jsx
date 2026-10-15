@@ -1,5 +1,5 @@
 import PieceDateEditor from '../components/PieceDateEditor.jsx';
-import { PlatformBadges, PlatformPicker } from '../components/PlatformBadges.jsx';
+import { PlatformPicker } from '../components/PlatformBadges.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarCheck, CalendarClock, Check, CheckCheck, Copy, Download, Images, Loader2, RotateCcw } from 'lucide-react';
 import api from '../api';
@@ -134,17 +134,10 @@ function ScheduleCard({ item, busy, onStage, onDate, onPlatforms }) {
           {item.parent_title && <p className="text-[11px] text-slate-400">{item.parent_title}</p>}
         </div>
 
-        {stage === 'posted' ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Postada em</span>
-            {(item.platforms || []).length ? <PlatformBadges platforms={item.platforms} /> : <span className="text-xs text-slate-400">Lugar não informado</span>}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Onde será agendada / postada</p>
-            <PlatformPicker value={item.platforms || []} onChange={(next) => onPlatforms(item, next)} disabled={busy} />
-          </div>
-        )}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">{stage === 'posted' ? 'Postada em' : 'Onde será agendada / postada'}</p>
+          <PlatformPicker value={item.platforms || []} onChange={(next) => onPlatforms(item, next)} disabled={busy} />
+        </div>
 
         {stage !== 'posted' && (
           <div className="min-h-0 flex-1">
