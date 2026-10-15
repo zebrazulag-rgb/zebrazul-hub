@@ -21,6 +21,7 @@ const express = require('express');
 const agencyId = Number(db.prepare('SELECT id FROM agencies ORDER BY id LIMIT 1').get().id);
 CUR.agency_id = agencyId;
 const uid = Number(db.prepare('INSERT INTO users (agency_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)').run(agencyId, 'U', 'u@t.com', 'x', 'admin').lastInsertRowid);
+db.exec('CREATE TABLE IF NOT EXISTS feed_highlights (id INTEGER PRIMARY KEY, agency_id INTEGER, client_id INTEGER, name TEXT, cover_data TEXT, cover_mime TEXT, sort_order INTEGER DEFAULT 0, visible INTEGER DEFAULT 1)');
 const cA = Number(db.prepare("INSERT INTO clients (agency_id, name, status) VALUES (?, 'A', 'active')").run(agencyId).lastInsertRowid);
 const cB = Number(db.prepare("INSERT INTO clients (agency_id, name, status) VALUES (?, 'B', 'active')").run(agencyId).lastInsertRowid);
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -45,6 +46,7 @@ const outro = mk('Outro cliente', { client: cB });
 const app = express();
 app.use(express.json());
 app.use('/t', require('../routes/tasks'));
+app.use('/p', require('../routes/public'));
 let server; let base;
 test.before(async () => { await new Promise((r) => { server = app.listen(0, r); }); base = `http://127.0.0.1:${server.address().port}/t`; });
 test.after(() => server.close());
@@ -171,5 +173,57 @@ test('ordem manual da grade: salva, volta em grid_position e valida entrada', as
   assert.equal((await call('PUT', '/approval-grid/order', { client_id: cA, keys: ['x'] })).status, 400);
   CUR = { id: 7, role: 'team', agency_id: agencyId, client_ids: [cB], is_operations_head: 0 };
   assert.equal((await call('PUT', '/approval-grid/order', { client_id: cA, keys: [`task:${a}`] })).status, 403);
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+});
+
+test('aba Cliente espelha o link: in_client_view, posts rejeitados/rascunho com data e ordem manual no link público', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const cC = Number(db.prepare("INSERT INTO clients (agency_id, name, status, feed_share_token) VALUES (?, 'C', 'active', 'tok-espelho')").run(agencyId).lastInsertRowid);
+  const mkPost = (title, status, scheduled = '2026-09-10T12:00:00', extra = '') => Number(db.prepare(`INSERT INTO posts (agency_id, client_id, created_by, title, status, scheduled_at, media_data, media_mime, feed_visible${extra ? ', is_pinned' : ''}) VALUES (?, ?, ?, ?, ?, ?, ?, 'image/png', 1${extra ? ', 1' : ''})`).run(agencyId, cC, uid, title, status, scheduled, PNG).lastInsertRowid);
+  const pApproved = mkPost('Aprovado', 'approved');
+  const pDraft = mkPost('Rascunho com data', 'draft');
+  const pDraftSemData = Number(db.prepare("INSERT INTO posts (agency_id, client_id, created_by, title, status, media_data, media_mime, feed_visible) VALUES (?, ?, ?, 'Rascunho sem data', 'draft', ?, 'image/png', 1)").run(agencyId, cC, uid, PNG).lastInsertRowid);
+  // tarefa postada, mas ainda no link do cliente
+  const tPosted = Number(db.prepare("INSERT INTO tasks (agency_id, client_id, created_by, task_type, title, status, workflow_stage, approval_status, client_status, direction_status, attachment_data, attachment_mime) VALUES (?, ?, ?, 'post', 'Tarefa postada', 'posted', 'posted', 'approved', 'approved', 'approved', ?, 'image/png')").run(agencyId, cC, uid, PNG).lastInsertRowid);
+  const pLinked = mkPost('Post da tarefa', 'approved');
+  db.prepare('UPDATE tasks SET feed_post_id = ? WHERE id = ?').run(pLinked, tPosted);
+  // tarefa em aprovação interna (não está no link)
+  const tInterna = mk('Interna', { client: cC, stage: 'approval', approval: 'completed', cs: 'waiting' });
+
+  const grid = (await call('GET', `/approval-grid?client_id=${cC}`)).body.items;
+  const inView = grid.filter((i) => i.in_client_view).map((i) => (i.legacy_post ? `post:${i.post_id}` : `task:${i.id}`)).sort();
+  assert.deepEqual(inView, [`post:${pApproved}`, `post:${pDraft}`, `task:${tPosted}`].sort());
+  assert.ok(!grid.find((i) => i.id === tInterna).in_client_view);
+  assert.ok(!inView.includes(`post:${pDraftSemData}`));
+
+  // o link público devolve exatamente os mesmos posts (por id) e a ordem manual
+  await call('PUT', '/approval-grid/order', { client_id: cC, keys: [`post:${pDraft}`, `task:${tPosted}`, `post:${pApproved}`] });
+  const pub = await fetch(`${base.replace(/\/t$/, '')}/p/feed/tok-espelho`);
+  assert.equal(pub.status, 200);
+  const data = await pub.json();
+  assert.deepEqual(data.posts.map((p) => p.id).sort((x, y) => x - y), [pApproved, pDraft, pLinked].sort((x, y) => x - y));
+  const pos = Object.fromEntries(data.posts.map((p) => [p.id, p.grid_position]));
+  assert.equal(pos[pDraft], 0); assert.equal(pos[pLinked], 1); assert.equal(pos[pApproved], 2);
+});
+
+test('corrigir data de postagem: tarefa (sincroniza o post ligado) e post antigo; valida data e acesso', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const t = mk('Data tarefa');
+  const postId = Number(db.prepare("INSERT INTO posts (agency_id, client_id, created_by, title, status, scheduled_at) VALUES (?, ?, ?, 'p', 'approved', '2026-09-10T14:30:00')").run(agencyId, cA, uid).lastInsertRowid);
+  db.prepare('UPDATE tasks SET feed_post_id = ? WHERE id = ?').run(postId, t);
+  let r = await call('PUT', `/${t}/date`, { date: '2026-10-20' });
+  assert.equal(r.status, 200);
+  assert.equal(db.prepare('SELECT due_date FROM tasks WHERE id = ?').get(t).due_date, '2026-10-20');
+  assert.equal(db.prepare('SELECT scheduled_at FROM posts WHERE id = ?').get(postId).scheduled_at, '2026-10-20T14:30:00');
+
+  const legacy = Number(db.prepare("INSERT INTO posts (agency_id, client_id, created_by, title, status, scheduled_at) VALUES (?, ?, ?, 'l', 'approved', '2026-09-01T12:00:00')").run(agencyId, cA, uid).lastInsertRowid);
+  r = await call('PUT', `/posts/${legacy}/date`, { date: '2026-11-02' });
+  assert.equal(r.status, 200);
+  assert.equal(db.prepare('SELECT scheduled_at FROM posts WHERE id = ?').get(legacy).scheduled_at, '2026-11-02T12:00:00');
+
+  assert.equal((await call('PUT', `/${t}/date`, { date: '31/12/2026' })).status, 400);
+  assert.equal((await call('PUT', `/${t}/date`, { date: '2026-02-31' })).status, 400);
+  CUR = { id: 7, role: 'team', agency_id: agencyId, client_ids: [cB], is_operations_head: 0 };
+  assert.equal((await call('PUT', `/${t}/date`, { date: '2026-10-21' })).status, 403);
   CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
 });

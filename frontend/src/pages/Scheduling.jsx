@@ -1,3 +1,4 @@
+import PieceDateEditor from '../components/PieceDateEditor.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarCheck, CalendarClock, Check, CheckCheck, Copy, Download, Images, Loader2, RotateCcw } from 'lucide-react';
 import api from '../api';
@@ -63,7 +64,7 @@ async function downloadImage(image, filename) {
   if (revoke) window.setTimeout(() => URL.revokeObjectURL(revoke), 4000);
 }
 
-function ScheduleCard({ item, busy, onStage }) {
+function ScheduleCard({ item, busy, onStage, onDate }) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
@@ -119,9 +120,7 @@ function ScheduleCard({ item, busy, onStage }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {item.client_name && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">{item.client_name}</span>}
-            {item.due_date && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-[#0969ff]"><CalendarClock size={12} /> Postar em {formatDate(item.due_date)}</span>
-            )}
+            <PieceDateEditor value={item.due_date} onSave={(date) => onDate(item, date)} />
             {stage === 'posted' && item.posted_at && <span className="text-[11px] font-semibold text-emerald-600">Postada em {formatDate(item.posted_at)}</span>}
           </div>
           <h3 className="mt-1.5 text-base font-bold text-slate-900">{item.title}</h3>
@@ -205,6 +204,11 @@ export default function Scheduling() {
     return () => { window.clearInterval(interval); window.removeEventListener('focus', onFocus); };
   }, [load]);
 
+  async function changeDate(item, date) {
+    await api.put(`/tasks/${item.id}/date`, { date });
+    setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, due_date: date } : entry)));
+  }
+
   async function changeStage(item, stage) {
     setBusyId(item.id);
     setError('');
@@ -269,7 +273,7 @@ export default function Scheduling() {
       ) : (
         <div className="space-y-4">
           {visible.map((item) => (
-            <ScheduleCard key={item.id} item={item} busy={busyId === item.id} onStage={changeStage} />
+            <ScheduleCard key={item.id} item={item} busy={busyId === item.id} onStage={changeStage} onDate={changeDate} />
           ))}
         </div>
       )}

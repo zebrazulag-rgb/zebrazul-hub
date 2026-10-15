@@ -8,6 +8,7 @@ import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import FeedProfileEditorModal from '../components/FeedProfileEditorModal.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
+import PieceDateEditor from '../components/PieceDateEditor.jsx';
 import { hasPermission } from '../permissions.js';
 
 const CONTENT_TYPE_LABELS = {
@@ -381,16 +382,22 @@ export default function DesignerApproval() {
   const heldCount = useMemo(() => items.filter((item) => isHeldForDirection(item) && !isCorrectionItem(item)).length, [items]);
   const visibleItems = useMemo(() => {
     // Peças já agendadas/postadas pela Social Media saem da área de aprovação.
-    const active = items.filter((item) => !['scheduled', 'posted'].includes(String(item?.workflow_stage || '').toLowerCase()));
+    const active = items.filter((item) => (mode === 'client' && item.in_client_view !== undefined)
+      || !['scheduled', 'posted'].includes(String(item?.workflow_stage || '').toLowerCase()));
     const filtered = mode === 'correction'
       ? active.filter(isCorrectionItem)
       : mode === 'client'
-        ? active.filter((item) => directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item))
+        // Aba Cliente = exatamente o que aparece no link do cliente (backend informa in_client_view).
+        ? active.filter((item) => (item.in_client_view !== undefined
+          ? item.in_client_view
+          : (directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item))))
         : active.filter((item) => !isCorrectionItem(item));
 
     // Ordem manual (mãozinha) quando existir; peças novas, sem posição, entram no topo.
     // Sem ordem manual: Instagram, conteúdos mais recentes primeiro.
     return [...filtered].sort((a, b) => {
+      const pinDiff = Number(b?.is_pinned || 0) - Number(a?.is_pinned || 0);
+      if (pinDiff !== 0) return pinDiff;
       const aPos = a?.grid_position;
       const bPos = b?.grid_position;
       const aHas = aPos !== null && aPos !== undefined;
@@ -419,7 +426,7 @@ export default function DesignerApproval() {
       ? item.images.map((image) => ({ data: image.data, mime: image.mime, filename: image.filename }))
       : [],
     content_type: Number(item.image_count || item.images?.length || 0) > 1 ? 'carrossel' : (item.content_type || 'feed'),
-    status: mode === 'correction' ? 'rejected' : (mode === 'direction' ? statusForDirection(item) : statusForClient(item)),
+    status: mode === 'correction' ? 'rejected' : (mode === 'direction' ? statusForDirection(item) : (item.post_status || statusForClient(item))),
     workflow_stage: null,
     scheduled_at: item.due_date || item.scheduled_at || item.created_at || null,
   })), [visibleItems, mode]);
@@ -664,6 +671,14 @@ export default function DesignerApproval() {
       window.alert(message);
       loadItems(true).catch(() => {});
     }
+  }
+
+  async function changePieceDate(item, date) {
+    if (item.legacy_post) await api.put(`/tasks/posts/${item.post_id}/date`, { date });
+    else await api.put(`/tasks/${item.id}/date`, { date });
+    setItems((current) => current.map((entry) => (String(entry.id) === String(item.id) ? { ...entry, due_date: date } : entry)));
+    setSelectedItem((current) => (current && String(current.id) === String(item.id) ? { ...current, due_date: date } : current));
+    if (!item.legacy_post) broadcastTaskUpdate(item.id, item.parent_task_id);
   }
 
   async function deletePiece(item) {
@@ -1221,6 +1236,11 @@ export default function DesignerApproval() {
                   )}
                   {!isCorrectionItem(selectedItem) && selectedItem.client_feedback && (
                     <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><strong>Cliente:</strong> {selectedItem.client_feedback}</div>
+                  )}
+                  {canDeletePiece && (
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                      Data de postagem <PieceDateEditor value={selectedItem.due_date || selectedItem.scheduled_at} label="" onSave={(date) => changePieceDate(selectedItem, date)} />
+                    </div>
                   )}
                   {actionError && (
                     <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{actionError}</div>

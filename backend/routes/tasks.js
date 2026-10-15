@@ -537,6 +537,54 @@ router.post('/:id/schedule-status', (req, res) => {
   return res.json({ ok: true, task: updated });
 });
 
+function validDay(value) {
+  const day = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const parsed = new Date(`${day}T12:00:00Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day ? null : day;
+}
+
+function withNewDay(oldValue, day) {
+  const time = /T(\d{2}:\d{2}(:\d{2})?)/.exec(String(oldValue || ''))?.[1] || '12:00:00';
+  return `${day}T${time.length === 5 ? `${time}:00` : time}`;
+}
+
+// Corrige a data de postagem de uma peça (Aprovação e Agendamento). Mantém o post ligado em sincronia.
+router.put('/:id/date', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  const day = validDay(req.body?.date);
+  if (!day) return res.status(400).json({ error: 'Data inválida.' });
+  const task = db.prepare('SELECT id, client_id, parent_task_id, feed_post_id FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  let clientId = task.client_id;
+  if (!clientId && task.parent_task_id) {
+    clientId = db.prepare('SELECT client_id FROM tasks WHERE id = ? AND agency_id = ?').get(task.parent_task_id, req.user.agency_id)?.client_id;
+  }
+  if (!canAccessClient(req.user, Number(clientId))) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  db.transaction(() => {
+    db.prepare("UPDATE tasks SET due_date = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?").run(day, task.id, Number(req.user.agency_id));
+    if (task.feed_post_id) {
+      const post = db.prepare('SELECT scheduled_at FROM posts WHERE id = ? AND agency_id = ?').get(task.feed_post_id, Number(req.user.agency_id));
+      if (post) db.prepare("UPDATE posts SET scheduled_at = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+        .run(withNewDay(post.scheduled_at, day), task.feed_post_id, Number(req.user.agency_id));
+    }
+  })();
+  res.json({ ok: true, due_date: day });
+});
+
+// Mesma correção para posts antigos do feed (sem tarefa).
+router.put('/posts/:postId/date', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  const day = validDay(req.body?.date);
+  if (!day) return res.status(400).json({ error: 'Data inválida.' });
+  const post = db.prepare('SELECT id, client_id, scheduled_at FROM posts WHERE id = ? AND agency_id = ?').get(Number(req.params.postId), Number(req.user.agency_id));
+  if (!post) return res.status(404).json({ error: 'Post nao encontrado' });
+  if (!canAccessClient(req.user, Number(post.client_id))) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  db.prepare("UPDATE posts SET scheduled_at = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+    .run(withNewDay(post.scheduled_at, day), post.id, Number(req.user.agency_id));
+  res.json({ ok: true, due_date: day });
+});
+
 // Grade visual de aprovação do Squad -> Designer.
 // A grade é derivada diretamente das tarefas/subtarefas em "Em aprovação",
 // portanto não depende da grade editorial do Social Media.
@@ -559,7 +607,7 @@ router.get('/approval-grid', (req, res) => {
       AND ${NOT_IN_BACKLOG}
       AND t.task_type != 'video'
       AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
-      AND LOWER(COALESCE(t.workflow_stage, '')) NOT IN ('scheduled', 'posted')
+      AND (LOWER(COALESCE(t.workflow_stage, '')) NOT IN ('scheduled', 'posted') OR t.feed_post_id IS NOT NULL)
       AND (
         t.workflow_stage IN ('approval', 'internal_approval', 'external_approval', 'approved', 'correction')
         OR LOWER(COALESCE(t.approval_status, '')) = 'changes_requested'
@@ -698,11 +746,12 @@ router.get('/approval-grid', (req, res) => {
   if (client_id && req.user.role !== 'client') {
     const legacyPosts = db.prepare(`
       SELECT p.id, p.client_id, p.title, p.caption, p.content_type, p.media_data, p.media_mime, p.media_gallery,
-             p.scheduled_at, p.status, p.client_feedback, p.created_at, p.updated_at
+             p.scheduled_at, p.status, p.client_feedback, p.created_at, p.updated_at, COALESCE(p.is_pinned, 0) AS is_pinned
       FROM posts p
       WHERE p.agency_id = ? AND p.client_id = ?
         AND COALESCE(p.feed_visible, 1) = 1
-        AND p.status IN ('approved', 'scheduled', 'pending_approval')
+        AND (p.scheduled_at IS NOT NULL OR p.status = 'pending_approval')
+        AND p.status IN ('pending_approval', 'approved', 'rejected', 'scheduled', 'draft')
         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.feed_post_id = p.id AND t.agency_id = p.agency_id)
       ORDER BY COALESCE(p.scheduled_at, p.updated_at, p.created_at) DESC, p.id DESC
     `).all(Number(req.user.agency_id), Number(client_id));
@@ -713,6 +762,7 @@ router.get('/approval-grid', (req, res) => {
         : (post.media_data ? [{ data: post.media_data, mime: post.media_mime || 'image/jpeg', filename: '' }] : []);
       if (!images.length) continue;
       const clientApproved = post.status === 'approved' || post.status === 'scheduled';
+      const rejected = post.status === 'rejected';
       items.push({
         id: `post-${post.id}`,
         post_id: post.id,
@@ -725,10 +775,13 @@ router.get('/approval-grid', (req, res) => {
         caption: post.caption || '',
         due_date: post.scheduled_at ? String(post.scheduled_at).slice(0, 10) : null,
         workflow_stage: 'approved',
-        approval_status: clientApproved ? 'approved' : 'pending_approval',
+        approval_status: clientApproved ? 'approved' : (rejected ? 'changes_requested' : 'pending_approval'),
         direction_status: 'approved',
         direction_feedback: null,
-        client_status: clientApproved ? 'approved' : 'pending',
+        client_status: clientApproved ? 'approved' : (rejected ? 'changes_requested' : 'pending'),
+        post_status: post.status,
+        is_pinned: Number(post.is_pinned || 0),
+        in_client_view: true,
         client_feedback: post.client_feedback || null,
         images,
         image_count: images.length,
@@ -739,6 +792,30 @@ router.get('/approval-grid', (req, res) => {
   }
 
   if (client_id) {
+    // Marca quais peças (de tarefa) aparecem hoje no link do cliente: mesma regra do /public/feed.
+    const taskItems = items.filter((item) => !item.legacy_post);
+    if (taskItems.length) {
+      const linked = new Map();
+      const ids = taskItems.map((item) => Number(item.id));
+      for (let i = 0; i < ids.length; i += 500) {
+        const chunk = ids.slice(i, i + 500);
+        db.prepare(`
+          SELECT t.id AS task_id, p.status, p.scheduled_at, COALESCE(p.feed_visible, 1) AS feed_visible, COALESCE(p.is_pinned, 0) AS is_pinned
+          FROM tasks t JOIN posts p ON p.id = t.feed_post_id AND p.agency_id = t.agency_id
+          WHERE t.agency_id = ? AND t.id IN (${chunk.map(() => '?').join(',')})
+        `).all(Number(req.user.agency_id), ...chunk).forEach((row) => linked.set(Number(row.task_id), row));
+      }
+      for (const item of taskItems) {
+        const post = linked.get(Number(item.id));
+        const visible = Boolean(post)
+          && Number(post.feed_visible) === 1
+          && (post.scheduled_at || post.status === 'pending_approval')
+          && ['pending_approval', 'approved', 'rejected', 'scheduled', 'draft'].includes(post.status);
+        item.in_client_view = Boolean(visible);
+        item.post_status = post?.status || null;
+        item.is_pinned = Number(post?.is_pinned || 0);
+      }
+    }
     const positions = new Map(db.prepare('SELECT item_key, position FROM approval_grid_order WHERE agency_id = ? AND client_id = ?')
       .all(Number(req.user.agency_id), Number(client_id)).map((row) => [row.item_key, Number(row.position)]));
     for (const item of items) {
