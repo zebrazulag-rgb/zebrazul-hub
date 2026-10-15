@@ -1,4 +1,5 @@
 import PieceDateEditor from '../components/PieceDateEditor.jsx';
+import { PlatformBadges, PlatformPicker } from '../components/PlatformBadges.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarCheck, CalendarClock, Check, CheckCheck, Copy, Download, Images, Loader2, RotateCcw } from 'lucide-react';
 import api from '../api';
@@ -64,7 +65,7 @@ async function downloadImage(image, filename) {
   if (revoke) window.setTimeout(() => URL.revokeObjectURL(revoke), 4000);
 }
 
-function ScheduleCard({ item, busy, onStage, onDate }) {
+function ScheduleCard({ item, busy, onStage, onDate, onPlatforms }) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
@@ -126,6 +127,18 @@ function ScheduleCard({ item, busy, onStage, onDate }) {
           <h3 className="mt-1.5 text-base font-bold text-slate-900">{item.title}</h3>
           {item.parent_title && <p className="text-[11px] text-slate-400">{item.parent_title}</p>}
         </div>
+
+        {stage === 'posted' ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Postada em</span>
+            {(item.platforms || []).length ? <PlatformBadges platforms={item.platforms} /> : <span className="text-xs text-slate-400">Lugar não informado</span>}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Onde será agendada / postada</p>
+            <PlatformPicker value={item.platforms || []} onChange={(next) => onPlatforms(item, next)} disabled={busy} />
+          </div>
+        )}
 
         {stage !== 'posted' && (
           <div className="min-h-0 flex-1">
@@ -209,11 +222,26 @@ export default function Scheduling() {
     setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, due_date: date } : entry)));
   }
 
+  async function changePlatforms(item, platforms) {
+    const previous = item.platforms || [];
+    setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, platforms } : entry)));
+    try {
+      await api.put(`/tasks/${item.id}/platforms`, { platforms });
+    } catch (requestError) {
+      setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, platforms: previous } : entry)));
+      setError(requestError.response?.data?.error || 'Não foi possível salvar onde a peça foi agendada.');
+    }
+  }
+
   async function changeStage(item, stage) {
+    if (stage !== 'approved' && !(item.platforms || []).length) {
+      setError(`Marque em quais lugares "${item.title}" foi agendada (Instagram, Stories, Reels...) antes de continuar.`);
+      return;
+    }
     setBusyId(item.id);
     setError('');
     try {
-      await api.post(`/tasks/${item.id}/schedule-status`, { stage });
+      await api.post(`/tasks/${item.id}/schedule-status`, { stage, platforms: item.platforms || [] });
       try {
         const channel = new BroadcastChannel('zebrahub-task-sync');
         channel.postMessage({ taskId: item.id, parentTaskId: item.parent_task_id || null, at: Date.now(), source: 'scheduling' });
@@ -273,7 +301,7 @@ export default function Scheduling() {
       ) : (
         <div className="space-y-4">
           {visible.map((item) => (
-            <ScheduleCard key={item.id} item={item} busy={busyId === item.id} onStage={changeStage} onDate={changeDate} />
+            <ScheduleCard key={item.id} item={item} busy={busyId === item.id} onStage={changeStage} onDate={changeDate} onPlatforms={changePlatforms} />
           ))}
         </div>
       )}

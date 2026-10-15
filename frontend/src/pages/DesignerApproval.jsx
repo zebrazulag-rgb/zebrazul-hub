@@ -9,6 +9,7 @@ import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import FeedProfileEditorModal from '../components/FeedProfileEditorModal.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
 import PieceDateEditor from '../components/PieceDateEditor.jsx';
+import { PlatformBadges, PlatformPicker } from '../components/PlatformBadges.jsx';
 import { hasPermission } from '../permissions.js';
 
 const CONTENT_TYPE_LABELS = {
@@ -681,6 +682,21 @@ export default function DesignerApproval() {
     if (!item.legacy_post) broadcastTaskUpdate(item.id, item.parent_task_id);
   }
 
+  async function changePiecePlatforms(item, platforms) {
+    const apply = (list) => {
+      setItems((current) => current.map((entry) => (String(entry.id) === String(item.id) ? { ...entry, platforms: list } : entry)));
+      setSelectedItem((current) => (current && String(current.id) === String(item.id) ? { ...current, platforms: list } : current));
+    };
+    const previous = item.platforms || [];
+    apply(platforms);
+    try {
+      await api.put(`/tasks/${item.id}/platforms`, { platforms });
+    } catch (requestError) {
+      apply(previous);
+      setActionError(requestError.response?.data?.error || 'Não foi possível salvar onde a peça foi agendada.');
+    }
+  }
+
   async function deletePiece(item) {
     if (!item?.id || updatingId) return;
     if (!window.confirm(`Excluir a peça "${item.title || 'sem título'}"? Essa ação não pode ser desfeita.`)) return;
@@ -1240,6 +1256,14 @@ export default function DesignerApproval() {
                   {canDeletePiece && (
                     <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
                       Data de postagem <PieceDateEditor value={selectedItem.due_date || selectedItem.scheduled_at} label="" onSave={(date) => changePieceDate(selectedItem, date)} />
+                    </div>
+                  )}
+                  {!selectedItem.legacy_post && ['approved', 'scheduled', 'posted'].includes(selectedItem.workflow_stage) && (
+                    <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Agendada em</p>
+                      {canDeletePiece
+                        ? <PlatformPicker value={selectedItem.platforms || []} onChange={(next) => changePiecePlatforms(selectedItem, next)} />
+                        : (selectedItem.platforms || []).length ? <PlatformBadges platforms={selectedItem.platforms} /> : <span className="text-xs text-slate-400">Ainda não definido</span>}
                     </div>
                   )}
                   {actionError && (

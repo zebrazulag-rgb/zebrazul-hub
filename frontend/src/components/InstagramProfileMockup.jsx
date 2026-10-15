@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {ArrowLeft, Bell, Grid3x3, Hand, Images, Link2, MoreVertical, SquareUserRound, UserPlus, Pin, CheckCircle2, Clock3, XCircle} from 'lucide-react';
+import { PlatformBadges } from './PlatformBadges.jsx';
 import { coverAnalysisKey, coverStatusMeta, isVideoContent } from './FeedCoverDashboard.jsx';
 
 
@@ -185,6 +186,9 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                   >
                     {status.short || status.label}
                   </span>
+                )}
+                {Array.isArray(post.platforms) && post.platforms.length > 0 && (
+                  <PlatformBadges platforms={post.platforms} compact className={`absolute left-2 z-10 ${showCoverBadges && video ? 'bottom-9' : 'bottom-2'}`} />
                 )}
                 {approvalStatus && (
                   <span

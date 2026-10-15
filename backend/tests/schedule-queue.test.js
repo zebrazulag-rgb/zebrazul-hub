@@ -227,3 +227,26 @@ test('corrigir data de postagem: tarefa (sincroniza o post ligado) e post antigo
   assert.equal((await call('PUT', `/${t}/date`, { date: '2026-10-21' })).status, 403);
   CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
 });
+
+test('onde foi agendado: salva plataformas válidas, aparece na fila e na grade, e respeita acesso', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const t = mk('Com plataformas');
+  let r = await call('PUT', `/${t}/platforms`, { platforms: ['instagram_reels', 'facebook', 'invalida', 'instagram_feed'] });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.platforms, ['instagram_feed', 'instagram_reels', 'facebook']);
+  let q = (await call('GET', `/schedule-queue?client_id=${cA}`)).body.items.find((i) => i.id === t);
+  assert.deepEqual(q.platforms, ['instagram_feed', 'instagram_reels', 'facebook']);
+
+  // agendar levando as plataformas junto
+  r = await call('POST', `/${t}/schedule-status`, { stage: 'scheduled', platforms: ['tiktok'] });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.task.platforms, ['tiktok']);
+  // sem enviar platforms, mantém
+  r = await call('POST', `/${t}/schedule-status`, { stage: 'posted' });
+  assert.deepEqual(r.body.task.platforms, ['tiktok']);
+
+  assert.equal((await call('PUT', `/${t}/platforms`, { platforms: 'x' })).status, 400);
+  CUR = { id: 7, role: 'team', agency_id: agencyId, client_ids: [cB], is_operations_head: 0 };
+  assert.equal((await call('PUT', `/${t}/platforms`, { platforms: ['facebook'] })).status, 403);
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+});

@@ -444,6 +444,17 @@ function scheduleImages(row) {
   return [];
 }
 
+const SCHEDULE_PLATFORMS = ['instagram_feed', 'instagram_stories', 'instagram_reels', 'facebook', 'tiktok', 'linkedin', 'youtube', 'x', 'pinterest', 'google'];
+
+function cleanPlatforms(value) {
+  const list = Array.isArray(value) ? value : [];
+  return SCHEDULE_PLATFORMS.filter((key) => list.includes(key));
+}
+
+function parsePlatforms(raw) {
+  try { return cleanPlatforms(JSON.parse(raw || '[]')); } catch { return []; }
+}
+
 router.get('/schedule-queue', (req, res) => {
   if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
   const { client_id } = req.query;
@@ -454,7 +465,7 @@ router.get('/schedule-queue', (req, res) => {
   let query = `
     SELECT t.id, t.parent_task_id, COALESCE(t.client_id, parent.client_id) AS client_id,
            t.title, t.caption, t.content_type, t.due_date, t.workflow_stage, t.client_at, t.posted_at,
-           t.updated_at, t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
+           t.updated_at, t.scheduled_platforms, t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
            c.name AS client_name, c.logo_color AS client_color, parent.title AS parent_title
     FROM tasks t
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
@@ -500,6 +511,7 @@ router.get('/schedule-queue', (req, res) => {
       stage: row.workflow_stage,
       approved_at: row.client_at,
       posted_at: row.posted_at,
+      platforms: parsePlatforms(row.scheduled_platforms),
       images,
       image_count: images.length,
     };
@@ -525,6 +537,10 @@ router.post('/:id/schedule-status', (req, res) => {
     return res.status(400).json({ error: 'Somente peças aprovadas pelo cliente podem ser agendadas ou postadas.' });
   }
 
+  if (Array.isArray(req.body?.platforms)) {
+    db.prepare('UPDATE tasks SET scheduled_platforms = ? WHERE id = ? AND agency_id = ?')
+      .run(JSON.stringify(cleanPlatforms(req.body.platforms)), Number(task.id), Number(req.user.agency_id));
+  }
   db.prepare(`
     UPDATE tasks
     SET workflow_stage = ?, status = ?, designer_completed = 1,
@@ -533,8 +549,25 @@ router.post('/:id/schedule-status', (req, res) => {
         updated_at = datetime('now')
     WHERE id = ? AND agency_id = ?
   `).run(stage, legacyStatusForWorkflow(stage), stage, stage, Number(req.user.id), Number(task.id), Number(req.user.agency_id));
-  const updated = db.prepare('SELECT id, workflow_stage, status, posted_at FROM tasks WHERE id = ?').get(task.id);
-  return res.json({ ok: true, task: updated });
+  const updated = db.prepare('SELECT id, workflow_stage, status, posted_at, scheduled_platforms FROM tasks WHERE id = ?').get(task.id);
+  return res.json({ ok: true, task: { ...updated, platforms: parsePlatforms(updated.scheduled_platforms) } });
+});
+
+// Define em quais lugares a peça foi agendada/postada (Instagram feed/stories/reels, Facebook, TikTok...).
+router.put('/:id/platforms', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  if (!Array.isArray(req.body?.platforms)) return res.status(400).json({ error: 'Lista de plataformas inválida.' });
+  const task = db.prepare('SELECT id, client_id, parent_task_id FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  let clientId = task.client_id;
+  if (!clientId && task.parent_task_id) {
+    clientId = db.prepare('SELECT client_id FROM tasks WHERE id = ? AND agency_id = ?').get(task.parent_task_id, req.user.agency_id)?.client_id;
+  }
+  if (!canAccessClient(req.user, Number(clientId))) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  const platforms = cleanPlatforms(req.body.platforms);
+  db.prepare("UPDATE tasks SET scheduled_platforms = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+    .run(JSON.stringify(platforms), Number(task.id), Number(req.user.agency_id));
+  return res.json({ ok: true, platforms });
 });
 
 function validDay(value) {
@@ -598,7 +631,7 @@ router.get('/approval-grid', (req, res) => {
       t.direction_status, t.direction_feedback, t.direction_by, t.direction_at,
       t.client_status, t.client_feedback, t.client_at,
       t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
-      t.created_at, t.updated_at,
+      t.created_at, t.updated_at, t.scheduled_platforms,
       c.name AS client_name, c.logo_color AS client_color
     FROM tasks t
     LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
@@ -738,6 +771,7 @@ router.get('/approval-grid', (req, res) => {
         ? 'client'
         : (approvalState.direction_status === 'changes_requested' ? 'direction' : null),
       updated_at: row.updated_at,
+      platforms: parsePlatforms(row.scheduled_platforms),
     };
   }).filter((item) => item.image_count > 0);
 
@@ -782,6 +816,7 @@ router.get('/approval-grid', (req, res) => {
         post_status: post.status,
         is_pinned: Number(post.is_pinned || 0),
         in_client_view: true,
+        platforms: [],
         client_feedback: post.client_feedback || null,
         images,
         image_count: images.length,

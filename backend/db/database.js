@@ -1365,6 +1365,7 @@ tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'is_backlog', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'posted_at', 'TEXT');
 tryAddColumn('tasks', 'posted_by', 'INTEGER');
+tryAddColumn('tasks', 'scheduled_platforms', 'TEXT');
 tryAddColumn('clients', 'demand_level', 'TEXT');
 
 // Pontuação de saúde do cliente (avaliação interna do gestor, critérios em services/clientHealth.js).
