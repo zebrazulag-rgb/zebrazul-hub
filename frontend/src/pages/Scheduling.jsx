@@ -1,7 +1,8 @@
 import PieceDateEditor from '../components/PieceDateEditor.jsx';
+import PostedReportModal from '../components/PostedReportModal.jsx';
 import { PlatformPicker } from '../components/PlatformBadges.jsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, CalendarClock, Check, CheckCheck, Copy, Download, Images, Loader2, RotateCcw } from 'lucide-react';
+import { CalendarCheck, CalendarClock, Check, FileText, CheckCheck, Copy, Download, Images, Loader2, RotateCcw } from 'lucide-react';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 
@@ -193,6 +194,7 @@ export default function Scheduling() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -268,6 +270,8 @@ export default function Scheduling() {
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Agendamento</h1>
           <p className="mt-1 text-sm text-slate-500">{selectedClient?.name || 'Todos os clientes'} · peças aprovadas pelo cliente, prontas para agendar e postar.</p>
         </div>
+        <div className="flex flex-wrap items-center gap-2 self-start">
+        <button type="button" onClick={() => setReportOpen(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"><FileText size={15} /> Relatório do mês</button>
         <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
           {TABS.map((item) => (
             <button
@@ -280,6 +284,7 @@ export default function Scheduling() {
               <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-black ${tab === item.key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>{counts[item.key] || 0}</span>
             </button>
           ))}
+        </div>
         </div>
       </section>
 
@@ -304,6 +309,7 @@ export default function Scheduling() {
           ))}
         </div>
       )}
+    {reportOpen && <PostedReportModal client={selectedClient} onClose={() => setReportOpen(false)} />}
     </div>
   );
 }

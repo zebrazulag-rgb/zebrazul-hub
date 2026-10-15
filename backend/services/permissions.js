@@ -217,7 +217,7 @@ function apiPermissionForRequest(req) {
   if (path === '/manager-dashboard' || path.startsWith('/manager-dashboard/')) return 'dashboard.view';
   if (path.startsWith('/moodboards')) return method === 'GET' ? 'tasks.view' : 'tasks.create';
   if (path.startsWith('/competitors')) return 'compass.view';
-  if (path === '/tasks/schedule-queue' || /^\/tasks\/\d+\/schedule-status$/.test(path) || /^\/tasks\/\d+\/date$/.test(path) || /^\/tasks\/\d+\/platforms$/.test(path) || /^\/tasks\/posts\/\d+\/date$/.test(path)) {
+  if (path === '/tasks/schedule-queue' || path === '/tasks/posted-report' || /^\/tasks\/\d+\/schedule-status$/.test(path) || /^\/tasks\/\d+\/date$/.test(path) || /^\/tasks\/\d+\/platforms$/.test(path) || /^\/tasks\/posts\/\d+\/date$/.test(path)) {
     // Fila de agendamento da Social Media: basta ver o módulo Social Media ou as tarefas.
     return ['social.view', 'tasks.view'];
   }

@@ -252,3 +252,25 @@ test('onde foi agendado: salva plataformas válidas, aparece na fila e na grade,
   assert.equal((await call('PUT', `/${t}/platforms`, { platforms: ['facebook'] })).status, 403);
   CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
 });
+
+test('relatório do mês: só postadas do mês, agrega por plataforma/tipo/cliente e respeita acesso', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const a = mk('Rel A', { stage: 'posted' });
+  const b = mk('Rel B', { stage: 'posted' });
+  const c = mk('Rel C (outro mês)', { stage: 'posted' });
+  const d = mk('Rel D (não postada)', { stage: 'scheduled' });
+  db.prepare("UPDATE tasks SET due_date = '2031-03-05', scheduled_platforms = '[\"instagram_feed\",\"facebook\"]' WHERE id = ?").run(a);
+  db.prepare("UPDATE tasks SET due_date = '2031-03-20', scheduled_platforms = '[\"instagram_feed\"]' WHERE id = ?").run(b);
+  db.prepare("UPDATE tasks SET due_date = '2031-04-01' WHERE id = ?").run(c);
+  db.prepare("UPDATE tasks SET due_date = '2031-03-10' WHERE id = ?").run(d);
+  const r = await call('GET', `/posted-report?month=2031-03&client_id=${cA}`);
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.items.map((i) => i.id), [a, b]);
+  assert.equal(r.body.total, 2);
+  assert.equal(r.body.by_platform.instagram_feed, 2);
+  assert.equal(r.body.by_platform.facebook, 1);
+  assert.ok(r.body.items[0].image);
+  CUR = { id: 7, role: 'team', agency_id: agencyId, client_ids: [cB], is_operations_head: 0 };
+  assert.equal((await call('GET', `/posted-report?month=2031-03&client_id=${cA}`)).status, 403);
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+});
