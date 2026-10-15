@@ -12,6 +12,7 @@ const {
   getOrCreateClientApprovalLink,
 } = require('../services/designerApprovals');
 
+const { buildPostedReport } = require('../services/postedReport');
 const router = express.Router();
 router.use(authRequired);
 router.use(requireRole('admin', 'team', 'client'));
@@ -458,61 +459,35 @@ function parsePlatforms(raw) {
 // Relatório de postagens do mês (peças marcadas como postadas). O mês vale pela data de postagem da peça.
 router.get('/posted-report', (req, res) => {
   if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
-  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.month || '')) ? String(req.query.month) : new Date().toISOString().slice(0, 7);
   const { client_id } = req.query;
   if (client_id && !canAccessClient(req.user, Number(client_id))) {
     return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
   }
-  let query = `
-    SELECT t.id, COALESCE(t.client_id, parent.client_id) AS client_id, t.title, t.content_type, t.due_date, t.posted_at,
-           t.scheduled_platforms, t.attachment_data, t.attachment_mime, t.attachment_filename, t.media_gallery,
-           c.name AS client_name
-    FROM tasks t
-    LEFT JOIN tasks parent ON parent.id = t.parent_task_id AND parent.agency_id = t.agency_id
-    LEFT JOIN clients c ON c.id = COALESCE(t.client_id, parent.client_id) AND c.agency_id = t.agency_id
-    WHERE t.agency_id = ?
-      AND t.workflow_stage = 'posted'
-      AND COALESCE(t.is_backlog, 0) = 0
-      AND COALESCE(parent.is_backlog, 0) = 0
-      AND t.task_type != 'video'
-      AND LOWER(TRIM(COALESCE(t.front_name, ''))) != 'site/lp'
-      AND substr(COALESCE(t.due_date, t.posted_at, t.updated_at), 1, 7) = ?
-  `;
-  const params = [req.user.agency_id, month];
-  if (client_id) {
-    query += ' AND COALESCE(t.client_id, parent.client_id) = ?';
-    params.push(Number(client_id));
-  } else if (req.user.role === 'team' && !req.user.is_operations_head) {
-    const ids = (req.user.client_ids || []).map(Number).filter(Boolean);
-    if (!ids.length) return res.json({ month, total: 0, items: [], by_platform: {}, by_type: {}, by_client: {} });
-    query += ` AND COALESCE(t.client_id, parent.client_id) IN (${ids.map(() => '?').join(',')})`;
-    params.push(...ids);
-  }
-  query += ' ORDER BY COALESCE(t.due_date, t.posted_at) ASC, t.id ASC';
+  const scoped = !client_id && req.user.role === 'team' && !req.user.is_operations_head;
+  return res.json(buildPostedReport({
+    agencyId: req.user.agency_id,
+    month: req.query.month,
+    clientId: client_id ? Number(client_id) : null,
+    clientIds: scoped ? (req.user.client_ids || []).map(Number).filter(Boolean) : null,
+  }));
+});
 
-  const byPlatform = {}; const byType = {}; const byClient = {};
-  const items = db.prepare(query).all(...params).map((row) => {
-    const platforms = parsePlatforms(row.scheduled_platforms);
-    const day = String(row.due_date || row.posted_at || '').slice(0, 10);
-    platforms.forEach((key) => { byPlatform[key] = (byPlatform[key] || 0) + 1; });
-    const type = row.content_type || 'outro';
-    byType[type] = (byType[type] || 0) + 1;
-    const clientName = row.client_name || 'Sem cliente';
-    byClient[clientName] = (byClient[clientName] || 0) + 1;
-    const all = scheduleImages(row);
-    return {
-      id: row.id,
-      client_id: row.client_id,
-      client_name: clientName,
-      title: row.title,
-      content_type: row.content_type,
-      date: day,
-      platforms,
-      image: all[0]?.data || null,
-      image_count: all.length,
-    };
-  });
-  return res.json({ month, total: items.length, items, by_platform: byPlatform, by_type: byType, by_client: byClient });
+// Link público do relatório de um cliente + mês (mesmo link sempre que repetir cliente/mês).
+router.post('/posted-report/link', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  const clientId = Number(req.body?.client_id);
+  const month = String(req.body?.month || '');
+  if (!clientId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ error: 'Escolha um cliente e um mês.' });
+  const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(clientId, Number(req.user.agency_id));
+  if (!client || !canAccessClient(req.user, clientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  let row = db.prepare('SELECT token FROM posted_report_links WHERE agency_id = ? AND client_id = ? AND month = ?').get(Number(req.user.agency_id), clientId, month);
+  if (!row) {
+    const token = require('crypto').randomBytes(18).toString('hex');
+    db.prepare('INSERT INTO posted_report_links (agency_id, client_id, month, token, created_by) VALUES (?, ?, ?, ?, ?)')
+      .run(Number(req.user.agency_id), clientId, month, token, Number(req.user.id));
+    row = { token };
+  }
+  return res.json({ token: row.token, path: `/relatorio/${row.token}` });
 });
 
 router.get('/schedule-queue', (req, res) => {

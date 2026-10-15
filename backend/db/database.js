@@ -1399,6 +1399,17 @@ db.exec(`
     position INTEGER NOT NULL,
     PRIMARY KEY (agency_id, client_id, item_key)
   );
+
+  CREATE TABLE IF NOT EXISTS posted_report_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    month TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (agency_id, client_id, month)
+  );
 `);
 tryAddColumn('tasks', 'direction_status', "TEXT DEFAULT 'pending'");
 tryAddColumn('tasks', 'direction_feedback', 'TEXT');

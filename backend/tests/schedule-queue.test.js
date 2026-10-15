@@ -274,3 +274,28 @@ test('relatório do mês: só postadas do mês, agrega por plataforma/tipo/clien
   assert.equal((await call('GET', `/posted-report?month=2031-03&client_id=${cA}`)).status, 403);
   CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
 });
+
+test('link público do relatório: gera token estável, público lê só aquele cliente/mês', async () => {
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+  const r1 = await call('POST', '/posted-report/link', { client_id: cA, month: '2031-03' });
+  assert.equal(r1.status, 200);
+  assert.match(r1.body.token, /^[0-9a-f]{36}$/);
+  const r2 = await call('POST', '/posted-report/link', { client_id: cA, month: '2031-03' });
+  assert.equal(r2.body.token, r1.body.token);
+  const r3 = await call('POST', '/posted-report/link', { client_id: cA, month: '2031-04' });
+  assert.notEqual(r3.body.token, r1.body.token);
+  assert.equal((await call('POST', '/posted-report/link', { client_id: cA, month: 'xx' })).status, 400);
+
+  const pub = await fetch(`${base.replace(/\/t$/, '')}/p/report/${r1.body.token}`);
+  assert.equal(pub.status, 200);
+  const data = await pub.json();
+  assert.equal(data.client.name, 'A');
+  assert.equal(data.month, '2031-03');
+  assert.equal(data.total, 2);
+  assert.ok(data.items.every((i) => i.client_id === cA));
+  assert.equal((await fetch(`${base.replace(/\/t$/, '')}/p/report/naoexiste`)).status, 404);
+
+  CUR = { id: 7, role: 'team', agency_id: agencyId, client_ids: [cB], is_operations_head: 0 };
+  assert.equal((await call('POST', '/posted-report/link', { client_id: cA, month: '2031-03' })).status, 403);
+  CUR = { id: 1, role: 'admin', agency_id: agencyId, client_ids: [] };
+});

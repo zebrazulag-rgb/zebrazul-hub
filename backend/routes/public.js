@@ -3,6 +3,7 @@ const db = require('../db/database');
 const { recordActivity } = require('../services/activity');
 const { isHeldForDirection } = require('../services/designerApprovals');
 
+const { buildPostedReport } = require('../services/postedReport');
 const router = express.Router();
 
 function ensureSocialMediaShareStorage() {
@@ -164,6 +165,16 @@ router.post('/posts/:token/comments', (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+// Relatório mensal de posts postados, por link público (somente leitura).
+router.get('/report/:token', (req, res) => {
+  const link = db.prepare('SELECT agency_id, client_id, month FROM posted_report_links WHERE token = ?').get(String(req.params.token || ''));
+  if (!link) return res.status(404).json({ error: 'Link inválido ou expirado' });
+  const client = db.prepare('SELECT id, name, logo_color, avatar_data FROM clients WHERE id = ? AND agency_id = ?').get(link.client_id, link.agency_id);
+  if (!client) return res.status(404).json({ error: 'Link inválido ou expirado' });
+  const report = buildPostedReport({ agencyId: link.agency_id, month: link.month, clientId: link.client_id });
+  res.json({ client, ...report });
+});
+
 // Consulta o feed de um cliente pelo token publico - sem autenticacao
 router.get('/feed/:token', (req, res) => {
   const client = db.prepare('SELECT id, agency_id, name, logo_color, avatar_data, bio, instagram_username, instagram_display_name, instagram_posts_count, instagram_followers_count, instagram_following_count, instagram_link, instagram_primary_action, instagram_secondary_action, instagram_tertiary_action FROM clients WHERE feed_share_token = ?').get(req.params.token);
@@ -179,7 +190,21 @@ router.get('/feed/:token', (req, res) => {
     ORDER BY COALESCE(is_pinned, 0) DESC, COALESCE(scheduled_at, updated_at, created_at) DESC, id DESC
   `).all(client.id);
 
-  res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: posts.map(normalizePost) });
+  // Ordem manual definida na Aprovação (mãozinha). A chave é a da tarefa ligada ao post, se houver.
+  const positions = new Map(db.prepare('SELECT item_key, position FROM approval_grid_order WHERE agency_id = ? AND client_id = ?')
+    .all(Number(client.agency_id), Number(client.id)).map((row) => [row.item_key, Number(row.position)]));
+  const taskByPost = new Map();
+  if (posts.length && positions.size) {
+    db.prepare(`SELECT id, feed_post_id FROM tasks WHERE agency_id = ? AND feed_post_id IN (${posts.map(() => '?').join(',')})`)
+      .all(Number(client.agency_id), ...posts.map((post) => Number(post.id)))
+      .forEach((row) => taskByPost.set(Number(row.feed_post_id), Number(row.id)));
+  }
+  const withPosition = posts.map((post) => {
+    const key = taskByPost.has(Number(post.id)) ? `task:${taskByPost.get(Number(post.id))}` : `post:${post.id}`;
+    return { ...post, grid_position: positions.has(key) ? positions.get(key) : null };
+  });
+
+  res.json({ client, highlights: getVisibleFeedHighlights(client.id, client.agency_id), posts: withPosition.map(normalizePost) });
 });
 
 // A aprovação agora acontece diretamente na grade compartilhada do cliente.

@@ -12,6 +12,7 @@ import SiteLP from './pages/SiteLP.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import PublicDesignerApproval from './pages/PublicDesignerApproval.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
+import PublicPostedReport from './pages/PublicPostedReport.jsx';
 import PublicSocialMediaFeed from './pages/PublicSocialMediaFeed.jsx';
 import PublicPost from './pages/PublicPost.jsx';
 import Finance from './pages/Finance.jsx';
@@ -103,6 +104,7 @@ export default function App() {
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/aprovacao-cliente/:token" element={<PublicDesignerApproval />} />
       <Route path="/grade/:token" element={<PublicFeed />} />
+      <Route path="/relatorio/:token" element={<PublicPostedReport />} />
       <Route path="/link-social-media/:token" element={<PublicSocialMediaFeed />} />
       <Route path="/post/:token" element={<PublicPost />} />
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />

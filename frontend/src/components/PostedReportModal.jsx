@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, FileText, Loader2, X } from 'lucide-react';
+import { Check, Download, FileText, Link2, Loader2, X } from 'lucide-react';
 import api from '../api';
 import { PLATFORMS, PlatformBadges } from './PlatformBadges.jsx';
 
@@ -12,7 +12,7 @@ const monthLabel = (m) => `${MONTHS[Number(m.slice(5, 7)) - 1]} de ${m.slice(0, 
 
 function sortedEntries(obj) { return Object.entries(obj || {}).sort((a, b) => b[1] - a[1]); }
 
-function buildPrintHtml(data, clientName) {
+function buildPrintHtml(data, clientName, autoPrint = true) {
   const platformRows = sortedEntries(data.by_platform).map(([k, n]) => `<tr><td>${esc(PLATFORM_LABEL[k] || k)}</td><td>${n}</td></tr>`).join('');
   const typeRows = sortedEntries(data.by_type).map(([k, n]) => `<tr><td>${esc(cap(k))}</td><td>${n}</td></tr>`).join('');
   const cards = data.items.map((i) => `
@@ -46,7 +46,7 @@ function buildPrintHtml(data, clientName) {
     <table><tr><th>Formato</th><th>Posts</th></tr>${typeRows}</table>
   </div>
   <div class="grid">${cards}</div>
-  <script>window.onload=function(){setTimeout(function(){window.print()},400)}</script>
+  ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print()},400)}</script>' : ''}
   </body></html>`;
 }
 
@@ -62,6 +62,9 @@ export default function PostedReportModal({ client, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -76,11 +79,39 @@ export default function PostedReportModal({ client, onClose }) {
 
   const platformEntries = useMemo(() => sortedEntries(data?.by_platform), [data]);
 
+  useEffect(() => { setLinkUrl(''); setCopied(false); }, [month, client?.id]);
+
+  async function createLink() {
+    if (!client?.id) return;
+    setLinkBusy(true);
+    setError('');
+    try {
+      const { data: body } = await api.post('/tasks/posted-report/link', { client_id: client.id, month });
+      const url = `${window.location.origin}${body.path}`;
+      setLinkUrl(url);
+      try { await navigator.clipboard.writeText(url); setCopied(true); } catch { /* o link fica visível para copiar manualmente */ }
+    } catch (e) {
+      setError(e.response?.data?.error || 'Não foi possível gerar o link.');
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
   function printPdf() {
     const win = window.open('', '_blank');
     if (!win) { setError('O navegador bloqueou a janela. Libere pop-ups para este site e tente de novo.'); return; }
     win.document.write(buildPrintHtml(data, client?.name));
     win.document.close();
+  }
+
+  function downloadHtml() {
+    const blob = new Blob([buildPrintHtml(data, client?.name, false)], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio-${(client?.name || 'todos').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function downloadCsv() {
@@ -144,7 +175,18 @@ export default function PostedReportModal({ client, onClose }) {
           )}
         </div>
 
+        {linkUrl && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-emerald-50/60 px-5 py-3">
+            <Link2 size={14} className="text-emerald-600" />
+            <input readOnly value={linkUrl} onFocus={(e) => e.target.select()} className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs text-slate-700" />
+            <button type="button" onClick={() => { navigator.clipboard?.writeText(linkUrl).then(() => setCopied(true)).catch(() => {}); }} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white">{copied ? <Check size={13} /> : null} {copied ? 'Link copiado!' : 'Copiar'}</button>
+            <a href={linkUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-700 underline">Abrir</a>
+          </div>
+        )}
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-3">
+          {!client?.id && <span className="mr-auto self-center text-[11px] text-slate-400">Selecione um cliente no topo para gerar o link.</span>}
+          <button type="button" disabled={!client?.id || linkBusy} onClick={createLink} className="inline-flex items-center gap-1.5 rounded-xl bg-[#0969ff] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-40">{linkBusy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />} Gerar link para o cliente</button>
+          <button type="button" disabled={!data || !data.total} onClick={downloadHtml} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"><Download size={14} /> Baixar HTML</button>
           <button type="button" disabled={!data || !data.total} onClick={downloadCsv} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"><Download size={14} /> Baixar planilha (CSV)</button>
           <button type="button" disabled={!data || !data.total} onClick={printPdf} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40"><FileText size={14} /> Gerar PDF / Imprimir</button>
         </div>
