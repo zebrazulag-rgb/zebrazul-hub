@@ -496,7 +496,9 @@ router.get('/schedule-queue', (req, res) => {
   const counts = { approved: 0, scheduled: 0, posted: 0 };
   const items = db.prepare(query).all(...params).map((row) => {
     counts[row.workflow_stage] = (counts[row.workflow_stage] || 0) + 1;
-    const images = row.workflow_stage === 'posted' ? [] : scheduleImages(row);
+    const allImages = scheduleImages(row);
+    // Postadas: só a capa (miniatura) para não pesar a lista; o total vai em image_count.
+    const images = row.workflow_stage === 'posted' ? allImages.slice(0, 1) : allImages;
     return {
       id: row.id,
       parent_task_id: row.parent_task_id,
@@ -513,7 +515,7 @@ router.get('/schedule-queue', (req, res) => {
       posted_at: row.posted_at,
       platforms: parsePlatforms(row.scheduled_platforms),
       images,
-      image_count: images.length,
+      image_count: allImages.length,
     };
   });
   return res.json({ items, counts });

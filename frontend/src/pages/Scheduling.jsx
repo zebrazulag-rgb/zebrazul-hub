@@ -97,6 +97,12 @@ function ScheduleCard({ item, busy, onStage, onDate, onPlatforms }) {
   const stage = item.stage;
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:flex-row">
+      {stage === 'posted' && images[0] && (
+        <div className="relative h-32 w-full shrink-0 bg-slate-100 sm:h-auto sm:w-[120px]">
+          <img src={images[0].data} alt="" className="h-full w-full object-cover" />
+          {item.image_count > 1 && <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white"><Images size={11} /> {item.image_count}</span>}
+        </div>
+      )}
       {stage !== 'posted' && (
         <div className="relative aspect-[4/5] w-full shrink-0 bg-slate-100 sm:w-[220px]">
           {images[previewIndex] ? (

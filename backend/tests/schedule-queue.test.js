@@ -63,12 +63,14 @@ test('fila traz só peças aprovadas pelo cliente (sem backlog, vídeo ou não a
   assert.deepEqual(body.counts, { approved: 1, scheduled: 1, posted: 1 });
 });
 
-test('peça pronta traz legenda e imagem para copiar/baixar; postada não carrega imagem', async () => {
+test('peça pronta traz legenda e imagem para copiar/baixar; postada traz só a capa (miniatura)', async () => {
   const { body } = await call('GET', `/schedule-queue?client_id=${cA}`);
   const item = body.items.find((i) => i.id === ok);
   assert.equal(item.caption, 'Legenda #teste');
   assert.equal(item.image_count, 1);
-  assert.equal(body.items.find((i) => i.id === pst).image_count, 0);
+  const posted = body.items.find((i) => i.id === pst);
+  assert.equal(posted.images.length, 1);
+  assert.equal(posted.image_count, 1);
 });
 
 test('sem filtro de cliente, admin vê todos os clientes', async () => {
