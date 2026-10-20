@@ -1400,6 +1400,45 @@ db.exec(`
     PRIMARY KEY (agency_id, client_id, item_key)
   );
 
+  -- Zebra Leitor: biblioteca pessoal de livros em PDF (arquivos privados, por usuário).
+  CREATE TABLE IF NOT EXISTS zl_books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT,
+    original_name TEXT,
+    storage_name TEXT NOT NULL UNIQUE,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    page_count INTEGER NOT NULL DEFAULT 0,
+    cover_data TEXT,
+    text_status TEXT NOT NULL DEFAULT 'unknown',
+    current_page INTEGER NOT NULL DEFAULT 1,
+    max_page INTEGER NOT NULL DEFAULT 0,
+    percent INTEGER NOT NULL DEFAULT 0,
+    playback_rate REAL NOT NULL DEFAULT 1,
+    narration_page INTEGER,
+    narration_chunk INTEGER,
+    last_opened_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_zl_books_owner ON zl_books (agency_id, user_id, last_opened_at);
+
+  CREATE TABLE IF NOT EXISTS zl_marks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    quote TEXT,
+    note TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_zl_marks_book ON zl_marks (book_id, user_id, page);
+
   CREATE TABLE IF NOT EXISTS posted_report_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agency_id INTEGER NOT NULL,

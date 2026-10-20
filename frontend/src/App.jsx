@@ -13,6 +13,9 @@ import PublicApproval from './pages/PublicApproval.jsx';
 import PublicDesignerApproval from './pages/PublicDesignerApproval.jsx';
 import PublicFeed from './pages/PublicFeed.jsx';
 import PublicPostedReport from './pages/PublicPostedReport.jsx';
+import ZebraLeitor from './pages/ZebraLeitor.jsx';
+import ZebraLeitorReader from './pages/ZebraLeitorReader.jsx';
+import { NarrationProvider } from './context/NarrationContext.jsx';
 import PublicSocialMediaFeed from './pages/PublicSocialMediaFeed.jsx';
 import PublicPost from './pages/PublicPost.jsx';
 import Finance from './pages/Finance.jsx';
@@ -98,6 +101,7 @@ function CommercialPage({ children }) {
 
 export default function App() {
   return (
+    <NarrationProvider>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/npsbee" element={<PublicBeeFamilySurvey />} />
@@ -123,6 +127,8 @@ export default function App() {
       <Route path="/conversas" element={<Navigate to="/" replace />} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><DesignerApproval /></ProtectedRoute>} />
+      <Route path="/leitor" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitor /></ProtectedRoute>} />
+      <Route path="/leitor/:id" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitorReader /></ProtectedRoute>} />
       <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><Scheduling /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<Navigate to="/social-media/feed" replace />} />
       <Route path="/aprovacao/videos/:id" element={<Navigate to="/social-media/feed" replace />} />
@@ -180,5 +186,6 @@ export default function App() {
       <Route path="/agencias" element={<Navigate to="/configuracoes/agencias" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </NarrationProvider>
   );
 }

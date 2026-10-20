@@ -253,3 +253,6 @@ body {
     box-shadow: none !important;
   }
 }
+
+/* Zebra Leitor: leitura em tela cheia no celular */
+body.zl-reader-open .mobile-bottom-nav { display: none !important; }

@@ -20,6 +20,7 @@ import {
   Check,
   CheckCircle2,
   CalendarCheck,
+  Headphones,
   PanelLeftClose,
   PanelLeftOpen,
   FolderOpen,
@@ -420,6 +421,7 @@ export default function Layout({ children }) {
     { to: '/aprovacao', label: 'Aprovação', icon: CheckCircle2, permission: 'tasks.view' },
     { to: '/agendamento', label: 'Agendamento', icon: CalendarCheck, permission: 'social.view' },
     { to: '/moodboard', label: 'Moodboard', icon: Grid3x3, permission: 'tasks.view' },
+    { to: '/leitor', label: 'Zebra Leitor', mobileLabel: 'Leitor', icon: Headphones },
     { to: '/concorrentes', label: 'Concorrentes', icon: Search, permission: 'compass.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
@@ -438,7 +440,7 @@ export default function Layout({ children }) {
         if (item.beeOnly && !beeWorkspaceActive) return false;
         if (item.to === '/bussola') {
           if (!anyPermission(user, ['compass.view', 'materials.view'])) return false;
-        } else if (!hasPermission(user, item.permission)) return false;
+        } else if (item.permission && !hasPermission(user, item.permission)) return false;
         if (item.to === '/social-media') {
           return anyPermission(user, ['social.feed', 'social.messages']);
         }
@@ -460,7 +462,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/agendamento','/moodboard','/concorrentes','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/concorrentes','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -479,6 +481,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/site-lp')) return 'Site/LP';
     if (path.startsWith('/aprovacao')) return 'Aprovação';
     if (path.startsWith('/agendamento')) return 'Agendamento';
+    if (path.startsWith('/leitor')) return 'Zebra Leitor';
     if (path.startsWith('/moodboard')) return 'Moodboard';
     if (path.startsWith('/concorrentes')) return 'Concorrentes';
     if (path.startsWith('/conversas')) return 'Conversas';
@@ -1159,6 +1162,7 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/site-lp')) return 'Site/LP';
   if (path.startsWith('/aprovacao')) return 'Aprovação';
   if (path.startsWith('/agendamento')) return 'Agendamento';
+  if (path.startsWith('/leitor')) return 'Zebra Leitor';
   if (path.startsWith('/moodboard')) return 'Moodboard';
   if (path.startsWith('/concorrentes')) return 'Concorrentes';
   if (path.startsWith('/bussola')) return 'Bússola';

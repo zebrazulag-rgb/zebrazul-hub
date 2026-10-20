@@ -30,6 +30,11 @@ export default function PublicFeed() {
         setPosts([...(res.data.posts || [])].sort((a, b) => {
           const pinDifference = Number(b.is_pinned || 0) - Number(a.is_pinned || 0);
           if (pinDifference !== 0) return pinDifference;
+          // Ordem manual da agência (quando existir); peças novas, sem posição, ficam no topo.
+          const aHas = a.grid_position !== null && a.grid_position !== undefined;
+          const bHas = b.grid_position !== null && b.grid_position !== undefined;
+          if (aHas && bHas && a.grid_position !== b.grid_position) return a.grid_position - b.grid_position;
+          if (aHas !== bHas) return aHas ? 1 : -1;
           return new Date(b.scheduled_at) - new Date(a.scheduled_at);
         }));
       })
