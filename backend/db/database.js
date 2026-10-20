@@ -1439,6 +1439,23 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_zl_marks_book ON zl_marks (book_id, user_id, page);
 
+  -- Zebra Leitor: progresso POR USUARIO (necessario para livros compartilhados com a agencia).
+  CREATE TABLE IF NOT EXISTS zl_progress (
+    book_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    agency_id INTEGER NOT NULL,
+    current_page INTEGER NOT NULL DEFAULT 1,
+    max_page INTEGER NOT NULL DEFAULT 0,
+    percent INTEGER NOT NULL DEFAULT 0,
+    playback_rate REAL NOT NULL DEFAULT 1,
+    narration_page INTEGER,
+    narration_chunk INTEGER,
+    last_opened_at TEXT,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (book_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_zl_progress_book ON zl_progress (book_id, last_opened_at);
+
   CREATE TABLE IF NOT EXISTS posted_report_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agency_id INTEGER NOT NULL,
@@ -1449,6 +1466,15 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now')),
     UNIQUE (agency_id, client_id, month)
   );
+`);
+
+// Zebra Leitor: visibilidade do livro ('private' = so o dono, 'agency' = toda a agencia).
+tryAddColumn('zl_books', 'visibility', "TEXT NOT NULL DEFAULT 'private'");
+// Migra o progresso que ja existia no proprio livro (dono) para a tabela por usuario.
+db.exec(`
+  INSERT OR IGNORE INTO zl_progress (book_id, user_id, agency_id, current_page, max_page, percent, playback_rate, narration_page, narration_chunk, last_opened_at)
+  SELECT id, user_id, agency_id, current_page, max_page, percent, playback_rate, narration_page, narration_chunk, last_opened_at
+  FROM zl_books WHERE last_opened_at IS NOT NULL;
 `);
 tryAddColumn('tasks', 'direction_status', "TEXT DEFAULT 'pending'");
 tryAddColumn('tasks', 'direction_feedback', 'TEXT');

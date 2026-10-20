@@ -131,11 +131,64 @@ test('marcações: favorito (idempotente), trecho, anotação, editar e excluir'
   CUR = userA;
 });
 
+test('compartilhar com a agência: outros leem, mostram progresso próprio e só o dono altera', async () => {
+  const ins = db.prepare("INSERT OR IGNORE INTO users (id, agency_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, 'x', ?)");
+  ins.run(1, agencyId, 'Ana', 'ana@t.com', 'admin'); ins.run(2, agencyId, 'Beto', 'beto@t.com', 'team');
+  const other = db.prepare("INSERT INTO agencies (name, slug, status) VALUES ('Outra', 'outra-zl', 'active')").run().lastInsertRowid;
+  const userC = { id: 9, role: 'team', agency_id: Number(other), client_ids: [] };
+
+  // privado por padrão: B não vê
+  CUR = userB;
+  assert.equal((await fetch(`${base}/${bookId}`)).status, 404);
+  CUR = userA;
+  const shared = await (await json('PATCH', `/${bookId}`, { visibility: 'agency' })).json();
+  assert.equal(shared.book.visibility, 'agency');
+  assert.equal(shared.book.is_owner, true);
+
+  CUR = userB;
+  const list = (await (await fetch(base)).json()).books;
+  const seen = list.find((b) => b.id === bookId);
+  assert.ok(seen); assert.equal(seen.is_owner, false); assert.equal(seen.owner_name, 'Ana');
+  assert.equal(seen.percent, 0); // progresso de B começa do zero, não herda o da Ana
+  assert.equal((await fetch(`${base}/${bookId}/file`)).status, 200);
+  // B lê: progresso próprio
+  let r = await (await json('PUT', `/${bookId}/progress`, { current_page: 50, playback_rate: 2 })).json();
+  assert.equal(r.book.current_page, 50); assert.equal(r.book.percent, 50);
+  // mas não altera nem exclui
+  assert.equal((await json('PATCH', `/${bookId}`, { title: 'hack' })).status, 403);
+  assert.equal((await json('DELETE', `/${bookId}`)).status, 403);
+  // marcações próprias de B não aparecem para a Ana
+  await json('POST', `/${bookId}/marks`, { kind: 'bookmark', page: 40 });
+  CUR = userA;
+  assert.deepEqual((await (await fetch(`${base}/${bookId}/marks`)).json()).marks.map((m) => m.page), [2, 5]);
+  // a Ana mantém o próprio progresso e vê quem está lendo
+  const mine = (await (await fetch(`${base}/${bookId}`)).json()).book;
+  assert.equal(mine.current_page, 96); assert.equal(mine.playback_rate, 1.5);
+  assert.equal(mine.readers_count, 2); assert.equal(mine.finished_count, 0); assert.equal(mine.reading_count, 2);
+  const beto = mine.readers.find((x) => x.name === 'Beto');
+  assert.equal(beto.percent, 50); assert.equal(beto.current_page, 50);
+
+  // outra agência nunca vê
+  CUR = userC;
+  assert.equal((await fetch(`${base}/${bookId}`)).status, 404);
+  assert.equal((await fetch(`${base}/${bookId}/file`)).status, 404);
+  assert.deepEqual((await (await fetch(base)).json()).books, []);
+
+  // voltar a privado esconde de novo
+  CUR = userA;
+  await json('PATCH', `/${bookId}`, { visibility: 'private' });
+  CUR = userB;
+  assert.equal((await fetch(`${base}/${bookId}`)).status, 404);
+  CUR = userA;
+  assert.equal((await (await fetch(`${base}/${bookId}`)).json()).book.readers, undefined);
+});
+
 test('excluir remove o arquivo e as marcações', async () => {
   const before = fs.readdirSync(process.env.BOOKS_STORAGE_DIR).filter((f) => f.endsWith('.pdf')).length;
   assert.equal((await json('DELETE', `/${bookId}`)).status, 200);
   const after = fs.readdirSync(process.env.BOOKS_STORAGE_DIR).filter((f) => f.endsWith('.pdf')).length;
   assert.equal(after, before - 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM zl_marks WHERE book_id = ?').get(bookId).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM zl_progress WHERE book_id = ?').get(bookId).n, 0);
   assert.equal((await fetch(`${base}/${bookId}/file`)).status, 404);
 });

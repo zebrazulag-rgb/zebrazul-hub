@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertTriangle, BookOpen, CheckCircle2, Headphones, Loader2, MoreVertical, Pencil, Plus, Search, Trash2, UploadCloud, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Headphones, Loader2, Lock, MoreVertical, Pencil, Plus, Search, Trash2, UploadCloud, Users, X } from 'lucide-react';
 import api from '../api';
 import { friendlyPdfError, inspectPdfFile } from '../utils/pdfjs.js';
 
@@ -8,6 +8,7 @@ const FILTERS = [
   { key: 'recent', label: 'Recentes' },
   { key: 'progress', label: 'Em andamento' },
   { key: 'done', label: 'Concluídos' },
+  { key: 'shared', label: 'Da equipe' },
 ];
 
 const PALETTES = [['#0b3d91', '#0969ff'], ['#3b1d6e', '#7c3aed'], ['#0f5132', '#16a34a'], ['#7c2d12', '#ea580c'], ['#1e293b', '#475569'], ['#831843', '#db2777']];
@@ -40,7 +41,32 @@ function ProgressBar({ percent }) {
   );
 }
 
-function BookCard({ book, onEdit, onDelete }) {
+function timeAgo(value) {
+  if (!value) return '';
+  const date = new Date(String(value).replace(' ', 'T') + 'Z');
+  const minutes = Math.round((Date.now() - date.getTime()) / 60000);
+  if (!Number.isFinite(minutes)) return '';
+  if (minutes < 2) return 'agora há pouco';
+  if (minutes < 60) return `há ${minutes} min`;
+  if (minutes < 60 * 24) return `há ${Math.round(minutes / 60)} h`;
+  const days = Math.round(minutes / 1440);
+  return days === 1 ? 'ontem' : `há ${days} dias`;
+}
+
+function ReadersSummary({ book, onOpen }) {
+  const reading = book.reading_count || 0;
+  const finished = book.finished_count || 0;
+  const label = reading || finished
+    ? `${reading} ${reading === 1 ? 'lendo' : 'lendo'}${finished ? ` · ${finished} ${finished === 1 ? 'concluiu' : 'concluíram'}` : ''}`
+    : 'Ninguém lendo ainda';
+  return (
+    <button type="button" onClick={onOpen} className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-[#0969ff] hover:bg-blue-100">
+      <Users size={12} className="shrink-0" /> <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function BookCard({ book, onEdit, onDelete, onReaders }) {
   const [menu, setMenu] = useState(false);
   useEffect(() => {
     if (!menu) return undefined;
@@ -55,16 +81,20 @@ function BookCard({ book, onEdit, onDelete }) {
         <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-slate-100 shadow-md ring-1 ring-slate-200 transition group-hover:-translate-y-0.5 group-hover:shadow-xl">
           <BookCover book={book} />
           {done && <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white shadow"><CheckCircle2 size={11} /> Concluído</span>}
+          {book.visibility === 'agency' && <span className="absolute right-2 bottom-2 inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] font-bold text-white shadow backdrop-blur"><Users size={10} /> {book.is_owner ? 'Compartilhado' : 'Equipe'}</span>}
           {book.text_status === 'no_text' && <span title="PDF digitalizado: sem texto para narrar" className="absolute bottom-2 left-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">Sem texto</span>}
         </div>
         <h3 className="mt-2.5 line-clamp-2 text-sm font-bold leading-snug text-slate-900">{book.title}</h3>
         <p className="line-clamp-1 text-xs text-slate-500">{book.author || 'Autor não informado'}</p>
+        {!book.is_owner && book.owner_name && <p className="line-clamp-1 text-[11px] text-slate-400">Adicionado por {book.owner_name}</p>}
         <div className="mt-2 flex items-center gap-2">
           <ProgressBar percent={book.percent} />
           <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-500">{book.percent}%</span>
         </div>
         <p className="mt-0.5 text-[11px] text-slate-400">{book.page_count ? `${book.page_count} páginas` : 'Páginas não identificadas'}</p>
       </Link>
+      {book.visibility === 'agency' && <ReadersSummary book={book} onOpen={() => onReaders(book)} />}
+      {book.is_owner && (
       <div className="absolute right-1.5 top-1.5">
         <button type="button" aria-label="Opções do livro" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenu((v) => !v); }} className="rounded-full bg-black/45 p-1.5 text-white opacity-100 backdrop-blur transition hover:bg-black/65 md:opacity-0 md:group-hover:opacity-100">
           <MoreVertical size={15} />
@@ -76,6 +106,7 @@ function BookCard({ book, onEdit, onDelete }) {
           </div>
         )}
       </div>
+      )}
     </article>
   );
 }
@@ -94,6 +125,23 @@ function Modal({ title, children, onClose }) {
   );
 }
 
+function VisibilityPicker({ value, onChange }) {
+  const options = [
+    { key: 'private', label: 'Só eu', hint: 'Apenas você vê este livro', icon: Lock },
+    { key: 'agency', label: 'Toda a equipe', hint: 'Todos da agência podem ler e ver quem está lendo', icon: Users },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {options.map(({ key, label, hint, icon: Icon }) => (
+        <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl border px-3 py-2.5 text-left transition ${value === key ? 'border-[#0969ff] bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
+          <span className={`flex items-center gap-1.5 text-sm font-bold ${value === key ? 'text-[#0969ff]' : 'text-slate-700'}`}><Icon size={14} /> {label}</span>
+          <span className="mt-0.5 block text-[11px] font-normal normal-case leading-snug tracking-normal text-slate-500">{hint}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ZebraLeitor() {
   const navigate = useNavigate();
   const fileInput = useRef(null);
@@ -108,6 +156,14 @@ export default function ZebraLeitor() {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [readersOf, setReadersOf] = useState(null); // id do livro cujos leitores estão abertos
+  const [uploadVisibility, setUploadVisibility] = useState(() => {
+    try { return localStorage.getItem('zl_upload_visibility') === 'agency' ? 'agency' : 'private'; } catch { return 'private'; }
+  });
+  const chooseUploadVisibility = (value) => {
+    setUploadVisibility(value);
+    try { localStorage.setItem('zl_upload_visibility', value); } catch { /* ok */ }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -139,6 +195,7 @@ export default function ZebraLeitor() {
         form.append('author', info.author || '');
         form.append('page_count', String(info.pageCount));
         form.append('text_status', info.textStatus);
+        form.append('visibility', uploadVisibility);
         if (info.cover) form.append('cover_data', info.cover);
         const { data } = await api.post('/books', form, { onUploadProgress: (e) => patchUpload(id, { progress: e.total ? Math.round((e.loaded / e.total) * 100) : 0 }), timeout: 0 });
         setBooks((list) => [data.book, ...list]);
@@ -156,9 +213,10 @@ export default function ZebraLeitor() {
     event.preventDefault();
     setSaving(true);
     try {
-      const { data } = await api.patch(`/books/${editing.id}`, { title: editing.title, author: editing.author });
+      const { data } = await api.patch(`/books/${editing.id}`, { title: editing.title, author: editing.author, visibility: editing.visibility });
       setBooks((list) => list.map((b) => (b.id === data.book.id ? data.book : b)));
       setEditing(null);
+      load();
     } catch (e) { setError(e.response?.data?.error || 'Não foi possível salvar.'); setEditing(null); }
     finally { setSaving(false); }
   }
@@ -180,6 +238,7 @@ export default function ZebraLeitor() {
     let list = books.filter((b) => !q || `${b.title} ${b.author}`.toLowerCase().includes(q));
     if (filter === 'progress') list = list.filter((b) => b.percent > 0 && b.percent < 100);
     if (filter === 'done') list = list.filter((b) => b.percent >= 100);
+    if (filter === 'shared') list = list.filter((b) => b.visibility === 'agency');
     return list;
   }, [books, query, filter]);
 
@@ -187,6 +246,7 @@ export default function ZebraLeitor() {
     recent: books.length,
     progress: books.filter((b) => b.percent > 0 && b.percent < 100).length,
     done: books.filter((b) => b.percent >= 100).length,
+    shared: books.filter((b) => b.visibility === 'agency').length,
   }), [books]);
 
   return (
@@ -211,7 +271,11 @@ export default function ZebraLeitor() {
           <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-950"><Headphones size={24} className="text-[#0969ff]" /> Zebra Leitor</h1>
           <p className="mt-1 text-sm text-slate-500">Leia seus PDFs e ouça em voz alta, com o progresso salvo em cada livro.</p>
         </div>
-        <div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 text-xs font-bold shadow-sm sm:self-auto" role="group" aria-label="Quem vê os próximos livros adicionados">
+            <button type="button" onClick={() => chooseUploadVisibility('private')} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${uploadVisibility === 'private' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50'}`}><Lock size={12} /> Só eu</button>
+            <button type="button" onClick={() => chooseUploadVisibility('agency')} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${uploadVisibility === 'agency' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={12} /> Toda a equipe</button>
+          </div>
           <input ref={fileInput} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ''; }} />
           <button type="button" onClick={() => fileInput.current?.click()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0969ff] px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-blue-700 sm:w-auto"><Plus size={17} /> Adicionar livro</button>
         </div>
@@ -241,7 +305,7 @@ export default function ZebraLeitor() {
         <div className="flex min-h-[340px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#0969ff]"><BookOpen size={28} /></div>
           <h2 className="mt-4 text-lg font-bold text-slate-900">Sua biblioteca está vazia</h2>
-          <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">Adicione um livro em PDF (pelo computador ou celular) para ler e ouvir em português. Seus livros são privados: só você tem acesso.</p>
+          <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">Adicione um livro em PDF (pelo computador ou celular) para ler e ouvir em português. Você escolhe se cada livro fica só com você ou aparece para toda a equipe.</p>
           <button type="button" onClick={() => fileInput.current?.click()} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-3 text-sm font-bold text-white hover:bg-blue-700"><Plus size={16} /> Adicionar primeiro livro</button>
         </div>
       ) : (
@@ -282,11 +346,11 @@ export default function ZebraLeitor() {
 
             {visible.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
-                {query ? 'Nenhum livro encontrado para essa busca.' : filter === 'progress' ? 'Nenhum livro em andamento.' : 'Nenhum livro concluído ainda.'}
+                {query ? 'Nenhum livro encontrado para essa busca.' : filter === 'progress' ? 'Nenhum livro em andamento.' : filter === 'shared' ? 'Nenhum livro compartilhado com a equipe ainda.' : 'Nenhum livro concluído ainda.'}
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
-                {visible.map((book) => <BookCard key={book.id} book={book} onEdit={(b) => setEditing({ id: b.id, title: b.title, author: b.author })} onDelete={setDeleting} />)}
+                {visible.map((book) => <BookCard key={book.id} book={book} onEdit={(b) => setEditing({ id: b.id, title: b.title, author: b.author, visibility: b.visibility || 'private' })} onDelete={setDeleting} onReaders={(b) => setReadersOf(b.id)} />)}
               </div>
             )}
           </section>
@@ -303,6 +367,9 @@ export default function ZebraLeitor() {
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Autor
               <input value={editing.author} onChange={(e) => setEditing({ ...editing, author: e.target.value })} maxLength={200} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:border-[#0969ff]" />
             </label>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Quem pode ver
+              <div className="mt-1"><VisibilityPicker value={editing.visibility} onChange={(v) => setEditing({ ...editing, visibility: v })} /></div>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setEditing(null)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-50">Cancelar</button>
               <button type="submit" disabled={saving || !editing.title.trim()} className="inline-flex items-center gap-2 rounded-xl bg-[#0969ff] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving && <Loader2 size={14} className="animate-spin" />} Salvar</button>
@@ -310,6 +377,33 @@ export default function ZebraLeitor() {
           </form>
         </Modal>
       )}
+
+      {readersOf && (() => {
+        const book = books.find((b) => b.id === readersOf);
+        if (!book) return null;
+        const readers = book.readers || [];
+        return (
+          <Modal title="Quem está lendo" onClose={() => setReadersOf(null)}>
+            <p className="mb-3 line-clamp-2 text-sm font-semibold text-slate-700">{book.title}</p>
+            {readers.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">Ninguém abriu este livro ainda.</p>
+            ) : (
+              <ul className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+                {readers.map((r) => (
+                  <li key={r.user_id}>
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate font-bold text-slate-900">{r.name}{r.is_me ? ' (você)' : ''}</span>
+                      <span className={`shrink-0 text-xs font-bold tabular-nums ${r.finished ? 'text-emerald-600' : 'text-slate-600'}`}>{r.finished ? 'Concluiu' : `${r.percent}%`}</span>
+                    </div>
+                    <div className="mt-1"><ProgressBar percent={r.percent} /></div>
+                    <p className="mt-0.5 text-[11px] text-slate-400">Página {r.current_page}{book.page_count ? ` de ${book.page_count}` : ''} · {timeAgo(r.last_opened_at)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Modal>
+        );
+      })()}
 
       {deleting && (
         <Modal title="Excluir livro?" onClose={() => setDeleting(null)}>
