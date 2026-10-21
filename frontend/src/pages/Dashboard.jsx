@@ -21,6 +21,7 @@ import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import ManagerPanel from '../components/ManagerPanel.jsx';
+import OfficeScene from '../components/OfficeScene.jsx';
 
 function isoDate(date) {
   const y = date.getFullYear();
@@ -285,6 +286,8 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+
+      <OfficeScene />
 
       {isManager && <ManagerPanel />}
 

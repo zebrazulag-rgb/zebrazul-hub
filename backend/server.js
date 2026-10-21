@@ -17,6 +17,7 @@ const notificationRoutes = require('./routes/notifications');
 const chatRoutes = require('./routes/chat');
 const publicRoutes = require('./routes/public');
 const booksRoutes = require('./routes/books');
+const officeRoutes = require('./routes/office');
 const financeRoutes = require('./routes/finance');
 const credentialRoutes = require('./routes/credentials');
 const systemRoutes = require('./routes/system');
@@ -139,18 +140,19 @@ app.use('/api', (req, res, next) => {
       const clientsReadAccess = req.path === '/clients' && req.method === 'GET';
       const notificationAccess = req.path === '/notifications' || req.path.startsWith('/notifications/');
       const taskRequestAccess = req.path === '/task-request-links' || req.path.startsWith('/task-request-links/');
-      const personalLibraryAccess = req.path === '/books' || req.path.startsWith('/books/');
+      const personalLibraryAccess = req.path === '/books' || req.path.startsWith('/books/') || req.path === '/office' || req.path.startsWith('/office/');
       if (!clientsReadAccess && !notificationAccess && !taskRequestAccess && !personalLibraryAccess) {
         return res.status(403).json({ error: 'Este recurso não está liberado para o seu cargo.' });
       }
     }
     // Biblioteca pessoal (Zebra Leitor): não entra no log de atividades da equipe (privacidade e ruído).
-    if (req.path === '/books' || req.path.startsWith('/books/')) return next();
+    if (req.path === '/books' || req.path.startsWith('/books/') || req.path === '/office' || req.path.startsWith('/office/')) return next();
     activityMutationMiddleware(req, res, next);
   });
 });
 
 app.use('/api/books', booksRoutes);
+app.use('/api/office', officeRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/agencies', agencyRoutes);
 app.use('/api/diagnostics', diagnosticRoutes);

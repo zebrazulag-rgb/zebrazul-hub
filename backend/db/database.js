@@ -1456,6 +1456,18 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_zl_progress_book ON zl_progress (book_id, last_opened_at);
 
+  -- Nosso Escritorio (Painel): aparencia do avatar e status DECLARADO pela propria pessoa.
+  -- Nao guarda atividade de teclado, mouse nem paginas visitadas.
+  CREATE TABLE IF NOT EXISTS office_profiles (
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    look_json TEXT,
+    status TEXT NOT NULL DEFAULT 'available',
+    status_updated_at TEXT,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (agency_id, user_id)
+  );
+
   CREATE TABLE IF NOT EXISTS posted_report_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agency_id INTEGER NOT NULL,
