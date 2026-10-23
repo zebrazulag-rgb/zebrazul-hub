@@ -2,7 +2,7 @@
 
 Plataforma própria de gestão de redes sociais, aprovação de conteúdo e relatórios — inspirada no fluxo do MLabs/Reportei, feita sob medida para a operação da Zebrazul.
 
-## O que já vem pronto
+## O que já vem pronto 
 
 - **Autenticação por papel**: admin, equipe (team) e cliente, com JWT.
 - **Gestão de clientes**: cadastro e edição de nome, segmento, CNPJ, endereço, telefone, e-mail e redes sociais (Instagram, Facebook, TikTok, LinkedIn e YouTube).
