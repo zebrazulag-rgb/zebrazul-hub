@@ -62,6 +62,9 @@ const CSS = `
 .zo-sw button{width:30px;height:30px;border-radius:8px;border:2px solid var(--line);background:var(--c)}
 .zo-sw button[aria-pressed="true"]{border-color:var(--warm);box-shadow:0 0 0 2px #0e1020 inset}
 .zo-sw .zo-tx{width:auto;padding:0 10px;background:var(--panel2);font-size:13px}
+.zo-pick{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 4px;border-radius:8px;border:2px solid var(--line);background:var(--panel2);font-size:13px;cursor:pointer}
+.zo-pick[aria-pressed="true"]{border-color:var(--warm)}
+.zo-pick input{width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;cursor:pointer}
 .zo-note{font-size:12.5px;color:var(--muted)}
 .zo-err{color:var(--muted);font-size:13px}
 .zo-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -294,7 +297,7 @@ export default function OfficeScene() {
                       <h3 style={{ fontSize: 14 }} className="zo-lb">Personalizar meu avatar</h3>
                       <Swatches label="Pele" colors={SKINS} value={chosen.look.skin} onPick={(v) => pickLook('skin', v)} />
                       <Choices label="Cabelo" items={STYLES} value={chosen.look.style} onPick={(v) => pickLook('style', v)} />
-                      <Swatches label="Cor do cabelo" colors={HAIRS} value={chosen.look.hc} onPick={(v) => pickLook('hc', v)} />
+                      <HairColor look={chosen.look} onPick={(patch) => me && save({ look: { ...me.look, ...patch } })} />
                       <Swatches label="Camisa" colors={SHIRTS} value={chosen.look.shirt} onPick={(v) => pickLook('shirt', v)} />
                       <Choices label="Acessório" items={ACCS} value={chosen.look.acc} onPick={(v) => pickLook('acc', v)} />
                       <p className="zo-note" style={{ margin: 0 }}>Seu avatar fica salvo no seu usuário do ZebraHub.</p>
@@ -308,6 +311,33 @@ export default function OfficeScene() {
       )}
       <div className="zo-sr" aria-live="polite">{live}</div>
     </section>
+  );
+}
+
+function HairColor({ look, onPick }) {
+  const custom = /^#[0-9a-fA-F]{6}$/.test(look.hcc || '') ? look.hcc : null;
+  const [draft, setDraft] = useState(custom || HAIRS[look.hc] || '#000000');
+  const timer = useRef(null);
+  useEffect(() => { setDraft(custom || HAIRS[look.hc] || '#000000'); }, [custom, look.hc]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const change = (value) => {
+    setDraft(value);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => onPick({ hcc: value }), 350); // espera parar de arrastrar no seletor
+  };
+  return (
+    <div>
+      <div className="zo-note">Cor do cabelo</div>
+      <div className="zo-sw">
+        {HAIRS.map((c, i) => (
+          <button key={c} type="button" style={{ '--c': c }} aria-label={`Cor do cabelo ${i + 1}`} aria-pressed={!custom && look.hc === i} onClick={() => onPick({ hc: i, hcc: null })} />
+        ))}
+        <label className="zo-pick" title="Escolher qualquer cor" aria-pressed={!!custom} style={{ '--c': draft }}>
+          <input type="color" value={draft} onChange={(e) => change(e.target.value)} aria-label="Escolher outra cor de cabelo" />
+          <span>Outra cor</span>
+        </label>
+      </div>
+    </div>
   );
 }
 

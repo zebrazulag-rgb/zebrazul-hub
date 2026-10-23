@@ -19,9 +19,10 @@ const ACCS = ['none', 'glasses', 'cap'];
 const ONLINE_SECONDS = 70; // batimento do app a cada 20 s
 const STALE_STATUS_HOURS = 12; // status declarado há muito tempo volta a "disponível"
 const MAX_TEAM = 12;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 function defaultLook(id) {
-  return { skin: id % 5, hc: (id * 3) % 6, shirt: (id * 5) % 6, style: STYLES[id % 5], acc: 'none' };
+  return { skin: id % 5, hc: (id * 3) % 6, shirt: (id * 5) % 6, style: STYLES[id % 5], acc: 'none', hcc: null };
 }
 
 function cleanLook(input, fallback) {
@@ -33,6 +34,9 @@ function cleanLook(input, fallback) {
   return {
     skin: idx(src.skin, 5, fallback.skin),
     hc: idx(src.hc, 6, fallback.hc),
+    // cor de cabelo livre (#rrggbb); null/'' volta para uma das cores prontas
+    hcc: src.hcc === undefined ? (fallback.hcc || null)
+      : (typeof src.hcc === 'string' && HEX_COLOR.test(src.hcc) ? src.hcc.toLowerCase() : null),
     shirt: idx(src.shirt, 6, fallback.shirt),
     style: STYLES.includes(src.style) ? src.style : fallback.style,
     acc: ACCS.includes(src.acc) ? src.acc : fallback.acc,

@@ -89,7 +89,7 @@ function desk(c, cx, y, u) {
 
 function look(u) {
   const l = u.look || {};
-  return { skin: SKINS[l.skin] || SKINS[0], hair: HAIRS[l.hc] || HAIRS[0], shirt: SHIRTS[l.shirt] || SHIRTS[0], style: l.style, acc: l.acc };
+  return { skin: SKINS[l.skin] || SKINS[0], hair: /^#[0-9a-fA-F]{6}$/.test(l.hcc || '') ? l.hcc : (HAIRS[l.hc] || HAIRS[0]), shirt: SHIRTS[l.shirt] || SHIRTS[0], style: l.style, acc: l.acc };
 }
 
 export function drawChar(c, cx, y, u, o) {

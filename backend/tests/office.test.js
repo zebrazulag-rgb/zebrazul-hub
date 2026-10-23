@@ -71,3 +71,14 @@ test('cliente do portal e outra agência', async () => {
   assert.deepEqual((await (await send('GET', '/')).json()).team.map((m) => m.name), ['De Fora']);
   CUR = A;
 });
+
+test('cor de cabelo livre: aceita #rrggbb, ignora lixo e volta para as prontas', async () => {
+  let r = await (await send('PUT', '/me', { look: { hcc: '#FF8800' } })).json();
+  assert.equal(r.me.look.hcc, '#ff8800');
+  r = await (await send('PUT', '/me', { look: { style: 'short' } })).json(); // outro ajuste não apaga a cor livre
+  assert.equal(r.me.look.hcc, '#ff8800');
+  r = await (await send('PUT', '/me', { look: { hcc: 'vermelho<script>' } })).json();
+  assert.equal(r.me.look.hcc, null);
+  r = await (await send('PUT', '/me', { look: { hc: 3, hcc: null } })).json();
+  assert.equal(r.me.look.hc, 3); assert.equal(r.me.look.hcc, null);
+});
