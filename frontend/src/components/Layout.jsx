@@ -442,7 +442,7 @@ export default function Layout({ children }) {
           if (!anyPermission(user, ['compass.view', 'materials.view'])) return false;
         } else if (item.permission && !hasPermission(user, item.permission)) return false;
         if (item.to === '/social-media') {
-          return anyPermission(user, ['social.feed', 'social.messages']);
+          return hasPermission(user, 'social.messages');
         }
         if (item.to === '/ia') {
           return anyPermission(user, ['social.covers', 'social.stories']);

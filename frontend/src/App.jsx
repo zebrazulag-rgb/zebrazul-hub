@@ -52,11 +52,6 @@ import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
 import ClientDemand from './pages/ClientDemand.jsx';
 import { hasPermission } from './permissions.js';
 
-function SocialMediaLegacyRedirect({ section }) {
-  const location = useLocation();
-  return <Navigate to={`/social-media/${section}${location.search || ''}`} replace />;
-}
-
 
 function DesignerLegacyRedirect() {
   const location = useLocation();
@@ -67,7 +62,7 @@ function fallbackRoute(user) {
   if (hasPermission(user, 'dashboard.view')) return '/';
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
   if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/designer';
-  if (hasPermission(user, 'social.feed')) return user?.role === 'client' ? '/cliente/grade' : '/social-media/feed';
+  if (user?.role === 'client' && hasPermission(user, 'social.feed')) return '/cliente/grade';
   if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
   if (hasPermission(user, 'social.covers')) return '/ia?view=covers';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
@@ -130,15 +125,15 @@ export default function App() {
       <Route path="/leitor" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitor /></ProtectedRoute>} />
       <Route path="/leitor/:id" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitorReader /></ProtectedRoute>} />
       <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><Scheduling /></ProtectedRoute>} />
-      <Route path="/aprovacao/videos" element={<Navigate to="/social-media/feed" replace />} />
-      <Route path="/aprovacao/videos/:id" element={<Navigate to="/social-media/feed" replace />} />
-      <Route path="/calendario" element={<Navigate to="/social-media/feed?view=calendar" replace />} />
-      <Route path="/social-media" element={<Navigate to="/social-media/feed" replace />} />
-      <Route path="/social-media/feed" element={<ProtectedRoute permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
+      <Route path="/aprovacao/videos" element={<Navigate to="/aprovacao" replace />} />
+      <Route path="/aprovacao/videos/:id" element={<Navigate to="/aprovacao" replace />} />
+      <Route path="/calendario" element={<Navigate to="/agendamento" replace />} />
+      <Route path="/social-media" element={<Navigate to="/social-media/mensagens" replace />} />
+      <Route path="/social-media/feed" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/social-media/mensagens" element={<ProtectedRoute roles={["admin","team"]} permission="social.messages"><InstagramMessages /></ProtectedRoute>} />
       <Route path="/social-media/stories" element={<Navigate to="/ia?view=stories" replace />} />
       <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
-      <Route path="/feed" element={<ProtectedRoute permission="social.feed"><SocialMediaLegacyRedirect section="feed" /></ProtectedRoute>} />
+      <Route path="/feed" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/stories" element={<Navigate to="/ia?view=stories" replace />} />
       <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks workspace="designer" /></ProtectedRoute>} />
       <Route path="/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Moodboard /></ProtectedRoute>} />

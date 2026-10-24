@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   CheckCircle2,
   Image as ImageIcon,
-  Grid3x3,
   Inbox,
   Instagram,
   Loader2,
@@ -90,7 +88,6 @@ function Attachment({ attachment }) {
 export default function InstagramMessages() {
   const { user } = useAuth();
   const { selectedClient } = useClientFilter();
-  const navigate = useNavigate();
   const clientId = selectedClient?.id || (user?.role === 'client' ? user.client_id : null);
 
   const [status, setStatus] = useState(null);
@@ -252,28 +249,9 @@ export default function InstagramMessages() {
     }
   }
 
-  const sectionNav = (
-    <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-      <button
-        type="button"
-        onClick={() => navigate('/social-media/feed')}
-        className="flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
-      >
-        <Grid3x3 size={17} /> Planejado
-      </button>
-      <button
-        type="button"
-        className="flex min-w-max items-center gap-2 rounded-lg bg-zebrazul-600 px-4 py-2 text-sm font-medium text-white"
-      >
-        <MessageCircle size={17} /> Mensagens
-      </button>
-    </div>
-  );
-
   if (!clientId) {
     return (
       <div className="space-y-6">
-        {sectionNav}
         <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
           <EmptyState icon={Instagram} title="Selecione um cliente">
             Escolha um cliente no seletor do topo para abrir a caixa de entrada do Instagram.
@@ -286,7 +264,6 @@ export default function InstagramMessages() {
   if (status && (!status.connected || !status.permission_granted)) {
     return (
       <div className="space-y-6">
-        {sectionNav}
         <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
           <EmptyState icon={Instagram} title={status.connected ? 'Permissão de mensagens não autorizada' : 'Instagram não conectado'}>
             {status.connected
@@ -300,7 +277,6 @@ export default function InstagramMessages() {
 
   return (
     <div className="space-y-6">
-      {sectionNav}
       <section className="overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
       <header className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
