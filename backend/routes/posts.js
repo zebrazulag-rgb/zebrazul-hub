@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
 const { persistMedia, persistMediaBuffer, externalizeGallery } = require('../services/mediaStorage');
-const { InstagramPublishingError, publishPost } = require('../services/instagramPublishing');
+const { InstagramPublishingError, getPublishingOptions, normalizeProvider, publishPost } = require('../services/instagramPublishing');
 
 const router = express.Router();
 router.use(authRequired);
@@ -136,6 +136,13 @@ router.get('/', (req, res) => {
   const rows = db.prepare(query).all(...params);
   const posts = compact ? rows : rows.map(normalizePost);
   res.json({ posts });
+});
+
+router.get('/instagram-publish-options/:clientId', requireRole('admin', 'team'), (req, res) => {
+  const clientId = Number(req.params.clientId);
+  if (!clientId || !ensureClientAccess(req, res, clientId)) return;
+  res.set('Cache-Control', 'no-store');
+  res.json({ options: getPublishingOptions(clientId, req.user.agency_id) });
 });
 
 router.get('/:id', (req, res) => {
@@ -359,8 +366,9 @@ router.post('/:id/publish-instagram', requireRole('admin', 'team'), async (req, 
   if (!post) return res.status(404).json({ error: 'Post não encontrado' });
   if (!ensureClientAccess(req, res, post.client_id)) return;
   try {
-    const published = await publishPost(post.id, { agencyId: req.user.agency_id });
-    res.json({ ok: true, post: normalizePost(published) });
+    const provider = normalizeProvider(req.body?.provider || post.instagram_publish_provider);
+    const published = await publishPost(post.id, { agencyId: req.user.agency_id, provider });
+    res.json({ ok: true, provider: published.instagram_publish_provider || provider, post: normalizePost(published) });
   } catch (error) {
     if (error instanceof InstagramPublishingError) return res.status(error.status || 400).json({ error: error.message, meta_code: error.metaCode, meta_subcode: error.metaSubcode, trace_id: error.traceId });
     console.error('[INSTAGRAM PUBLISH]', error);
@@ -374,8 +382,22 @@ router.post('/:id/schedule-instagram', requireRole('admin', 'team'), (req, res) 
   if (!ensureClientAccess(req, res, post.client_id)) return;
   const scheduledAt = req.body?.scheduled_at || post.scheduled_at;
   if (!scheduledAt) return res.status(400).json({ error: 'Escolha a data e o horário da publicação.' });
-  db.prepare(`UPDATE posts SET scheduled_at = ?, status = 'scheduled', instagram_publish_state = 'scheduled', instagram_publish_error = NULL, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`).run(scheduledAt, post.id, req.user.agency_id);
-  res.json({ ok: true, scheduled_at: scheduledAt });
+
+  const provider = normalizeProvider(req.body?.provider || post.instagram_publish_provider);
+  const options = getPublishingOptions(post.client_id, req.user.agency_id);
+  if (provider === 'instagram' && !options.instagram.available) {
+    return res.status(409).json({ error: options.instagram.error || 'Conecte o Instagram diretamente antes de agendar por este canal.' });
+  }
+  if (provider === 'meta' && !options.meta.available) {
+    return res.status(409).json({ error: options.meta.error || 'Conecte a Meta e selecione uma Página com Instagram profissional antes de agendar por este canal.' });
+  }
+  if (provider === 'auto' && !options.instagram.available && !options.meta.available) {
+    return res.status(409).json({ error: 'Conecte o Instagram diretamente ou pela Meta antes de agendar.' });
+  }
+
+  db.prepare(`UPDATE posts SET scheduled_at = ?, status = 'scheduled', instagram_publish_provider = ?, instagram_publish_state = 'scheduled', instagram_publish_error = NULL, updated_at = datetime('now') WHERE id = ? AND agency_id = ?`)
+    .run(scheduledAt, provider, post.id, req.user.agency_id);
+  res.json({ ok: true, scheduled_at: scheduledAt, provider });
 });
 
 router.delete('/:id', requireRole('admin', 'team'), (req, res) => {

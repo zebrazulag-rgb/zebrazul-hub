@@ -93,6 +93,14 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   const [isUploadDropActive, setIsUploadDropActive] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [instagramConnection, setInstagramConnection] = useState(null);
+  const [publishOptions, setPublishOptions] = useState({
+    instagram: { available: false },
+    meta: { available: false },
+  });
+  const [publishProvider, setPublishProvider] = useState(() => {
+    const saved = String(post?.instagram_publish_provider || '').toLowerCase();
+    return saved === 'meta' ? 'meta' : 'instagram';
+  });
   const [instagramLoading, setInstagramLoading] = useState(false);
   const [instagramDisconnecting, setInstagramDisconnecting] = useState(false);
   const [publicationAction, setPublicationAction] = useState('');
@@ -103,15 +111,39 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
     const nextForm = postToForm(post, defaultClientId);
     initialFormRef.current = nextForm;
     setForm(nextForm);
+    const savedProvider = String(post?.instagram_publish_provider || '').toLowerCase();
+    if (savedProvider === 'meta' || savedProvider === 'instagram') setPublishProvider(savedProvider);
   }, [post, defaultClientId]);
 
 
   async function loadInstagramConnection(targetClientId = form.client_id) {
-    if (!targetClientId) { setInstagramConnection(null); return; }
-    try {
-      const { data } = await api.get(`/instagram-oauth/status/${targetClientId}`, { params: { _ts: Date.now() } });
-      setInstagramConnection(data.connection || null);
-    } catch { setInstagramConnection(null); }
+    if (!targetClientId) {
+      setInstagramConnection(null);
+      setPublishOptions({ instagram: { available: false }, meta: { available: false } });
+      return;
+    }
+
+    const [instagramResult, optionsResult] = await Promise.allSettled([
+      api.get(`/instagram-oauth/status/${targetClientId}`, { params: { _ts: Date.now() } }),
+      api.get(`/posts/instagram-publish-options/${targetClientId}`, { params: { _ts: Date.now() } }),
+    ]);
+
+    const directConnection = instagramResult.status === 'fulfilled'
+      ? (instagramResult.value.data.connection || null)
+      : null;
+    const nextOptions = optionsResult.status === 'fulfilled'
+      ? (optionsResult.value.data.options || { instagram: { available: false }, meta: { available: false } })
+      : { instagram: { available: Boolean(directConnection?.status === 'connected') }, meta: { available: false } };
+
+    setInstagramConnection(directConnection);
+    setPublishOptions(nextOptions);
+    setPublishProvider((current) => {
+      if (current === 'meta' && nextOptions.meta?.available) return 'meta';
+      if (current === 'instagram' && nextOptions.instagram?.available) return 'instagram';
+      if (nextOptions.instagram?.available) return 'instagram';
+      if (nextOptions.meta?.available) return 'meta';
+      return current === 'meta' ? 'meta' : 'instagram';
+    });
   }
 
   useEffect(() => { loadInstagramConnection(form.client_id); }, [form.client_id]);
@@ -324,26 +356,43 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
   }
 
 
+  function selectedPublishOptionAvailable() {
+    return publishProvider === 'meta'
+      ? Boolean(publishOptions.meta?.available)
+      : Boolean(publishOptions.instagram?.available);
+  }
+
   async function publishInstagramNow() {
-    if (!instagramConnection || instagramConnection.status !== 'connected') return setError('Conecte o Instagram profissional deste cliente primeiro.');
+    if (!selectedPublishOptionAvailable()) {
+      return setError(publishProvider === 'meta'
+        ? 'Conecte a Meta e selecione uma Página com Instagram profissional antes de publicar por este canal.'
+        : 'Conecte o Instagram profissional diretamente antes de publicar por este canal.');
+    }
     setPublicationAction('publish'); setError('');
     try {
       const postId = await persistPost();
       if (!postId) return;
-      await api.post(`/posts/${postId}/publish-instagram`);
+      await api.post(`/posts/${postId}/publish-instagram`, { provider: publishProvider });
       onSaved?.();
     } catch (err) { setError(err.response?.data?.error || 'Não foi possível publicar no Instagram.'); }
     finally { setPublicationAction(''); }
   }
 
   async function scheduleInstagram() {
-    if (!instagramConnection || instagramConnection.status !== 'connected') return setError('Conecte o Instagram profissional deste cliente primeiro.');
+    if (!selectedPublishOptionAvailable()) {
+      return setError(publishProvider === 'meta'
+        ? 'Conecte a Meta e selecione uma Página com Instagram profissional antes de agendar por este canal.'
+        : 'Conecte o Instagram profissional diretamente antes de agendar por este canal.');
+    }
     if (!form.scheduled_at) return setError('Escolha a data e o horário para agendar.');
     setPublicationAction('schedule'); setError('');
     try {
       const postId = await persistPost();
       if (!postId) return;
-      await api.post(`/posts/${postId}/schedule-instagram`, { scheduled_at: new Date(form.scheduled_at).toISOString() });
+      await api.post(`/posts/${postId}/schedule-instagram`, {
+        scheduled_at: new Date(form.scheduled_at).toISOString(),
+        provider: publishProvider,
+      });
       onSaved?.();
     } catch (err) { setError(err.response?.data?.error || 'Não foi possível agendar no Instagram.'); }
     finally { setPublicationAction(''); }
@@ -526,24 +575,56 @@ export default function PostModal({ clients, defaultClientId, post, onClose, onS
               </div>
             </div>
 
-            <div className={`rounded-xl border p-4 ${instagramConnection?.status === 'connected' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${instagramConnection?.status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-pink-600'}`}><Instagram size={19} /></span>
+            <div className={`rounded-xl border p-4 ${(publishOptions.instagram?.available || publishOptions.meta?.available) ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${(publishOptions.instagram?.available || publishOptions.meta?.available) ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-pink-600'}`}><Instagram size={19} /></span>
                   <div className="min-w-0">
-                    <strong className="block text-sm text-slate-800">Instagram</strong>
-                    <span className="block truncate text-xs text-slate-500">{instagramConnection?.status === 'connected' ? `@${instagramConnection.username || 'conta conectada'} • conectado` : 'Conecte uma vez para publicar e agendar pelo ZebraHub'}</span>
+                    <strong className="block text-sm text-slate-800">Publicação no Instagram</strong>
+                    <span className="mt-0.5 block text-xs leading-5 text-slate-500">Você pode publicar pela conexão direta do Instagram ou pela conta vinculada à Meta.</span>
                   </div>
                 </div>
                 {instagramConnection?.status === 'connected' ? (
                   <button type="button" onClick={disconnectInstagram} disabled={instagramDisconnecting} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60">
                     {instagramDisconnecting ? <LoaderCircle size={15} className="animate-spin" /> : <Unlink size={15} />}
-                    {instagramDisconnecting ? 'Desconectando...' : 'Desconectar'}
+                    {instagramDisconnecting ? 'Desconectando...' : 'Desconectar direto'}
                   </button>
                 ) : (
-                  <button type="button" onClick={connectInstagram} disabled={instagramLoading} className="btn-secondary shrink-0 text-xs">{instagramLoading ? <LoaderCircle size={15} className="animate-spin" /> : <Link2 size={15} />} {instagramLoading ? 'Abrindo...' : 'Conectar'}</button>
+                  <button type="button" onClick={connectInstagram} disabled={instagramLoading} className="btn-secondary shrink-0 text-xs">{instagramLoading ? <LoaderCircle size={15} className="animate-spin" /> : <Link2 size={15} />} {instagramLoading ? 'Abrindo...' : 'Conectar Instagram'}</button>
                 )}
               </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className={`rounded-xl border px-3 py-2.5 ${publishOptions.instagram?.available ? 'border-emerald-200 bg-white' : 'border-slate-200 bg-white/70'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-700">Via Instagram</span>
+                    <span className={`text-[10px] font-bold uppercase ${publishOptions.instagram?.available ? 'text-emerald-600' : 'text-slate-400'}`}>{publishOptions.instagram?.available ? 'Conectado' : 'Não conectado'}</span>
+                  </div>
+                  <p className="mt-1 truncate text-[11px] text-slate-500">{instagramConnection?.username ? `@${instagramConnection.username}` : 'Login direto do Instagram'}</p>
+                </div>
+                <div className={`rounded-xl border px-3 py-2.5 ${publishOptions.meta?.available ? 'border-emerald-200 bg-white' : 'border-slate-200 bg-white/70'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-700">Via Meta</span>
+                    <span className={`text-[10px] font-bold uppercase ${publishOptions.meta?.available ? 'text-emerald-600' : 'text-slate-400'}`}>{publishOptions.meta?.available ? 'Conectado' : 'Não conectado'}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">Facebook/Página com Instagram vinculado</p>
+                </div>
+              </div>
+
+              {(publishOptions.instagram?.available || publishOptions.meta?.available) ? (
+                <div className="mt-3">
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">Publicar usando</label>
+                  <select className="input-field" value={publishProvider} onChange={(event) => setPublishProvider(event.target.value)}>
+                    {publishOptions.instagram?.available && <option value="instagram">Instagram direto{instagramConnection?.username ? ` • @${instagramConnection.username}` : ''}</option>}
+                    {publishOptions.meta?.available && <option value="meta">Meta / Facebook</option>}
+                  </select>
+                  {publishOptions.instagram?.available && publishOptions.meta?.available && (
+                    <p className="mt-1.5 text-[11px] leading-5 text-slate-500">As duas conexões ficam ativas. Escolha qual delas o ZebraHub deve usar para esta publicação/agendamento.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs leading-5 text-slate-500">Conecte pelo Instagram aqui ou abra <strong>Relatórios → Conexões</strong> para conectar via Meta.</p>
+              )}
             </div>
 
             <div>

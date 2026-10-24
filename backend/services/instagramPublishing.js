@@ -1,10 +1,18 @@
 const db = require('../db/database');
 const {
   InstagramOAuthError,
-  getClientTokenBundle,
+  getClientTokenBundle: getInstagramTokenBundle,
+  getConnectionStatus: getInstagramConnectionStatus,
   instagramGraphRequest,
   instagramGraphPost,
 } = require('./instagramOAuth');
+const {
+  MetaOAuthError,
+  getClientTokenBundle: getMetaTokenBundle,
+  getConnectionStatus: getMetaConnectionStatus,
+  graphRequest: metaGraphRequest,
+  graphPost: metaGraphPost,
+} = require('./metaOAuth');
 
 class InstagramPublishingError extends Error {
   constructor(message, details = {}) {
@@ -15,6 +23,16 @@ class InstagramPublishingError extends Error {
     this.metaSubcode = details.metaSubcode || null;
     this.traceId = details.traceId || null;
   }
+}
+
+function normalizeProvider(value) {
+  const provider = String(value || '').trim().toLowerCase();
+  if (provider === 'instagram' || provider === 'meta') return provider;
+  return 'auto';
+}
+
+function hasScope(scopes, scope) {
+  return Array.isArray(scopes) && scopes.includes(scope);
 }
 
 function parseGallery(value, fallbackData, fallbackMime) {
@@ -55,11 +73,127 @@ function absoluteMediaUrl(value) {
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
-async function waitForContainer(containerId, token, attempts = 24) {
+function directAdapter(bundle) {
+  if (!bundle?.accessToken || !bundle?.instagramUserId) return null;
+  return {
+    provider: 'instagram',
+    providerLabel: 'Instagram direto',
+    accessToken: bundle.accessToken,
+    instagramUserId: String(bundle.instagramUserId),
+    username: bundle.username || null,
+    graphRequest: instagramGraphRequest,
+    graphPost: instagramGraphPost,
+  };
+}
+
+function metaAdapter(bundle) {
+  if (!bundle?.selectedInstagramId) return null;
+  const accessToken = bundle.pageAccessToken || bundle.userAccessToken;
+  if (!accessToken) return null;
+  return {
+    provider: 'meta',
+    providerLabel: 'Meta / Facebook',
+    accessToken,
+    instagramUserId: String(bundle.selectedInstagramId),
+    username: null,
+    graphRequest: metaGraphRequest,
+    graphPost: metaGraphPost,
+  };
+}
+
+function getPublishingOptions(clientId, agencyId = null) {
+  let direct = null;
+  let meta = null;
+  let directError = null;
+  let metaError = null;
+
+  try {
+    const status = getInstagramConnectionStatus(clientId, agencyId);
+    if (status && !hasScope(status.scopes, 'instagram_business_content_publish')) {
+      directError = 'Reconecte o Instagram concedendo instagram_business_content_publish.';
+    } else {
+      const bundle = getInstagramTokenBundle(clientId, agencyId);
+      direct = directAdapter(bundle);
+    }
+  } catch (error) {
+    directError = error?.message || 'Conexão do Instagram indisponível.';
+  }
+
+  try {
+    const status = getMetaConnectionStatus(clientId, agencyId);
+    if (status && !hasScope(status.scopes, 'instagram_content_publish')) {
+      metaError = 'Reconecte a Meta concedendo instagram_content_publish para publicar pelo Instagram vinculado à Página.';
+    } else {
+      const bundle = getMetaTokenBundle(clientId, agencyId);
+      meta = metaAdapter(bundle);
+    }
+  } catch (error) {
+    metaError = error?.message || 'Conexão da Meta indisponível.';
+  }
+
+  return {
+    instagram: {
+      available: Boolean(direct),
+      label: 'Instagram direto',
+      username: direct?.username || null,
+      error: directError,
+    },
+    meta: {
+      available: Boolean(meta),
+      label: 'Meta / Facebook',
+      instagram_user_id: meta?.instagramUserId || null,
+      error: metaError,
+    },
+  };
+}
+
+function resolvePublishingAdapter(post, requestedProvider = null) {
+  const provider = normalizeProvider(requestedProvider || post.instagram_publish_provider || 'auto');
+  const errors = [];
+
+  if (provider === 'instagram' || provider === 'auto') {
+    try {
+      const status = getInstagramConnectionStatus(post.client_id, post.agency_id);
+      if (status && !hasScope(status.scopes, 'instagram_business_content_publish')) {
+        throw new InstagramPublishingError('Reconecte o Instagram concedendo a permissão de publicação.', { status: 409 });
+      }
+      const adapter = directAdapter(getInstagramTokenBundle(post.client_id, post.agency_id));
+      if (adapter) return adapter;
+      errors.push('Instagram direto não está conectado.');
+    } catch (error) {
+      errors.push(error?.message || 'Instagram direto indisponível.');
+      if (provider === 'instagram') throw error;
+    }
+  }
+
+  if (provider === 'meta' || provider === 'auto') {
+    try {
+      const status = getMetaConnectionStatus(post.client_id, post.agency_id);
+      if (status && !hasScope(status.scopes, 'instagram_content_publish')) {
+        throw new InstagramPublishingError('Reconecte a Meta concedendo instagram_content_publish para publicar pelo Instagram vinculado à Página.', { status: 409 });
+      }
+      const adapter = metaAdapter(getMetaTokenBundle(post.client_id, post.agency_id));
+      if (adapter) return adapter;
+      errors.push('A Meta está conectada, mas nenhuma conta profissional do Instagram foi selecionada pela Página.');
+    } catch (error) {
+      errors.push(error?.message || 'Conexão da Meta indisponível.');
+      if (provider === 'meta') throw error;
+    }
+  }
+
+  const providerHint = provider === 'instagram'
+    ? 'Conecte o Instagram diretamente em Relatórios > Conexões.'
+    : provider === 'meta'
+      ? 'Conecte a Meta, selecione a Página e confirme o Instagram vinculado em Relatórios > Conexões.'
+      : 'Conecte o Instagram diretamente ou pela Meta em Relatórios > Conexões.';
+  throw new InstagramPublishingError(`${providerHint}${errors.length ? ` ${errors.join(' ')}` : ''}`, { status: 409 });
+}
+
+async function waitForContainer(containerId, adapter, attempts = 24) {
   let last = null;
   for (let i = 0; i < attempts; i += 1) {
     try {
-      last = await instagramGraphRequest(String(containerId), { fields: 'status_code,status' }, token);
+      last = await adapter.graphRequest(String(containerId), { fields: 'status_code,status' }, adapter.accessToken);
       const code = String(last?.status_code || '').toUpperCase();
       if (code === 'FINISHED' || code === 'PUBLISHED') return last;
       if (code === 'ERROR' || code === 'EXPIRED') throw new InstagramPublishingError(`O Instagram rejeitou a mídia: ${last?.status || code}.`);
@@ -72,12 +206,12 @@ async function waitForContainer(containerId, token, attempts = 24) {
   throw new InstagramPublishingError(`A mídia ainda está sendo processada pelo Instagram (${last?.status || 'IN_PROGRESS'}). Tente novamente em instantes.`, { status: 409 });
 }
 
-async function publishContainer(instagramUserId, containerId, token) {
-  await waitForContainer(containerId, token);
-  return instagramGraphPost(`${instagramUserId}/media_publish`, { creation_id: containerId }, token);
+async function publishContainer(adapter, containerId) {
+  await waitForContainer(containerId, adapter);
+  return adapter.graphPost(`${adapter.instagramUserId}/media_publish`, { creation_id: containerId }, adapter.accessToken);
 }
 
-async function createSingleContainer({ instagramUserId, item, caption, contentType, token, carouselItem = false }) {
+async function createSingleContainer({ adapter, item, caption, contentType, carouselItem = false }) {
   const url = absoluteMediaUrl(item.data);
   const video = String(item.mime || '').startsWith('video/') || contentType === 'reels';
   const params = {};
@@ -89,12 +223,12 @@ async function createSingleContainer({ instagramUserId, item, caption, contentTy
   }
   if (carouselItem) params.is_carousel_item = 'true';
   if (!carouselItem && caption) params.caption = caption;
-  const result = await instagramGraphPost(`${instagramUserId}/media`, params, token);
+  const result = await adapter.graphPost(`${adapter.instagramUserId}/media`, params, adapter.accessToken);
   if (!result?.id) throw new InstagramPublishingError('O Instagram não retornou o contêiner da publicação.', { status: 502 });
   return result.id;
 }
 
-async function publishPost(postId, { agencyId = null } = {}) {
+async function publishPost(postId, { agencyId = null, provider = null } = {}) {
   const post = agencyId
     ? db.prepare('SELECT * FROM posts WHERE id = ? AND agency_id = ?').get(postId, agencyId)
     : db.prepare('SELECT * FROM posts WHERE id = ?').get(postId);
@@ -105,8 +239,7 @@ async function publishPost(postId, { agencyId = null } = {}) {
   if (!claim.changes) throw new InstagramPublishingError('Esta publicação já está sendo processada.', { status: 409 });
 
   try {
-    const bundle = getClientTokenBundle(post.client_id, post.agency_id);
-    if (!bundle?.accessToken || !bundle?.instagramUserId) throw new InstagramPublishingError('Conecte o Instagram profissional deste cliente antes de publicar.', { status: 409 });
+    const adapter = resolvePublishingAdapter(post, provider);
     const gallery = parseGallery(post.media_gallery, post.media_data, post.media_mime);
     if (!gallery.length) throw new InstagramPublishingError('Adicione uma imagem ou vídeo antes de publicar.', { status: 400 });
     if (post.content_type === 'story') throw new InstagramPublishingError('Stories continuam sendo publicados pela área de Stories do ZebraHub.', { status: 400 });
@@ -118,28 +251,36 @@ async function publishPost(postId, { agencyId = null } = {}) {
       if (gallery.length > 10) throw new InstagramPublishingError('O Instagram aceita no máximo 10 mídias por carrossel.', { status: 400 });
       const children = [];
       for (const item of gallery) {
-        const childId = await createSingleContainer({ instagramUserId: bundle.instagramUserId, item, caption: '', contentType: 'feed', token: bundle.accessToken, carouselItem: true });
-        await waitForContainer(childId, bundle.accessToken, 16);
+        const childId = await createSingleContainer({ adapter, item, caption: '', contentType: 'feed', carouselItem: true });
+        await waitForContainer(childId, adapter, 16);
         children.push(childId);
       }
-      const parent = await instagramGraphPost(`${bundle.instagramUserId}/media`, {
+      const parent = await adapter.graphPost(`${adapter.instagramUserId}/media`, {
         media_type: 'CAROUSEL', children: children.join(','), caption,
-      }, bundle.accessToken);
+      }, adapter.accessToken);
       parentId = parent?.id;
     } else {
-      parentId = await createSingleContainer({ instagramUserId: bundle.instagramUserId, item: gallery[0], caption, contentType: post.content_type, token: bundle.accessToken });
+      parentId = await createSingleContainer({ adapter, item: gallery[0], caption, contentType: post.content_type });
     }
     if (!parentId) throw new InstagramPublishingError('Não foi possível preparar a publicação no Instagram.', { status: 502 });
-    const published = await publishContainer(bundle.instagramUserId, parentId, bundle.accessToken);
+    const published = await publishContainer(adapter, parentId);
     if (!published?.id) throw new InstagramPublishingError('O Instagram não confirmou a publicação.', { status: 502 });
 
-    db.prepare(`UPDATE posts SET status = 'published', instagram_publish_state = 'published', instagram_container_id = ?, instagram_published_media_id = ?, instagram_published_at = datetime('now'), instagram_publish_error = NULL, updated_at = datetime('now') WHERE id = ?`).run(String(parentId), String(published.id), post.id);
+    db.prepare(`UPDATE posts SET status = 'published', instagram_publish_state = 'published', instagram_publish_provider = ?, instagram_container_id = ?, instagram_published_media_id = ?, instagram_published_at = datetime('now'), instagram_publish_error = NULL, updated_at = datetime('now') WHERE id = ?`)
+      .run(adapter.provider, String(parentId), String(published.id), post.id);
     return db.prepare('SELECT * FROM posts WHERE id = ?').get(post.id);
   } catch (error) {
     const message = error?.message || 'Não foi possível publicar no Instagram.';
     db.prepare(`UPDATE posts SET instagram_publish_state = 'failed', instagram_publish_error = ?, updated_at = datetime('now') WHERE id = ?`).run(message.slice(0, 1000), post.id);
     if (error instanceof InstagramPublishingError) throw error;
-    if (error instanceof InstagramOAuthError) throw new InstagramPublishingError(message, { status: error.status, metaCode: error.metaCode, metaSubcode: error.metaSubcode, traceId: error.traceId });
+    if (error instanceof InstagramOAuthError || error instanceof MetaOAuthError) {
+      throw new InstagramPublishingError(message, {
+        status: error.status,
+        metaCode: error.metaCode,
+        metaSubcode: error.metaSubcode,
+        traceId: error.traceId,
+      });
+    }
     throw new InstagramPublishingError(message, { status: 502 });
   }
 }
@@ -154,4 +295,10 @@ async function publishDuePosts() {
   return { total: rows.length, published, failed };
 }
 
-module.exports = { InstagramPublishingError, publishPost, publishDuePosts };
+module.exports = {
+  InstagramPublishingError,
+  getPublishingOptions,
+  normalizeProvider,
+  publishPost,
+  publishDuePosts,
+};

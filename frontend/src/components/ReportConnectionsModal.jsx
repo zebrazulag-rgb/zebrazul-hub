@@ -21,10 +21,13 @@ const META_REQUIRED_SCOPES = [
   'read_insights',
 ];
 
-const INSTAGRAM_REPORT_SCOPES = [
+const INSTAGRAM_REQUIRED_SCOPES = [
   'instagram_business_basic',
+  'instagram_business_content_publish',
   'instagram_business_manage_insights',
 ];
+
+const META_INSTAGRAM_PUBLISH_SCOPE = 'instagram_content_publish';
 
 function formatDate(value) {
   if (!value) return '';
@@ -82,7 +85,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
         if (instagramPopupRef.current && event.source !== instagramPopupRef.current) return;
         setInstagramConnecting(false);
         if (payload.ok) {
-          setNotice('Instagram conectado diretamente. O relatório orgânico já pode usar esta conta.');
+          setNotice('Instagram conectado diretamente. Esta conexão já pode ser usada nas funções do Instagram liberadas para o app.');
           setError('');
           loadEverything({ keepNotice: true });
           window.dispatchEvent(new CustomEvent('zebrahub-instagram-connection-changed', { detail: { clientId } }));
@@ -272,7 +275,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
 
   const missingInstagramScopes = useMemo(() => {
     const granted = new Set(instagramConnection?.scopes || []);
-    return INSTAGRAM_REPORT_SCOPES.filter((scope) => !granted.has(scope));
+    return INSTAGRAM_REQUIRED_SCOPES.filter((scope) => !granted.has(scope));
   }, [instagramConnection?.scopes]);
 
   if (!open) return null;
@@ -283,9 +286,9 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
         <div className="sticky top-0 z-20 flex items-start justify-between gap-5 border-b border-slate-100 bg-white/95 px-6 py-5 backdrop-blur">
           <div>
             <p className="section-kicker">Conexões por cliente</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">Relatórios de {clientName || 'cliente'}</h2>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">Conexões de {clientName || 'cliente'}</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Mantenha a conexão pela Meta quando ela funcionar. Se o Instagram do cliente não aparecer pela Página, conecte a conta profissional diretamente.
+              Escolha como este cliente será conectado: diretamente pelo Instagram, pela Meta/Facebook ou pelos dois. As conexões podem coexistir.
             </p>
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={20} /></button>
@@ -307,9 +310,9 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                         <ShieldCheck size={20} />
                       </span>
                       <div>
-                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Opção principal</p>
-                        <h3 className="mt-1 font-bold text-slate-900">Conectar com a Meta</h3>
-                        <p className="mt-1 text-sm leading-6 text-slate-500">Conecta a Página do Facebook e identifica o Instagram profissional vinculado, quando existir.</p>
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Facebook + Instagram vinculado</p>
+                        <h3 className="mt-1 font-bold text-slate-900">Conectar via Meta</h3>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">Conecta a Página do Facebook e, quando houver, o Instagram profissional vinculado a ela. Pode ser usada para relatórios e publicação pelo fluxo Meta.</p>
                       </div>
                     </div>
                   </div>
@@ -337,10 +340,13 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                       )}
                       <button type="button" onClick={startMetaOAuth} disabled={connecting} className="btn-primary mt-4 flex w-full items-center justify-center gap-2">
                         {connecting ? <LoaderCircle size={17} className="animate-spin" /> : <ExternalLink size={17} />}
-                        {connecting ? 'Abrindo Meta...' : metaConnection ? 'Reconectar Meta' : 'Conectar com a Meta'}
+                        {connecting ? 'Abrindo Meta...' : metaConnection ? 'Reconectar via Meta' : 'Conectar via Meta'}
                       </button>
                       {metaConnection && missingMetaScopes.length > 0 && (
-                        <p className="mt-3 text-xs leading-5 text-amber-700">Permissões ausentes: <strong>{missingMetaScopes.join(', ')}</strong>.</p>
+                        <p className="mt-3 text-xs leading-5 text-amber-700">Permissões ausentes para relatórios: <strong>{missingMetaScopes.join(', ')}</strong>.</p>
+                      )}
+                      {metaConnection?.selected_instagram_account_id && !(metaConnection.scopes || []).includes(META_INSTAGRAM_PUBLISH_SCOPE) && (
+                        <p className="mt-2 text-xs leading-5 text-amber-700">Para publicar no Instagram por esta conexão, reconecte a Meta concedendo <strong>{META_INSTAGRAM_PUBLISH_SCOPE}</strong>.</p>
                       )}
                     </>
                   )}
@@ -352,9 +358,9 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
                       <Instagram size={20} />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-pink-500">Alternativa para o orgânico</p>
-                      <h3 className="mt-1 font-bold text-slate-900">Conectar somente o Instagram</h3>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">Use quando o Instagram não aparece na conexão pela Página. Não exige vincular uma Página do Facebook.</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-pink-500">Instagram direto</p>
+                      <h3 className="mt-1 font-bold text-slate-900">Conectar via Instagram</h3>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">Autoriza a conta profissional diretamente no Instagram, sem depender de uma Página do Facebook. Pode ser usada para publicar, mensagens e insights.</p>
                     </div>
                   </div>
 
@@ -390,12 +396,12 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
 
                       <button type="button" onClick={startInstagramOAuth} disabled={instagramConnecting} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60">
                         {instagramConnecting ? <LoaderCircle size={17} className="animate-spin" /> : <Instagram size={17} />}
-                        {instagramConnecting ? 'Abrindo Instagram...' : instagramConnection ? 'Reconectar Instagram' : 'Conectar Instagram'}
+                        {instagramConnecting ? 'Abrindo Instagram...' : instagramConnection ? 'Reconectar via Instagram' : 'Conectar via Instagram'}
                       </button>
 
                       {instagramConnection && missingInstagramScopes.length > 0 && (
                         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                          Para gerar relatórios, reconecte concedendo: <strong>{missingInstagramScopes.join(', ')}</strong>.
+                          Para liberar todas as funções desta conexão, reconecte concedendo: <strong>{missingInstagramScopes.join(', ')}</strong>.
                         </div>
                       )}
 
@@ -418,7 +424,7 @@ export default function ReportConnectionsModal({ open, onClose, clientId, client
 
               {instagramConnection && metaConnection && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-800">
-                  <strong>Modo híbrido ativo:</strong> o ZebraHub mantém o Facebook pela Meta e usa a conexão direta do Instagram para os dados orgânicos do Instagram.
+                  <strong>As duas conexões estão ativas:</strong> o Facebook continua pela Meta e, no momento de publicar no Instagram, você pode escolher entre Instagram direto ou Meta/Facebook.
                 </div>
               )}
 

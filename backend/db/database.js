@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS posts (
   client_feedback TEXT,
   feed_visible INTEGER DEFAULT 1,
   is_pinned INTEGER DEFAULT 0 CHECK(is_pinned IN (0,1)),
+  instagram_publish_provider TEXT DEFAULT 'auto' CHECK(instagram_publish_provider IN ('auto','instagram','meta')),
   share_token TEXT UNIQUE,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
@@ -1354,6 +1355,7 @@ tryAddColumn('posts', 'media_gallery', 'TEXT');
 tryAddColumn('posts', 'feed_visible', 'INTEGER DEFAULT 1');
 tryAddColumn('posts', 'is_pinned', 'INTEGER DEFAULT 0');
 tryAddColumn('posts', 'instagram_publish_state', 'TEXT');
+tryAddColumn('posts', 'instagram_publish_provider', "TEXT DEFAULT 'auto'");
 tryAddColumn('posts', 'instagram_container_id', 'TEXT');
 tryAddColumn('posts', 'instagram_published_media_id', 'TEXT');
 tryAddColumn('posts', 'instagram_published_at', 'TEXT');

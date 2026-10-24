@@ -75,7 +75,7 @@ router.get('/callback', async (req, res) => {
       ok: true,
       frontendOrigin: stateRow.frontend_origin,
       clientId: stateRow.client_id,
-      message: 'Autorizacao concluida. Volte ao ZebraHub para escolher os perfis e a conta de anuncios.',
+      message: 'Autorização concluída. Volte ao ZebraHub para escolher a Página e os perfis deste cliente.',
     }));
   } catch (error) {
     console.error('[META OAUTH CALLBACK]', error);
@@ -152,7 +152,7 @@ router.put('/client/:clientId/selections', async (req, res) => {
     const pageId = String(req.body?.page_id || '').trim() || null;
     const adAccountId = String(req.body?.ad_account_id || '').trim().replace(/^act_/, '') || null;
     if (!pageId && !adAccountId) {
-      return res.status(400).json({ error: 'Selecione ao menos uma Pagina/Instagram ou conta de anuncios.' });
+      return res.status(400).json({ error: 'Selecione uma Página do Facebook para concluir a conexão pela Meta.' });
     }
     const connection = await saveClientSelections({
       clientId,

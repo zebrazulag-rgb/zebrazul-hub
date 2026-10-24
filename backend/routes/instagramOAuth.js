@@ -74,7 +74,7 @@ router.get('/callback', async (req, res) => {
       ok: true,
       frontendOrigin: stateRow.frontend_origin,
       clientId: stateRow.client_id,
-      message: 'Conta profissional autorizada. Volte ao ZebraHub e ative o recebimento.',
+      message: 'Conta profissional autorizada. Volte ao ZebraHub para continuar.',
     }));
   } catch (error) {
     console.error('[INSTAGRAM OAUTH CALLBACK]', error);
