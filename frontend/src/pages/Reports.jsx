@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
   CheckCircle2,
   Eye,
   Facebook,
   Instagram,
+  Search,
   Settings2,
   Sparkles,
   TrendingUp,
@@ -16,6 +18,7 @@ import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import TopbarPortal from '../components/TopbarPortal.jsx';
 import OrganicReports from '../components/OrganicReports.jsx';
 import ReportConnectionsModal from '../components/ReportConnectionsModal.jsx';
+import CompetitorAnalysis from './CompetitorAnalysis.jsx';
 import { hasPermission } from '../permissions.js';
 
 function localIsoDate(date = new Date()) {
@@ -41,6 +44,8 @@ function formatInteger(value) {
 export default function Reports() {
   const { user } = useAuth();
   const canConnections = hasPermission(user, 'social.connections');
+  const canCompetitors = hasPermission(user, 'compass.view');
+  const [searchParams, setSearchParams] = useSearchParams();
   const { selectedClient } = useClientFilter();
   const [clients, setClients] = useState([]);
   const [clientId, setClientId] = useState(user?.role === 'client' ? user.client_id : (selectedClient?.id || ''));
@@ -63,6 +68,14 @@ export default function Reports() {
   const [notice, setNotice] = useState('');
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [connectionsVersion, setConnectionsVersion] = useState(0);
+  const reportView = searchParams.get('view') === 'concorrentes' && canCompetitors ? 'competitors' : 'performance';
+
+  function changeReportView(nextView) {
+    const next = new URLSearchParams(searchParams);
+    if (nextView === 'competitors') next.set('view', 'concorrentes');
+    else next.delete('view');
+    setSearchParams(next, { replace: true });
+  }
 
   useEffect(() => {
     if (user?.role === 'client') return;
@@ -143,7 +156,7 @@ export default function Reports() {
 
   return (
     <div className="space-y-5">
-      <TopbarPortal>
+      {reportView === 'performance' && <TopbarPortal>
         <div className="flex min-w-0 items-center gap-1.5">
           <label className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm">
             <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">De</span>
@@ -173,9 +186,9 @@ export default function Reports() {
             <Settings2 size={14} /> Conexões
           </button>}
         </div>
-      </TopbarPortal>
+      </TopbarPortal>}
 
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm lg:hidden">
+      {reportView === 'performance' && <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm lg:hidden">
         <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-slate-50 px-2 py-2">
           <span className="text-[9px] font-bold uppercase text-slate-400">De</span>
           <input className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-700 outline-none [color-scheme:light]" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
@@ -185,8 +198,34 @@ export default function Reports() {
           <input className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-700 outline-none [color-scheme:light]" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
         </label>
         {canConnections && <button type="button" onClick={() => setConnectionsOpen(true)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600"><Settings2 size={14} /></button>}
+      </div>}
+
+      <div className="surface-card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="section-kicker">Relatórios</p>
+          <p className="mt-1 text-sm text-slate-500">Desempenho das redes e inteligência competitiva do cliente no mesmo espaço.</p>
+        </div>
+        <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+          <button
+            type="button"
+            onClick={() => changeReportView('performance')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition ${reportView === 'performance' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <BarChart3 size={16} /> Desempenho
+          </button>
+          {canCompetitors && <button
+            type="button"
+            onClick={() => changeReportView('competitors')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition ${reportView === 'competitors' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <Search size={16} /> Concorrentes
+          </button>}
+        </div>
       </div>
 
+      {reportView === 'competitors' ? (
+        <CompetitorAnalysis />
+      ) : (<>
       <div className="surface-card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="section-kicker">Relatório orgânico</p>
@@ -270,6 +309,7 @@ export default function Reports() {
         onChanged={handleConnectionsChanged}
         user={user}
       />}
+      </>)}
     </div>
   );
 }

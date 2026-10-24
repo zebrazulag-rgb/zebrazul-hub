@@ -26,7 +26,6 @@ import PasswordVault from './pages/PasswordVault.jsx';
 import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
 import CompassPage from './pages/Compass.jsx';
-import CompetitorAnalysis from './pages/CompetitorAnalysis.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
 import Sales from './pages/Sales.jsx';
 import CommercialFunnel from './pages/CommercialFunnel.jsx';
@@ -143,10 +142,10 @@ export default function App() {
       <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
-      <Route path="/concorrentes" element={<ProtectedRoute permission="compass.view"><CompetitorAnalysis /></ProtectedRoute>} />
+      <Route path="/concorrentes" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
       <Route path="/ia" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><AIPage /></ProtectedRoute>} />
-      <Route path="/bussola/concorrencia" element={<Navigate to="/concorrentes" replace />} />
+      <Route path="/bussola/concorrencia" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
       <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/diagnostico" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />

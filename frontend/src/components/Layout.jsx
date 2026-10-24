@@ -422,7 +422,6 @@ export default function Layout({ children }) {
     { to: '/agendamento', label: 'Agendamento', icon: CalendarCheck, permission: 'social.view' },
     { to: '/moodboard', label: 'Moodboard', icon: Grid3x3, permission: 'tasks.view' },
     { to: '/leitor', label: 'Zebra Leitor', mobileLabel: 'Leitor', icon: Headphones },
-    { to: '/concorrentes', label: 'Concorrentes', icon: Search, permission: 'compass.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/ia', label: 'IA', icon: Sparkles, permission: 'social.view' },
@@ -462,7 +461,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/concorrentes','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
   const agencyPrimary = agency?.primary_color || '#0969ff';
@@ -483,7 +482,6 @@ export default function Layout({ children }) {
     if (path.startsWith('/agendamento')) return 'Agendamento';
     if (path.startsWith('/leitor')) return 'Zebra Leitor';
     if (path.startsWith('/moodboard')) return 'Moodboard';
-    if (path.startsWith('/concorrentes')) return 'Concorrentes';
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/relatorios')) return 'Relatórios';
     if (path.startsWith('/organizacao')) return 'Meu Espaço';
@@ -1164,7 +1162,6 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/agendamento')) return 'Agendamento';
   if (path.startsWith('/leitor')) return 'Zebra Leitor';
   if (path.startsWith('/moodboard')) return 'Moodboard';
-  if (path.startsWith('/concorrentes')) return 'Concorrentes';
   if (path.startsWith('/bussola')) return 'Bússola';
   if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
   if (path.startsWith('/ia')) return 'IA';
