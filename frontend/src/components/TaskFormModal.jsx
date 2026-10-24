@@ -79,7 +79,7 @@ function AutoGrowTextarea({ value, onChange, minHeight = 110, className = '', ..
   );
 }
 
-export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, defaultFrontName = '', defaultBacklog = false, defaultWorkflowStage = '', allowedTaskTypes = ['basic', 'post'], parentTaskId, taskToEdit, userRole, onClose, onSaved }) {
+export default function TaskFormModal({ teamUsers, clients, defaultClientId, defaultDueDate, defaultFrontName = '', defaultBacklog = false, defaultWorkflowStage = '', allowedTaskTypes = ['basic', 'post'], parentTaskId, taskToEdit, userRole, createTitle = 'Nova tarefa', onClose, onSaved }) {
   const isEditing = Boolean(taskToEdit?.id);
   const visibleTaskTypes = TASK_TYPES.filter((item) => allowedTaskTypes.includes(item.value));
   const initialForm = {
@@ -293,7 +293,7 @@ export default function TaskFormModal({ teamUsers, clients, defaultClientId, def
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-zebrazul-600/10 text-lg font-bold text-zebrazul-700 backdrop-blur-[1px]">Solte a arte aqui</div>
         )}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl">
-          <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : 'Nova tarefa'}</h2>
+          <h2 className="font-semibold text-slate-800">{isEditing ? 'Editar tarefa' : parentTaskId ? 'Nova subtarefa' : createTitle}</h2>
           <div className="flex items-center gap-2">
             <a href="/moodboard" target="_blank" rel="noreferrer" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" title="Abrir o Moodboard do cliente em outra aba">
               <Palette size={14} /> Ver Moodboard

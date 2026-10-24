@@ -1082,6 +1082,7 @@ export default function DesignerApproval() {
           defaultClientId={selectedClient.id}
           defaultWorkflowStage="approval"
           allowedTaskTypes={['post']}
+          createTitle="Novo post"
           userRole={user?.role}
           onClose={() => setShowAddPiece(false)}
           onSaved={(task) => {
