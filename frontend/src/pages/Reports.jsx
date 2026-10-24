@@ -87,10 +87,6 @@ function parseDateLabel(value) {
   return `${day}/${month}`;
 }
 
-function sumOrganic(report, field) {
-  return Number(report?.facebook?.[field] || 0) + Number(report?.instagram?.[field] || 0);
-}
-
 export default function Reports() {
   const { user } = useAuth();
   const canConnections = hasPermission(user, 'social.connections');
@@ -117,6 +113,7 @@ export default function Reports() {
   const [metaStatus, setMetaStatus] = useState({ configured: false, api_version: null });
   const [metaReport, setMetaReport] = useState(null);
   const [organicReport, setOrganicReport] = useState(null);
+  const [organicPlatform, setOrganicPlatform] = useState('instagram');
   const [loadingReport, setLoadingReport] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [metaError, setMetaError] = useState('');
@@ -254,10 +251,12 @@ export default function Reports() {
   const totals = metaReport?.totals || null;
   const currency = metaReport?.connection?.currency || 'BRL';
   const hasMetaData = Boolean(metaReport?.connection && (metaReport.daily?.length || metaReport.campaigns?.length || Number(totals?.spend) > 0));
-  const organicFollowers = sumOrganic(organicReport, 'followers');
-  const organicGrowth = sumOrganic(organicReport, 'followers_delta');
-  const organicReach = sumOrganic(organicReport, 'reach');
-  const organicInteractions = sumOrganic(organicReport, 'interactions');
+  const activeOrganicTotals = organicReport?.[organicPlatform] || {};
+  const organicFollowers = Number(activeOrganicTotals.followers || 0);
+  const organicGrowth = Number(activeOrganicTotals.followers_delta || 0);
+  const organicReach = Number(activeOrganicTotals.reach || 0);
+  const organicInteractions = Number(activeOrganicTotals.interactions || 0);
+  const organicPlatformLabel = organicPlatform === 'instagram' ? 'Instagram' : 'Facebook';
 
   const trendData = useMemo(() => {
     if (metaReport?.daily?.length) {
@@ -330,11 +329,34 @@ export default function Reports() {
         {canConnections && <button type="button" onClick={() => setConnectionsOpen(true)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600"><Settings2 size={14} /></button>}
       </div>
 
+      <div className="surface-card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="section-kicker">Relatório orgânico</p>
+          <p className="mt-1 text-sm text-slate-500">Visualize cada rede separadamente, sem somar métricas entre plataformas.</p>
+        </div>
+        <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+          <button
+            type="button"
+            onClick={() => setOrganicPlatform('instagram')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition ${organicPlatform === 'instagram' ? 'bg-white text-pink-700 shadow-sm ring-1 ring-pink-100' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <Instagram size={16} /> Instagram
+          </button>
+          <button
+            type="button"
+            onClick={() => setOrganicPlatform('facebook')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition ${organicPlatform === 'facebook' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <Facebook size={16} /> Facebook
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <HeroMetric label="Seguidores" value={formatInteger(organicFollowers)} icon={Users} tone="text-blue-600" />
-        <HeroMetric label="Crescimento" value={`${organicGrowth >= 0 ? '+' : ''}${formatInteger(organicGrowth)}`} icon={TrendingUp} tone="text-emerald-600" />
-        <HeroMetric label="Alcance orgânico" value={formatInteger(organicReach)} icon={Eye} tone="text-cyan-600" />
-        <HeroMetric label="Interações" value={formatInteger(organicInteractions)} icon={Sparkles} tone="text-violet-600" />
+        <HeroMetric label={`Seguidores • ${organicPlatformLabel}`} value={formatInteger(organicFollowers)} icon={Users} tone="text-blue-600" />
+        <HeroMetric label={`Crescimento • ${organicPlatformLabel}`} value={`${organicGrowth >= 0 ? '+' : ''}${formatInteger(organicGrowth)}`} icon={TrendingUp} tone="text-emerald-600" />
+        <HeroMetric label={`Alcance • ${organicPlatformLabel}`} value={formatInteger(organicReach)} icon={Eye} tone="text-cyan-600" />
+        <HeroMetric label={`Interações • ${organicPlatformLabel}`} value={formatInteger(organicInteractions)} icon={Sparkles} tone="text-violet-600" />
       </div>
 
       {metaError && (
@@ -357,6 +379,7 @@ export default function Reports() {
         user={user}
         refreshKey={connectionsVersion}
         onReportLoaded={setOrganicReport}
+        platform={organicPlatform}
         onOpenConnections={canConnections ? () => setConnectionsOpen(true) : null}
       />
 
