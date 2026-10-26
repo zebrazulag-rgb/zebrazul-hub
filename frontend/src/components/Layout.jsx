@@ -428,6 +428,7 @@ export default function Layout({ children }) {
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
     { to: '/minha-fila', label: 'Minha fila', icon: ListChecks, permission: 'dashboard.view' },
     { to: '/alertas', label: 'Alertas', icon: BellRing, permission: 'dashboard.view' },
+    { to: '/calendario', label: 'Calendário', icon: CalendarDays, permission: 'dashboard.view' },
     { to: '/organizacao', label: 'Meu Espaço', icon: CalendarDays, permission: 'organizer.view' },
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view', group: 'squad' },
     { to: '/designer', label: 'Designer', icon: Palette, permission: 'tasks.view', group: 'squad' },
@@ -477,7 +478,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/minha-fila','/alertas','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/minha-fila','/alertas','/calendario','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
   const mobileNavColumns = Math.max(1, mobilePrimaryItems.length + (mobileMoreItems.length > 0 ? 1 : 0));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#3A85FD';
@@ -494,6 +495,7 @@ export default function Layout({ children }) {
     if (path === '/') return 'Painel';
     if (path.startsWith('/minha-fila')) return 'Minha fila';
     if (path.startsWith('/alertas')) return 'Alertas';
+    if (path.startsWith('/calendario')) return 'Calendário';
     if (path.startsWith('/audiovisual')) return 'Audiovisual';
     if (path.startsWith('/produto')) return 'Produto';
     if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
