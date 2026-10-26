@@ -71,7 +71,14 @@ router.get('/', (req, res) => {
   const agencyId = Number(req.user.agency_id);
   const clientScope = clientIds.length ? `t.client_id IN (${placeholders(clientIds)})` : 't.client_id IS NULL';
   const commonParams = [agencyId, ...clientIds];
-  const leafClause = 'COALESCE(t.is_backlog, 0) = 0 AND NOT EXISTS (SELECT 1 FROM tasks ch WHERE ch.parent_task_id = t.id AND ch.agency_id = t.agency_id)';
+  const leafClause = `COALESCE(t.is_backlog, 0) = 0
+    AND NOT EXISTS (
+      SELECT 1 FROM tasks bp
+      WHERE bp.id = t.parent_task_id
+        AND bp.agency_id = t.agency_id
+        AND COALESCE(bp.is_backlog, 0) = 1
+    )
+    AND NOT EXISTS (SELECT 1 FROM tasks ch WHERE ch.parent_task_id = t.id AND ch.agency_id = t.agency_id)`;
 
   const periodTasks = db.prepare(`
     SELECT t.*, c.name AS client_name,
@@ -251,7 +258,7 @@ router.get('/', (req, res) => {
       to: range.to,
       client_id: Number(req.query.client_id || 0) || null,
       generated_at: new Date().toISOString(),
-      methodology_note: 'Indicadores calculados com os estados e timestamps hoje disponíveis no ZebraHub. “Sem movimento” usa updated_at como proxy; não é um cronômetro histórico de etapa.',
+      methodology_note: 'Backlog não entra nos indicadores operacionais. Indicadores calculados com os estados e timestamps hoje disponíveis no ZebraHub. “Sem movimento” usa updated_at como proxy; não é um cronômetro histórico de etapa.',
     },
     summary,
     signals,

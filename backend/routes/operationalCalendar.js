@@ -65,6 +65,7 @@ function taskEvents(req, range, clientIds, scope) {
     't.agency_id = ?',
     "date(t.due_date) BETWEEN date(?) AND date(?)",
     'COALESCE(t.is_backlog, 0) = 0',
+    "NOT EXISTS (SELECT 1 FROM tasks bp WHERE bp.id = t.parent_task_id AND bp.agency_id = t.agency_id AND COALESCE(bp.is_backlog, 0) = 1)",
   ];
   const params = [req.user.agency_id, range.from, range.to];
 

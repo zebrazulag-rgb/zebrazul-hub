@@ -154,7 +154,7 @@ export default function OperationalIntelligence() {
           <div className="max-w-3xl">
             <div className="mb-3 flex items-center gap-2 text-[#C9FF2F]"><Gauge size={16} /><span className="text-[10px] font-black uppercase tracking-[0.2em]">Inteligência operacional</span></div>
             <h1 className="max-w-3xl text-[28px] font-black leading-[0.98] tracking-[-0.055em] sm:text-[38px] lg:text-[46px]">{headline}</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/58">Não é placar de gente. É leitura de fluxo: onde o trabalho anda, onde envelhece e onde uma decisão pode destravar o resto.</p>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/58">Não é placar de gente. É leitura de fluxo: onde o trabalho anda, onde envelhece e onde uma decisão pode destravar o resto. O que está no backlog fica fora dessa conta até entrar na operação.</p>
             {selectedClient?.name && <p className="mt-3 text-xs font-black uppercase tracking-[0.1em] text-[#3A85FD]">FILTRANDO: {selectedClient.name}</p>}
           </div>
           <div className="flex flex-wrap items-center gap-2">
