@@ -291,8 +291,8 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
     <section className="space-y-5">
       <div className="flex items-center gap-3 pt-2">
         <div className="h-px flex-1 bg-slate-200" />
-        <span className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-          Desempenho orgânico
+        <span className="rounded-full border border-[#17181C] bg-[#17181C] px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#C9FF2F]">
+          O que os dados mostram
         </span>
         <div className="h-px flex-1 bg-slate-200" />
       </div>
@@ -318,8 +318,8 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
           <div className="flex items-start gap-3">
             <span className={`icon-tile ${platformAccent}`}><PlatformIcon size={19} /></span>
             <div>
-              <p className="section-kicker">Visão principal</p>
-              <h2 className="section-title mt-1">{platformLabel}</h2>
+              <p className="section-kicker">Fonte da leitura</p>
+              <h2 className="section-title mt-1">{platformLabel} · sem misturar rede</h2>
               <p className="mt-1 text-sm text-slate-500">
                 {platformConnected
                   ? [profileUsername ? `@${profileUsername}` : null, profileName].filter(Boolean).join(' • ')
@@ -348,7 +348,7 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
               image={profileImage}
             />
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 lg:min-w-52">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Última atualização</p>
+              <p className="text-[10px] font-black uppercase tracking-[.15em] text-slate-400">Última atualização</p>
               <p className="mt-2 text-sm font-semibold text-slate-800">{formatDateTime(report?.connection?.last_synced_at)}</p>
               <p className="mt-1 text-xs text-slate-400">Fonte: {organicSource}</p>
             </div>
@@ -384,19 +384,19 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
       ) : platformConnected ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard icon={Users} label="Seguidores" value={formatInteger(followers)} helper={`${followersDelta >= 0 ? '+' : ''}${formatInteger(followersDelta)} no período`} />
-            <SummaryCard icon={Eye} label="Alcance" value={formatInteger(reach)} helper={`Somente ${platformLabel}`} />
-            <SummaryCard icon={BarChart3} label="Visualizações" value={formatInteger(views)} helper={`Somente ${platformLabel}`} />
-            <SummaryCard icon={Heart} label="Interações" value={formatInteger(interactions)} helper={`${formatDecimal(engagementRate)}% sobre o alcance`} />
-            <SummaryCard icon={MousePointerClick} label="Ações de perfil" value={formatInteger(profileActions)} helper="Visitas e cliques no site" />
-            <SummaryCard icon={Layers3} label="Publicações" value={formatInteger(rawContent.length)} helper={`${formatDecimal(averageInteractions, 0)} interações por conteúdo`} />
-            <SummaryCard icon={CalendarDays} label="Melhor dia" value={bestDay} helper="Média de interações por publicação" />
-            <SummaryCard icon={Trophy} label="Melhor formato" value={bestFormat} helper="Formato com mais interações" />
+            <SummaryCard icon={Users} label="Base atual" value={formatInteger(followers)} helper={`${followersDelta >= 0 ? '+' : ''}${formatInteger(followersDelta)} no período`} tone={followersDelta < 0 ? 'pink' : 'lime'} />
+            <SummaryCard icon={Eye} label="Alcance" value={formatInteger(reach)} helper={`Somente ${platformLabel}`} tone="blue" />
+            <SummaryCard icon={BarChart3} label="Visualizações" value={formatInteger(views)} helper={`Somente ${platformLabel}`} tone="ink" />
+            <SummaryCard icon={Heart} label="Resposta" value={formatInteger(interactions)} helper={`${formatDecimal(engagementRate)}% sobre o alcance`} tone="pink" />
+            <SummaryCard icon={MousePointerClick} label="Ações de perfil" value={formatInteger(profileActions)} helper="Visitas e cliques no site" tone="blue" />
+            <SummaryCard icon={Layers3} label="Volume" value={formatInteger(rawContent.length)} helper={`${formatDecimal(averageInteractions, 0)} interações por conteúdo`} tone="ink" />
+            <SummaryCard icon={CalendarDays} label="Dia que respondeu" value={bestDay} helper="Média de interações por publicação" tone="lime" />
+            <SummaryCard icon={Trophy} label="Formato que puxou" value={bestFormat} helper="Formato com mais interações" tone="pink" />
           </div>
 
           <div className="surface-card p-6">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-              <div><p className="section-kicker">Tendência</p><h3 className="section-title mt-1">Evolução diária</h3></div>
+              <div><p className="section-kicker">Movimento do período</p><h3 className="section-title mt-1">Como o resultado se comportou dia a dia</h3></div>
               <select className="input-field max-w-48" value={trendMetric} onChange={(event) => setTrendMetric(event.target.value)}>
                 <option value="reach">Alcance</option>
                 <option value="interactions">Interações</option>
@@ -424,7 +424,7 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
 
           <div className="grid gap-5 xl:grid-cols-[1.25fr_1fr]">
             <div className="surface-card p-6">
-              <div className="mb-5"><p className="section-kicker">Formatos</p><h3 className="section-title mt-1">Interações por tipo de conteúdo</h3></div>
+              <div className="mb-5"><p className="section-kicker">Formato não é detalhe</p><h3 className="section-title mt-1">Qual formato está puxando resposta</h3></div>
               {contentBreakdown.length ? (
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={contentBreakdown}>
@@ -441,7 +441,7 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
             </div>
 
             <div className="surface-card overflow-hidden">
-              <div className="border-b border-slate-100 px-6 py-5"><p className="section-kicker">Destaques</p><h3 className="section-title mt-1">Top conteúdos</h3></div>
+              <div className="border-b border-slate-100 px-6 py-5"><p className="section-kicker">O que merece atenção</p><h3 className="section-title mt-1">Conteúdos que mais responderam</h3></div>
               {topContent.length ? (
                 <div className="divide-y divide-slate-100">
                   {topContent.map((item, index) => (
@@ -457,9 +457,9 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
           <div className="surface-card overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-slate-100 px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <p className="section-kicker">Conteúdo</p>
-                <h3 className="section-title mt-1">Publicações com melhor desempenho</h3>
-                <p className="mt-1 text-sm text-slate-500">Conteúdos do {platformLabel}, filtrados por formato e indicador principal.</p>
+                <p className="section-kicker">Ranking do conteúdo</p>
+                <h3 className="section-title mt-1">Do dado para a decisão</h3>
+                <p className="mt-1 text-sm text-slate-500">Veja quais peças puxaram o resultado do {platformLabel}. A ideia não é premiar post: é aprender com ele.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <select className="input-field max-w-44" value={contentTypeFilter} onChange={(event) => setContentTypeFilter(event.target.value)}>
@@ -506,7 +506,7 @@ export default function OrganicReports({ clientId, from, to, user, refreshKey = 
                               <p className="truncate font-semibold text-slate-800" title={item.caption || item.content_type}>{item.caption || item.content_type || 'Publicação sem legenda'}</p>
                               {item.permalink && (
                                 <a href={item.permalink} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[#0969ff] hover:underline">
-                                  Abrir publicação <ExternalLink size={11} />
+                                  Ver no ar <ExternalLink size={11} />
                                 </a>
                               )}
                             </div>
@@ -555,16 +555,23 @@ function ProfileConnection({ icon: Icon, label, name, username, image }) {
   );
 }
 
-function SummaryCard({ icon: Icon, label, value, helper }) {
+function SummaryCard({ icon: Icon, label, value, helper, tone = 'blue' }) {
+  const tones = {
+    blue: 'bg-[#3A85FD] text-white',
+    pink: 'bg-[#EC0567] text-white',
+    lime: 'bg-[#C9FF2F] text-[#17181C]',
+    ink: 'bg-[#17181C] text-white',
+  };
   return (
-    <div className="surface-card p-5">
+    <div className="surface-card relative overflow-hidden p-5">
+      <span className={`absolute right-0 top-0 h-1.5 w-14 ${tones[tone].split(' ')[0]}`} />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="mt-2 truncate text-2xl font-bold tracking-tight text-slate-900" title={String(value)}>{value}</p>
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">{label}</p>
+          <p className="brand-display mt-2 truncate text-2xl font-black tracking-tight text-slate-950" title={String(value)}>{value}</p>
           <p className="mt-1 truncate text-xs text-slate-400" title={helper}>{helper}</p>
         </div>
-        <span className="icon-tile bg-blue-50 text-[#0969ff]"><Icon size={18} /></span>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}><Icon size={17} /></span>
       </div>
     </div>
   );
@@ -573,7 +580,7 @@ function SummaryCard({ icon: Icon, label, value, helper }) {
 function TopContentRow({ item, position }) {
   return (
     <div className="flex items-center gap-3 px-5 py-4">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">{position}</span>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black ${position === 1 ? 'bg-[#C9FF2F] text-[#17181C]' : position === 2 ? 'bg-[#3A85FD] text-white' : 'bg-[#EC0567] text-white'}`}>{position}</span>
       {item.thumbnail_url ? <img src={item.thumbnail_url} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" /> : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Sparkles size={17} /></span>}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-slate-800" title={item.caption}>{item.caption || normalizeContentType(item.content_type)}</p>
@@ -593,7 +600,7 @@ function PlatformConnectionBadge({ configured, connected, status }) {
 
 function OrganicEmptyState({ title, description, platform = 'instagram' }) {
   const Icon = platform === 'instagram' ? Instagram : Facebook;
-  const accent = platform === 'instagram' ? 'bg-pink-50 text-pink-500' : 'bg-blue-50 text-blue-500';
+  const accent = platform === 'instagram' ? 'bg-[#EC0567] text-white' : 'bg-[#3A85FD] text-white';
   return (
     <div className="flex min-h-52 flex-col items-center justify-center px-6 py-10 text-center">
       <span className={`icon-tile ${accent}`}><Icon size={18} /></span>

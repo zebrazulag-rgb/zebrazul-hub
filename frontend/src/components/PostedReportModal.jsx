@@ -23,21 +23,21 @@ function buildPrintHtml(data, clientName, autoPrint = true) {
     </div>`).join('');
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de postagens - ${esc(monthLabel(data.month))}</title>
   <style>
-    *{box-sizing:border-box} body{font-family:Inter,Arial,sans-serif;color:#0f172a;margin:32px}
-    .brand{color:#0969ff;font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase}
+    *{box-sizing:border-box} body{font-family:Manrope,Inter,Arial,sans-serif;color:#17181C;margin:32px;background:#F5F3EE}
+    .brand{display:inline-block;background:#17181C;color:#C9FF2F;padding:8px 11px;border-radius:8px;font-size:10px;font-weight:900;letter-spacing:.2em;text-transform:uppercase}
     h1{margin:4px 0 2px;font-size:26px} .sub{color:#64748b;font-size:13px;margin-bottom:20px}
-    .kpis{display:flex;gap:12px;margin-bottom:20px} .kpi{border:1px solid #e2e8f0;border-radius:12px;padding:12px 18px}
+    .kpis{display:flex;gap:12px;margin-bottom:20px}.kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px 18px}.kpi:before{content:'';position:absolute;right:0;top:0;width:58px;height:6px;background:#C9FF2F}
     .kpi b{display:block;font-size:28px} .kpi span{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.08em}
     .tables{display:flex;gap:24px;margin-bottom:22px} table{border-collapse:collapse;min-width:220px;font-size:13px}
     td,th{border-bottom:1px solid #e2e8f0;padding:6px 10px;text-align:left} th{font-size:11px;text-transform:uppercase;color:#64748b}
     .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-    .card{border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;break-inside:avoid}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;break-inside:avoid}
     .card img,.noimg{width:100%;aspect-ratio:4/5;object-fit:cover;display:block;background:#f1f5f9}
     .noimg{display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px}
-    .meta{padding:8px 10px;font-size:11px;line-height:1.45} .pl{color:#0969ff;font-weight:600}
+    .meta{padding:9px 10px;font-size:11px;line-height:1.45}.meta b{font-weight:900}.pl{color:#3A85FD;font-weight:800}
     @media print{body{margin:14mm}}
   </style></head><body>
-  <div class="brand">Zebrazul · Relatório de postagens</div>
+  <div class="brand">Zebrazul · dado que deixa rastro</div>
   <h1>${esc(clientName || 'Todos os clientes')}</h1>
   <div class="sub">${esc(monthLabel(data.month))}</div>
   <div class="kpis"><div class="kpi"><b>${data.total}</b><span>Posts postados</span></div></div>
@@ -126,14 +126,14 @@ export default function PostedReportModal({ client, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onClick={onClose}>
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-4">
+      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[26px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-[#17181C] px-5 py-4 text-white">
           <div className="mr-auto">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0969ff]">Relatório</p>
-            <h2 className="text-lg font-bold text-slate-900">Posts postados · {client?.name || 'Todos os clientes'}</h2>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C9FF2F]">Relatório</p>
+            <h2 className="text-lg font-black text-white">Posts postados · {client?.name || 'Todos os clientes'}</h2>
           </div>
-          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700" />
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Fechar"><X size={18} /></button>
+          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm font-semibold text-white [color-scheme:dark]" />
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-white/50 hover:bg-white/10 hover:text-white" aria-label="Fechar"><X size={18} /></button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
@@ -143,24 +143,24 @@ export default function PostedReportModal({ client, onClose }) {
           ) : data && (
             <div className="space-y-5">
               <div className="flex flex-wrap gap-3">
-                <div className="rounded-xl border border-slate-200 px-5 py-3"><p className="text-3xl font-black text-slate-900">{data.total}</p><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Posts em {monthLabel(data.month)}</p></div>
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200 px-5 py-3 before:absolute before:right-0 before:top-0 before:h-1.5 before:w-14 before:bg-[#C9FF2F]"><p className="brand-display text-3xl font-black text-slate-900">{data.total}</p><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Posts em {monthLabel(data.month)}</p></div>
                 {platformEntries.map(([key, n]) => (
-                  <div key={key} className="rounded-xl border border-slate-200 px-4 py-3">
-                    <p className="text-2xl font-black text-slate-900">{n}</p>
+                  <div key={key} className="relative overflow-hidden rounded-2xl border border-slate-200 px-4 py-3">
+                    <p className="brand-display text-2xl font-black text-slate-900">{n}</p>
                     <PlatformBadges platforms={[key]} />
                   </div>
                 ))}
                 {sortedEntries(data.by_type).map(([type, n]) => (
-                  <div key={type} className="rounded-xl border border-slate-200 px-4 py-3"><p className="text-2xl font-black text-slate-900">{n}</p><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{cap(type)}</p></div>
+                  <div key={type} className="relative overflow-hidden rounded-2xl border border-slate-200 px-4 py-3"><p className="brand-display text-2xl font-black text-slate-900">{n}</p><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{cap(type)}</p></div>
                 ))}
               </div>
 
               {data.total === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">Nenhum post marcado como postado neste mês.</p>
+                <p className="rounded-2xl border border-dashed border-slate-300 bg-[#F5F3EE] p-8 text-center text-sm font-semibold text-slate-500">Nenhum post marcado como postado neste mês.</p>
               ) : (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                   {data.items.map((item) => (
-                    <div key={item.id} className="overflow-hidden rounded-xl border border-slate-200">
+                    <div key={item.id} className="overflow-hidden rounded-2xl border border-slate-200">
                       {item.image ? <img src={item.image} alt="" className="aspect-[4/5] w-full object-cover" /> : <div className="flex aspect-[4/5] items-center justify-center bg-slate-100 text-xs text-slate-400">Sem imagem</div>}
                       <div className="space-y-1 p-2.5">
                         <p className="text-xs font-bold leading-snug text-slate-900">{item.title}</p>
@@ -176,16 +176,16 @@ export default function PostedReportModal({ client, onClose }) {
         </div>
 
         {linkUrl && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-emerald-50/60 px-5 py-3">
-            <Link2 size={14} className="text-emerald-600" />
-            <input readOnly value={linkUrl} onFocus={(e) => e.target.select()} className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs text-slate-700" />
-            <button type="button" onClick={() => { navigator.clipboard?.writeText(linkUrl).then(() => setCopied(true)).catch(() => {}); }} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white">{copied ? <Check size={13} /> : null} {copied ? 'Link copiado!' : 'Copiar'}</button>
-            <a href={linkUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-700 underline">Abrir</a>
+          <div className="flex flex-wrap items-center gap-2 border-t border-[#C9FF2F]/40 bg-[#C9FF2F]/15 px-5 py-3">
+            <Link2 size={14} className="text-lime-800" />
+            <input readOnly value={linkUrl} onFocus={(e) => e.target.select()} className="min-w-0 flex-1 rounded-lg border border-lime-300 bg-white px-2.5 py-1.5 text-xs text-slate-700" />
+            <button type="button" onClick={() => { navigator.clipboard?.writeText(linkUrl).then(() => setCopied(true)).catch(() => {}); }} className="inline-flex items-center gap-1 rounded-lg bg-[#17181C] px-2.5 py-1.5 text-xs font-bold text-white">{copied ? <Check size={13} /> : null} {copied ? 'Link copiado!' : 'Copiar'}</button>
+            <a href={linkUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-lime-900 underline">Abrir</a>
           </div>
         )}
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-3">
           {!client?.id && <span className="mr-auto self-center text-[11px] text-slate-400">Selecione um cliente no topo para gerar o link.</span>}
-          <button type="button" disabled={!client?.id || linkBusy} onClick={createLink} className="inline-flex items-center gap-1.5 rounded-xl bg-[#0969ff] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-40">{linkBusy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />} Gerar link para o cliente</button>
+          <button type="button" disabled={!client?.id || linkBusy} onClick={createLink} className="inline-flex items-center gap-1.5 rounded-xl bg-[#3A85FD] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-40">{linkBusy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />} Gerar link para o cliente</button>
           <button type="button" disabled={!data || !data.total} onClick={downloadHtml} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"><Download size={14} /> Baixar HTML</button>
           <button type="button" disabled={!data || !data.total} onClick={downloadCsv} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"><Download size={14} /> Baixar planilha (CSV)</button>
           <button type="button" disabled={!data || !data.total} onClick={printPdf} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40"><FileText size={14} /> Gerar PDF / Imprimir</button>
