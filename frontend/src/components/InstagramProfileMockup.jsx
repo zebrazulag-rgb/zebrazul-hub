@@ -5,23 +5,23 @@ import { coverAnalysisKey, coverStatusMeta, isVideoContent } from './FeedCoverDa
 
 
 function approvalStatusMeta(status) {
-  if (status === 'pending_approval') return { label: 'Aguardando', className: 'bg-amber-400 text-slate-950', icon: Clock3 };
-  if (status === 'approved') return { label: 'Aprovado', className: 'bg-emerald-500 text-white', icon: CheckCircle2 };
-  if (status === 'rejected') return { label: 'Ajustes', className: 'bg-rose-500 text-white', icon: XCircle };
+  if (status === 'pending_approval') return { label: 'Aguardando', className: 'bg-[#17181C] text-white', icon: Clock3 };
+  if (status === 'approved') return { label: 'Aprovado', className: 'bg-[#C9FF2F] text-[#17181C]', icon: CheckCircle2 };
+  if (status === 'rejected') return { label: 'Ajustes', className: 'bg-[#EC0567] text-white', icon: XCircle };
   return null;
 }
 
 function workflowStageMeta(stage) {
   const stages = {
-    todo: { label: 'A fazer', className: 'bg-slate-900/85 text-white' },
-    in_progress: { label: 'Em andamento', className: 'bg-amber-400 text-slate-950' },
-    correction: { label: 'Em correção', className: 'bg-rose-500 text-white' },
-    approval: { label: 'Em aprovação', className: 'bg-violet-600 text-white' },
-    internal_approval: { label: 'Em aprovação', className: 'bg-violet-600 text-white' },
-    external_approval: { label: 'Em aprovação', className: 'bg-violet-600 text-white' },
-    approved: { label: 'Aprovado', className: 'bg-emerald-500 text-white' },
-    scheduled: { label: 'Agendado', className: 'bg-sky-500 text-white' },
-    posted: { label: 'Postado', className: 'bg-indigo-600 text-white' },
+    todo: { label: 'A fazer', className: 'bg-[#17181C]/90 text-white' },
+    in_progress: { label: 'Em andamento', className: 'bg-[#3A85FD] text-white' },
+    correction: { label: 'Em correção', className: 'bg-[#EC0567] text-white' },
+    approval: { label: 'Em aprovação', className: 'bg-[#17181C] text-white' },
+    internal_approval: { label: 'Em aprovação', className: 'bg-[#17181C] text-white' },
+    external_approval: { label: 'Em aprovação', className: 'bg-[#17181C] text-white' },
+    approved: { label: 'Aprovado', className: 'bg-[#C9FF2F] text-[#17181C]' },
+    scheduled: { label: 'Agendado', className: 'bg-[#3A85FD] text-white' },
+    posted: { label: 'Postado', className: 'bg-[#17181C] text-white' },
   };
   return stages[stage] || null;
 }
@@ -31,7 +31,7 @@ function formatMetric(value) {
   return new Intl.NumberFormat('pt-BR').format(number);
 }
 
-export default function InstagramProfileMockup({ client, posts, highlights = [], onPostClick, renderHoverActions, reorderMode = false, onReorder, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true }) {
+export default function InstagramProfileMockup({ client, posts, highlights = [], onPostClick, renderHoverActions, reorderMode = false, onReorder, editable = false, onEdit, coverAnalyses = {}, sourceType = 'planned', showCoverBadges = true, emptyTitle = 'NADA NA GRADE AINDA.', emptyDescription = 'Quando o conteúdo entrar, ele aparece aqui na ordem do feed.' }) {
   const username = client?.instagram_username || client?.name?.toLowerCase().replace(/[^a-z0-9]+/gi, '') || 'perfil';
   const displayName = client?.instagram_display_name || client?.name || 'Nome do perfil';
   const postsCount = client?.instagram_posts_count ?? posts.length;
@@ -42,7 +42,7 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
   const [overKey, setOverKey] = useState(null);
 
   return (
-    <div className="instagram-profile-mockup w-full min-w-0 max-w-[620px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-xl sm:rounded-[28px]">
+    <div className="instagram-profile-mockup w-full min-w-0 max-w-[620px] overflow-hidden border border-[#17181C]/12 bg-white shadow-[0_18px_50px_rgba(23,24,28,0.10)]">
       <div className="flex items-center justify-between px-3 py-3 sm:px-5 sm:py-4">
         <ArrowLeft className="h-6 w-6 shrink-0 sm:h-7 sm:w-7" strokeWidth={2.2} />
         <p className="min-w-0 flex-1 truncate px-2 text-center text-[18px] font-bold text-black sm:px-4 sm:text-[23px]">{username}</p>
@@ -122,7 +122,7 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
       </div>
 
       {posts.length === 0 ? (
-        <p className="px-5 py-16 text-center text-sm text-slate-400">Nenhum post agendado ainda.</p>
+        <div className="px-5 py-16 text-center"><p className="brand-display text-lg font-black uppercase tracking-[-0.02em] text-[#17181C]">{emptyTitle}</p><p className="mt-2 text-sm text-slate-400">{emptyDescription}</p></div>
       ) : (
         <div className="grid grid-cols-3 gap-[3px] bg-white p-[3px]">
           {posts.map((post) => {

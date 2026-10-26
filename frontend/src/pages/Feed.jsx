@@ -62,6 +62,7 @@ export default function Feed({ forcedView = null, toolMode = false }) {
   const [savingGalleryOrder, setSavingGalleryOrder] = useState(false);
   const [galleryOrderError, setGalleryOrderError] = useState('');
   const [creatingPost, setCreatingPost] = useState(false);
+  const [gridFilter, setGridFilter] = useState('all');
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [publishedPosts, setPublishedPosts] = useState([]);
   const [publishedConnection, setPublishedConnection] = useState(null);
@@ -95,6 +96,7 @@ export default function Feed({ forcedView = null, toolMode = false }) {
   useEffect(() => {
     if (user?.role === 'client') return;
     setClientId(selectedClient?.id || '');
+    setGridFilter('all');
     if (!selectedClient) {
       setPosts([]);
       setHiddenPosts([]);
@@ -689,6 +691,45 @@ export default function Feed({ forcedView = null, toolMode = false }) {
     return acc;
   }, { pending: 0, approved: 0, rejected: 0 });
 
+  const gridFilterOptions = [
+    { key: 'all', label: 'Tudo', count: posts.length },
+    { key: 'pending', label: 'Aguardando', count: approvalCounts.pending },
+    { key: 'rejected', label: 'Ajustes', count: approvalCounts.rejected },
+    { key: 'approved', label: 'Aprovados', count: approvalCounts.approved },
+  ];
+  const gridPosts = gridFilter === 'all'
+    ? posts
+    : posts.filter((post) => (
+      gridFilter === 'pending' ? post.status === 'pending_approval'
+        : gridFilter === 'rejected' ? post.status === 'rejected'
+          : gridFilter === 'approved' ? post.status === 'approved'
+            : true
+    ));
+
+  const scheduledCandidates = [...posts]
+    .filter((post) => post.scheduled_at)
+    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+  const now = new Date();
+  const nextScheduledPost = scheduledCandidates.find((post) => new Date(post.scheduled_at) >= now) || scheduledCandidates[0] || null;
+  const nextScheduleLabel = nextScheduledPost?.scheduled_at
+    ? new Date(nextScheduledPost.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '')
+    : null;
+
+  const editorialHeadline = approvalCounts.rejected > 0
+    ? 'TEM COISA PEDINDO AJUSTE.'
+    : approvalCounts.pending > 0
+      ? 'A BOLA TÁ COM A APROVAÇÃO.'
+      : posts.length > 0
+        ? 'A GRADE TÁ EM MOVIMENTO.'
+        : 'BORA TIRAR A GRADE DO ZERO.';
+  const editorialSupport = approvalCounts.rejected > 0
+    ? `${approvalCounts.rejected} ${approvalCounts.rejected === 1 ? 'publicação voltou' : 'publicações voltaram'} para ajuste. Resolve isso antes de empilhar mais conteúdo.`
+    : approvalCounts.pending > 0
+      ? `${approvalCounts.pending} ${approvalCounts.pending === 1 ? 'publicação está' : 'publicações estão'} esperando decisão. O resto da operação pode continuar andando.`
+      : posts.length > 0
+        ? 'Planejamento, aprovação e ritmo editorial no mesmo lugar — sem perder de vista o que realmente vai para a rua.'
+        : 'A grade ainda está vazia. Comece pelo que precisa acontecer no negócio, depois transforme isso em conteúdo.';
+
   const publishedClient = currentClient ? {
     ...currentClient,
     instagram_username: publishedConnection?.instagram_username || currentClient.instagram_username,
@@ -697,73 +738,151 @@ export default function Feed({ forcedView = null, toolMode = false }) {
   } : currentClient;
 
   return (
-    <div className="feed-page space-y-6 min-w-0">
-      {!toolMode && <div className="flex items-center justify-end flex-wrap gap-4 min-w-0">
-        {clientId && (canFeedCreate || canShareFeed || canSocialMediaLink) && (
-          <div className="flex w-full items-center gap-1.5 flex-nowrap sm:w-auto sm:gap-2 sm:flex-wrap">
-            {canFeedCreate && <button
-              type="button"
-              onClick={() => setCreatingPost(true)}
-              className="btn-primary flex min-w-0 flex-1 items-center justify-center gap-1 px-2 py-2 text-[10px] whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
-            >
-              <Plus size={17} /> Nova publicação
-            </button>}
-            {canFeedCreate && activeView === 'grid' && hiddenPosts.length > 0 && (
-              <button
-                type="button"
-                onClick={() => { setPostActionError(''); setShowHiddenPosts(true); }}
-                className="btn-secondary flex items-center gap-2 whitespace-nowrap"
-              >
-                <EyeOff size={16} /> Fora da grade ({hiddenPosts.length})
-              </button>
-            )}
-            {activeView === 'grid' && (
-              <>
-                {canShareFeed && <button onClick={shareFeed} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-1 px-2 py-2 text-[10px] whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm">
-                  {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
-                  {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
-                </button>}
-                {canSocialMediaLink && <button onClick={shareSocialMediaLink} className="btn-secondary flex min-w-0 flex-1 items-center justify-center gap-1 px-2 py-2 text-[10px] whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm">
-                  {socialMediaLinkCopied ? <Check size={16} /> : <Share2 size={16} />}
-                  {socialMediaLinkCopied ? 'Link Social Media copiado!' : 'Link Social Media'}
-                </button>}
-              </>
-            )}
-          </div>
-        )}
-      </div>}
+    <div className="feed-page space-y-5 min-w-0">
+      {!toolMode && (
+        <section className="overflow-hidden border border-[#17181C]/10 bg-white">
+          <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
+            <div className="relative isolate overflow-hidden px-5 py-6 sm:px-7 sm:py-8">
+              <div className="pointer-events-none absolute -right-14 -top-24 -z-10 h-64 w-64 rounded-full border-[34px] border-[#3A85FD]/10" />
+              <div className="pointer-events-none absolute right-8 top-7 -z-10 h-3 w-20 rotate-[-8deg] bg-[#C9FF2F]" />
+              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#3A85FD]">
+                <Radio size={14} /> SOCIAL MEDIA · GRADE EDITORIAL
+              </p>
+              <h1 className="brand-display mt-3 max-w-3xl text-3xl font-black uppercase leading-[0.94] tracking-[-0.04em] text-[#17181C] sm:text-5xl">
+                {editorialHeadline}
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">{editorialSupport}</p>
 
-      {!toolMode && <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-        <button
-          onClick={() => switchView('grid')}
-          className={`flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            activeView === 'grid' ? 'bg-zebrazul-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Grid3x3 size={17} /> Planejado
-        </button>
-        {canMessages && (
+              {clientId && (canFeedCreate || canShareFeed || canSocialMediaLink) && (
+                <div className="mt-6 flex flex-wrap items-center gap-2">
+                  {canFeedCreate && (
+                    <button
+                      type="button"
+                      onClick={() => setCreatingPost(true)}
+                      className="inline-flex items-center justify-center gap-2 bg-[#3A85FD] px-4 py-2.5 text-sm font-black text-white transition hover:bg-[#1f72ee]"
+                    >
+                      <Plus size={17} /> Nova publicação
+                    </button>
+                  )}
+                  {canFeedCreate && activeView === 'grid' && hiddenPosts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setPostActionError(''); setShowHiddenPosts(true); }}
+                      className="inline-flex items-center gap-2 border border-[#17181C]/12 bg-white px-4 py-2.5 text-sm font-bold text-[#17181C] transition hover:bg-[#F5F3EE]"
+                    >
+                      <EyeOff size={16} /> Fora da grade ({hiddenPosts.length})
+                    </button>
+                  )}
+                  {activeView === 'grid' && canShareFeed && (
+                    <button onClick={shareFeed} className="inline-flex items-center gap-2 border border-[#17181C]/12 bg-white px-4 py-2.5 text-sm font-bold text-[#17181C] transition hover:bg-[#F5F3EE]">
+                      {linkCopied ? <Check size={16} /> : <Link2 size={16} />}
+                      {linkCopied ? 'Link copiado!' : 'Compartilhar feed'}
+                    </button>
+                  )}
+                  {activeView === 'grid' && canSocialMediaLink && (
+                    <button onClick={shareSocialMediaLink} className="inline-flex items-center gap-2 border border-[#17181C]/12 bg-[#17181C] px-4 py-2.5 text-sm font-black text-white transition hover:bg-black">
+                      {socialMediaLinkCopied ? <Check size={16} /> : <Share2 size={16} />}
+                      {socialMediaLinkCopied ? 'Link copiado!' : 'Link Social Media'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-[#17181C] p-5 text-white sm:p-6">
+              <div className="grid grid-cols-2 gap-px overflow-hidden bg-white/12">
+                {[
+                  { label: 'Planejadas', value: posts.length, accent: '#3A85FD' },
+                  { label: 'Aguardando', value: approvalCounts.pending, accent: '#FFFFFF' },
+                  { label: 'Ajustes', value: approvalCounts.rejected, accent: '#EC0567' },
+                  { label: 'Aprovadas', value: approvalCounts.approved, accent: '#C9FF2F' },
+                ].map((item) => (
+                  <div key={item.label} className="bg-[#17181C] p-4">
+                    <span className="mb-4 block h-1 w-8" style={{ backgroundColor: item.accent }} />
+                    <p className="brand-display text-3xl font-black leading-none tracking-[-0.04em]">{item.value}</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/55">{item.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 border-l-4 border-[#C9FF2F] bg-white/[0.055] px-4 py-3">
+                <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#C9FF2F]">
+                  <CalendarDays size={14} /> Próxima na fila
+                </p>
+                {nextScheduledPost ? (
+                  <div className="mt-2 flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm font-bold leading-5 text-white">{nextScheduledPost.title || 'Publicação sem título'}</p>
+                    <span className="shrink-0 bg-[#C9FF2F] px-2 py-1 text-[10px] font-black uppercase text-[#17181C]">{nextScheduleLabel}</span>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-white/55">Nenhuma publicação agendada ainda.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!toolMode && (
+        <div className="flex max-w-full items-center gap-1 overflow-x-auto border-b-4 border-[#17181C] bg-white p-1">
           <button
-            type="button"
-            onClick={() => navigate('/social-media/mensagens')}
-            className="flex min-w-max items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            onClick={() => switchView('grid')}
+            className={`flex min-w-max items-center gap-2 px-4 py-2.5 text-sm font-black transition-colors ${
+              activeView === 'grid' ? 'bg-[#17181C] text-white' : 'text-slate-600 hover:bg-[#F5F3EE]'
+            }`}
           >
-            <MessageCircle size={17} /> Mensagens
+            <Grid3x3 size={17} /> Grade planejada
           </button>
-        )}
-      </div>}
+          {canMessages && (
+            <button
+              type="button"
+              onClick={() => navigate('/social-media/mensagens')}
+              className="flex min-w-max items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:bg-[#F5F3EE]"
+            >
+              <MessageCircle size={17} /> Mensagens
+            </button>
+          )}
+        </div>
+      )}
 
       {clientId && activeView === 'grid' && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
-          <span className="mr-1 font-semibold text-slate-500">Aprovação na grade:</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700"><Clock3 size={13} /> Aguardando {approvalCounts.pending}</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700"><CheckCircle2 size={13} /> Aprovados {approvalCounts.approved}</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 font-semibold text-rose-700"><XCircle size={13} /> Ajustes {approvalCounts.rejected}</span>
+        <div className="flex flex-col gap-3 border-l-4 border-[#3A85FD] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="mr-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Ver na grade</span>
+            {gridFilterOptions.map((option) => {
+              const active = gridFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setGridFilter(option.key)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black transition ${
+                    active
+                      ? option.key === 'rejected'
+                        ? 'bg-[#EC0567] text-white'
+                        : option.key === 'approved'
+                          ? 'bg-[#C9FF2F] text-[#17181C]'
+                          : option.key === 'pending'
+                            ? 'bg-[#17181C] text-white'
+                            : 'bg-[#3A85FD] text-white'
+                      : 'border border-[#17181C]/10 bg-white text-slate-600 hover:bg-[#F5F3EE]'
+                  }`}
+                >
+                  {option.label} <span className={active ? 'opacity-75' : 'text-slate-400'}>{option.count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="shrink-0 text-xs font-semibold text-slate-400">
+            {gridPosts.length} {gridPosts.length === 1 ? 'publicação visível' : 'publicações visíveis'}
+          </p>
         </div>
       )}
 
       {!clientId && (
-        <p className="text-sm text-slate-400 py-12 text-center">Selecione um cliente para visualizar o feed.</p>
+        <div className="border-l-4 border-[#EC0567] bg-white px-5 py-10 text-center">
+          <p className="brand-display text-xl font-black uppercase tracking-[-0.02em] text-[#17181C]">ESCOLHE UM CLIENTE.</p>
+          <p className="mt-2 text-sm text-slate-500">A grade aparece aqui assim que você selecionar quem está na vez.</p>
+        </div>
       )}
 
       {clientId && activeView === 'covers' && (
@@ -862,11 +981,13 @@ export default function Feed({ forcedView = null, toolMode = false }) {
             <InstagramProfileMockup
               client={currentClient}
               highlights={highlights}
-              posts={posts}
+              posts={gridPosts}
               onPostClick={openFeedPost}
               editable={canFeedCreate}
               onEdit={startEditProfile}
               showCoverBadges={false}
+              emptyTitle={gridFilter === 'all' ? 'NADA NA GRADE AINDA.' : 'NADA NESSE RECORTE.'}
+              emptyDescription={gridFilter === 'all' ? 'Quando o conteúdo entrar, ele aparece aqui na ordem do feed.' : 'Esse filtro não tem publicações agora. Troque o recorte para voltar a enxergar a grade inteira.'}
             />
           )}
         </div>

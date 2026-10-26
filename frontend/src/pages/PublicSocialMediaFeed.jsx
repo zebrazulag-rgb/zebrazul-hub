@@ -14,6 +14,7 @@ import { attachMediaResolver } from '../utils/mediaUrl';
 import InstagramPreview from '../components/InstagramPreview.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import zebrazulMark from '../assets/zebrazul-mark-light.png';
 
 const publicApi = attachMediaResolver(axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' }));
 
@@ -201,17 +202,21 @@ export default function PublicSocialMediaFeed() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-500">
-        <Loader2 className="mr-2 animate-spin" size={20} /> Carregando Link Social Media...
+      <div className="min-h-screen bg-[#F5F3EE] flex items-center justify-center text-slate-500">
+        <div className="text-center">
+          <img src={zebrazulMark} alt="Zebrazul" className="mx-auto mb-5 h-10 w-auto" />
+          <p className="inline-flex items-center gap-2 text-sm font-bold"><Loader2 className="animate-spin text-[#3A85FD]" size={18} /> Carregando grade...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-100 p-5 flex items-center justify-center">
-        <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-xl">
-          <p className="font-semibold text-slate-900">Link Social Media indisponível</p>
+      <div className="min-h-screen bg-[#F5F3EE] p-5 flex items-center justify-center">
+        <div className="w-full max-w-md border-l-4 border-[#EC0567] bg-white p-8 text-center shadow-[0_18px_50px_rgba(23,24,28,0.10)]">
+          <img src={zebrazulMark} alt="Zebrazul" className="mx-auto mb-5 h-10 w-auto" />
+          <p className="brand-display text-xl font-black uppercase tracking-[-0.02em] text-[#17181C]">LINK FORA DO AR.</p>
           <p className="mt-2 text-sm text-slate-500">{error}</p>
         </div>
       </div>
@@ -219,23 +224,26 @@ export default function PublicSocialMediaFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[760px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.17em] text-zebrazul-600">
-              <Share2 size={13} /> Link Social Media
+    <div className="min-h-screen bg-[#F5F3EE]">
+      <header className="sticky top-0 z-30 bg-[#17181C] text-white">
+        <div className="mx-auto flex max-w-[860px] flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <img src={zebrazulMark} alt="Zebrazul" className="h-8 w-auto shrink-0" />
+            <div className="min-w-0 border-l border-white/15 pl-3">
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-[#C9FF2F]">
+                <Share2 size={12} /> Link Social Media
+              </div>
+              <h1 className="truncate text-base font-bold text-white sm:text-lg">{client?.name}</h1>
             </div>
-            <h1 className="truncate text-lg font-bold text-slate-900">{client?.name}</h1>
           </div>
-          <div className="flex shrink-0 items-center gap-2 text-xs font-semibold">
-            <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700">{summary.pending} a publicar</span>
-            <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">{summary.posted} postados</span>
+          <div className="flex shrink-0 items-center gap-2 text-xs font-black">
+            <span className="bg-[#EC0567] px-3 py-1.5 text-white">{summary.pending} a publicar</span>
+            <span className="bg-[#C9FF2F] px-3 py-1.5 text-[#17181C]">{summary.posted} postados</span>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-[760px] justify-center px-3 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto flex max-w-[860px] justify-center px-3 py-6 sm:px-6 sm:py-8">
         <InstagramProfileMockup
           client={client}
           highlights={highlights}
@@ -248,15 +256,15 @@ export default function PublicSocialMediaFeed() {
 
       {openPost && (
         <ModalBackdrop onClose={() => !actionLoading && setOpenPost(null)}>
-          <div className="flex max-h-[94vh] w-full max-w-[520px] flex-col overflow-hidden rounded-[26px] bg-white shadow-2xl">
+          <div className="flex max-h-[94vh] w-full max-w-[520px] flex-col overflow-hidden border border-[#17181C]/10 bg-white shadow-[0_24px_70px_rgba(23,24,28,0.24)]">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="truncate text-lg font-bold text-slate-900">{openPost.title}</h2>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                  <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
                     isPostedStatus(openPost.status)
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-slate-100 text-slate-600'
+                      ? 'bg-[#C9FF2F] text-[#17181C]'
+                      : 'bg-[#17181C] text-white'
                   }`}>
                     {statusLabel(openPost.status)}
                   </span>
@@ -284,7 +292,7 @@ export default function PublicSocialMediaFeed() {
                   type="button"
                   onClick={downloadImages}
                   disabled={actionLoading}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 border border-[#3A85FD]/25 bg-white px-3 py-3 text-sm font-black text-[#174F9E] hover:bg-[#3A85FD]/5 disabled:opacity-50"
                 >
                   {actionLoading ? <Loader2 size={17} className="animate-spin" /> : downloaded ? <Check size={17} /> : <Download size={17} />}
                   {downloaded ? 'Baixado' : normalizeGallery(openPost).length > 1 ? 'Baixar imagens' : 'Baixar imagem'}
@@ -292,7 +300,7 @@ export default function PublicSocialMediaFeed() {
                 <button
                   type="button"
                   onClick={copyCaption}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                  className="flex items-center justify-center gap-2 border border-[#17181C]/12 bg-white px-3 py-3 text-sm font-black text-[#17181C] hover:bg-[#F5F3EE]"
                 >
                   {copied ? <Check size={17} /> : <Clipboard size={17} />}
                   {copied ? 'Legenda copiada' : 'Copiar legenda'}
@@ -303,8 +311,8 @@ export default function PublicSocialMediaFeed() {
                   disabled={actionLoading || isPostedStatus(openPost.status)}
                   className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold transition disabled:cursor-default ${
                     isPostedStatus(openPost.status)
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-slate-950 text-white hover:bg-slate-800 disabled:opacity-60'
+                      ? 'bg-[#C9FF2F] text-[#17181C]'
+                      : 'bg-[#C9FF2F] text-[#17181C] hover:bg-[#b7ee20] disabled:opacity-60'
                   }`}
                 >
                   {actionLoading ? <Loader2 size={17} className="animate-spin" /> : <CheckCircle2 size={17} />}
