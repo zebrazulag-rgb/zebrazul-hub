@@ -416,6 +416,7 @@ export default function Layout({ children }) {
   }
 
   const clientPortalItems = [
+    { to: '/cliente/inicio', label: 'Início', mobileLabel: 'Início', icon: LayoutDashboard },
     { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
     { to: '/cliente/grade', label: 'Ver grade', mobileLabel: 'Grade', icon: Grid3x3, permission: 'social.feed' },
     { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
@@ -485,6 +486,7 @@ export default function Layout({ children }) {
   const agencyLogo = agency?.logo_data || zebraHubLogo;
   const topbarLabel = (() => {
     const path = location.pathname;
+    if (path.startsWith('/cliente/inicio')) return 'Meu portal';
     if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
     if (path.startsWith('/cliente/grade')) return 'Ver grade';
     if (path.startsWith('/cliente/relatorios')) return 'Relatórios';

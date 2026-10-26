@@ -51,6 +51,8 @@ import PublicBeeCampaignBriefing from './pages/PublicBeeCampaignBriefing.jsx';
 import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
 import ClientDemand from './pages/ClientDemand.jsx';
+import ClientPortal from './pages/ClientPortal.jsx';
+import ClientPortalHome from './pages/ClientPortalHome.jsx';
 import { hasPermission } from './permissions.js';
 import zebraMark from './assets/zebrazul-mark-dark.png';
 
@@ -77,17 +79,16 @@ function DesignerLegacyRedirect() {
 }
 
 function fallbackRoute(user) {
+  if (user?.role === 'client') return '/cliente/inicio';
   if (hasPermission(user, 'dashboard.view')) return '/';
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
   if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/designer';
-  if (user?.role === 'client' && hasPermission(user, 'social.feed')) return '/cliente/grade';
   if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
   if (hasPermission(user, 'social.covers')) return '/ia?view=covers';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
-  if (hasPermission(user, 'social.reports')) return user?.role === 'client' ? '/cliente/relatorios' : '/relatorios';
+  if (hasPermission(user, 'social.reports')) return '/relatorios';
   if (hasPermission(user, 'commercial.view')) return '/comercial';
-  if (hasPermission(user, 'materials.view')) return user?.role === 'client' ? '/cliente/materiais' : '/bussola/materiais';
-  if (user?.role === 'client') return '/cliente/solicitar';
+  if (hasPermission(user, 'materials.view')) return '/bussola/materiais';
   return '/configuracoes/aparencia';
 }
 
@@ -117,6 +118,7 @@ export default function App() {
     <NarrationProvider>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/portal/:token" element={<ClientPortal />} />
       <Route path="/npsbee" element={<PublicBeeFamilySurvey />} />
       <Route path="/aprovar/:token" element={<PublicApproval />} />
       <Route path="/aprovacao-cliente/:token" element={<PublicDesignerApproval />} />
@@ -131,6 +133,7 @@ export default function App() {
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
+      <Route path="/cliente/inicio" element={<ProtectedRoute roles={["client"]}><ClientPortalHome /></ProtectedRoute>} />
       <Route path="/cliente/solicitar" element={<ProtectedRoute roles={["client"]}><ClientDemand /></ProtectedRoute>} />
       <Route path="/cliente/grade" element={<ProtectedRoute roles={["client"]} permission="social.feed"><SocialMedia section="feed" /></ProtectedRoute>} />
       <Route path="/cliente/aprovacao" element={<Navigate to="/cliente/grade" replace />} />

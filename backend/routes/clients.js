@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authRequired, requireRole, canAccessClient } = require('../middleware/auth');
 const { persistMedia } = require('../services/mediaStorage');
+const { ensurePortalLink } = require('../services/clientPortal');
 
 const router = express.Router();
 router.use(authRequired);
@@ -261,6 +262,22 @@ router.delete('/:id', requireRole('admin'), (req, res) => {
   db.prepare('DELETE FROM clients WHERE id = ? AND agency_id = ?').run(req.params.id, req.user.agency_id);
   res.json({ ok: true });
 });
+
+router.post('/:id/portal-share', requireRole('admin', 'team', 'client'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const link = ensurePortalLink({
+    agencyId: req.user.agency_id,
+    clientId: req.params.id,
+    createdBy: req.user.id,
+  });
+  if (!link) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  res.json({
+    token: link.token,
+    feed_token: link.feed_token || null,
+    request_token: link.request_token || null,
+  });
+});
+
 
 router.post('/:id/feed-share', requireRole('admin', 'team'), (req, res) => {
   if (!ensureClientAccess(req, res, req.params.id)) return;

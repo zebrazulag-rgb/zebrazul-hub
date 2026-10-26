@@ -1,9 +1,12 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const db = require('../db/database');
+const { JWT_SECRET } = require('../middleware/auth');
 const { recordActivity } = require('../services/activity');
 const { isHeldForDirection } = require('../services/designerApprovals');
 
 const { buildPostedReport } = require('../services/postedReport');
+const { portalClientByToken, buildPortalContext } = require('../services/clientPortal');
 const { designerApprovalReady: canonicalDesignerApprovalReady, inferApprovalState } = require('../utils/workflowState');
 const router = express.Router();
 
@@ -175,6 +178,57 @@ router.get('/report/:token', (req, res) => {
   const report = buildPostedReport({ agencyId: link.agency_id, month: link.month, clientId: link.client_id });
   res.json({ client, ...report });
 });
+
+// Portal público unificado do cliente. O token é próprio do portal e dá acesso
+// somente aos dados que o cliente já enxerga nos links públicos do ZebraHub.
+router.get('/portal/:token', (req, res) => {
+  const client = portalClientByToken(req.params.token);
+  if (!client || Number(client.portal_active) !== 1 || client.status !== 'active') {
+    return res.status(404).json({ error: 'Portal inválido ou desativado' });
+  }
+  try {
+    return res.json(buildPortalContext({ client, month: req.query.month }));
+  } catch (error) {
+    console.error('[CLIENT_PORTAL] Falha ao montar portal:', error);
+    return res.status(500).json({ error: 'Não foi possível carregar o portal agora.' });
+  }
+});
+
+router.get('/portal/:token/materials/:materialId/access', (req, res) => {
+  const client = portalClientByToken(req.params.token);
+  if (!client || Number(client.portal_active) !== 1 || client.status !== 'active') {
+    return res.status(404).json({ error: 'Portal inválido ou desativado' });
+  }
+
+  const material = db.prepare(`
+    SELECT id, agency_id, client_id, original_name
+    FROM materials
+    WHERE id = ? AND agency_id = ? AND is_active = 1
+      AND (client_id IS NULL OR client_id = ?)
+    LIMIT 1
+  `).get(Number(req.params.materialId), Number(client.agency_id), Number(client.id));
+  if (!material) return res.status(404).json({ error: 'Material não encontrado.' });
+
+  const accessToken = jwt.sign({
+    scope: 'material_access',
+    material_id: Number(material.id),
+    agency_id: Number(material.agency_id),
+    portal_client_id: Number(client.id),
+  }, JWT_SECRET, { expiresIn: '10m', audience: 'zebrahub-material' });
+
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim();
+  const forwardedHost = String(req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol;
+  const host = forwardedHost || req.get('host');
+  const base = `${protocol}://${host}/api/public/materials/${material.id}`;
+  const encodedToken = encodeURIComponent(accessToken);
+  return res.json({
+    expires_in: 600,
+    view_url: `${base}/view?token=${encodedToken}`,
+    download_url: `${base}/download?token=${encodedToken}`,
+  });
+});
+
 
 // Consulta o feed de um cliente pelo token publico - sem autenticacao
 router.get('/feed/:token', (req, res) => {

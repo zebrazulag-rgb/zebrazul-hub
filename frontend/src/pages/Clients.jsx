@@ -18,6 +18,7 @@ import {
   PauseCircle,
   Archive,
   ArrowUpRight,
+  Link2,
 } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
@@ -296,6 +297,7 @@ export default function Clients({ embedded = false }) {
   const [accounts, setAccounts] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [portalCopied, setPortalCopied] = useState(false);
 
   useEffect(() => {
     loadClients();
@@ -316,6 +318,24 @@ export default function Clients({ embedded = false }) {
     setSelected(data.client);
     setAccounts(data.accounts);
     setConfirmDelete(false);
+    setPortalCopied(false);
+  }
+
+  async function copyClientPortal() {
+    if (!selected?.id) return;
+    try {
+      const { data } = await api.post(`/clients/${selected.id}/portal-share`);
+      const url = `${window.location.origin}/portal/${data.token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setPortalCopied(true);
+        window.setTimeout(() => setPortalCopied(false), 2200);
+      } catch {
+        window.prompt('Copie o link do portal do cliente:', url);
+      }
+    } catch (error) {
+      window.alert(error.response?.data?.error || 'Não foi possível gerar o portal deste cliente.');
+    }
   }
 
   async function saveClient(payload) {
@@ -477,12 +497,21 @@ export default function Clients({ embedded = false }) {
                   <p className="text-xs text-slate-400 mt-1">Clique na imagem para trocar o logo.</p>
                 </div>
                 {user?.role !== 'client' && (
-                  <button
-                    onClick={() => setFormMode('edit')}
-                    className="btn-primary flex items-center justify-center gap-2 shrink-0"
-                  >
-                    <Pencil size={16} /> Editar informações
-                  </button>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      onClick={copyClientPortal}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17181C] px-4 py-2.5 text-sm font-black text-white transition hover:bg-black"
+                    >
+                      {portalCopied ? <CheckCircle2 size={16} className="text-[#C9FF2F]" /> : <Link2 size={16} />}
+                      {portalCopied ? 'Portal copiado' : 'Copiar portal'}
+                    </button>
+                    <button
+                      onClick={() => setFormMode('edit')}
+                      className="btn-primary flex items-center justify-center gap-2"
+                    >
+                      <Pencil size={16} /> Editar informações
+                    </button>
+                  </div>
                 )}
               </div>
 

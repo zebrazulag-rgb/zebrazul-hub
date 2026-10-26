@@ -207,6 +207,7 @@ function apiPermissionForRequest(req) {
   const path = String(req.path || '');
   const method = String(req.method || 'GET').toUpperCase();
   if (path === '/clients' || path.startsWith('/clients/')) {
+    if (/^\/clients\/\d+\/portal-share$/.test(path)) return null;
     if (/^\/clients\/\d+\/feed-share$/.test(path)) return 'social.feed_share';
     if (/^\/clients\/\d+\/social-media-share$/.test(path)) return 'social.link_social_media';
     if (/^\/clients\/\d+\/feed-profile$/.test(path)) return 'social.feed_create';
