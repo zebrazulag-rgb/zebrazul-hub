@@ -46,6 +46,7 @@ import { isBeeClient } from '../utils/beeClientAccess.js';
 import NotificationBell from './NotificationBell.jsx';
 import QuickSwitcher from './QuickSwitcher.jsx';
 import PwaInstallPrompt from './PwaInstallPrompt.jsx';
+import MyWorkPulse from './MyWorkPulse.jsx';
 import ClientHealthModal, { HEALTH_LEVELS } from './ClientHealthModal.jsx';
 import { anyPermission, hasPermission } from '../permissions.js';
 import { getTenantSlug } from '../tenant';
@@ -423,6 +424,7 @@ export default function Layout({ children }) {
 
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
+    { to: '/minha-fila', label: 'Minha fila', icon: ListChecks, permission: 'dashboard.view' },
     { to: '/organizacao', label: 'Meu Espaço', icon: CalendarDays, permission: 'organizer.view' },
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view', group: 'squad' },
     { to: '/designer', label: 'Designer', icon: Palette, permission: 'tasks.view', group: 'squad' },
@@ -472,7 +474,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/minha-fila','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
   const mobileNavColumns = Math.max(1, mobilePrimaryItems.length + (mobileMoreItems.length > 0 ? 1 : 0));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#3A85FD';
@@ -486,6 +488,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/cliente/relatorios')) return 'Relatórios';
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
+    if (path.startsWith('/minha-fila')) return 'Minha fila';
     if (path.startsWith('/audiovisual')) return 'Audiovisual';
     if (path.startsWith('/produto')) return 'Produto';
     if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
@@ -1025,6 +1028,7 @@ export default function Layout({ children }) {
               <span className="hidden rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-black text-slate-400 xl:inline">⌘K</span>
             </button>
 
+            <MyWorkPulse />
             <NotificationBell />
           </div>
         </div>
@@ -1040,7 +1044,7 @@ export default function Layout({ children }) {
           {mobileMoreItems.length > 0 && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
-            className={`brand-mobile-nav-item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition ${mobileMoreOpen || ['/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'is-active' : ''}`}
+            className={`brand-mobile-nav-item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition ${mobileMoreOpen || ['/minha-fila','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'is-active' : ''}`}
           >
             <span className="brand-mobile-nav-icon flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
             <span>Mais</span>
@@ -1202,6 +1206,7 @@ function PresenceRow({ member, agencyName }) {
 function presenceAreaLabel(rawPath) {
   const path = String(rawPath || '').split('?')[0];
   if (!path || path === '/') return 'Painel';
+  if (path.startsWith('/minha-fila')) return 'Minha fila';
   if (path.startsWith('/audiovisual')) return 'Audiovisual';
   if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
   if (path.startsWith('/site-lp')) return 'Site/LP';
