@@ -12,14 +12,32 @@ import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { hasPermission } from '../permissions.js';
 
 const STATUS_COLUMNS = [
-  { key: 'todo', label: 'A fazer', badge: 'bg-slate-100 text-slate-600' },
-  { key: 'in_progress', label: 'Em andamento', badge: 'bg-amber-100 text-amber-700' },
-  { key: 'correction', label: 'Em correção', badge: 'bg-rose-100 text-rose-700' },
-  { key: 'approval', label: 'Em aprovação', badge: 'bg-violet-100 text-violet-700' },
-  { key: 'approved', label: 'Aprovado', badge: 'bg-emerald-100 text-emerald-700' },
-  { key: 'scheduled', label: 'Agendado', badge: 'bg-sky-100 text-sky-700' },
-  { key: 'posted', label: 'Postado', badge: 'bg-indigo-100 text-indigo-700' },
+  { key: 'todo', label: 'A fazer', badge: 'bg-[#17181C] text-white', accent: '#17181C', soft: '#F5F3EE' },
+  { key: 'in_progress', label: 'Produção', badge: 'bg-[#3A85FD] text-white', accent: '#3A85FD', soft: '#EEF5FF' },
+  { key: 'correction', label: 'Correção', badge: 'bg-[#EC0567] text-white', accent: '#EC0567', soft: '#FFF0F6' },
+  { key: 'approval', label: 'Aprovação', badge: 'bg-[#17181C] text-white', accent: '#17181C', soft: '#F1F1F2' },
+  { key: 'approved', label: 'Aprovado', badge: 'bg-[#C9FF20] text-[#17181C]', accent: '#9FD500', soft: '#F4FFD3' },
+  { key: 'scheduled', label: 'Agendado', badge: 'bg-[#C9FF20] text-[#17181C]', accent: '#9FD500', soft: '#F4FFD3' },
+  { key: 'posted', label: 'Postado', badge: 'bg-[#3A85FD] text-white', accent: '#3A85FD', soft: '#EEF5FF' },
 ];
+
+const STATUS_META = Object.fromEntries(STATUS_COLUMNS.map((item) => [item.key, item]));
+
+function productionNextMove(task) {
+  const stage = workflowStage(task);
+  if (stage === 'todo') return 'Começar produção';
+  if (stage === 'in_progress') return 'Finalizar e enviar';
+  if (stage === 'correction') return 'Aplicar correção';
+  if (stage === 'approval') return 'Aguardando decisão';
+  if (stage === 'approved') return 'Definir data';
+  if (stage === 'scheduled') return 'Aguardar publicação';
+  if (stage === 'posted') return 'Publicado';
+  return 'Dar andamento';
+}
+
+function productionStatusMeta(task) {
+  return STATUS_META[workflowStage(task)] || STATUS_META.todo;
+}
 
 const WORKFLOW_ORDER = STATUS_COLUMNS.map((item) => item.key);
 const CONTENT_TYPE_LABELS = {
@@ -168,90 +186,112 @@ function AssigneeStack({ assignees }) {
 
 function TaskCard({ task: t, onClick, onDragStart, onToggleFeatured }) {
   const TypeIcon = TYPE_ICON[t.task_type] || FileText;
+  const stageMeta = productionStatusMeta(t);
+  const overdue = isTaskOverdue(t);
+  const nextMove = productionNextMove(t);
   return (
     <div
       draggable={!!onDragStart}
       onDragStart={onDragStart ? (e) => onDragStart(e, t.id) : undefined}
       onClick={onClick}
-      className={'group relative w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.075)] ' + (onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')}
+      className={'group relative w-full overflow-hidden rounded-[20px] border bg-white text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(23,24,28,0.10)] ' + (overdue ? 'border-[#EC0567]/35' : 'border-slate-200/80') + ' ' + (onDragStart ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')}
     >
-      <div className="flex items-start gap-2">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eef5ff] text-[#0969ff]">
-          <TypeIcon size={17} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-2">
-            <p className="min-w-0 flex-1 font-medium text-slate-800 text-sm">{t.title}</p>
-            {onToggleFeatured ? (
-              <button
-                type="button"
-                draggable={false}
-                onClick={(event) => { event.stopPropagation(); onToggleFeatured(t); }}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
-                  Number(t.is_featured) === 1
-                    ? 'border-amber-200 bg-amber-50 text-amber-600'
-                    : 'border-transparent bg-slate-50 text-slate-300 opacity-60 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-500 group-hover:opacity-100'
-                }`}
-                title={Number(t.is_featured) === 1 ? 'Remover do painel principal' : 'Destacar no painel principal'}
-              >
-                <Star size={14} fill={Number(t.is_featured) === 1 ? 'currentColor' : 'none'} />
-              </button>
-            ) : Number(t.is_featured) === 1 ? (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700" title="Tarefa em destaque no painel">
-                <Star size={10} fill="currentColor" /> Destaque
-              </span>
-            ) : null}
+      <div className="h-1.5 w-full" style={{ backgroundColor: stageMeta.accent }} />
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px]" style={{ backgroundColor: stageMeta.soft, color: stageMeta.accent }}>
+            <TypeIcon size={17} />
           </div>
-          {t.client_name && <p className="text-xs text-zebrazul-600 mt-0.5">{t.client_name}</p>}
-          {t.client_request_id && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">
-                <MessageSquareText size={10} /> Solicitação do cliente
-              </span>
-              {t.request_urgency === 'urgent' && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700"><AlertTriangle size={10} /> Cliente marcou urgente</span>
-              )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-2">
+              <p className="min-w-0 flex-1 text-sm font-bold leading-5 text-[#17181C]">{t.title}</p>
+              {onToggleFeatured ? (
+                <button
+                  type="button"
+                  draggable={false}
+                  onClick={(event) => { event.stopPropagation(); onToggleFeatured(t); }}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
+                    Number(t.is_featured) === 1
+                      ? 'border-[#C9FF20] bg-[#F4FFD3] text-[#17181C]'
+                      : 'border-transparent bg-slate-50 text-slate-300 opacity-60 hover:border-[#C9FF20] hover:bg-[#F4FFD3] hover:text-[#17181C] group-hover:opacity-100'
+                  }`}
+                  title={Number(t.is_featured) === 1 ? 'Remover do painel principal' : 'Destacar no painel principal'}
+                >
+                  <Star size={14} fill={Number(t.is_featured) === 1 ? 'currentColor' : 'none'} />
+                </button>
+              ) : Number(t.is_featured) === 1 ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#F4FFD3] px-2 py-1 text-[10px] font-bold text-[#17181C]" title="Tarefa em destaque no painel">
+                  <Star size={10} fill="currentColor" /> Destaque
+                </span>
+              ) : null}
             </div>
-          )}
-          {(t.content_tag || t.content_type) && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {t.content_tag && <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${CONTENT_TAG_CLASSES[t.content_tag] || CONTENT_TAG_CLASSES.Outro}`}>{t.content_tag}</span>}
-              {t.content_type && <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500">{CONTENT_TYPE_LABELS[t.content_type] || t.content_type}</span>}
-            </div>
-          )}
-          {taskNeedsCorrection(t) && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700">
-                <AlertTriangle size={10} /> {Number(t.subtask_correction || 0) > 0 ? `Correção pendente (${t.subtask_correction})` : 'Correção solicitada'}
-              </span>
-            </div>
-          )}
-          {t.parent_task_id && (
-            <p className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-600" title={t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}>
-              <ListTree size={10} className="shrink-0" />
-              <span className="truncate">{t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}</span>
-            </p>
-          )}
-        </div>
-      </div>
-      {t.subtask_total > 0 && (
-        <div className="mt-2 flex items-center gap-1.5">
-          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-zebrazul-500 rounded-full" style={{ width: (t.subtask_done / t.subtask_total * 100) + '%' }} />
+            {t.client_name && <p className="mt-0.5 truncate text-xs font-semibold text-[#3A85FD]">{t.client_name}</p>}
           </div>
-          <span className="text-[10px] text-slate-400 shrink-0">{t.subtask_done}/{t.subtask_total}</span>
         </div>
-      )}
-      {t.client_request_id && t.requested_due_date && (
-        <p className="mt-3 flex items-center gap-1 text-[11px] text-violet-600"><Calendar size={11} /> Desejado pelo cliente: {formatTaskDate(t.requested_due_date)}</p>
-      )}
-      <div className="flex items-center justify-between mt-3">
-        <AssigneeStack assignees={t.assignees} />
-        {(t.due_date || t.deadline_label) && (
-          <span className="text-xs text-slate-400 flex items-center gap-1">
-            <Calendar size={11} /> {t.due_date ? formatTaskDate(t.due_date) : t.deadline_label}
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center rounded-full px-2 py-1 text-[10px] font-bold" style={{ backgroundColor: stageMeta.soft, color: stageMeta.accent }}>
+            {stageMeta.label}
           </span>
+          {overdue && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF0F6] px-2 py-1 text-[10px] font-bold text-[#EC0567]">
+              <AlertTriangle size={10} /> Atrasada
+            </span>
+          )}
+          {t.client_request_id && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#F5F3EE] px-2 py-1 text-[10px] font-semibold text-[#17181C]">
+              <MessageSquareText size={10} /> Pedido do cliente
+            </span>
+          )}
+          {t.request_urgency === 'urgent' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF0F6] px-2 py-1 text-[10px] font-bold text-[#EC0567]"><AlertTriangle size={10} /> Urgente</span>
+          )}
+        </div>
+
+        {(t.content_tag || t.content_type) && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {t.content_tag && <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${CONTENT_TAG_CLASSES[t.content_tag] || CONTENT_TAG_CLASSES.Outro}`}>{t.content_tag}</span>}
+            {t.content_type && <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500">{CONTENT_TYPE_LABELS[t.content_type] || t.content_type}</span>}
+          </div>
         )}
+
+        {taskNeedsCorrection(t) && taskCorrectionFeedback(t) && (
+          <div className="mt-3 rounded-xl border border-[#EC0567]/15 bg-[#FFF0F6] px-3 py-2">
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#EC0567]">Voltou com ajuste</p>
+            <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-[#8B1646]">{taskCorrectionFeedback(t)}</p>
+          </div>
+        )}
+
+        {t.parent_task_id && (
+          <p className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full bg-[#EEF5FF] px-2 py-1 text-[10px] font-semibold text-[#3A85FD]" title={t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}>
+            <ListTree size={10} className="shrink-0" />
+            <span className="truncate">{t.parent_title ? `Subtarefa de ${t.parent_title}` : 'Subtarefa'}</span>
+          </p>
+        )}
+
+        {t.subtask_total > 0 && (
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-[#3A85FD]" style={{ width: (t.subtask_done / t.subtask_total * 100) + '%' }} />
+            </div>
+            <span className="shrink-0 text-[10px] font-semibold text-slate-400">{t.subtask_done}/{t.subtask_total}</span>
+          </div>
+        )}
+
+        <div className="mt-3 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
+          <div className="min-w-0">
+            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-300">Próximo movimento</p>
+            <p className="mt-0.5 text-[11px] font-bold text-[#17181C]">{nextMove}</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <AssigneeStack assignees={t.assignees} />
+            {(t.due_date || t.deadline_label) && (
+              <span className={`mt-1 flex items-center justify-end gap-1 text-[10px] font-semibold ${overdue ? 'text-[#EC0567]' : 'text-slate-400'}`}>
+                <Calendar size={10} /> {t.due_date ? formatTaskDate(t.due_date) : t.deadline_label}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -355,6 +395,7 @@ export default function Tasks({ workspace = 'designer' }) {
     due_to: '',
   });
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [productionFocus, setProductionFocus] = useState('all');
   const [showOverdueOnly, setShowOverdueOnly] = useState(() => searchParams.get('atrasadas') === '1');
 
   useEffect(() => {
@@ -991,14 +1032,27 @@ export default function Tasks({ workspace = 'designer' }) {
     return WORKFLOW_ORDER[index >= 0 && index < WORKFLOW_ORDER.length - 1 ? index + 1 : 0];
   }
 
+  function matchesProductionFocus(task) {
+    if (productionFocus === 'mine') {
+      return (task.assignees || []).some((item) => String(item.id) === String(user?.id));
+    }
+    if (productionFocus === 'correction') return taskNeedsCorrection(task);
+    if (productionFocus === 'approval') return workflowStage(task) === 'approval';
+    if (productionFocus === 'unassigned') return !(task.assignees || []).length;
+    return true;
+  }
+
   const filteredTasks = tasks.filter((task) => taskMatchesFilters(task, filters));
-  const postedFilteredTasks = hidePosted ? filteredTasks.filter((task) => workflowStage(task) !== 'posted') : filteredTasks;
+  const focusFilteredTasks = filteredTasks.filter(matchesProductionFocus);
+  const postedFilteredTasks = hidePosted ? focusFilteredTasks.filter((task) => workflowStage(task) !== 'posted') : focusFilteredTasks;
   const visibleFilteredTasks = showOverdueOnly ? postedFilteredTasks.filter(isTaskOverdue) : postedFilteredTasks;
   const visibleStatusColumns = showOverdueOnly
     ? STATUS_COLUMNS.filter((column) => !['approved', 'scheduled', 'posted'].includes(column.key))
     : (hidePosted ? STATUS_COLUMNS.filter((column) => column.key !== 'posted') : STATUS_COLUMNS);
-  const hasActiveFilters = Object.values(filters).some(Boolean);
-  const visibleBacklog = backlogTasks.filter((task) => taskMatchesFilters(task, { ...filters, status: '' }));
+  const hasActiveFilters = Object.values(filters).some(Boolean) || productionFocus !== 'all';
+  const visibleBacklog = backlogTasks
+    .filter((task) => taskMatchesFilters(task, { ...filters, status: '' }))
+    .filter(matchesProductionFocus);
 
   const canModifySelectedTask = Boolean(selectedTask && canCreateTasks);
 
@@ -1018,6 +1072,37 @@ export default function Tasks({ workspace = 'designer' }) {
     done: tasks.filter((task) => ['approved', 'scheduled'].includes(workflowStage(task))).length + Math.max(0, subtaskOverview.done - subtaskOverview.posted),
     posted: tasks.filter((task) => workflowStage(task) === 'posted').length + subtaskOverview.posted,
   };
+
+  const productionOverview = {
+    backlog: backlogTasks.length,
+    todo: tasks.filter((task) => workflowStage(task) === 'todo').length,
+    producing: tasks.filter((task) => workflowStage(task) === 'in_progress').length,
+    corrections: tasks.filter(taskNeedsCorrection).length,
+    approval: tasks.filter((task) => workflowStage(task) === 'approval').length,
+    ready: tasks.filter((task) => ['approved', 'scheduled', 'posted'].includes(workflowStage(task))).length,
+    unassigned: tasks.filter((task) => !(task.assignees || []).length && !['approved', 'scheduled', 'posted'].includes(workflowStage(task))).length,
+    mine: tasks.filter((task) => (task.assignees || []).some((item) => String(item.id) === String(user?.id))).length,
+  };
+
+  const productionHeadline = productionOverview.corrections > 0
+    ? 'TEM AJUSTE PEDINDO VOLTA.'
+    : taskOverview.overdue > 0
+      ? 'TEM COISA PARADA NO CAMINHO.'
+      : productionOverview.producing > 0
+        ? 'A PRODUÇÃO TÁ GIRANDO.'
+        : productionOverview.todo > 0
+          ? 'A FILA TÁ PRONTA PRA ANDAR.'
+          : 'FILA LIMPA. APROVEITE.';
+
+  const productionSubline = productionOverview.corrections > 0
+    ? `${productionOverview.corrections} peça(s) voltaram com correção. Resolve isso primeiro e devolve a bola.`
+    : taskOverview.overdue > 0
+      ? `${taskOverview.overdue} demanda(s) passaram do prazo e precisam de movimento.`
+      : productionOverview.producing > 0
+        ? `${productionOverview.producing} demanda(s) estão em produção agora.`
+        : productionOverview.todo > 0
+          ? `${productionOverview.todo} demanda(s) estão esperando alguém começar.`
+          : 'Nada travando a criação neste momento.';
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -1192,7 +1277,7 @@ export default function Tasks({ workspace = 'designer' }) {
         onClick={() => setMobileFiltersOpen((open) => !open)}
         className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
           mobileFiltersOpen || hasActiveFilters
-            ? 'border-blue-200 bg-blue-50 text-blue-700'
+            ? 'border-[#3A85FD]/30 bg-[#EEF5FF] text-[#225FAE]'
             : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
         }`}
       >
@@ -1233,24 +1318,72 @@ export default function Tasks({ workspace = 'designer' }) {
 
   return (
     <div className="space-y-4">
+      {!isSiteLP && (
+        <section className="relative overflow-hidden rounded-[30px] bg-[#17181C] px-5 py-6 text-white sm:px-7 sm:py-7">
+          <div className="pointer-events-none absolute -right-12 -top-16 h-56 w-56 rounded-full border-[34px] border-[#3A85FD]/90" />
+          <div className="pointer-events-none absolute -bottom-24 right-28 h-52 w-52 rounded-full border-[30px] border-[#C9FF20]/90" />
+          <div className="pointer-events-none absolute right-6 top-8 h-16 w-5 rotate-[32deg] rounded-full bg-[#EC0567]" />
+          <div className="relative grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
+            <div className="max-w-3xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/40">Designer / produção</p>
+              <h1 className="mt-3 max-w-2xl text-3xl font-black leading-[0.95] tracking-[-0.04em] sm:text-4xl lg:text-[46px]">{productionHeadline}</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">{productionSubline}</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 lg:w-[330px]">
+              {[
+                { label: 'Produção', value: productionOverview.producing, color: '#3A85FD' },
+                { label: 'Correções', value: productionOverview.corrections, color: '#EC0567' },
+                { label: 'Aprovação', value: productionOverview.approval, color: '#C9FF20', dark: true },
+              ].map((item) => (
+                <div key={item.label} className="rounded-[18px] border border-white/10 bg-white/[0.06] p-3 backdrop-blur-sm">
+                  <div className="mb-3 h-1.5 w-8 rounded-full" style={{ backgroundColor: item.color }} />
+                  <p className="text-2xl font-black leading-none">{item.value}</p>
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="relative mt-5 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
+            <span className="mr-1 text-[9px] font-black uppercase tracking-[0.2em] text-white/40">Olhar rápido</span>
+            {[
+              { key: 'all', label: 'Tudo', count: tasks.length },
+              { key: 'mine', label: 'Minha fila', count: productionOverview.mine },
+              { key: 'correction', label: 'Correções', count: productionOverview.corrections },
+              { key: 'approval', label: 'Na aprovação', count: productionOverview.approval },
+              { key: 'unassigned', label: 'Sem responsável', count: productionOverview.unassigned },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setProductionFocus(item.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${productionFocus === item.key ? 'border-white bg-white text-[#17181C]' : 'border-white/20 bg-white/[0.04] text-white/70 hover:bg-white/[0.09] hover:text-white'}`}
+              >
+                {item.label}<span className={productionFocus === item.key ? 'text-[#3A85FD]' : 'text-white/40'}>{item.count}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {taskCommandBar}
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
         {[
-          { label: 'Total geral', shortLabel: 'Total', value: taskOverview.total, icon: ListChecks, iconClass: 'text-blue-500' },
-          { label: 'Pendentes', shortLabel: 'Pend.', value: taskOverview.pending, icon: Clock3, iconClass: 'text-amber-500' },
-          { label: 'Em andamento', shortLabel: 'Andam.', value: taskOverview.inProgress, icon: Calendar, iconClass: 'text-cyan-500' },
-          { label: 'Atrasadas', shortLabel: 'Atras.', value: taskOverview.overdue, icon: AlertTriangle, iconClass: 'text-rose-500' },
-          { label: 'Concluídas', shortLabel: 'Concl.', value: taskOverview.done, icon: CheckCircle2, iconClass: 'text-emerald-500' },
-          { label: 'Postadas', shortLabel: 'Post.', value: taskOverview.posted, icon: Send, iconClass: 'text-indigo-500' },
+          { label: 'Backlog', shortLabel: 'Backlog', value: productionOverview.backlog, accent: '#17181C', soft: '#F5F3EE', icon: Inbox },
+          { label: 'A fazer', shortLabel: 'A fazer', value: productionOverview.todo, accent: '#17181C', soft: '#F5F3EE', icon: Clock3 },
+          { label: 'Em produção', shortLabel: 'Prod.', value: productionOverview.producing, accent: '#3A85FD', soft: '#EEF5FF', icon: Calendar },
+          { label: 'Correções', shortLabel: 'Corr.', value: productionOverview.corrections, accent: '#EC0567', soft: '#FFF0F6', icon: AlertTriangle },
+          { label: 'Em aprovação', shortLabel: 'Aprov.', value: productionOverview.approval, accent: '#17181C', soft: '#F1F1F2', icon: Eye },
+          { label: 'Prontas', shortLabel: 'Prontas', value: productionOverview.ready, accent: '#86B800', soft: '#F4FFD3', icon: CheckCircle2 },
         ].map((item) => (
-          <div key={item.label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 shadow-sm">
-            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 sm:text-[11px]">
-              <item.icon size={12} className={`${item.iconClass} shrink-0`} />
+          <div key={item.label} className="relative min-w-0 overflow-hidden rounded-[18px] border border-slate-200/80 bg-white px-3 py-3.5">
+            <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: item.accent }} />
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 sm:text-[11px]">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: item.soft, color: item.accent }}><item.icon size={12} /></span>
               <span className="sm:hidden">{item.shortLabel}</span>
               <span className="hidden truncate sm:inline">{item.label}</span>
             </div>
-            <p className="mt-0.5 text-lg font-bold leading-none text-slate-900 sm:text-xl">{item.value}</p>
+            <p className="mt-2 text-xl font-black leading-none text-[#17181C] sm:text-2xl">{item.value}</p>
           </div>
         ))}
       </div>
@@ -1277,7 +1410,7 @@ export default function Tasks({ workspace = 'designer' }) {
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Até</label>
             <input type="date" className="input-field py-2 text-xs" value={filters.due_to} onChange={(e) => setFilters((current) => ({ ...current, due_to: e.target.value }))} />
           </div>
-          {hasActiveFilters && <button type="button" onClick={() => setFilters({ status: '', assignee_id: '', due_from: '', due_to: '' })} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
+          {hasActiveFilters && <button type="button" onClick={() => { setFilters({ status: '', assignee_id: '', due_from: '', due_to: '' }); setProductionFocus('all'); }} className="mb-0.5 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={13} /> Limpar</button>}
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[11px] text-slate-400">{visibleFilteredTasks.length} demanda(s) exibida(s){showOverdueOnly ? ' · somente atrasadas' : ''}{hasActiveFilters ? ' · filtros ativos' : ''}{hidePosted && !showOverdueOnly ? ' · postadas ocultas' : ''}.</p>
@@ -1287,7 +1420,7 @@ export default function Tasks({ workspace = 'designer' }) {
               onClick={toggleOverdueVisibility}
               className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
                 showOverdueOnly
-                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  ? 'border-[#EC0567]/25 bg-[#FFF0F6] text-[#B30450] hover:bg-[#FFE3EF]'
                   : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
               }`}
               title={showOverdueOnly ? 'Voltar a visualizar todas as tarefas' : 'Mostrar somente tarefas com prazo vencido'}
@@ -1300,7 +1433,7 @@ export default function Tasks({ workspace = 'designer' }) {
               onClick={togglePostedVisibility}
               className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
                 hidePosted
-                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                  ? 'border-[#3A85FD]/25 bg-[#EEF5FF] text-[#225FAE] hover:bg-[#E2EFFF]'
                   : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
               }`}
               title={hidePosted ? 'Exibir novamente as tarefas postadas' : 'Ocultar tarefas postadas para reduzir a poluição visual'}
@@ -1340,11 +1473,12 @@ export default function Tasks({ workspace = 'designer' }) {
               onDragOver={(e) => { e.preventDefault(); setDragOverCol('backlog'); }}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, 'backlog')}
-              className={'w-[min(86vw,310px)] shrink-0 snap-start min-h-[420px] rounded-[24px] border border-dashed border-slate-300/80 bg-slate-100/40 p-3 transition ' + (dragOverCol === 'backlog' ? 'border-[#0969ff]/40 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
+              className={'relative w-[min(86vw,310px)] shrink-0 snap-start min-h-[420px] overflow-hidden rounded-[24px] border border-dashed border-[#17181C]/20 bg-[#F5F3EE]/70 p-3 transition ' + (dragOverCol === 'backlog' ? 'border-[#3A85FD]/50 bg-[#EEF5FF] ring-4 ring-[#3A85FD]/10' : '')}
             >
-              <div className="mb-3 flex items-center justify-between gap-2 px-1">
+              <div className="absolute inset-x-0 top-0 h-1 bg-[#17181C]" />
+              <div className="mb-3 mt-1 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2">
-                  <span className="badge bg-slate-200 text-slate-600"><Inbox size={11} className="mr-1 inline" />Backlog</span>
+                  <span className="badge bg-[#17181C] text-white"><Inbox size={11} className="mr-1 inline" />Backlog</span>
                   {canCreateTasks && (
                     <button type="button" onClick={() => { setFormBacklog(true); setDefaultTaskDate(''); setShowForm(true); }} className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-slate-700" title="Adicionar ao backlog"><Plus size={14} /></button>
                   )}
@@ -1367,18 +1501,19 @@ export default function Tasks({ workspace = 'designer' }) {
               onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.key); }}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, col.key)}
-              className={'w-[min(86vw,310px)] shrink-0 snap-start min-h-[420px] rounded-[24px] border border-slate-200/70 bg-slate-50/55 p-3 transition ' + (dragOverCol === col.key ? 'border-[#0969ff]/30 bg-[#eef5ff] ring-4 ring-[#0969ff]/8' : '')}
+              className={'relative w-[min(86vw,310px)] shrink-0 snap-start min-h-[420px] overflow-hidden rounded-[24px] border border-slate-200/70 bg-slate-50/45 p-3 transition ' + (dragOverCol === col.key ? 'border-[#3A85FD]/35 bg-[#EEF5FF] ring-4 ring-[#3A85FD]/10' : '')}
             >
-              <div className="mb-3 flex items-center justify-between gap-2 px-1">
+              <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: col.accent }} />
+              <div className="mb-3 mt-1 flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-2"><span className={'badge ' + col.badge}>{col.label}</span></div>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-slate-500 shadow-sm">{visibleFilteredTasks.filter((t) => workflowStage(t) === col.key).length}</span>
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-black shadow-sm" style={{ color: col.accent }}>{visibleFilteredTasks.filter((t) => workflowStage(t) === col.key).length}</span>
               </div>
               <div className="space-y-3 min-h-[60px]">
                 {visibleFilteredTasks.filter((t) => workflowStage(t) === col.key).map((t) => (
                   <TaskCard key={t.id} task={t} onClick={() => openTask(t.id)} onDragStart={canCreateTasks ? handleDragStart : null} onToggleFeatured={canCreateTasks ? (task) => toggleFeatured(task.id, Number(task.is_featured) !== 1) : null} />
                 ))}
                 {visibleFilteredTasks.filter((t) => workflowStage(t) === col.key).length === 0 && (
-                  <p className="text-xs text-slate-300 text-center py-6">Arraste um card aqui.</p>
+                  <p className="text-xs text-slate-300 text-center py-6">A fila está limpa por aqui.</p>
                 )}
               </div>
             </div>
@@ -1644,8 +1779,19 @@ export default function Tasks({ workspace = 'designer' }) {
         <ModalBackdrop onClose={() => setSelectedTask(null)}>
           <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-slate-800">{selectedTask.title}</h2>
+              <h2 className="font-bold text-[#17181C]">{selectedTask.title}</h2>
               <button onClick={() => setSelectedTask(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+            <div className="mb-4 grid grid-cols-[auto_1fr] gap-3 rounded-[18px] border border-slate-200 bg-[#F8F8F7] p-3.5">
+              <span className="mt-0.5 h-11 w-2 rounded-full" style={{ backgroundColor: productionStatusMeta(selectedTask).accent }} />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={'badge ' + productionStatusMeta(selectedTask).badge}>{productionStatusMeta(selectedTask).label}</span>
+                  {isTaskOverdue(selectedTask) && <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF0F6] px-2 py-1 text-[10px] font-bold text-[#EC0567]"><AlertTriangle size={10} /> Prazo vencido</span>}
+                </div>
+                <p className="mt-2 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Próximo movimento</p>
+                <p className="mt-0.5 text-sm font-bold text-[#17181C]">{productionNextMove(selectedTask)}</p>
+              </div>
             </div>
             {selectedTask.details_loading ? (
               <div className="space-y-3 mb-4">
@@ -1697,9 +1843,9 @@ export default function Tasks({ workspace = 'designer' }) {
             )}
 
             {taskNeedsCorrection(selectedTask) && (
-              <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
+              <div className="mb-3 rounded-xl border border-[#EC0567]/25 bg-[#FFF0F6] px-3 py-2.5 text-sm text-[#A70449]">
                 <p className="flex items-center gap-2 font-bold"><AlertTriangle size={15} /> Correção pendente</p>
-                {taskCorrectionFeedback(selectedTask) && <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-rose-700">{taskCorrectionFeedback(selectedTask)}</p>}
+                {taskCorrectionFeedback(selectedTask) && <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[#A70449]">{taskCorrectionFeedback(selectedTask)}</p>}
                 {Number(selectedTask.subtask_correction || 0) > 0 && (
                   <div className="mt-2 space-y-2">
                     <p className="text-xs font-semibold text-rose-700">{selectedTask.subtask_correction} subtarefa(s) precisam de ajuste:</p>
@@ -1750,15 +1896,19 @@ export default function Tasks({ workspace = 'designer' }) {
             {canCreateTasks && <>
             <label className="text-sm font-medium text-slate-700 block mb-2">Mover para</label>
             <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {STATUS_COLUMNS.map((col) => (
-                <button
-                  key={col.key}
-                  onClick={() => { updateStatus(selectedTask.id, col.key); setSelectedTask({ ...selectedTask, workflow_stage: col.key }); }}
-                  className={'rounded-lg border py-2 text-xs font-medium transition-colors ' + (workflowStage(selectedTask) === col.key ? 'bg-zebrazul-600 text-white border-zebrazul-600' : 'bg-white text-slate-600 border-slate-300')}
-                >
-                  {col.label}
-                </button>
-              ))}
+              {STATUS_COLUMNS.map((col) => {
+                const active = workflowStage(selectedTask) === col.key;
+                return (
+                  <button
+                    key={col.key}
+                    onClick={() => { updateStatus(selectedTask.id, col.key); setSelectedTask({ ...selectedTask, workflow_stage: col.key }); }}
+                    className={'rounded-lg border py-2 text-xs font-bold transition-colors ' + (active ? '' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400')}
+                    style={active ? { backgroundColor: col.accent, borderColor: col.accent, color: ['approved', 'scheduled'].includes(col.key) ? '#17181C' : '#ffffff' } : undefined}
+                  >
+                    {col.label}
+                  </button>
+                );
+              })}
             </div></>}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
@@ -1805,7 +1955,7 @@ export default function Tasks({ workspace = 'designer' }) {
               {!isSiteLP && canCreateTasks && selectedTask.task_type === 'post' && selectedTask.client_id && (
                 (selectedTask.has_attachment || selectedTask.has_gallery) ? (
                   workflowStage(selectedTask) === 'approval' ? (
-                    <Link to="/aprovacao" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-100">
+                    <Link to="/aprovacao" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-[#17181C] bg-[#17181C] px-3 py-2.5 text-sm font-semibold text-white hover:bg-black">
                       <Eye size={14} /> Ver na aprovação
                     </Link>
                   ) : (
@@ -1813,7 +1963,7 @@ export default function Tasks({ workspace = 'designer' }) {
                       type="button"
                       onClick={() => sendForApproval(selectedTask.id)}
                       disabled={sendingApprovalId === selectedTask.id}
-                      className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
+                      className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#17181C] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
                     >
                       <Send size={14} /> {sendingApprovalId === selectedTask.id ? 'Enviando...' : 'Enviar para aprovação'}
                     </button>
