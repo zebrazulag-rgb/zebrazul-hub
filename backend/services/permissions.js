@@ -219,6 +219,7 @@ function apiPermissionForRequest(req) {
   if (path === '/my-work' || path.startsWith('/my-work/')) return 'dashboard.view';
   if (path === '/smart-alerts' || path.startsWith('/smart-alerts/')) return 'dashboard.view';
   if (path === '/operational-calendar' || path.startsWith('/operational-calendar/')) return 'dashboard.view';
+  if (path === '/operational-intelligence' || path.startsWith('/operational-intelligence/')) return 'dashboard.view';
   if (path.startsWith('/moodboards')) return method === 'GET' ? 'tasks.view' : 'tasks.create';
   if (path.startsWith('/competitors')) return 'compass.view';
   if (path === '/tasks/schedule-queue' || path === '/tasks/posted-report' || path === '/tasks/posted-report/link' || /^\/tasks\/\d+\/schedule-status$/.test(path) || /^\/tasks\/\d+\/date$/.test(path) || /^\/tasks\/\d+\/platforms$/.test(path) || /^\/tasks\/posts\/\d+\/date$/.test(path)) {
