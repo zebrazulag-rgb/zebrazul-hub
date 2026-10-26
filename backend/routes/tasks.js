@@ -569,6 +569,19 @@ router.post('/:id/schedule-status', (req, res) => {
         updated_at = datetime('now')
     WHERE id = ? AND agency_id = ?
   `).run(stage, legacyStatusForWorkflow(stage), stage, stage, Number(req.user.id), Number(task.id), Number(req.user.agency_id));
+
+  // Mantém a peça do Social Media e a demanda do Designer no mesmo estágio.
+  // Sem isso, um post já agendado/postado podia continuar com o registro ligado
+  // em uma etapa anterior e, ao reabrir a demanda, parecer pronto para nova aprovação.
+  if (task.feed_post_id) {
+    const postStatus = stage === 'posted' ? 'published' : stage;
+    db.prepare(`
+      UPDATE posts
+      SET workflow_stage = ?, status = ?, feed_visible = 1, updated_at = datetime('now')
+      WHERE id = ? AND agency_id = ?
+    `).run(stage, postStatus, Number(task.feed_post_id), Number(req.user.agency_id));
+  }
+
   const updated = db.prepare('SELECT id, workflow_stage, status, posted_at, scheduled_platforms FROM tasks WHERE id = ?').get(task.id);
   return res.json({ ok: true, task: { ...updated, platforms: parsePlatforms(updated.scheduled_platforms) } });
 });

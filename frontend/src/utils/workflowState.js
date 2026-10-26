@@ -87,6 +87,21 @@ export function effectiveWorkflowStage(item) {
   return state.stage;
 }
 
+
+export function workflowStagePresentation(item) {
+  const stage = effectiveWorkflowStage(item);
+  const meta = {
+    todo: { stage, label: 'A fazer', tone: 'ink' },
+    in_progress: { stage, label: 'Em produção', tone: 'blue' },
+    correction: { stage, label: 'Correção', tone: 'pink' },
+    approval: { stage, label: 'Na aprovação', tone: 'ink' },
+    approved: { stage, label: 'Aprovada', tone: 'lime' },
+    scheduled: { stage, label: 'Agendada', tone: 'lime' },
+    posted: { stage, label: 'Postada', tone: 'blue' },
+  };
+  return meta[stage] || meta.todo;
+}
+
 export function directionIsApproved(item) {
   return inferApprovalState(item).directionStatus === 'approved';
 }

@@ -1903,6 +1903,91 @@ db.exec(`
     ON user_presence(agency_id, last_seen DESC);
 `);
 
+// V16 — automações operacionais. As regras são configuradas por agência e
+// executadas em segundo plano no backend. `automation_deliveries` funciona como
+// trilha de auditoria + proteção contra notificações repetidas em excesso.
+// A tabela `notifications` também é garantida aqui porque versões anteriores já
+// escreviam nela ao receber solicitações públicas, mas instalações antigas podem
+// ainda não tê-la no schema persistente.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT 'info',
+    title TEXT NOT NULL,
+    message TEXT,
+    entity_type TEXT,
+    entity_id INTEGER,
+    link TEXT,
+    read_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS automation_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    rule_key TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    cooldown_hours INTEGER NOT NULL DEFAULT 24,
+    updated_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(agency_id, rule_key),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS automation_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER NOT NULL,
+    rule_key TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    client_id INTEGER,
+    entity_type TEXT,
+    entity_id INTEGER,
+    notification_id INTEGER,
+    title TEXT NOT NULL,
+    message TEXT,
+    link TEXT,
+    sent_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+    FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS automation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER,
+    trigger_type TEXT NOT NULL DEFAULT 'scheduled',
+    status TEXT NOT NULL DEFAULT 'running',
+    actor_user_id INTEGER,
+    candidates INTEGER NOT NULL DEFAULT 0,
+    notifications_created INTEGER NOT NULL DEFAULT 0,
+    scanned_rules INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT DEFAULT (datetime('now')),
+    finished_at TEXT,
+    details_json TEXT,
+    error_message TEXT,
+    FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+    FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
+    ON notifications(agency_id, user_id, read_at, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_automation_rules_agency
+    ON automation_rules(agency_id, enabled, rule_key);
+  CREATE INDEX IF NOT EXISTS idx_automation_deliveries_dedupe
+    ON automation_deliveries(agency_id, rule_key, user_id, entity_type, entity_id, sent_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_automation_deliveries_recent
+    ON automation_deliveries(agency_id, sent_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_automation_runs_recent
+    ON automation_runs(agency_id, started_at DESC);
+`);
+
 // Posts antigos devem continuar visíveis na grade após a criação da coluna.
 if (tableHasColumn('posts', 'feed_visible')) {
   db.exec('UPDATE posts SET feed_visible = 1 WHERE feed_visible IS NULL');
@@ -2095,7 +2180,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '33', datetime('now'))
+   VALUES ('schema_version', '34', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Bell, BellRing, CheckCheck, ChevronRight, Inbox, Megaphone, X } from 'lucide-react';
+import { AlertTriangle, Bell, BellRing, CheckCheck, ChevronRight, Inbox, Megaphone, X, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -29,8 +29,8 @@ function relativeTime(value) {
 }
 
 function NotificationIcon({ type, unread }) {
-  const Icon = type === 'task_request' ? Megaphone : Bell;
-  return <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${unread ? 'bg-[#17181C] text-[#C9FF2F]' : 'bg-slate-100 text-slate-400'}`}><Icon size={16} /></span>;
+  const Icon = type === 'task_request' ? Megaphone : type === 'automation' ? Zap : Bell;
+  return <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${unread ? (type === 'automation' ? 'bg-[#C9FF2F] text-[#17181C]' : 'bg-[#17181C] text-[#C9FF2F]') : 'bg-slate-100 text-slate-400'}`}><Icon size={16} /></span>;
 }
 
 export default function NotificationBell() {

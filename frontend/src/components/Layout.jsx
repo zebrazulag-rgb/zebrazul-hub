@@ -32,9 +32,9 @@ import {
   Clapperboard,
   Code2,
   CalendarDays,
-  Sparkles,
   BellRing,
   Gauge,
+  Zap,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -431,6 +431,7 @@ export default function Layout({ children }) {
     { to: '/alertas', label: 'Alertas', icon: BellRing, permission: 'dashboard.view' },
     { to: '/calendario', label: 'Calendário', icon: CalendarDays, permission: 'dashboard.view' },
     { to: '/inteligencia', label: 'Inteligência', icon: Gauge, permission: 'dashboard.view' },
+    { to: '/automacoes', label: 'Automações', icon: Zap, permission: 'dashboard.view', managementOnly: true },
     { to: '/organizacao', label: 'Meu Espaço', icon: CalendarDays, permission: 'organizer.view' },
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view', group: 'squad' },
     { to: '/designer', label: 'Designer', icon: Palette, permission: 'tasks.view', group: 'squad' },
@@ -441,7 +442,6 @@ export default function Layout({ children }) {
     { to: '/leitor', label: 'Zebra Leitor', mobileLabel: 'Leitor', icon: Headphones },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
-    { to: '/ia', label: 'IA', icon: Sparkles, permission: 'social.view' },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
@@ -454,14 +454,12 @@ export default function Layout({ children }) {
     ? clientPortalItems.filter((item) => !item.permission || hasPermission(user, item.permission))
     : workspaceItems.filter((item) => {
         if (item.beeOnly && !beeWorkspaceActive) return false;
+        if (item.managementOnly && !(user?.role === 'admin' || Number(user?.is_operations_head) === 1)) return false;
         if (item.to === '/bussola') {
           if (!anyPermission(user, ['compass.view', 'materials.view'])) return false;
         } else if (item.permission && !hasPermission(user, item.permission)) return false;
         if (item.to === '/social-media') {
-          return hasPermission(user, 'social.messages');
-        }
-        if (item.to === '/ia') {
-          return anyPermission(user, ['social.covers', 'social.stories']);
+          return anyPermission(user, ['social.messages', 'social.covers', 'social.stories']);
         }
         return true;
       });
@@ -480,7 +478,7 @@ export default function Layout({ children }) {
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/minha-fila','/alertas','/calendario','/inteligencia','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/minha-fila','/alertas','/calendario','/inteligencia','/automacoes','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/relatorios','/rematriculas'].includes(item.to));
   const mobileNavColumns = Math.max(1, mobilePrimaryItems.length + (mobileMoreItems.length > 0 ? 1 : 0));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#3A85FD';
@@ -499,6 +497,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/alertas')) return 'Alertas';
     if (path.startsWith('/calendario')) return 'Calendário';
     if (path.startsWith('/inteligencia')) return 'Inteligência';
+    if (path.startsWith('/automacoes')) return 'Automações';
     if (path.startsWith('/audiovisual')) return 'Audiovisual';
     if (path.startsWith('/produto')) return 'Produto';
     if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
@@ -510,8 +509,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/conversas')) return 'Conversas';
     if (path.startsWith('/relatorios')) return 'Relatórios';
     if (path.startsWith('/organizacao')) return 'Meu Espaço';
-    if (path.startsWith('/ia')) return 'IA';
-    if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
+    if (path.startsWith('/ia') || path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
     if (path.startsWith('/bussola')) return 'Bússola';
     if (path.startsWith('/rematriculas')) return 'Rematrículas';
@@ -857,7 +855,7 @@ export default function Layout({ children }) {
               {!sidebarCollapsed && (
                 <div className="min-w-0 flex-1 text-left">
                   <p className="truncate text-sm font-semibold text-white">{user?.name}</p>
-                  <p className="truncate text-[11px] text-white/40">{user?.permission_role_name || roleLabel(user?.role, agency?.name, user?.is_operations_head, user?.is_commercial_team, user?.is_platform_owner)}</p>
+                  <p className="truncate text-[11px] text-white/40">{user?.permission_role_name || roleLabel(user?.role, agency?.name, Number(user?.is_operations_head) === 1, user?.is_commercial_team, user?.is_platform_owner)}</p>
                 </div>
               )}
             </button>
@@ -1054,7 +1052,7 @@ export default function Layout({ children }) {
           {mobileMoreItems.length > 0 && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
-            className={`brand-mobile-nav-item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition ${mobileMoreOpen || ['/minha-fila','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'is-active' : ''}`}
+            className={`brand-mobile-nav-item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition ${mobileMoreOpen || ['/minha-fila','/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'is-active' : ''}`}
           >
             <span className="brand-mobile-nav-icon flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
             <span>Mais</span>
@@ -1219,6 +1217,7 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/minha-fila')) return 'Minha fila';
   if (path.startsWith('/alertas')) return 'Alertas';
   if (path.startsWith('/inteligencia')) return 'Inteligência';
+  if (path.startsWith('/automacoes')) return 'Automações';
   if (path.startsWith('/audiovisual')) return 'Audiovisual';
   if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
   if (path.startsWith('/site-lp')) return 'Site/LP';
@@ -1227,8 +1226,7 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/leitor')) return 'Zebra Leitor';
   if (path.startsWith('/moodboard')) return 'Moodboard';
   if (path.startsWith('/bussola')) return 'Bússola';
-  if (path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
-  if (path.startsWith('/ia')) return 'IA';
+  if (path.startsWith('/ia') || path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
   if (path.startsWith('/relatorios')) return 'Relatórios';
   if (path.startsWith('/comercial')) return 'Comercial';
   if (path.startsWith('/organizacao')) return 'Meu Espaço';

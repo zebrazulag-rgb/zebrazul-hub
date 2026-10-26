@@ -78,14 +78,22 @@ test('sem filtro de cliente, admin vê todos os clientes', async () => {
   assert.ok(body.items.some((i) => i.id === outro));
 });
 
-test('marcar como postado e desfazer', async () => {
+test('marcar como postado e desfazer mantém demanda e post ligado no mesmo estágio', async () => {
+  const linkedPost = Number(db.prepare("INSERT INTO posts (agency_id, client_id, created_by, title, status, workflow_stage) VALUES (?, ?, ?, 'Ligado à demanda', 'approved', 'approved')").run(agencyId, cA, uid).lastInsertRowid);
+  db.prepare('UPDATE tasks SET feed_post_id = ? WHERE id = ?').run(linkedPost, ok);
+
   let r = await call('POST', `/${ok}/schedule-status`, { stage: 'posted' });
   assert.equal(r.status, 200);
   let row = db.prepare('SELECT status, workflow_stage, posted_at, posted_by FROM tasks WHERE id = ?').get(ok);
   assert.equal(row.status, 'posted'); assert.equal(row.workflow_stage, 'posted'); assert.ok(row.posted_at); assert.equal(row.posted_by, 1);
+  let post = db.prepare('SELECT status, workflow_stage FROM posts WHERE id = ?').get(linkedPost);
+  assert.equal(post.status, 'published'); assert.equal(post.workflow_stage, 'posted');
+
   r = await call('POST', `/${ok}/schedule-status`, { stage: 'approved' });
   row = db.prepare('SELECT status, workflow_stage, posted_at FROM tasks WHERE id = ?').get(ok);
   assert.equal(row.workflow_stage, 'approved'); assert.equal(row.status, 'done'); assert.equal(row.posted_at, null);
+  post = db.prepare('SELECT status, workflow_stage FROM posts WHERE id = ?').get(linkedPost);
+  assert.equal(post.status, 'approved'); assert.equal(post.workflow_stage, 'approved');
 });
 
 test('peça agendada/postada não volta para a área de aprovação (approval-grid)', async () => {

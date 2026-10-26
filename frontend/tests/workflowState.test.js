@@ -11,6 +11,7 @@ import {
   normalizeWorkflowStage,
   serverWorkflowStage,
   taskNeedsCorrection,
+  workflowStagePresentation,
 } from '../src/utils/workflowState.js';
 
 test('normaliza aliases de aprovação e status legado', () => {
@@ -52,4 +53,11 @@ test('correção sempre tem precedência operacional', () => {
 
 test('subtarefa em correção sinaliza a tarefa mãe', () => {
   assert.equal(taskNeedsCorrection({ workflow_stage: 'approved', subtask_correction: 2 }), true);
+});
+
+
+test('estado final da peça permanece final na apresentação do Designer', () => {
+  assert.deepEqual(workflowStagePresentation({ workflow_stage: 'approved', approval_status: 'approved', client_status: 'approved' }), { stage: 'approved', label: 'Aprovada', tone: 'lime' });
+  assert.deepEqual(workflowStagePresentation({ workflow_stage: 'scheduled', approval_status: 'approved', client_status: 'approved' }), { stage: 'scheduled', label: 'Agendada', tone: 'lime' });
+  assert.deepEqual(workflowStagePresentation({ workflow_stage: 'posted', approval_status: 'approved', client_status: 'approved' }), { stage: 'posted', label: 'Postada', tone: 'blue' });
 });

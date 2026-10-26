@@ -11,6 +11,7 @@ import DesignerApproval from './pages/DesignerApproval.jsx';
 import Scheduling from './pages/Scheduling.jsx';
 import UnifiedCalendar from './pages/UnifiedCalendar.jsx';
 import OperationalIntelligence from './pages/OperationalIntelligence.jsx';
+import Automations from './pages/Automations.jsx';
 import Moodboard from './pages/Moodboard.jsx';
 import SiteLP from './pages/SiteLP.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
@@ -38,8 +39,6 @@ import Materials from './pages/Materials.jsx';
 import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
 import SocialMedia from './pages/SocialMedia.jsx';
-import InstagramMessages from './pages/InstagramMessages.jsx';
-import AIPage from './pages/AI.jsx';
 import Reports from './pages/Reports.jsx';
 import Organizer from './pages/Organizer.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
@@ -80,13 +79,25 @@ function DesignerLegacyRedirect() {
   return <Navigate to={`/designer${location.search || ''}`} replace />;
 }
 
+function LegacyAIRedirect() {
+  const { user } = useAuth();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search || '');
+  const requested = params.get('view');
+  if (requested === 'stories' && hasPermission(user, 'social.stories')) return <Navigate to="/social-media/stories" replace />;
+  if (hasPermission(user, 'social.covers')) return <Navigate to="/social-media/capas" replace />;
+  if (hasPermission(user, 'social.messages')) return <Navigate to="/social-media/mensagens" replace />;
+  if (hasPermission(user, 'social.stories')) return <Navigate to="/social-media/stories" replace />;
+  return <Navigate to={fallbackRoute(user)} replace />;
+}
+
 function fallbackRoute(user) {
   if (user?.role === 'client') return '/cliente/inicio';
   if (hasPermission(user, 'dashboard.view')) return '/';
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
   if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/designer';
   if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
-  if (hasPermission(user, 'social.covers')) return '/ia?view=covers';
+  if (hasPermission(user, 'social.covers')) return '/social-media/capas';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
   if (hasPermission(user, 'social.reports')) return '/relatorios';
   if (hasPermission(user, 'commercial.view')) return '/comercial';
@@ -94,7 +105,7 @@ function fallbackRoute(user) {
   return '/configuracoes/aparencia';
 }
 
-function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false, permission }) {
+function ProtectedRoute({ children, roles, platformOnly = false, operationsOnly = false, commercialTeamAllowed = false, commercialAccess = false, permission }) {
   const { user, checkingSession } = useAuth();
   if (checkingSession) return <SessionLoader />;
   if (!user) return <Navigate to="/login" replace />;
@@ -103,6 +114,7 @@ function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamA
   if (user.is_commercial_team && !commercialTeamAllowed && !permission) return <Navigate to={fallbackRoute(user)} replace />;
   if (commercialAccess && !(user.role === 'admin' || user.role === 'client' || user.is_commercial_team) && !hasPermission(user, 'commercial.view')) return <Navigate to={fallbackRoute(user)} replace />;
   if (platformOnly && !user.is_platform_owner) return <Navigate to={fallbackRoute(user)} replace />;
+  if (operationsOnly && !(user.role === 'admin' || Number(user.is_operations_head) === 1)) return <Navigate to={fallbackRoute(user)} replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -154,13 +166,15 @@ export default function App() {
       <Route path="/aprovacao/videos/:id" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/calendario" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view"><UnifiedCalendar /></ProtectedRoute>} />
       <Route path="/inteligencia" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view"><OperationalIntelligence /></ProtectedRoute>} />
-      <Route path="/social-media" element={<Navigate to="/social-media/mensagens" replace />} />
+      <Route path="/automacoes" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view" operationsOnly><Automations /></ProtectedRoute>} />
+      <Route path="/social-media" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><SocialMedia /></ProtectedRoute>} />
       <Route path="/social-media/feed" element={<Navigate to="/aprovacao" replace />} />
-      <Route path="/social-media/mensagens" element={<ProtectedRoute roles={["admin","team"]} permission="social.messages"><InstagramMessages /></ProtectedRoute>} />
-      <Route path="/social-media/stories" element={<Navigate to="/ia?view=stories" replace />} />
+      <Route path="/social-media/mensagens" element={<ProtectedRoute roles={["admin","team"]} permission="social.messages"><SocialMedia section="messages" /></ProtectedRoute>} />
+      <Route path="/social-media/capas" element={<ProtectedRoute roles={["admin","team"]} permission="social.covers"><SocialMedia section="covers" /></ProtectedRoute>} />
+      <Route path="/social-media/stories" element={<ProtectedRoute roles={["admin","team"]} permission="social.stories"><SocialMedia section="stories" /></ProtectedRoute>} />
       <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
       <Route path="/feed" element={<Navigate to="/aprovacao" replace />} />
-      <Route path="/stories" element={<Navigate to="/ia?view=stories" replace />} />
+      <Route path="/stories" element={<Navigate to="/social-media/stories" replace />} />
       <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks workspace="designer" /></ProtectedRoute>} />
       <Route path="/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Moodboard /></ProtectedRoute>} />
       <Route path="/designer/moodboard" element={<Navigate to="/moodboard" replace />} />
@@ -171,7 +185,7 @@ export default function App() {
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
       <Route path="/concorrentes" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
-      <Route path="/ia" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><AIPage /></ProtectedRoute>} />
+      <Route path="/ia" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><LegacyAIRedirect /></ProtectedRoute>} />
       <Route path="/bussola/concorrencia" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
       <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/diagnostico" element={<Navigate to="/bussola" replace />} />

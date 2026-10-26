@@ -11,7 +11,7 @@ import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { hasPermission } from '../permissions.js';
-import { effectiveWorkflowStage as workflowStage, serverWorkflowStage, taskNeedsCorrection, correctionFeedbackFor as taskCorrectionFeedback } from '../utils/workflowState.js';
+import { effectiveWorkflowStage as workflowStage, serverWorkflowStage, taskNeedsCorrection, correctionFeedbackFor as taskCorrectionFeedback, workflowStagePresentation } from '../utils/workflowState.js';
 import { cleanBriefingData, demandTypeById } from '../utils/demandBriefing.js';
 
 const STATUS_COLUMNS = [
@@ -25,6 +25,23 @@ const STATUS_COLUMNS = [
 ];
 
 const STATUS_META = Object.fromEntries(STATUS_COLUMNS.map((item) => [item.key, item]));
+
+
+function workflowChipClasses(item) {
+  const tone = workflowStagePresentation(item).tone;
+  if (tone === 'pink') return 'border-[#EC0567]/25 bg-[#FFF0F6] text-[#A70449]';
+  if (tone === 'lime') return 'border-[#C9FF2F]/60 bg-[#F4FFD3] text-[#4D6800]';
+  if (tone === 'blue') return 'border-[#3A85FD]/25 bg-[#EEF5FF] text-[#225FAE]';
+  return 'border-[#17181C]/15 bg-[#F5F3EE] text-[#17181C]';
+}
+
+function finalWorkflowMessage(item) {
+  const { stage, label } = workflowStagePresentation(item);
+  if (stage === 'approved') return { label, detail: 'Liberada para agendamento.', icon: CheckCircle2 };
+  if (stage === 'scheduled') return { label, detail: 'Já está na fila de publicação.', icon: Calendar };
+  if (stage === 'posted') return { label, detail: 'Fluxo concluído.', icon: CheckCircle2 };
+  return null;
+}
 
 function productionNextMove(task) {
   const stage = workflowStage(task);
@@ -2007,14 +2024,26 @@ export default function Tasks({ workspace = 'designer' }) {
                     <Link to="/aprovacao" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-[#17181C] bg-[#17181C] px-3 py-2.5 text-sm font-semibold text-white hover:bg-black">
                       <Eye size={14} /> Ver na aprovação
                     </Link>
-                  ) : (
+                  ) : finalWorkflowMessage(selectedTask) ? (() => {
+                    const finalState = finalWorkflowMessage(selectedTask);
+                    const FinalIcon = finalState.icon;
+                    return (
+                      <Link
+                        to={workflowStage(selectedTask) === 'approved' || workflowStage(selectedTask) === 'scheduled' ? '/agendamento' : '/designer'}
+                        className={`col-span-2 flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left ${workflowChipClasses(selectedTask)}`}
+                      >
+                        <span className="inline-flex items-center gap-2 text-sm font-black"><FinalIcon size={15} /> {finalState.label}</span>
+                        <span className="text-[11px] font-semibold opacity-70">{finalState.detail}</span>
+                      </Link>
+                    );
+                  })() : (
                     <button
                       type="button"
                       onClick={() => sendForApproval(selectedTask.id)}
                       disabled={sendingApprovalId === selectedTask.id}
                       className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#17181C] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
                     >
-                      <Send size={14} /> {sendingApprovalId === selectedTask.id ? 'Enviando...' : 'Enviar para aprovação'}
+                      <Send size={14} /> {sendingApprovalId === selectedTask.id ? 'Enviando...' : (workflowStage(selectedTask) === 'correction' ? 'Reenviar para aprovação' : 'Enviar para aprovação')}
                     </button>
                   )
                 ) : (
@@ -2056,7 +2085,10 @@ export default function Tasks({ workspace = 'designer' }) {
                     </button>
                     <div className="min-w-0 flex-1">
                       <p className={'text-sm truncate ' + (Number(s.designer_completed || 0) === 1 ? 'text-slate-400 line-through' : 'text-slate-700')}>{s.title}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-black ${workflowChipClasses(s)}`}>
+                          {workflowStagePresentation(s).label}
+                        </span>
                         {s.assignees && s.assignees.length > 0 && <span className="text-[11px] text-slate-400">{s.assignees.map((a) => a.name).join(', ')}</span>}
                         {(s.due_date || s.deadline_label) && <span className="text-[11px] text-slate-400">· {s.due_date ? formatTaskDate(s.due_date) : s.deadline_label}</span>}
                       </div>
@@ -2086,17 +2118,28 @@ export default function Tasks({ workspace = 'designer' }) {
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                           {(s.has_attachment || s.has_gallery) ? (
                             workflowStage(s) === 'approval' ? (
-                              <Link to="/aprovacao" className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:underline">
+                              <Link to="/aprovacao" className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#17181C] hover:underline">
                                 <Eye size={11} /> Na aprovação
                               </Link>
-                            ) : (
+                            ) : finalWorkflowMessage(s) ? (() => {
+                              const finalState = finalWorkflowMessage(s);
+                              const FinalIcon = finalState.icon;
+                              return (
+                                <Link
+                                  to={workflowStage(s) === 'approved' || workflowStage(s) === 'scheduled' ? '/agendamento' : '/designer'}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-black ${workflowChipClasses(s)}`}
+                                >
+                                  <FinalIcon size={11} /> {finalState.label}
+                                </Link>
+                              );
+                            })() : (
                               <button
                                 type="button"
                                 onClick={() => sendForApproval(s.id, 'subtask')}
                                 disabled={sendingApprovalId === s.id}
-                                className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+                                className="inline-flex items-center gap-1 rounded-lg bg-[#17181C] px-2 py-1 text-[11px] font-semibold text-white hover:bg-black disabled:opacity-50"
                               >
-                                <Send size={11} /> {sendingApprovalId === s.id ? 'Enviando...' : 'Enviar para aprovação'}
+                                <Send size={11} /> {sendingApprovalId === s.id ? 'Enviando...' : (workflowStage(s) === 'correction' ? 'Reenviar para aprovação' : 'Enviar para aprovação')}
                               </button>
                             )
                           ) : (

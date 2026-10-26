@@ -14,6 +14,7 @@ const myWorkRoutes = require('./routes/myWork');
 const smartAlertsRoutes = require('./routes/smartAlerts');
 const operationalCalendarRoutes = require('./routes/operationalCalendar');
 const operationalIntelligenceRoutes = require('./routes/operationalIntelligence');
+const automationRoutes = require('./routes/automations');
 const clientHealthRoutes = require('./routes/clientHealth');
 const taskRequestLinkRoutes = require('./routes/taskRequestLinks');
 const publicTaskRequestRoutes = require('./routes/publicTaskRequests');
@@ -68,6 +69,7 @@ const db = require('./db/database');
 const { createBackup } = require('./db/backup');
 const { getHealthStatus } = require('./db/health');
 const { syncAllConnectedAccounts, currentMonthRange } = require('./services/metaSync');
+const { runAutomationSweep } = require('./services/automationEngine');
 const { syncAllOrganicAccounts, currentMonthRange: currentOrganicMonthRange } = require('./services/metaOrganicSync');
 const { authRequired } = require('./middleware/auth');
 const { apiPermissionForRequest, hasPermission } = require('./services/permissions');
@@ -179,6 +181,7 @@ app.use('/api/my-work', myWorkRoutes);
 app.use('/api/smart-alerts', smartAlertsRoutes);
 app.use('/api/operational-calendar', operationalCalendarRoutes);
 app.use('/api/operational-intelligence', operationalIntelligenceRoutes);
+app.use('/api/automations', automationRoutes);
 app.use('/api/client-health', clientHealthRoutes);
 app.use('/api/task-request-links', taskRequestLinkRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -332,6 +335,29 @@ app.listen(PORT, async () => {
   }, 60 * 1000);
   instagramPublishInterval.unref();
   console.log('[INSTAGRAM PUBLISH] Agendamento ativo: verificação a cada 1 minuto.');
+
+  // V16 — piloto automático operacional. As regras geram somente notificações internas
+  // e usam cooldown por entidade para não repetir cobrança a cada varredura.
+  if (String(process.env.AUTOMATIONS_RUN_ON_START || 'true').toLowerCase() === 'true') {
+    try {
+      const automationStartup = await runAutomationSweep(db, { triggerType: 'startup' });
+      console.log(`[AUTOMAÇÕES] Startup processado em ${automationStartup.agencies || 0} agência(s).`);
+    } catch (error) {
+      console.error('[AUTOMAÇÕES] Falha no startup:', error.message);
+    }
+  }
+
+  const automationIntervalMinutes = Number(process.env.AUTOMATIONS_INTERVAL_MINUTES || 15);
+  if (Number.isFinite(automationIntervalMinutes) && automationIntervalMinutes > 0) {
+    console.log(`[AUTOMAÇÕES] Piloto automático ativo: verificação a cada ${automationIntervalMinutes} minuto(s).`);
+    const automationInterval = setInterval(async () => {
+      try { await runAutomationSweep(db, { triggerType: 'scheduled' }); }
+      catch (error) { console.error('[AUTOMAÇÕES] Falha na varredura:', error.message); }
+    }, automationIntervalMinutes * 60 * 1000);
+    automationInterval.unref();
+  } else {
+    console.warn('[AUTOMAÇÕES] Piloto automático desativado por configuração.');
+  }
 
   if (String(process.env.META_ORGANIC_AUTO_SYNC_ON_START || process.env.META_AUTO_SYNC_ON_START || 'false').toLowerCase() === 'true') {
     await runAutomaticOrganicSync('startup');
