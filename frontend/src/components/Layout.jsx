@@ -44,6 +44,8 @@ import { formChanged } from '../utils/formState.js';
 import zebraHubLogo from '../assets/zebrazul-mark-light.png';
 import { isBeeClient } from '../utils/beeClientAccess.js';
 import NotificationBell from './NotificationBell.jsx';
+import QuickSwitcher from './QuickSwitcher.jsx';
+import PwaInstallPrompt from './PwaInstallPrompt.jsx';
 import ClientHealthModal, { HEALTH_LEVELS } from './ClientHealthModal.jsx';
 import { anyPermission, hasPermission } from '../permissions.js';
 import { getTenantSlug } from '../tenant';
@@ -72,6 +74,7 @@ export default function Layout({ children }) {
   const [profileError, setProfileError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
   const [squadMenuOpen, setSquadMenuOpen] = useState(false);
   const [squadMenuTop, setSquadMenuTop] = useState(0);
   const squadCloseTimerRef = useRef(null);
@@ -127,9 +130,15 @@ export default function Layout({ children }) {
     }
 
     function handleKeyDown(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase('pt-BR') === 'k') {
+        event.preventDefault();
+        setQuickSearchOpen(true);
+        return;
+      }
       if (event.key === 'Escape') {
         setClientPickerOpen(false);
         setPresenceOpen(false);
+        setQuickSearchOpen(false);
       }
     }
 
@@ -1004,6 +1013,18 @@ export default function Layout({ children }) {
               </div>
             )}
 
+            <button
+              type="button"
+              onClick={() => setQuickSearchOpen(true)}
+              className="brand-quick-search-trigger flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 sm:px-3"
+              aria-label="Abrir busca rápida"
+              title="Busca rápida (Ctrl/⌘ + K)"
+            >
+              <Search size={17} />
+              <span className="hidden text-xs font-bold xl:inline">Buscar</span>
+              <span className="hidden rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-black text-slate-400 xl:inline">⌘K</span>
+            </button>
+
             <NotificationBell />
           </div>
         </div>
@@ -1047,6 +1068,19 @@ export default function Layout({ children }) {
           </div>
         </div>
       )}
+
+      <QuickSwitcher
+        open={quickSearchOpen}
+        onClose={() => setQuickSearchOpen(false)}
+        items={visibleWorkspaceItems}
+        clients={isClientPortal ? [] : clients}
+        selectedClient={selectedClient}
+        onChooseClient={chooseClient}
+        canSeeSettings={canSeeSettings}
+        agencyPrimary={agencyPrimary}
+      />
+
+      {!isNativeApp && <PwaInstallPrompt />}
 
       {healthModalClient && (
         <ClientHealthModal

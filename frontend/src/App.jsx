@@ -50,7 +50,24 @@ import PublicTaskRequest from './pages/PublicTaskRequest.jsx';
 import PublicTaskCalendar from './pages/PublicTaskCalendar.jsx';
 import ClientDemand from './pages/ClientDemand.jsx';
 import { hasPermission } from './permissions.js';
+import zebraMark from './assets/zebrazul-mark-dark.png';
 
+
+
+function SessionLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[var(--zh-bg)] px-6 text-[#17181C]">
+      <div className="text-center">
+        <div className="relative mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[22px] bg-white shadow-[0_18px_50px_rgba(23,24,28,0.10)]">
+          <img src={zebraMark} alt="" className="h-12 w-12 object-contain" />
+          <span className="absolute -bottom-1 -right-1 h-4 w-4 animate-pulse rounded-full bg-[#C9FF2F] ring-4 ring-[#F5F3EE]" />
+        </div>
+        <p className="text-sm font-black uppercase tracking-[-0.02em]">ARRUMANDO A CASA.</p>
+        <p className="mt-1 text-xs text-slate-500">Carregando o ZebraHub...</p>
+      </div>
+    </div>
+  );
+}
 
 function DesignerLegacyRedirect() {
   const location = useLocation();
@@ -74,7 +91,7 @@ function fallbackRoute(user) {
 
 function ProtectedRoute({ children, roles, platformOnly = false, commercialTeamAllowed = false, commercialAccess = false, permission }) {
   const { user, checkingSession } = useAuth();
-  if (checkingSession) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Carregando Zebrahub...</div>;
+  if (checkingSession) return <SessionLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (permission && !hasPermission(user, permission)) return <Navigate to={fallbackRoute(user)} replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to={fallbackRoute(user)} replace />;
