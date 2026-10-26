@@ -456,3 +456,316 @@ body.zl-reader-open .mobile-bottom-nav { display: none !important; }
   .brand-dashboard-hero { border-radius: 18px; padding: 24px 20px 28px; }
   .brand-hero-scribble { width: 170px; height: 170px; right: -90px; bottom: -90px; border-width: 20px; opacity: .6; }
 }
+
+/* =========================================================
+   ZEBRAZUL REBRAND V7 — mobile, microinterações e consistência
+   ========================================================= */
+:root {
+  --zebra-motion-fast: 140ms;
+  --zebra-motion-base: 220ms;
+  --zebra-focus: color-mix(in srgb, var(--zebra-blue) 34%, transparent);
+}
+
+.brand-app-shell {
+  background: var(--zh-bg, var(--zebra-paper));
+}
+
+/* Foco visível e tátil: o sistema precisa parecer rápido sem ficar nervoso. */
+:where(button, a, input, textarea, select, [role="button"]):focus-visible {
+  outline: 3px solid var(--zebra-focus);
+  outline-offset: 2px;
+}
+
+:where(button, a, [role="button"]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-primary,
+.btn-secondary,
+.data-row,
+.card,
+.surface-card,
+.toolbar-panel,
+.segmented-control-button,
+.brand-mobile-nav-item,
+.brand-mobile-more-link {
+  transition-duration: var(--zebra-motion-fast);
+  transition-timing-function: cubic-bezier(.2,.8,.2,1);
+}
+
+.btn-primary:active,
+.btn-secondary:active,
+.brand-mobile-nav-item:active,
+.brand-mobile-more-link:active {
+  transform: scale(.975);
+}
+
+.input-field:focus {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--zebra-blue) 12%, transparent);
+}
+
+/* Cabeçalhos recorrentes passam a carregar um pequeno gesto de marca. */
+.brand-page-hero {
+  position: relative;
+}
+
+.brand-page-hero-title {
+  position: relative;
+  display: inline-block;
+  letter-spacing: -.04em;
+}
+
+.brand-page-hero-title::after {
+  content: '';
+  display: block;
+  width: 34px;
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--zebra-blue);
+  transform: rotate(-2deg);
+  transform-origin: left center;
+}
+
+.brand-page-hero-actions > :is(button, a) {
+  min-height: 40px;
+}
+
+/* Status semânticos unificados em todo o produto. */
+.brand-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  border: 1px solid transparent;
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+
+.brand-status-draft {
+  border-color: rgba(100,116,139,.18);
+  background: #eef0f2;
+  color: #596272;
+}
+
+.brand-status-waiting {
+  background: var(--zebra-ink);
+  color: #fff;
+}
+
+.brand-status-approved {
+  background: var(--zebra-lime);
+  color: var(--zebra-ink);
+}
+
+.brand-status-correction {
+  background: var(--zebra-pink);
+  color: #fff;
+}
+
+.brand-status-progress {
+  background: var(--zebra-blue);
+  color: #fff;
+}
+
+.brand-status-published {
+  border-color: color-mix(in srgb, var(--zebra-lime) 48%, transparent);
+  background: var(--zebra-ink);
+  color: var(--zebra-lime);
+}
+
+/* Modais: menos “caixa que apareceu”, mais mudança clara de contexto. */
+.brand-modal-backdrop {
+  background: rgba(23,24,28,.54);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  animation: zebra-backdrop-in var(--zebra-motion-fast) ease-out both;
+}
+
+.brand-modal-backdrop > * {
+  animation: zebra-modal-in var(--zebra-motion-base) cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes zebra-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes zebra-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Navegação mobile: quatro atalhos + Mais, sem segunda linha. */
+.brand-mobile-nav {
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: color-mix(in srgb, var(--zebra-ink) 96%, transparent);
+  box-shadow: 0 -12px 36px rgba(23,24,28,.18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.brand-mobile-nav::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 42px;
+  height: 3px;
+  border-radius: 0 0 999px 999px;
+  background: var(--zebra-lime);
+  transform: translateX(-50%);
+}
+
+.brand-mobile-nav-item {
+  min-height: 54px;
+  color: rgba(255,255,255,.48);
+}
+
+.brand-mobile-nav-item .brand-mobile-nav-icon {
+  color: rgba(255,255,255,.60);
+}
+
+.brand-mobile-nav-item.is-active {
+  color: #fff;
+}
+
+.brand-mobile-nav-item.is-active .brand-mobile-nav-icon {
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(0,0,0,.20);
+}
+
+/* Bottom sheet “Mais” como extensão da mesma linguagem. */
+.brand-mobile-sheet-backdrop {
+  background: rgba(23,24,28,.48);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: zebra-backdrop-in var(--zebra-motion-fast) ease-out both;
+}
+
+.brand-mobile-sheet {
+  border: 1px solid var(--zh-border, #e2e8f0);
+  border-bottom: 0;
+  background: var(--zh-surface, #fff);
+  color: var(--zh-text, var(--zebra-ink));
+  box-shadow: 0 -28px 80px rgba(23,24,28,.24);
+  animation: zebra-sheet-in var(--zebra-motion-base) cubic-bezier(.2,.8,.2,1) both;
+}
+
+.brand-mobile-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  border-radius: 28px 28px 0 0;
+  background: linear-gradient(90deg, var(--zebra-blue), var(--zebra-pink) 52%, var(--zebra-lime));
+}
+
+.brand-mobile-sheet-handle {
+  background: var(--zh-border, #e2e8f0);
+}
+
+@keyframes zebra-sheet-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.brand-mobile-more-link {
+  color: var(--zh-text-soft, #475569);
+}
+
+.brand-mobile-more-link:hover,
+.brand-mobile-more-link.is-active {
+  background: color-mix(in srgb, var(--zebra-blue) 8%, var(--zh-surface, #fff));
+  color: var(--zh-text, var(--zebra-ink));
+}
+
+.brand-mobile-more-icon {
+  background: var(--zh-surface-3, #eef2f7);
+  color: var(--zh-muted, #64748b);
+}
+
+.brand-mobile-more-link.is-active .brand-mobile-more-icon {
+  color: #fff;
+}
+
+/* Topbar e superfícies em telas menores. */
+.brand-presence-button {
+  min-width: 44px;
+}
+
+@media (max-width: 767px) {
+  .brand-topbar {
+    min-height: 58px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .brand-topbar-kicker {
+    letter-spacing: .15em;
+  }
+
+  .brand-page-stage {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  }
+
+  .brand-page-hero-title {
+    font-size: 1.15rem;
+    line-height: 1.18;
+  }
+
+  .brand-page-hero-title::after {
+    width: 28px;
+    height: 3px;
+    margin-top: 4px;
+  }
+
+  .page-hero-actions {
+    width: 100%;
+  }
+
+  .page-hero-actions > :is(button, a) {
+    min-height: 42px;
+  }
+
+  .surface-card,
+  .card,
+  .toolbar-panel,
+  .data-row {
+    border-radius: 14px;
+  }
+
+  .data-row:hover,
+  .brand-stat-card:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .brand-mobile-nav-item {
+    font-size: 9px;
+  }
+
+  .brand-mobile-nav-item .brand-mobile-nav-icon {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+
+  .btn-primary:hover,
+  .brand-hero-primary:hover,
+  .brand-hero-secondary:hover,
+  .brand-stat-card:hover,
+  .data-row:hover {
+    transform: none !important;
+  }
+}

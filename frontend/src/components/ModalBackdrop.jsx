@@ -52,7 +52,7 @@ export default function ModalBackdrop({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/40 p-4 ${className}`.trim()}
+      className={`brand-modal-backdrop fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain p-4 ${className}`.trim()}
       onMouseDown={handleMouseDown}
       role={role}
     >

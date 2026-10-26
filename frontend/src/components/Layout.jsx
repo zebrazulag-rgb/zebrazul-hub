@@ -455,13 +455,16 @@ export default function Layout({ children }) {
 
   const canSeeSettings = !isClientPortal && (!user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']));
 
+  // No celular, o rodapé sempre fica com quatro atalhos + “Mais”.
+  // Isso evita a sexta opção quebrando para uma segunda linha em telas estreitas.
   const mobilePrimaryItems = isClientPortal
     ? visibleWorkspaceItems.slice(0, 4)
-    : visibleWorkspaceItems.filter((item) => ['/','/audiovisual','/designer','/site-lp','/social-media'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/','/audiovisual','/designer','/social-media'].includes(item.to));
 
   const mobileMoreItems = isClientPortal
     ? visibleWorkspaceItems.slice(4)
-    : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+    : visibleWorkspaceItems.filter((item) => ['/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
+  const mobileNavColumns = Math.max(1, mobilePrimaryItems.length + (mobileMoreItems.length > 0 ? 1 : 0));
 
   const accentColor = selectedClient?.logo_color || agency?.primary_color || '#3A85FD';
   const agencyPrimary = agency?.primary_color || '#3A85FD';
@@ -573,7 +576,7 @@ export default function Layout({ children }) {
   }
 
   return (
-    <div className="app-shell flex h-screen min-h-0 overflow-hidden bg-[#f5f7fb] text-slate-900">
+    <div className="app-shell brand-app-shell flex h-screen min-h-0 overflow-hidden text-slate-900">
       <aside
         className={`app-sidebar brand-sidebar ${isNativeApp ? 'hidden' : 'hidden md:flex'} sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white transition-[width] duration-300 ${sidebarCollapsed ? 'w-[72px]' : 'w-[232px]'}`}
         style={{ backgroundColor: agencySidebar }}
@@ -937,7 +940,7 @@ export default function Layout({ children }) {
                   aria-haspopup="dialog"
                   aria-expanded={presenceOpen}
                   title={`${onlinePresenceUsers.length} pessoa${onlinePresenceUsers.length === 1 ? '' : 's'} online`}
-                  className="flex h-10 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                  className="brand-presence-button hidden h-10 items-center rounded-xl border border-slate-200 bg-white px-2 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 sm:flex"
                 >
                   {topPresenceUsers.length > 0 ? (
                     <div className="flex -space-x-2">
@@ -1005,30 +1008,30 @@ export default function Layout({ children }) {
           </div>
         </div>
         <div className="brand-canvas-accent pointer-events-none absolute inset-x-0 top-[62px] h-80" />
-        <div className={`relative mx-auto w-full max-w-[1320px] min-w-0 px-4 pb-28 pt-5 sm:px-6 ${isNativeApp ? '' : 'md:px-8 md:py-8 xl:px-10'}`}>{children}</div>
+        <div className={`brand-page-stage relative mx-auto w-full max-w-[1320px] min-w-0 px-3 pb-28 pt-4 sm:px-6 sm:pt-5 ${isNativeApp ? '' : 'md:px-8 md:py-8 xl:px-10'}`}>{children}</div>
       </main>
 
-      <nav className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/90 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl ${isNativeApp ? '' : 'md:hidden'}`}>
-        <div className="mx-auto grid max-w-lg grid-cols-5">
+      <nav className={`mobile-bottom-nav brand-mobile-nav fixed inset-x-0 bottom-0 z-40 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 ${isNativeApp ? '' : 'md:hidden'}`}>
+        <div className="mx-auto grid max-w-lg" style={{ gridTemplateColumns: `repeat(${mobileNavColumns}, minmax(0, 1fr))` }}>
           {mobilePrimaryItems.map((item) => (
             <MobileNavLink key={item.to} item={item} agencyPrimary={agencyPrimary} />
           ))}
           {mobileMoreItems.length > 0 && <button
             type="button"
             onClick={() => setMobileMoreOpen(true)}
-            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${mobileMoreOpen || ['/organizacao','/bussola','/ia','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'text-slate-900' : 'text-slate-400'}`}
+            className={`brand-mobile-nav-item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition ${mobileMoreOpen || ['/site-lp','/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas','/configuracoes','/senhas'].some((path) => location.pathname.startsWith(path)) ? 'is-active' : ''}`}
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
+            <span className="brand-mobile-nav-icon flex h-8 w-8 items-center justify-center rounded-xl"><MoreHorizontal size={20} /></span>
             <span>Mais</span>
           </button>}
         </div>
       </nav>
 
       {mobileMoreItems.length > 0 && mobileMoreOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
-          <button type="button" aria-label="Fechar menu" className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" onClick={() => setMobileMoreOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 rounded-t-[28px] bg-white px-4 pb-[max(22px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-24px_70px_rgba(15,23,42,0.22)]">
-            <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-200" />
+        <div className="brand-mobile-menu fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+          <button type="button" aria-label="Fechar menu" className="brand-mobile-sheet-backdrop absolute inset-0" onClick={() => setMobileMoreOpen(false)} />
+          <div className="brand-mobile-sheet absolute inset-x-0 bottom-0 rounded-t-[28px] px-4 pb-[max(22px,env(safe-area-inset-bottom))] pt-3">
+            <div className="brand-mobile-sheet-handle mx-auto mb-4 h-1.5 w-10 rounded-full" />
             <div className="mb-3 flex items-center justify-between px-1">
               <div><p className="text-lg font-bold text-slate-900">Mais</p><p className="text-xs text-slate-400">Outras áreas do ZebraHub</p></div>
               <button type="button" onClick={() => setMobileMoreOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={18} /></button>
@@ -1231,11 +1234,11 @@ function MobileNavLink({ item, agencyPrimary }) {
     <NavLink
       to={item.to}
       end={item.to === '/'}
-      className={({ isActive }) => `flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-semibold transition ${isActive ? 'text-slate-900' : 'text-slate-400'}`}
+      className={({ isActive }) => `brand-mobile-nav-item flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] font-bold transition ${isActive ? 'is-active' : ''}`}
     >
       {({ isActive }) => (
         <>
-          <span className={`flex h-8 w-8 items-center justify-center rounded-xl transition ${isActive ? 'text-white shadow-sm' : ''}`} style={isActive ? { backgroundColor: agencyPrimary } : undefined}>
+          <span className="brand-mobile-nav-icon flex h-8 w-8 items-center justify-center rounded-xl transition" style={isActive ? { backgroundColor: agencyPrimary } : undefined}>
             <item.icon size={19} strokeWidth={2.1} />
           </span>
           <span className="max-w-full truncate">{item.mobileLabel || (item.label === 'Social Media' ? 'Social' : item.label)}</span>
@@ -1252,12 +1255,12 @@ function MobileMoreLink({ item, agencyPrimary, onClick, activeOverride = null })
       onClick={onClick}
       className={({ isActive }) => {
         const active = activeOverride == null ? isActive : activeOverride;
-        return `flex items-center gap-3 rounded-2xl px-3 py-3 transition ${active ? 'bg-blue-50 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`;
+        return `brand-mobile-more-link flex items-center gap-3 rounded-2xl px-3 py-3 transition ${active ? 'is-active' : ''}`;
       }}
     >
       {({ isActive }) => {
         const active = activeOverride == null ? isActive : activeOverride;
-        return <><span className="flex h-10 w-10 items-center justify-center rounded-xl text-white" style={{ backgroundColor: active ? agencyPrimary : '#94a3b8' }}><item.icon size={18} /></span><span className="text-sm font-semibold">{item.label}</span></>;
+        return <><span className="brand-mobile-more-icon flex h-10 w-10 items-center justify-center rounded-xl" style={active ? { backgroundColor: agencyPrimary } : undefined}><item.icon size={18} /></span><span className="text-sm font-bold">{item.label}</span></>;
       }}
     </NavLink>
   );
