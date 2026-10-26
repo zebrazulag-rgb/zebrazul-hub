@@ -141,6 +141,12 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
             const approvalStatus = sourceType === 'planned' ? approvalStatusMeta(post.status) : null;
             const workflowStatus = sourceType === 'planned' ? workflowStageMeta(post.workflow_stage) : null;
             const ApprovalIcon = approvalStatus?.icon || null;
+            const ownerTone = {
+              ink: 'bg-[#17181C] text-white',
+              blue: 'bg-[#3A85FD] text-white',
+              pink: 'bg-[#EC0567] text-white',
+              lime: 'bg-[#C9FF2F] text-[#17181C]',
+            }[post.approval_owner_tone] || 'bg-[#17181C] text-white';
             return (
               <div
                 key={`${sourceType}-${sourceId}`}
@@ -161,8 +167,18 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                   </span>
                 )}
                 {mediaSrc ? (video && String(post.media_mime || post.media_gallery?.[0]?.mime || '').startsWith('video/') ? <video src={mediaSrc} className="h-full w-full object-cover bg-black" muted playsInline preload="metadata" /> : <img src={mediaSrc} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />) : <div className="flex h-full w-full items-center justify-center bg-slate-100 px-3 text-center text-[11px] font-semibold text-slate-400">Sem imagem de grade</div>}
+                {post.approval_owner_label && (
+                  <span
+                    className={`absolute left-2 top-2 z-20 inline-flex max-w-[86%] items-center gap-1.5 px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] shadow ${ownerTone}`}
+                    title={`A bola está com: ${post.approval_owner_label}`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                    {post.approval_owner_label}
+                    {post.approval_age_label && <span className="opacity-65">· {post.approval_age_label}</span>}
+                  </span>
+                )}
                 {Number(post.is_pinned || 0) === 1 && (
-                  <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-amber-950 shadow" title="Fixado no topo">
+                  <span className={`absolute left-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-amber-950 shadow ${post.approval_owner_label ? 'top-10' : 'top-2'}`} title="Fixado no topo">
                     <Pin size={13} fill="currentColor" />
                   </span>
                 )}
@@ -173,7 +189,7 @@ export default function InstagramProfileMockup({ client, posts, highlights = [],
                 )}
                 {workflowStatus && (
                   <span
-                    className={`absolute left-2 z-10 max-w-[80%] truncate rounded-full px-2 py-1 text-[9px] font-black tracking-[0.03em] shadow ${Number(post.is_pinned || 0) === 1 ? 'top-11' : 'top-2'} ${workflowStatus.className}`}
+                    className={`absolute left-2 z-10 max-w-[80%] truncate rounded-full px-2 py-1 text-[9px] font-black tracking-[0.03em] shadow ${post.approval_owner_label ? (Number(post.is_pinned || 0) === 1 ? 'top-[4.6rem]' : 'top-10') : (Number(post.is_pinned || 0) === 1 ? 'top-11' : 'top-2')} ${workflowStatus.className}`}
                     title={`Etapa do Designer: ${workflowStatus.label}`}
                   >
                     {workflowStatus.label}

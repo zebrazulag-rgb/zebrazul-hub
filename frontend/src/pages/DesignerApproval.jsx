@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, Hand, Plus, Trash2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UsersRound, X } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, CircleUserRound, Hand, Hourglass, Plus, Trash2, ChevronLeft, ChevronRight, Copy, ExternalLink, Images, Link2, Loader2, MessageSquareWarning, Pencil, Save, Send, UserCheck, UsersRound, X, Zap } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
@@ -134,10 +134,57 @@ function correctionSourceFor(item) {
 }
 
 function statusTone(status) {
-  if (status === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (status === 'changes_requested') return 'border-rose-200 bg-rose-50 text-rose-700';
-  if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (status === 'approved') return 'border-[#C9FF2F] bg-[#C9FF2F]/20 text-[#17181C]';
+  if (status === 'changes_requested') return 'border-[#EC0567]/35 bg-[#EC0567]/10 text-[#A70043]';
+  if (status === 'pending') return 'border-[#17181C]/15 bg-[#17181C]/[0.045] text-[#17181C]';
   return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
+function approvalAgeDays(item) {
+  const source = item?.updated_at || item?.direction_at || item?.client_at || item?.created_at || item?.due_date || item?.scheduled_at;
+  const stamp = source ? new Date(source).getTime() : 0;
+  if (!stamp || Number.isNaN(stamp)) return 0;
+  return Math.max(0, Math.floor((Date.now() - stamp) / 86400000));
+}
+
+function isStalledApproval(item) {
+  if (!item) return false;
+  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return false;
+  if (['approved', 'scheduled', 'posted'].includes(String(item?.workflow_stage || '').toLowerCase())) return false;
+  return approvalAgeDays(item) >= 3;
+}
+
+function approvalOwnerMeta(item) {
+  if (isCorrectionItem(item)) return { label: 'DESIGNER', tone: 'pink' };
+  if (!directionIsApproved(item)) return { label: 'DIREÇÃO', tone: 'ink' };
+  if (isHeldForDirection(item)) return { label: 'DIREÇÃO · ENVIAR', tone: 'ink' };
+  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return { label: 'PRONTO', tone: 'lime' };
+  return { label: 'CLIENTE', tone: 'blue' };
+}
+
+function needsActionForMode(item, mode) {
+  if (mode === 'correction') return isCorrectionItem(item);
+  if (mode === 'client') return directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item) && item?.client_status !== 'approved';
+  return !isCorrectionItem(item) && (!directionIsApproved(item) || isHeldForDirection(item));
+}
+
+function approvalTrail(item) {
+  if (!item) return [];
+  const events = [];
+  if (item.created_at) events.push({ key: 'created', label: 'Entrou no fluxo', detail: 'Peça preparada para revisão.', at: item.created_at, tone: 'ink' });
+  if (item.direction_status === 'changes_requested') events.push({ key: 'direction-change', label: 'Direção pediu correção', detail: item.direction_feedback || 'Correção solicitada pela direção.', at: item.direction_at, tone: 'pink' });
+  if (directionIsApproved(item)) events.push({ key: 'direction-approved', label: 'Direção aprovou', detail: isHeldForDirection(item) ? 'A peça ainda está retida antes do envio ao cliente.' : 'A peça passou pela direção.', at: item.direction_at, tone: 'lime' });
+  if (directionIsApproved(item) && !isHeldForDirection(item) && item?.client_status !== 'waiting') events.push({ key: 'client-sent', label: 'Foi para o cliente', detail: 'A bola passou para a aprovação externa.', at: null, tone: 'blue' });
+  if (item.client_status === 'changes_requested') events.push({ key: 'client-change', label: 'Cliente pediu correção', detail: item.client_feedback || 'O cliente solicitou ajustes.', at: item.client_at, tone: 'pink' });
+  if (item.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') events.push({ key: 'client-approved', label: 'Cliente aprovou', detail: item.client_feedback || 'Peça liberada para seguir o fluxo.', at: item.client_at, tone: 'lime' });
+  return events;
+}
+
+function formatTrailDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
 function legacyApprovalState(item) {
@@ -174,6 +221,7 @@ export default function DesignerApproval() {
   const [teamUsers, setTeamUsers] = useState([]);
   const [clientList, setClientList] = useState([]);
   const [mode, setMode] = useState('direction');
+  const [queueFilter, setQueueFilter] = useState('all');
   const [approvalLink, setApprovalLink] = useState(null);
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkNotice, setLinkNotice] = useState('');
@@ -381,6 +429,11 @@ export default function DesignerApproval() {
   const clientLabel = selectedClient?.name || 'Todos os clientes';
   const correctionCount = useMemo(() => items.filter(isCorrectionItem).length, [items]);
   const heldCount = useMemo(() => items.filter((item) => isHeldForDirection(item) && !isCorrectionItem(item)).length, [items]);
+  const awaitingDirectionCount = useMemo(() => items.filter((item) => !isCorrectionItem(item) && !directionIsApproved(item)).length, [items]);
+  const awaitingClientCount = useMemo(() => items.filter((item) => !isCorrectionItem(item) && directionIsApproved(item) && !isHeldForDirection(item) && item?.client_status !== 'approved').length, [items]);
+  const approvedCount = useMemo(() => items.filter((item) => item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved').length, [items]);
+  const stalledCount = useMemo(() => items.filter(isStalledApproval).length, [items]);
+  const needsActionCount = useMemo(() => items.filter((item) => needsActionForMode(item, mode)).length, [items, mode]);
   const visibleItems = useMemo(() => {
     // Peças já agendadas/postadas pela Social Media saem da área de aprovação.
     const active = items.filter((item) => (mode === 'client' && item.in_client_view !== undefined)
@@ -393,10 +446,15 @@ export default function DesignerApproval() {
           ? item.in_client_view
           : (directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item))))
         : active.filter((item) => !isCorrectionItem(item));
+    const focusFiltered = queueFilter === 'mine'
+      ? filtered.filter((item) => needsActionForMode(item, mode))
+      : queueFilter === 'stalled'
+        ? filtered.filter(isStalledApproval)
+        : filtered;
 
     // Ordem manual (mãozinha) quando existir; peças novas, sem posição, entram no topo.
     // Sem ordem manual: Instagram, conteúdos mais recentes primeiro.
-    return [...filtered].sort((a, b) => {
+    return [...focusFiltered].sort((a, b) => {
       const pinDiff = Number(b?.is_pinned || 0) - Number(a?.is_pinned || 0);
       if (pinDiff !== 0) return pinDiff;
       const aPos = a?.grid_position;
@@ -410,7 +468,7 @@ export default function DesignerApproval() {
       if (aDate !== bDate) return bDate - aDate;
       return String(b?.id || '').localeCompare(String(a?.id || ''), undefined, { numeric: true });
     });
-  }, [items, mode]);
+  }, [items, mode, queueFilter]);
   const profileClient = clientProfile || selectedClient;
   const canEditProfile = Boolean(
     selectedClient?.id
@@ -418,7 +476,9 @@ export default function DesignerApproval() {
     && user.role !== 'client'
     && hasPermission(user, 'social.feed_create')
   );
-  const approvalPosts = useMemo(() => visibleItems.map((item) => ({
+  const approvalPosts = useMemo(() => visibleItems.map((item) => {
+    const owner = approvalOwnerMeta(item);
+    return ({
     ...item,
     content_id: item.id,
     media_data: item.images?.[0]?.data || '',
@@ -430,7 +490,11 @@ export default function DesignerApproval() {
     status: mode === 'correction' ? 'rejected' : (mode === 'direction' ? statusForDirection(item) : (item.post_status || statusForClient(item))),
     workflow_stage: null,
     scheduled_at: item.due_date || item.scheduled_at || item.created_at || null,
-  })), [visibleItems, mode]);
+    approval_owner_label: owner.label,
+    approval_owner_tone: owner.tone,
+    approval_age_label: approvalAgeDays(item) >= 1 ? `${approvalAgeDays(item)}d` : null,
+  });
+  }), [visibleItems, mode]);
 
   const clientApprovalUrl = approvalLink?.token
     ? `${window.location.origin}/grade/${approvalLink.token}`
@@ -882,7 +946,7 @@ export default function DesignerApproval() {
     if (isCorrectionItem(item)) return null;
     if (isHeldForDirection(item)) {
       return (
-        <button type="button" disabled={busy} onClick={() => sendToClient(item)} className={`${btn} w-full bg-violet-600 text-white hover:bg-violet-700`}>
+        <button type="button" disabled={busy} onClick={() => sendToClient(item)} className={`${btn} w-full bg-[#3A85FD] text-white hover:bg-[#1f72ee]`}>
           {updatingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Enviar ao cliente
         </button>
       );
@@ -890,10 +954,10 @@ export default function DesignerApproval() {
     if (directionIsApproved(item)) return null;
     return (
       <div className="flex gap-1.5">
-        <button type="button" disabled={busy} onClick={() => { openItem(item); setCorrectionOpen(true); }} className={`${btn} bg-white/95 text-rose-700 hover:bg-white`}>
+        <button type="button" disabled={busy} onClick={() => { openItem(item); setCorrectionOpen(true); }} className={`${btn} bg-[#EC0567] text-white hover:bg-[#c90458]`}>
           <MessageSquareWarning size={13} /> Correção
         </button>
-        <button type="button" disabled={busy} onClick={() => directionDecision(item, 'approved')} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}>
+        <button type="button" disabled={busy} onClick={() => directionDecision(item, 'approved')} className={`${btn} bg-[#C9FF2F] text-[#17181C] hover:bg-[#b7ee20]`}>
           {updatingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />} Aprovar
         </button>
       </div>
@@ -932,29 +996,29 @@ export default function DesignerApproval() {
     <div className="space-y-5">
       <section className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#0969ff]">Designer</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Aprovação</h1>
-          <p className="mt-1 text-sm text-slate-500">{clientLabel} · direção aprova no app; cliente aprova por link.</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3A85FD]">FLUXO DE APROVAÇÃO</p>
+          <h1 className="brand-display mt-1 text-4xl font-black uppercase leading-none tracking-[-0.025em] text-[#17181C] sm:text-5xl">A BOLA TÁ COM QUEM?</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{clientLabel} · descubra em segundos o que depende da direção, do cliente ou voltou para o Designer.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             <button
               type="button"
-              onClick={() => setMode('direction')}
+              onClick={() => { setMode('direction'); setQueueFilter('all'); }}
               className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'direction' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
             >
               Direção
             </button>
             <button
               type="button"
-              onClick={() => setMode('client')}
+              onClick={() => { setMode('client'); setQueueFilter('all'); }}
               className={`rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'client' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
             >
               Cliente
             </button>
             <button
               type="button"
-              onClick={() => setMode('correction')}
+              onClick={() => { setMode('correction'); setQueueFilter('all'); }}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition ${mode === 'correction' ? 'bg-rose-600 text-white' : 'text-rose-600 hover:bg-rose-50'}`}
             >
               Correções
@@ -983,54 +1047,102 @@ export default function DesignerApproval() {
         </div>
       </section>
 
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          { label: 'Com a direção', value: awaitingDirectionCount, icon: CircleUserRound, tone: 'border-[#17181C]/10 bg-white text-[#17181C]', accent: 'bg-[#17181C]' },
+          { label: 'Prontas para enviar', value: heldCount, icon: Send, tone: 'border-[#3A85FD]/20 bg-[#3A85FD]/[0.065] text-[#174F9E]', accent: 'bg-[#3A85FD]' },
+          { label: 'Com o cliente', value: awaitingClientCount, icon: UsersRound, tone: 'border-[#3A85FD]/20 bg-white text-[#174F9E]', accent: 'bg-[#3A85FD]' },
+          { label: 'Em correção', value: correctionCount, icon: MessageSquareWarning, tone: 'border-[#EC0567]/20 bg-[#EC0567]/[0.055] text-[#A70043]', accent: 'bg-[#EC0567]' },
+          { label: 'Aprovadas', value: approvedCount, icon: UserCheck, tone: 'border-[#C9FF2F]/60 bg-[#C9FF2F]/20 text-[#17181C]', accent: 'bg-[#C9FF2F]' },
+        ].map((stat) => (
+          <div key={stat.label} className={`relative overflow-hidden border px-4 py-3 ${stat.tone}`}>
+            <span className={`absolute inset-y-0 left-0 w-1 ${stat.accent}`} />
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] opacity-60">{stat.label}</p>
+                <p className="brand-display mt-1 text-3xl font-black leading-none">{stat.value}</p>
+              </div>
+              <stat.icon size={19} className="opacity-65" />
+            </div>
+          </div>
+        ))}
+      </section>
+
       {mode === 'direction' ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          <CheckCircle2 size={18} className="shrink-0 text-blue-600" />
-          <div className="flex-1"><strong>Aprovação da direção</strong> · {user?.name || 'Arthur'} revisa e aprova aqui dentro do ZebraHub. A peça aprovada fica retida nesta área e só vai ao cliente quando você clicar em <strong>Enviar ao cliente</strong>.</div>
+        <div className="flex items-center gap-3 border-l-4 border-[#3A85FD] bg-white px-4 py-3 text-sm text-[#17181C]">
+          <CheckCircle2 size={18} className="shrink-0 text-[#3A85FD]" />
+          <div className="flex-1"><strong>A bola está com a direção.</strong> {user?.name || 'A direção'} revisa aqui. Depois de aprovada, a peça continua retida até você decidir mandar para o cliente.</div>
           {canManageDirection && heldCount > 0 && (
             <button
               type="button"
               disabled={Boolean(updatingId)}
               onClick={sendAllHeldToClient}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-2 bg-[#3A85FD] px-3 py-2 text-xs font-black text-white transition hover:bg-[#1f72ee] disabled:opacity-50"
             >
               {updatingId === 'bulk' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Enviar {heldCount} ao cliente
             </button>
           )}
         </div>
       ) : mode === 'correction' ? (
-        <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+        <div className="flex items-start gap-3 border-l-4 border-[#EC0567] bg-[#EC0567]/[0.055] px-4 py-3 text-sm text-[#721033]">
           <MessageSquareWarning size={19} className="mt-0.5 shrink-0 text-rose-600" />
           <div>
-            <strong>Correções do Designer</strong> · Peças devolvidas pela Direção ou pelo Cliente aparecem aqui com o feedback completo. Abra a peça para ler a orientação e depois vá direto para a tarefa para fazer o ajuste.
+            <strong>A bola voltou.</strong> Aqui ficam as peças que voltaram para o Designer, com a orientação que precisa virar ajuste.
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+        <div className="border-l-4 border-[#3A85FD] bg-white p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex gap-3">
-              <UsersRound size={19} className="mt-0.5 shrink-0 text-violet-600" />
+              <UsersRound size={19} className="mt-0.5 shrink-0 text-[#3A85FD]" />
               <div>
-                <p className="text-sm font-bold text-violet-950">Aprovação do cliente</p>
-                <p className="mt-0.5 text-sm text-violet-700">Somente peças já aprovadas pela direção aparecem no link externo.</p>
+                <p className="text-sm font-bold text-[#17181C]">Aprovação do cliente</p>
+                <p className="mt-0.5 text-sm text-[#174F9E]">Somente peças já aprovadas pela direção aparecem no link externo.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {clientApprovalUrl ? (
                 <>
-                  <button type="button" onClick={copyApprovalLink} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white hover:bg-violet-700"><Copy size={15} /> Copiar link</button>
-                  <a href={clientApprovalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50"><ExternalLink size={15} /> Abrir</a>
+                  <button type="button" onClick={copyApprovalLink} className="inline-flex items-center gap-2 rounded-xl bg-[#3A85FD] px-3 py-2 text-sm font-bold text-white hover:bg-[#1f72ee]"><Copy size={15} /> Copiar link</button>
+                  <a href={clientApprovalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-[#3A85FD]/25 bg-white px-3 py-2 text-sm font-bold text-[#174F9E] hover:bg-[#3A85FD]/5"><ExternalLink size={15} /> Abrir</a>
                 </>
               ) : (
-                <button type="button" disabled={linkLoading || !selectedClient?.id} onClick={createApprovalLink} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">
+                <button type="button" disabled={linkLoading || !selectedClient?.id} onClick={createApprovalLink} className="inline-flex items-center gap-2 rounded-xl bg-[#3A85FD] px-3 py-2 text-sm font-bold text-white hover:bg-[#1f72ee] disabled:opacity-50">
                   {linkLoading ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />} Gerar link do cliente
                 </button>
               )}
             </div>
           </div>
-          {linkNotice && <p className="mt-3 text-xs font-semibold text-violet-700">{linkNotice}</p>}
+          {linkNotice && <p className="mt-3 text-xs font-semibold text-[#174F9E]">{linkNotice}</p>}
         </div>
       )}
+
+      <div className="flex flex-col gap-3 border-y border-[#17181C]/10 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="inline-flex w-fit flex-wrap gap-1 bg-[#17181C]/[0.045] p-1">
+          {[
+            { key: 'all', label: 'Todos', count: mode === 'correction' ? correctionCount : items.length },
+            { key: 'mine', label: 'Precisa de mim', count: needsActionCount },
+            { key: 'stalled', label: 'Parados', count: stalledCount },
+          ].map((filter) => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={() => setQueueFilter(filter.key)}
+              className={`inline-flex min-h-9 items-center gap-2 px-3 text-xs font-black uppercase tracking-[0.07em] transition ${queueFilter === filter.key ? 'bg-[#17181C] text-white' : 'text-slate-500 hover:bg-white hover:text-[#17181C]'}`}
+            >
+              {filter.key === 'mine' && <Zap size={13} />}
+              {filter.key === 'stalled' && <Hourglass size={13} />}
+              {filter.label}
+              <span className={`${queueFilter === filter.key ? 'text-[#C9FF2F]' : 'text-slate-400'}`}>{filter.count}</span>
+            </button>
+          ))}
+        </div>
+        {stalledCount > 0 ? (
+          <p className="flex items-center gap-2 text-xs font-semibold text-slate-500"><AlertTriangle size={14} className="text-[#EC0567]" /> {stalledCount} {stalledCount === 1 ? 'peça está' : 'peças estão'} há 3 dias ou mais sem avançar.</p>
+        ) : (
+          <p className="text-xs font-semibold text-slate-400">Sem peça criando raiz na aprovação. Bonito de ver.</p>
+        )}
+      </div>
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>
@@ -1039,11 +1151,11 @@ export default function DesignerApproval() {
       {!selectedClient?.id ? (
         <div className="flex min-h-[420px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#0969ff]"><Images size={24} /></div>
-          <h2 className="mt-4 text-lg font-bold text-slate-900">Selecione um cliente</h2>
-          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">A aprovação reproduz a grade do Instagram do cliente selecionado.</p>
+          <h2 className="brand-display mt-4 text-2xl font-black uppercase text-[#17181C]">Escolha quem entra em cena.</h2>
+          <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">Selecione um cliente para enxergar onde cada peça está travando — ou avançando.</p>
         </div>
       ) : loading ? (
-        <div className="flex min-h-[420px] items-center justify-center rounded-[24px] border border-slate-200 bg-white text-sm text-slate-400">Carregando aprovação...</div>
+        <div className="flex min-h-[420px] items-center justify-center rounded-[24px] border border-slate-200 bg-white text-sm text-slate-400">Puxando o rastro da aprovação...</div>
       ) : (
         <div className="flex flex-col items-center gap-3 py-1">
           {reorderMode && (
@@ -1053,8 +1165,8 @@ export default function DesignerApproval() {
             <div className="flex w-full max-w-[560px] items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3">
               <p className="text-sm text-slate-500">
                 {mode === 'correction'
-                  ? 'Nenhuma correção pendente. O feed abaixo segue editável.'
-                  : 'Nada aguardando aprovação. O feed abaixo segue editável: ajuste foto, bio e destaques.'}
+                  ? 'ZEROU. BONITO DE VER. Nenhuma correção pendente.'
+                  : queueFilter === 'stalled' ? 'Nada parado por aqui.' : queueFilter === 'mine' ? 'Nada depende de você agora.' : 'Nada pedindo aprovação agora. Aproveite enquanto dura.'}
               </p>
               <Link to="/designer" className="shrink-0 rounded-lg bg-[#0969ff] px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Abrir Designer</Link>
             </div>
@@ -1132,7 +1244,7 @@ export default function DesignerApproval() {
               <aside className="flex min-w-0 flex-col bg-white">
                 <div className="flex items-start gap-3 border-b border-slate-100 p-5">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#0969ff]">Aprovação do Designer</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#3A85FD]">RASTRO DA PEÇA</p>
                     <h2 className="mt-1 text-lg font-bold leading-6 text-slate-950">{selectedItem.title}</h2>
                     <p className="mt-1 text-sm font-medium text-slate-500">{selectedItem.client_name || clientLabel}</p>
                   </div>
@@ -1201,10 +1313,37 @@ export default function DesignerApproval() {
                     </div>
                   </div>
 
+                  <div className="border-t border-[#17181C]/10 pt-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Rastro da aprovação</p>
+                      {approvalAgeDays(selectedItem) >= 1 && <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">{approvalAgeDays(selectedItem)}d no fluxo</span>}
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {approvalTrail(selectedItem).map((event, index) => {
+                        const dot = event.tone === 'pink' ? 'bg-[#EC0567]' : event.tone === 'lime' ? 'bg-[#C9FF2F]' : event.tone === 'blue' ? 'bg-[#3A85FD]' : 'bg-[#17181C]';
+                        return (
+                          <div key={`${event.key}-${index}`} className="grid grid-cols-[12px_minmax(0,1fr)] gap-3">
+                            <div className="relative flex justify-center">
+                              <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${dot}`} />
+                              {index < approvalTrail(selectedItem).length - 1 && <span className="absolute bottom-[-14px] top-4 w-px bg-[#17181C]/10" />}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-black text-[#17181C]">{event.label}</p>
+                                {event.at && <span className="text-[10px] font-semibold text-slate-400">{formatTrailDate(event.at)}</span>}
+                              </div>
+                              <p className="mt-0.5 text-xs leading-5 text-slate-500">{event.detail}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
                     {selectedItem.content_tag && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{selectedItem.content_tag}</span>}
                     {selectedItem.content_type && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{CONTENT_TYPE_LABELS[selectedItem.content_type] || selectedItem.content_type}</span>}
-                    {selectedItem.parent_task_id && <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">Subtarefa</span>}
+                    {selectedItem.parent_task_id && <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-[#174F9E]">Subtarefa</span>}
                   </div>
                   {selectedItem.images?.length > 1 && (
                     <div>
@@ -1290,7 +1429,7 @@ export default function DesignerApproval() {
                   {mode === 'correction' ? (
                     <Link
                       to={`/designer?task_id=${selectedItem.parent_task_id || selectedItem.id}`}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
+                      className="inline-flex w-full items-center justify-center gap-2 bg-[#EC0567] px-4 py-3 text-sm font-black text-white transition hover:bg-[#c90458]"
                     >
                       <Pencil size={16} /> Abrir tarefa e corrigir
                     </Link>
@@ -1301,13 +1440,13 @@ export default function DesignerApproval() {
                           type="button"
                           disabled={updatingId === selectedItem.id}
                           onClick={() => setCorrectionOpen(true)}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                          className="inline-flex items-center justify-center gap-2 bg-[#EC0567] px-3 py-3 text-sm font-black text-white transition hover:bg-[#c90458] disabled:opacity-50"
                         ><MessageSquareWarning size={16} /> Correção</button>
                         <button
                           type="button"
                           disabled={updatingId === selectedItem.id}
                           onClick={() => directionDecision(selectedItem, 'approved')}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                          className="inline-flex items-center justify-center gap-2 bg-[#C9FF2F] px-3 py-3 text-sm font-black text-[#17181C] transition hover:bg-[#b7ee20] disabled:opacity-50"
                         >{updatingId === selectedItem.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={17} />} Aprovar</button>
                       </div>
                     ) : (
@@ -1318,13 +1457,13 @@ export default function DesignerApproval() {
                             type="button"
                             disabled={Boolean(updatingId)}
                             onClick={() => sendToClient(selectedItem)}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-violet-700 disabled:opacity-50"
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#3A85FD] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#1f72ee] disabled:opacity-50"
                           >{updatingId === selectedItem.id ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Enviar ao cliente</button>
                         )}
                       </div>
                     )
                   ) : (
-                    <div className="rounded-xl bg-violet-50 px-4 py-3 text-center text-sm font-semibold text-violet-700">A decisão do cliente acontece pelo link externo.</div>
+                    <div className="rounded-xl bg-violet-50 px-4 py-3 text-center text-sm font-semibold text-[#174F9E]">A decisão do cliente acontece pelo link externo.</div>
                   )}
                   {mode === 'direction' && correctionOpen && canDirectionApprove && (
                     <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
@@ -1338,7 +1477,7 @@ export default function DesignerApproval() {
                       />
                       <div className="mt-2 flex justify-end gap-2">
                         <button type="button" onClick={() => { setCorrectionOpen(false); setCorrectionFeedback(''); }} className="rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-white">Cancelar</button>
-                        <button type="button" disabled={updatingId === selectedItem.id || !correctionFeedback.trim()} onClick={() => directionDecision(selectedItem, 'changes_requested', correctionFeedback)} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50">Enviar correção</button>
+                        <button type="button" disabled={updatingId === selectedItem.id || !correctionFeedback.trim()} onClick={() => directionDecision(selectedItem, 'changes_requested', correctionFeedback)} className="bg-[#EC0567] px-3 py-2 text-xs font-black text-white hover:bg-[#c90458] disabled:opacity-50">Enviar correção</button>
                       </div>
                     </div>
                   )}

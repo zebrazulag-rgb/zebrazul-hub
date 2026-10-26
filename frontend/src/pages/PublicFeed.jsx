@@ -7,6 +7,7 @@ import InstagramPreview from '../components/InstagramPreview.jsx';
 import InstagramProfileMockup from '../components/InstagramProfileMockup.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import zebrazulMark from '../assets/zebrazul-mark-dark.png';
 
 const publicApi = attachMediaResolver(axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' }));
 
@@ -74,16 +75,30 @@ export default function PublicFeed() {
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-400">Carregando...</div>;
-  if (error) return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4"><div className="card p-8 max-w-sm text-center"><p className="text-slate-600">{error}</p></div></div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F5F3EE] text-sm font-semibold text-slate-400">Puxando a grade...</div>;
+  if (error) return <div className="min-h-screen flex items-center justify-center bg-[#F5F3EE] p-4"><div className="max-w-sm border-l-4 border-[#EC0567] bg-white p-8 text-center"><img src={zebrazulMark} alt="Zebrazul" className="mx-auto mb-5 w-28" /><p className="text-sm font-semibold text-slate-600">{error}</p></div></div>;
 
   return (
-    <div className="min-h-screen bg-slate-100 px-3 py-8 flex justify-center">
-      <InstagramProfileMockup client={client} highlights={highlights} posts={posts} onPostClick={openGridPost} />
+    <div className="min-h-screen bg-[#F5F3EE] px-3 py-7">
+      <div className="mx-auto mb-6 flex w-full max-w-[560px] items-end justify-between gap-4 border-b border-[#17181C]/10 pb-4">
+        <div className="min-w-0">
+          <img src={zebrazulMark} alt="Zebrazul" className="w-28" />
+          <p className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#3A85FD]">Aprovação do cliente</p>
+          <h1 className="brand-display mt-1 text-3xl font-black uppercase leading-none text-[#17181C]">A BOLA TÁ COM VOCÊ.</h1>
+          <p className="mt-2 text-sm leading-5 text-slate-500">Abra uma peça, revise e diga se ela segue ou volta para ajuste.</p>
+        </div>
+        <div className="shrink-0 bg-[#C9FF2F] px-3 py-2 text-center text-[#17181C]">
+          <p className="text-[9px] font-black uppercase tracking-[0.12em]">Na grade</p>
+          <p className="brand-display text-2xl font-black leading-none">{posts.length}</p>
+        </div>
+      </div>
+      <div className="flex justify-center">
+        <InstagramProfileMockup client={client} highlights={highlights} posts={posts} onPostClick={openGridPost} />
+      </div>
       {openPost && (
         <ModalBackdrop onClose={() => setOpenPost(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4"><h2 className="font-semibold text-slate-800">{openPost.title}</h2><button onClick={() => setOpenPost(null)} className="text-slate-400 text-xl">×</button></div>
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#17181C]/10 pb-4"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#3A85FD]">Sua decisão</p><h2 className="mt-1 font-bold text-[#17181C]">{openPost.title}</h2></div><button onClick={() => setOpenPost(null)} className="flex h-9 w-9 items-center justify-center bg-[#17181C] text-lg font-bold text-white">×</button></div>
             <InstagramPreview
               clientName={client.name}
               clientUsername={client.instagram_username}
@@ -94,10 +109,10 @@ export default function PublicFeed() {
               caption={openPost.caption}
               contentType={openPost.content_type}
             />
-            <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <section className="mt-4 border-t-4 border-[#3A85FD] bg-[#F5F3EE] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Aprovação na grade</p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#3A85FD]">Aprovação na grade</p>
                   <p className="mt-1 text-sm font-semibold text-slate-800">
                     {openPost.status === 'approved' ? 'Conteúdo aprovado' : openPost.status === 'rejected' ? 'Ajustes solicitados' : 'Revise e sinalize sua decisão'}
                   </p>
@@ -106,7 +121,7 @@ export default function PublicFeed() {
               </div>
 
               {openPost.client_feedback && (
-                <div className="mt-3 flex gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                <div className="mt-3 flex gap-2 border-l-4 border-[#EC0567] bg-white px-3 py-2 text-xs text-slate-600">
                   <MessageSquareText size={15} className="mt-0.5 shrink-0 text-slate-400" />
                   <span>{openPost.client_feedback}</span>
                 </div>
@@ -117,7 +132,7 @@ export default function PublicFeed() {
                 onChange={(event) => setApprovalFeedback(event.target.value)}
                 rows={3}
                 placeholder="Descreva o ajuste. Obrigatório ao solicitar correção."
-                className="mt-3 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="mt-3 w-full resize-none border border-[#17181C]/15 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#3A85FD] focus:ring-2 focus:ring-[#3A85FD]/10"
               />
 
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -125,7 +140,7 @@ export default function PublicFeed() {
                   type="button"
                   onClick={() => decide('rejected')}
                   disabled={approvalLoading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 bg-[#EC0567] px-3 py-2.5 text-sm font-black text-white hover:bg-[#c90458] disabled:opacity-50"
                 >
                   {approvalLoading ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={16} />} Solicitar ajustes
                 </button>
@@ -133,14 +148,14 @@ export default function PublicFeed() {
                   type="button"
                   onClick={() => decide('approved')}
                   disabled={approvalLoading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 bg-[#C9FF2F] px-3 py-2.5 text-sm font-black text-[#17181C] hover:bg-[#b7ee20] disabled:opacity-50"
                 >
                   {approvalLoading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={16} />} Aprovar
                 </button>
               </div>
 
               {approvalNotice && (
-                <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">{approvalNotice}</p>
+                <p className="mt-3 border-l-4 border-[#3A85FD] bg-white px-3 py-2 text-xs font-semibold text-slate-600">{approvalNotice}</p>
               )}
             </section>
           </div>
