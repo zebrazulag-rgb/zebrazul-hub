@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   front_name TEXT,
   priority TEXT DEFAULT 'medium',
   goal TEXT,
+  briefing_json TEXT,
   approval_status TEXT DEFAULT 'completed',
   designer_completed INTEGER DEFAULT 0,
   direction_status TEXT DEFAULT 'pending',
@@ -203,6 +204,20 @@ CREATE TABLE IF NOT EXISTS task_assignees (
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS task_briefing_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  task_id INTEGER NOT NULL,
+  user_id INTEGER,
+  event_type TEXT NOT NULL DEFAULT 'updated',
+  snapshot_json TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_briefing_events_task ON task_briefing_events(agency_id, task_id, id);
 
 CREATE TABLE IF NOT EXISTS post_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1365,6 +1380,7 @@ tryAddColumn('tasks', 'is_featured', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'approval_status', "TEXT DEFAULT 'completed'");
 tryAddColumn('tasks', 'designer_completed', 'INTEGER DEFAULT 0');
 tryAddColumn('tasks', 'is_backlog', 'INTEGER DEFAULT 0');
+tryAddColumn('tasks', 'briefing_json', 'TEXT');
 tryAddColumn('tasks', 'posted_at', 'TEXT');
 tryAddColumn('tasks', 'posted_by', 'INTEGER');
 tryAddColumn('tasks', 'scheduled_platforms', 'TEXT');
@@ -1625,6 +1641,7 @@ function migrateTaskStatuses() {
           front_name TEXT,
           priority TEXT DEFAULT 'medium',
           goal TEXT,
+          briefing_json TEXT,
           approval_status TEXT DEFAULT 'completed',
           designer_completed INTEGER DEFAULT 0,
           direction_status TEXT DEFAULT 'pending',
@@ -1654,7 +1671,7 @@ function migrateTaskStatuses() {
         INSERT INTO tasks_migrated (
           id, agency_id, client_id, created_by, assignee_id, parent_task_id,
           task_type, title, description, content_type, caption, video_link,
-          media_gallery, due_date, status, workflow_stage, content_tag, project_name, front_name, priority, goal,
+          media_gallery, due_date, status, workflow_stage, content_tag, project_name, front_name, priority, goal, briefing_json,
           approval_status, designer_completed, direction_status, direction_feedback, direction_by, direction_at,
           client_status, client_feedback, client_at, is_featured, attachment_data,
           attachment_mime, attachment_filename, feed_post_id, created_at, updated_at
@@ -1665,7 +1682,7 @@ function migrateTaskStatuses() {
           COALESCE(task_type, 'basic'), title, description, content_type, caption,
           video_link, media_gallery, due_date, status,
           COALESCE(workflow_stage, CASE WHEN status = 'posted' THEN 'posted' WHEN status = 'done' THEN 'approved' WHEN status = 'in_progress' THEN 'in_progress' ELSE 'todo' END),
-          content_tag, project_name, front_name, COALESCE(priority, 'medium'), goal,
+          content_tag, project_name, front_name, COALESCE(priority, 'medium'), goal, briefing_json,
           COALESCE(approval_status, 'completed'), COALESCE(designer_completed, 0),
           COALESCE(direction_status, 'pending'), direction_feedback, direction_by, direction_at,
           COALESCE(client_status, 'waiting'), client_feedback, client_at, COALESCE(is_featured, 0),

@@ -5,12 +5,14 @@ import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
+import DemandBriefingModal from '../components/DemandBriefingModal.jsx';
 import TaskCsvModal from '../components/TaskCsvModal.jsx';
 import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { hasPermission } from '../permissions.js';
 import { effectiveWorkflowStage as workflowStage, serverWorkflowStage, taskNeedsCorrection, correctionFeedbackFor as taskCorrectionFeedback } from '../utils/workflowState.js';
+import { cleanBriefingData, demandTypeById } from '../utils/demandBriefing.js';
 
 const STATUS_COLUMNS = [
   { key: 'todo', label: 'A fazer', badge: 'bg-[#17181C] text-white', accent: '#17181C', soft: '#F5F3EE' },
@@ -73,6 +75,13 @@ function formatTaskDate(value) {
   const parts = dateParts(value);
   if (!parts.year || !parts.month || !parts.day) return '';
   return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`;
+}
+
+function formatTaskDateTime(value) {
+  if (!value) return '';
+  const date = new Date(String(value).includes('T') ? value : `${String(value).replace(' ', 'T')}Z`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 
 function priorityLabel(value) {
@@ -322,6 +331,7 @@ export default function Tasks({ workspace = 'designer' }) {
   const [teamUsers, setTeamUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [showSimpleForm, setShowSimpleForm] = useState(false);
   const [defaultTaskDate, setDefaultTaskDate] = useState('');
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -1627,6 +1637,21 @@ export default function Tasks({ workspace = 'designer' }) {
       )}
 
       {canCreateTasks && showForm && (
+        <DemandBriefingModal
+          teamUsers={teamUsers}
+          clients={clients}
+          defaultClientId={effectiveClientId}
+          defaultDueDate={defaultTaskDate}
+          defaultBacklog={formBacklog}
+          defaultFrontName={defaultFrontName}
+          allowedTypeIds={isSiteLP ? ['landing_page'] : null}
+          onOpenSimpleTask={() => { setShowForm(false); setShowSimpleForm(true); }}
+          onClose={() => { setShowForm(false); setFormBacklog(false); setDefaultTaskDate(''); }}
+          onSaved={(task) => { setShowForm(false); setFormBacklog(false); setDefaultTaskDate(''); upsertTaskSummary(task); broadcastTaskUpdate(task?.id); loadTasks(); }}
+        />
+      )}
+
+      {canCreateTasks && showSimpleForm && (
         <TaskFormModal
           teamUsers={teamUsers}
           clients={clients}
@@ -1636,8 +1661,9 @@ export default function Tasks({ workspace = 'designer' }) {
           userRole={user?.role}
           defaultFrontName={defaultFrontName}
           allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
-          onClose={() => { setShowForm(false); setFormBacklog(false); setDefaultTaskDate(''); }}
-          onSaved={(task) => { setShowForm(false); setFormBacklog(false); setDefaultTaskDate(''); upsertTaskSummary(task); broadcastTaskUpdate(task?.id); loadTasks(); }}
+          createTitle="Tarefa interna simples"
+          onClose={() => { setShowSimpleForm(false); setFormBacklog(false); setDefaultTaskDate(''); }}
+          onSaved={(task) => { setShowSimpleForm(false); setFormBacklog(false); setDefaultTaskDate(''); upsertTaskSummary(task); broadcastTaskUpdate(task?.id); loadTasks(); }}
         />
       )}
 
@@ -1656,22 +1682,40 @@ export default function Tasks({ workspace = 'designer' }) {
       )}
 
       {canCreateTasks && editingTask && (
-        <TaskFormModal
-          teamUsers={teamUsers}
-          clients={clients}
-          taskToEdit={editingTask}
-          userRole={user?.role}
-          defaultFrontName={defaultFrontName}
-          allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
-          onClose={() => setEditingTask(null)}
-          onSaved={(task) => {
-            setEditingTask(null);
-            setSelectedTask(null);
-            upsertTaskSummary(task);
-            broadcastTaskUpdate(task?.id);
-            loadTasks();
-          }}
-        />
+        editingTask.briefing_json ? (
+          <DemandBriefingModal
+            teamUsers={teamUsers}
+            clients={clients}
+            taskToEdit={editingTask}
+            defaultFrontName={defaultFrontName}
+            allowedTypeIds={isSiteLP ? ['landing_page'] : null}
+            onClose={() => setEditingTask(null)}
+            onSaved={(task) => {
+              setEditingTask(null);
+              setSelectedTask(null);
+              upsertTaskSummary(task);
+              broadcastTaskUpdate(task?.id);
+              loadTasks();
+            }}
+          />
+        ) : (
+          <TaskFormModal
+            teamUsers={teamUsers}
+            clients={clients}
+            taskToEdit={editingTask}
+            userRole={user?.role}
+            defaultFrontName={defaultFrontName}
+            allowedTaskTypes={isSiteLP ? ['basic'] : ['basic', 'post']}
+            onClose={() => setEditingTask(null)}
+            onSaved={(task) => {
+              setEditingTask(null);
+              setSelectedTask(null);
+              upsertTaskSummary(task);
+              broadcastTaskUpdate(task?.id);
+              loadTasks();
+            }}
+          />
+        )
       )}
 
       {canCreateTasks && editingSubtask && (
@@ -1767,7 +1811,43 @@ export default function Tasks({ workspace = 'designer' }) {
                 <div className="h-3 bg-slate-100 rounded animate-pulse" />
                 <div className="h-3 bg-slate-100 rounded animate-pulse w-3/4" />
               </div>
-            ) : selectedTask.description && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
+            ) : (
+              <>
+                {selectedTask.goal && (
+                  <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#0969ff]">O que precisa acontecer</p>
+                    <p className="mt-2 text-sm font-bold leading-6 text-[#17181C]">{selectedTask.goal}</p>
+                  </div>
+                )}
+                {selectedTask.briefing_json && (() => {
+                  const briefing = cleanBriefingData(selectedTask.briefing_json);
+                  const briefingType = demandTypeById(briefing.demand_type);
+                  const rows = (briefingType.fields || []).map((field) => ({ field, value: String(briefing.details?.[field.key] || '').trim() })).filter((row) => row.value);
+                  if (!rows.length && !briefing.references && !briefing.notes) return null;
+                  return (
+                    <div className="mb-4 rounded-2xl border border-slate-200 bg-[#FBFAF7] p-4">
+                      <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Briefing estruturado</p><span className="rounded-full bg-[#17181C] px-2.5 py-1 text-[10px] font-black text-white">{briefingType.label}</span></div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {rows.map(({ field, value }) => <div key={field.key} className={field.multiline ? 'sm:col-span-2' : ''}><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{field.label}</p><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-700">{value}</p></div>)}
+                        {briefing.references && <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Referências</p><p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">{briefing.references}</p></div>}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {selectedTask.briefing_history?.length > 0 && (
+                  <details className="mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+                    <summary className="cursor-pointer list-none text-xs font-black uppercase tracking-[0.12em] text-slate-500">Histórico do briefing · {selectedTask.briefing_history.length} versão(ões)</summary>
+                    <div className="mt-3 space-y-2 border-l-2 border-slate-100 pl-3">
+                      {selectedTask.briefing_history.map((event) => {
+                        const snapshot = cleanBriefingData(event.snapshot_json);
+                        return <div key={event.id} className="relative rounded-xl bg-slate-50 px-3 py-2.5"><span className="absolute -left-[19px] top-4 h-2 w-2 rounded-full bg-[#0969ff]" /><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-slate-700">{event.event_type === 'created' ? 'Briefing criado' : 'Briefing atualizado'}{event.user_name ? ` por ${event.user_name}` : ''}</p><span className="text-[10px] text-slate-400">{formatTaskDateTime(event.created_at)}</span></div>{snapshot.goal && <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500">{snapshot.goal}</p>}</div>;
+                      })}
+                    </div>
+                  </details>
+                )}
+                {selectedTask.description && !selectedTask.briefing_json && <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{selectedTask.description}</p>}
+              </>
+            )}
             {!selectedTask.details_loading && selectedTask.client_request_id && (
               <div className="mb-4 overflow-hidden rounded-2xl border border-violet-200 bg-violet-50/55">
                 <div className="flex items-center justify-between gap-3 border-b border-violet-100 px-4 py-3">

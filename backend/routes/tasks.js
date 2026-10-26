@@ -27,6 +27,7 @@ const TASK_APPROVAL_STATUSES = new Set(['completed', 'send', 'pending_approval',
 function normalizeFeedContentType(contentType) {
   if (contentType === 'carrossel') return 'carrossel';
   if (contentType === 'story' || contentType === 'stories') return 'story';
+  if (contentType === 'reels') return 'reels';
   return 'feed';
 }
 
@@ -288,7 +289,7 @@ function taskSummaryQuery(whereClause) {
   return `
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.content_type, t.content_tag, t.front_name, t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, COALESCE(t.is_backlog, 0) AS is_backlog, t.attachment_filename, t.feed_post_id,
+      t.title, t.content_type, t.content_tag, t.front_name, t.project_name, t.priority, t.goal, t.briefing_json, t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, t.is_featured, COALESCE(t.is_backlog, 0) AS is_backlog, t.attachment_filename, t.feed_post_id,
       t.direction_status, t.direction_feedback, t.direction_by, t.direction_at,
       t.client_status, t.client_feedback, t.client_at,
       COALESCE(p.feed_visible, 0) AS feed_post_visible,
@@ -1303,11 +1304,28 @@ router.get('/:id/media', (req, res) => {
   });
 });
 
+router.get('/briefing-suggestions', (req, res) => {
+  if (req.user.role === 'client') return res.status(403).json({ error: 'Acesso restrito à equipe.' });
+  const clientId = Number(req.query.client_id);
+  if (!clientId) return res.json({ items: [] });
+  if (!canAccessClient(req.user, clientId)) return res.status(403).json({ error: 'Você não tem acesso a este cliente.' });
+  const limit = Math.max(1, Math.min(12, Number(req.query.limit) || 8));
+  const rows = db.prepare(`
+    SELECT id, title, project_name, front_name, priority, goal, briefing_json, due_date, created_at, updated_at
+    FROM tasks
+    WHERE agency_id = ? AND client_id = ? AND parent_task_id IS NULL
+      AND briefing_json IS NOT NULL AND TRIM(briefing_json) != ''
+    ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+    LIMIT ?
+  `).all(Number(req.user.agency_id), clientId, limit);
+  return res.json({ items: rows });
+});
+
 router.get('/:id', (req, res) => {
   const task = db.prepare(`
     SELECT
       t.id, t.agency_id, t.client_id, t.created_by, t.parent_task_id, t.task_type,
-      t.title, t.description, t.content_type, t.content_tag, t.front_name, t.caption, t.video_link,
+      t.title, t.description, t.content_type, t.content_tag, t.front_name, t.project_name, t.priority, t.goal, t.briefing_json, t.caption, t.video_link,
       t.due_date, t.status, t.workflow_stage, t.approval_status, t.designer_completed, COALESCE(t.is_backlog, 0) AS is_backlog,
       t.direction_status, t.direction_feedback, t.direction_by, t.direction_at, t.client_status, t.client_feedback, t.client_at,
       t.is_featured, t.attachment_mime, t.attachment_filename,
@@ -1324,6 +1342,15 @@ router.get('/:id', (req, res) => {
   if (!ensureTaskAccess(req, res, task)) return;
 
   task.assignees = attachAssignees([{ id: task.id }], req.user.agency_id)[0].assignees;
+  task.briefing_history = db.prepare(`
+    SELECT e.id, e.event_type, e.snapshot_json, e.created_at, u.name AS user_name
+    FROM task_briefing_events e
+    LEFT JOIN users u ON u.id = e.user_id AND u.agency_id = e.agency_id
+    WHERE e.agency_id = ? AND e.task_id = ?
+    ORDER BY e.id DESC
+    LIMIT 20
+  `).all(Number(req.user.agency_id), Number(task.id));
+
 
   let subtaskQuery = `
     SELECT st.id, st.client_id, st.created_by, st.parent_task_id, st.task_type, st.content_type, st.content_tag, st.front_name,
@@ -1377,7 +1404,7 @@ router.post('/', (req, res) => {
   const {
     title, description, task_type, content_type, content_tag, front_name, caption, video_link, media_gallery,
     due_date, assignee_ids, status, workflow_stage, client_id, is_featured, is_backlog,
-    attachment_data, attachment_mime, attachment_filename, parent_task_id
+    project_name, priority, goal, briefing_json, attachment_data, attachment_mime, attachment_filename, parent_task_id
   } = req.body;
   if (!String(title || '').trim()) return res.status(400).json({ error: 'Titulo e obrigatorio' });
   if (req.user.role !== 'client' && status && !TASK_STATUSES.has(String(status))) {
@@ -1396,6 +1423,12 @@ router.post('/', (req, res) => {
   }
   if (!ensureClientAccess(req, res, finalClientId)) return;
   const finalAssigneeIds = Array.isArray(assignee_ids) ? assignee_ids : [];
+  if (briefing_json && req.user.role !== 'client') {
+    if (!finalClientId) return res.status(400).json({ error: 'Briefing estruturado precisa de um cliente.' });
+    if (!String(goal || '').trim()) return res.status(400).json({ error: 'Briefing estruturado precisa dizer o que deve acontecer com a entrega.' });
+    if (!String(due_date || '').trim()) return res.status(400).json({ error: 'Briefing estruturado precisa de prazo.' });
+    if (!finalAssigneeIds.length) return res.status(400).json({ error: 'Briefing estruturado precisa de pelo menos um responsável.' });
+  }
   const assigneeValidation = validateAssigneesForClient(finalClientId, finalAssigneeIds, req.user.agency_id);
   if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
   const finalWorkflowStage = req.user.role === 'client'
@@ -1404,8 +1437,8 @@ router.post('/', (req, res) => {
 
   const createTask = db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, content_tag, front_name, caption, video_link, media_gallery, due_date, status, workflow_stage, is_featured, is_backlog, attachment_data, attachment_mime, attachment_filename)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (agency_id, client_id, created_by, parent_task_id, task_type, title, description, content_type, content_tag, front_name, caption, video_link, media_gallery, due_date, status, workflow_stage, is_featured, is_backlog, project_name, priority, goal, briefing_json, attachment_data, attachment_mime, attachment_filename)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.user.agency_id, finalClientId, req.user.id, parent_task_id || null, task_type || 'basic', String(title).trim(), description || '',
       content_type || null, content_tag || null, front_name || null, caption || null, video_link || null,
@@ -1415,6 +1448,7 @@ router.post('/', (req, res) => {
       finalWorkflowStage,
       req.user.role === 'client' || parent_task_id ? 0 : (Number(is_featured) === 1 ? 1 : 0),
       req.user.role === 'client' || parent_task_id ? 0 : (Number(is_backlog) === 1 ? 1 : 0),
+      project_name || null, priority || 'medium', goal || null, briefing_json || null,
       persistMedia(attachment_data, attachment_mime || 'application/octet-stream'), attachment_mime || null, attachment_filename || null
     );
     setAssignees(info.lastInsertRowid, finalAssigneeIds);
@@ -1422,6 +1456,10 @@ router.post('/', (req, res) => {
   });
 
   const id = createTask();
+  if (briefing_json) {
+    db.prepare(`INSERT INTO task_briefing_events (agency_id, task_id, user_id, event_type, snapshot_json) VALUES (?, ?, ?, 'created', ?)` )
+      .run(Number(req.user.agency_id), Number(id), Number(req.user.id), String(briefing_json));
+  }
   res.status(201).json({ id, task: getTaskSummary(id, req.user.agency_id) });
 });
 
@@ -1530,13 +1568,25 @@ router.put('/:id', (req, res) => {
     const assigneeValidation = validateAssigneesForClient(targetClientId, req.body.assignee_ids, req.user.agency_id);
     if (!assigneeValidation.ok) return res.status(400).json({ error: assigneeValidation.error });
   }
+  const effectiveBriefingJson = Object.prototype.hasOwnProperty.call(req.body, 'briefing_json') ? req.body.briefing_json : existing.briefing_json;
+  if (effectiveBriefingJson && req.user.role !== 'client') {
+    const effectiveGoal = Object.prototype.hasOwnProperty.call(req.body, 'goal') ? req.body.goal : existing.goal;
+    const effectiveDueDate = Object.prototype.hasOwnProperty.call(req.body, 'due_date') ? req.body.due_date : existing.due_date;
+    const effectiveAssignees = Object.prototype.hasOwnProperty.call(req.body, 'assignee_ids')
+      ? (Array.isArray(req.body.assignee_ids) ? req.body.assignee_ids.map(Number).filter(Boolean) : [])
+      : db.prepare('SELECT user_id FROM task_assignees WHERE task_id = ?').all(Number(existing.id)).map((row) => Number(row.user_id));
+    if (!targetClientId) return res.status(400).json({ error: 'Briefing estruturado precisa de um cliente.' });
+    if (!String(effectiveGoal || '').trim()) return res.status(400).json({ error: 'Briefing estruturado precisa dizer o que deve acontecer com a entrega.' });
+    if (!String(effectiveDueDate || '').trim()) return res.status(400).json({ error: 'Briefing estruturado precisa de prazo.' });
+    if (!effectiveAssignees.length) return res.status(400).json({ error: 'Briefing estruturado precisa de pelo menos um responsável.' });
+  }
 
   const allowedFields = req.user.role === 'client' ? [
     'title', 'description', 'task_type', 'content_type', 'content_tag', 'front_name', 'caption', 'video_link',
-    'media_gallery', 'due_date', 'attachment_data', 'attachment_mime', 'attachment_filename'
+    'project_name', 'priority', 'goal', 'briefing_json', 'media_gallery', 'due_date', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ] : [
     'title', 'description', 'task_type', 'content_type', 'content_tag', 'front_name', 'caption', 'video_link',
-    'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'designer_completed',
+    'project_name', 'priority', 'goal', 'briefing_json', 'media_gallery', 'due_date', 'status', 'workflow_stage', 'approval_status', 'designer_completed',
     'direction_status', 'direction_feedback', 'direction_by', 'direction_at', 'client_status', 'client_feedback', 'client_at', 'client_id',
     'is_featured', 'is_backlog', 'attachment_data', 'attachment_mime', 'attachment_filename'
   ];
@@ -1620,6 +1670,11 @@ router.put('/:id', (req, res) => {
     }
   });
   updateTask();
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'briefing_json') && String(req.body.briefing_json || '') !== String(existing.briefing_json || '')) {
+    db.prepare(`INSERT INTO task_briefing_events (agency_id, task_id, user_id, event_type, snapshot_json) VALUES (?, ?, ?, 'updated', ?)` )
+      .run(Number(req.user.agency_id), Number(req.params.id), Number(req.user.id), String(req.body.briefing_json || '{}'));
+  }
 
   const refreshedTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   const refreshedStage = normalizeWorkflowStage(refreshedTask?.workflow_stage || workflowStageFromLegacy(refreshedTask?.status));
