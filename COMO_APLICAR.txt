@@ -1,0 +1,23 @@
+ZEBRAHUB — V8 QA + WORKFLOW CANÔNICO
+
+Pré-requisito: V1 a V7 já aplicadas.
+
+1. Faça backup/commit do projeto atual.
+2. Extraia este ZIP na RAIZ do projeto ZebraHub.
+3. Autorize a substituição dos arquivos existentes.
+4. Esta etapa altera FRONTEND e BACKEND; publique os dois juntos.
+5. Rode, na raiz do projeto:
+
+   ./QA_V8.sh
+
+6. Com as dependências instaladas, rode também:
+
+   cd frontend
+   npm ci
+   npm run build
+
+   cd ../backend
+   npm ci
+   npm test
+
+A V8 não exige migração de banco e não remove colunas antigas. Ela centraliza a interpretação dos estados existentes para manter compatibilidade com dados legados.

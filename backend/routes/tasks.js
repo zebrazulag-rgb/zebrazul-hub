@@ -13,6 +13,7 @@ const {
 } = require('../services/designerApprovals');
 
 const { buildPostedReport } = require('../services/postedReport');
+const { normalizeWorkflowStage, legacyStatusForWorkflow, workflowStageFromLegacy } = require('../utils/workflowState');
 const router = express.Router();
 router.use(authRequired);
 router.use(requireRole('admin', 'team', 'client'));
@@ -22,25 +23,6 @@ const TASK_WORKFLOW_STAGES = new Set(['todo', 'in_progress', 'correction', 'appr
 const TASK_APPROVAL_STATUSES = new Set(['completed', 'send', 'pending_approval', 'changes_requested', 'approved']);
 
 
-function normalizeWorkflowStage(stage) {
-  if (stage === 'internal_approval' || stage === 'external_approval') return 'approval';
-  return stage;
-}
-
-function legacyStatusForWorkflow(stage) {
-  stage = normalizeWorkflowStage(stage);
-  if (stage === 'posted') return 'posted';
-  if (stage === 'approved' || stage === 'scheduled') return 'done';
-  if (['in_progress', 'correction', 'approval'].includes(stage)) return 'in_progress';
-  return 'pending';
-}
-
-function workflowStageFromLegacy(status) {
-  if (status === 'posted') return 'posted';
-  if (status === 'done') return 'approved';
-  if (status === 'in_progress') return 'in_progress';
-  return 'todo';
-}
 
 function normalizeFeedContentType(contentType) {
   if (contentType === 'carrossel') return 'carrossel';

@@ -3,6 +3,7 @@ import { X, ImagePlus, FileText, Grid3x3, Trash2, Star, Palette } from 'lucide-r
 import api from '../api';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import { formChanged } from '../utils/formState.js';
+import { effectiveWorkflowStage as workflowStageFromTask, serverWorkflowStage } from '../utils/workflowState.js';
 
 const CONTENT_TYPES = [
   { value: 'feed', label: 'Estático' },
@@ -29,20 +30,6 @@ const WORKFLOW_STAGES = [
   { value: 'posted', label: 'Postado' },
 ];
 
-function workflowStageFromTask(task) {
-  if (['internal_approval', 'external_approval'].includes(task?.workflow_stage)) return 'approval';
-  if (task?.workflow_stage) return task.workflow_stage;
-  if (task?.status === 'posted') return 'posted';
-  if (task?.status === 'done') return 'approved';
-  if (task?.status === 'in_progress') return 'in_progress';
-  return 'todo';
-}
-
-function serverWorkflowStage(stage) {
-  // Compatibilidade com versões do backend que ainda distinguem
-  // a aprovação interna da etapa visual única "Em aprovação".
-  return stage === 'approval' ? 'internal_approval' : stage;
-}
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {

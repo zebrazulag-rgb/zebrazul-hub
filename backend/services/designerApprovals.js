@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const db = require('../db/database');
+const { inferApprovalState, isHeldForDirection, legacyStatusForWorkflow } = require('../utils/workflowState');
 
 function ensureDesignerApprovalStorage() {
   db.exec(`
@@ -174,7 +175,7 @@ function getApprovalState(taskId, agencyId) {
   const task = db.prepare(`
     SELECT id, agency_id, client_id, direction_status, direction_feedback,
            direction_by, direction_at, client_status, client_feedback, client_at,
-           approval_status, workflow_stage, created_at, updated_at
+           approval_status, workflow_stage, status, created_at, updated_at
     FROM tasks
     WHERE id = ? AND agency_id = ?
     LIMIT 1
@@ -182,17 +183,7 @@ function getApprovalState(taskId, agencyId) {
 
   if (!row && !task) return null;
 
-  const legacyApprovalStatus = String(task?.approval_status || '').toLowerCase();
-  const legacyWorkflow = String(task?.workflow_stage || '').toLowerCase();
-  const inferredDirection = legacyApprovalStatus === 'approved' || legacyApprovalStatus === 'pending_approval'
-    || legacyApprovalStatus === 'send' || legacyWorkflow === 'external_approval' || legacyWorkflow === 'approved'
-      ? 'approved'
-      : legacyApprovalStatus === 'changes_requested' || legacyWorkflow === 'correction'
-        ? 'changes_requested'
-        : 'pending';
-  const inferredClient = legacyApprovalStatus === 'approved' || legacyWorkflow === 'approved'
-    ? 'approved'
-    : inferredDirection === 'approved' ? 'pending' : 'waiting';
+  const inferred = inferApprovalState(task);
 
   const state = {
     task_id: Number(task?.id || row?.task_id || taskId),
@@ -200,13 +191,13 @@ function getApprovalState(taskId, agencyId) {
     client_id: task?.client_id ?? row?.client_id ?? null,
     direction_status: (task?.direction_status && task.direction_status !== 'pending')
       ? task.direction_status
-      : (row?.direction_status || task?.direction_status || inferredDirection),
+      : ((row?.direction_status && row.direction_status !== 'pending') ? row.direction_status : inferred.directionStatus),
     direction_feedback: task?.direction_feedback || row?.direction_feedback || null,
     direction_by: task?.direction_by || row?.direction_by || null,
     direction_at: task?.direction_at || row?.direction_at || null,
     client_status: (task?.client_status && task.client_status !== 'waiting')
       ? task.client_status
-      : (row?.client_status || task?.client_status || inferredClient),
+      : ((row?.client_status && row.client_status !== 'waiting') ? row.client_status : inferred.clientStatus),
     client_feedback: task?.client_feedback || row?.client_feedback || null,
     client_at: task?.client_at || row?.client_at || null,
     created_at: row?.created_at || task?.created_at || null,
@@ -302,12 +293,6 @@ function ensureApprovalState(task) {
   return getApprovalState(task.id, task.agency_id) || current;
 }
 
-function legacyStatusForWorkflow(stage) {
-  if (stage === 'posted') return 'posted';
-  if (stage === 'approved' || stage === 'scheduled') return 'done';
-  if (['in_progress', 'correction', 'approval'].includes(stage)) return 'in_progress';
-  return 'pending';
-}
 
 function updateTaskWorkflow(taskId, agencyId, stage) {
   const designerCompleted = stage === 'correction' ? 0 : (['approval', 'approved', 'scheduled', 'posted'].includes(stage) ? 1 : null);
@@ -411,21 +396,6 @@ function hideTaskFeed(task, stage = 'correction') {
   `).run(stage, Number(task.feed_post_id), Number(task.agency_id));
 }
 
-// Peça aprovada pela direção que ainda NÃO foi enviada ao cliente. Marcação sem
-// coluna nova: direção aprovada + client_status 'waiting' + approval_status que
-// não indica envio. Peças já enviadas (client_status 'pending'/'approved'/...)
-// ou legadas (approval_status pending_approval/send/approved) nunca são "retidas".
-function isHeldForDirection(task) {
-  if (!task) return false;
-  const direction = String(task.direction_status || '').toLowerCase();
-  const client = String(task.client_status || 'waiting').toLowerCase() || 'waiting';
-  const approval = String(task.approval_status || '').toLowerCase();
-  const stage = String(task.workflow_stage || '').toLowerCase();
-  return direction === 'approved'
-    && client === 'waiting'
-    && !['pending_approval', 'send', 'approved'].includes(approval)
-    && !['external_approval', 'approved'].includes(stage);
-}
 
 function setDirectionDecision({ task, userId, decision, feedback = null }) {
   ensureDesignerApprovalStorage();

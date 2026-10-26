@@ -10,6 +10,7 @@ import TaskRequestLinkModal from '../components/TaskRequestLinkModal.jsx';
 import TaskCalendarShareModal from '../components/TaskCalendarShareModal.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { hasPermission } from '../permissions.js';
+import { effectiveWorkflowStage as workflowStage, serverWorkflowStage, taskNeedsCorrection, correctionFeedbackFor as taskCorrectionFeedback } from '../utils/workflowState.js';
 
 const STATUS_COLUMNS = [
   { key: 'todo', label: 'A fazer', badge: 'bg-[#17181C] text-white', accent: '#17181C', soft: '#F5F3EE' },
@@ -57,38 +58,6 @@ const CONTENT_TAG_CLASSES = {
 };
 
 
-function serverWorkflowStage(stage) {
-  // Compatibilidade com o backend anterior, que ainda usa internal_approval/external_approval.
-  // A interface continua exibindo apenas uma etapa: "Em aprovação".
-  return stage === 'approval' ? 'internal_approval' : stage;
-}
-
-function workflowStage(task) {
-  if (String(task?.approval_status || '').toLowerCase() === 'changes_requested') return 'correction';
-  if (['internal_approval', 'external_approval'].includes(task?.workflow_stage)) return 'approval';
-  if (task?.workflow_stage) return task.workflow_stage;
-  if (task?.status === 'posted') return 'posted';
-  if (task?.status === 'done') return 'in_progress';
-  if (task?.status === 'in_progress') return 'in_progress';
-  return 'todo';
-}
-
-function taskNeedsCorrection(task) {
-  return workflowStage(task) === 'correction'
-    || String(task?.approval_status || '').toLowerCase() === 'changes_requested'
-    || Number(task?.subtask_correction || 0) > 0;
-}
-
-function taskCorrectionFeedback(task) {
-  const clientStatus = String(task?.client_status || '').toLowerCase();
-  const directionStatus = String(task?.direction_status || '').toLowerCase();
-  const clientFeedback = String(task?.client_feedback || '').trim();
-  const directionFeedback = String(task?.direction_feedback || '').trim();
-  const correctionFeedback = String(task?.correction_feedback || '').trim();
-  if (clientStatus === 'changes_requested' && clientFeedback) return clientFeedback;
-  if (directionStatus === 'changes_requested' && directionFeedback) return directionFeedback;
-  return clientFeedback || directionFeedback || correctionFeedback;
-}
 
 const TYPE_ICON = { post: Grid3x3, video: Video, basic: FileText };
 

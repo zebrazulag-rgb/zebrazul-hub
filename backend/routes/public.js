@@ -4,6 +4,7 @@ const { recordActivity } = require('../services/activity');
 const { isHeldForDirection } = require('../services/designerApprovals');
 
 const { buildPostedReport } = require('../services/postedReport');
+const { designerApprovalReady: canonicalDesignerApprovalReady, inferApprovalState } = require('../utils/workflowState');
 const router = express.Router();
 
 function ensureSocialMediaShareStorage() {
@@ -609,14 +610,7 @@ function publicApprovalImages(task) {
 }
 
 function designerApprovalReady(task) {
-  const directionStatus = String(task?.direction_status || '').toLowerCase();
-  const approvalStatus = String(task?.approval_status || '').toLowerCase();
-  const workflowStage = String(task?.workflow_stage || '').toLowerCase();
-  // Aprovada pela direção mas ainda não enviada ao cliente: não é pública.
-  if (isHeldForDirection(task)) return false;
-  return directionStatus === 'approved'
-    || ['pending_approval', 'send', 'approved'].includes(approvalStatus)
-    || ['external_approval', 'approved'].includes(workflowStage);
+  return canonicalDesignerApprovalReady(task);
 }
 
 function getDesignerApprovalItemsDirect(client) {
@@ -637,12 +631,8 @@ function getDesignerApprovalItemsDirect(client) {
     .filter(designerApprovalReady)
     .map((task) => {
       const images = publicApprovalImages(task);
-      const clientStatusRaw = String(task.client_status || '').toLowerCase();
-      const approvalStatus = String(task.approval_status || '').toLowerCase();
-      const workflowStage = String(task.workflow_stage || '').toLowerCase();
-      const clientStatus = clientStatusRaw && clientStatusRaw !== 'waiting'
-        ? clientStatusRaw
-        : ((approvalStatus === 'approved' || workflowStage === 'approved') ? 'approved' : 'pending');
+      const approvalState = inferApprovalState(task);
+      const clientStatus = approvalState.clientStatus === 'waiting' ? 'pending' : approvalState.clientStatus;
 
       return {
         id: Number(task.id),
@@ -653,7 +643,7 @@ function getDesignerApprovalItemsDirect(client) {
         caption: task.caption,
         due_date: task.due_date,
         workflow_stage: 'approval',
-        direction_status: String(task.direction_status || '').toLowerCase() === 'changes_requested' ? 'changes_requested' : 'approved',
+        direction_status: approvalState.directionStatus === 'changes_requested' ? 'changes_requested' : 'approved',
         direction_feedback: task.direction_feedback || null,
         client_status: clientStatus,
         client_feedback: task.client_feedback || null,

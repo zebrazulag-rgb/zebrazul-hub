@@ -11,6 +11,7 @@ import TaskFormModal from '../components/TaskFormModal.jsx';
 import PieceDateEditor from '../components/PieceDateEditor.jsx';
 import { PlatformBadges, PlatformPicker } from '../components/PlatformBadges.jsx';
 import { hasPermission } from '../permissions.js';
+import { approvalAgeDays, approvalOwnerMeta, clientStatusLabel, correctionFeedbackFor, correctionSourceFor, directionIsApproved, directionStatusLabel, isCorrectionItem, isHeldForDirection, isStalledApproval, legacyApprovalState, needsActionForApprovalMode as needsActionForMode, statusForClient, statusForDirection } from '../utils/workflowState.js';
 
 const CONTENT_TYPE_LABELS = {
   feed: 'Estático',
@@ -58,80 +59,16 @@ function mediaToImages(media) {
     : [];
 }
 
-function directionIsApproved(item) {
-  const approvalStatus = String(item?.approval_status || '').toLowerCase();
-  const workflowStage = String(item?.workflow_stage || '').toLowerCase();
-  return item?.direction_status === 'approved'
-    || ['pending_approval', 'send', 'approved'].includes(approvalStatus)
-    || workflowStage === 'external_approval'
-    || workflowStage === 'approved';
-}
 
 // Aprovada pela direção, mas ainda NÃO enviada ao cliente (fica na área da direção).
 // Mesma regra do backend (isHeldForDirection).
-function isHeldForDirection(item) {
-  if (!item) return false;
-  const client = String(item.client_status || 'waiting').toLowerCase() || 'waiting';
-  const approvalStatus = String(item.approval_status || '').toLowerCase();
-  const workflowStage = String(item.workflow_stage || '').toLowerCase();
-  return item.direction_status === 'approved'
-    && client === 'waiting'
-    && !['pending_approval', 'send', 'approved'].includes(approvalStatus)
-    && !['external_approval', 'approved'].includes(workflowStage);
-}
 
-function statusForDirection(item) {
-  if (directionIsApproved(item)) return 'approved';
-  if (item?.direction_status === 'changes_requested' || String(item?.approval_status || '').toLowerCase() === 'changes_requested') return 'rejected';
-  return 'pending_approval';
-}
 
-function statusForClient(item) {
-  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return 'approved';
-  if (item?.client_status === 'changes_requested') return 'rejected';
-  return 'pending_approval';
-}
 
-function directionStatusLabel(item) {
-  if (isHeldForDirection(item)) return 'Aprovada · não enviada ao cliente';
-  if (directionIsApproved(item)) return 'Direção aprovada · enviada ao cliente';
-  if (item?.direction_status === 'changes_requested' || String(item?.approval_status || '').toLowerCase() === 'changes_requested') return 'Correção solicitada';
-  return 'Aguardando direção';
-}
 
-function clientStatusLabel(item) {
-  if (!directionIsApproved(item)) return 'Aguardando direção';
-  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return 'Cliente aprovou';
-  if (item?.client_status === 'changes_requested') return 'Cliente pediu correção';
-  return 'Aguardando cliente';
-}
 
-function isCorrectionItem(item) {
-  const approvalStatus = String(item?.approval_status || '').toLowerCase();
-  const workflowStage = String(item?.workflow_stage || '').toLowerCase();
-  return item?.direction_status === 'changes_requested'
-    || item?.client_status === 'changes_requested'
-    || approvalStatus === 'changes_requested'
-    || workflowStage === 'correction';
-}
 
-function correctionFeedbackFor(item) {
-  if (!item) return '';
-  return String(
-    item.correction_feedback
-    || (item.client_status === 'changes_requested' ? item.client_feedback : '')
-    || (item.direction_status === 'changes_requested' ? item.direction_feedback : '')
-    || item.client_feedback
-    || item.direction_feedback
-    || ''
-  ).trim();
-}
 
-function correctionSourceFor(item) {
-  if (item?.correction_source) return item.correction_source === 'client' ? 'Cliente' : 'Direção';
-  if (item?.client_status === 'changes_requested') return 'Cliente';
-  return 'Direção';
-}
 
 function statusTone(status) {
   if (status === 'approved') return 'border-[#C9FF2F] bg-[#C9FF2F]/20 text-[#17181C]';
@@ -140,33 +77,9 @@ function statusTone(status) {
   return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
-function approvalAgeDays(item) {
-  const source = item?.updated_at || item?.direction_at || item?.client_at || item?.created_at || item?.due_date || item?.scheduled_at;
-  const stamp = source ? new Date(source).getTime() : 0;
-  if (!stamp || Number.isNaN(stamp)) return 0;
-  return Math.max(0, Math.floor((Date.now() - stamp) / 86400000));
-}
 
-function isStalledApproval(item) {
-  if (!item) return false;
-  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return false;
-  if (['approved', 'scheduled', 'posted'].includes(String(item?.workflow_stage || '').toLowerCase())) return false;
-  return approvalAgeDays(item) >= 3;
-}
 
-function approvalOwnerMeta(item) {
-  if (isCorrectionItem(item)) return { label: 'DESIGNER', tone: 'pink' };
-  if (!directionIsApproved(item)) return { label: 'DIREÇÃO', tone: 'ink' };
-  if (isHeldForDirection(item)) return { label: 'DIREÇÃO · ENVIAR', tone: 'ink' };
-  if (item?.client_status === 'approved' || String(item?.approval_status || '').toLowerCase() === 'approved') return { label: 'PRONTO', tone: 'lime' };
-  return { label: 'CLIENTE', tone: 'blue' };
-}
 
-function needsActionForMode(item, mode) {
-  if (mode === 'correction') return isCorrectionItem(item);
-  if (mode === 'client') return directionIsApproved(item) && !isHeldForDirection(item) && !isCorrectionItem(item) && item?.client_status !== 'approved';
-  return !isCorrectionItem(item) && (!directionIsApproved(item) || isHeldForDirection(item));
-}
 
 function approvalTrail(item) {
   if (!item) return [];
@@ -187,21 +100,6 @@ function formatTrailDate(value) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-function legacyApprovalState(item) {
-  const approvalStatus = String(item?.approval_status || '').toLowerCase();
-  const workflowStage = String(item?.workflow_stage || '').toLowerCase();
-
-  if (approvalStatus === 'approved') {
-    return { direction_status: 'approved', client_status: 'approved' };
-  }
-  if (approvalStatus === 'pending_approval' || approvalStatus === 'send') {
-    return { direction_status: 'approved', client_status: 'pending' };
-  }
-  if (approvalStatus === 'changes_requested' || workflowStage === 'correction') {
-    return { direction_status: 'changes_requested', client_status: 'waiting' };
-  }
-  return { direction_status: 'pending', client_status: 'waiting' };
-}
 
 export default function DesignerApproval() {
   const { selectedClient } = useClientFilter();
