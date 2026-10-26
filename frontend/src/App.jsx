@@ -4,6 +4,7 @@ import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import MyWork from './pages/MyWork.jsx';
+import Alerts from './pages/Alerts.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
 import DesignerApproval from './pages/DesignerApproval.jsx';
@@ -139,6 +140,7 @@ export default function App() {
       <Route path="/conversas" element={<Navigate to="/" replace />} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
       <Route path="/minha-fila" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view"><MyWork /></ProtectedRoute>} />
+      <Route path="/alertas" element={<ProtectedRoute permission="dashboard.view"><Alerts /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><DesignerApproval /></ProtectedRoute>} />
       <Route path="/leitor" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitor /></ProtectedRoute>} />
       <Route path="/leitor/:id" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitorReader /></ProtectedRoute>} />
