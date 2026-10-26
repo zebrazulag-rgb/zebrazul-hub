@@ -31,12 +31,12 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
 
 const VIDEO_COLUMNS = [
-  { key: 'recorded', label: 'Gravado', description: 'Saiu da captação' },
-  { key: 'editing', label: 'Em edição', description: 'Na mão do editor' },
-  { key: 'approved', label: 'Aprovado', description: 'Vídeo final aprovado' },
-  { key: 'dated', label: 'Datado', description: 'Enviado para a grade' },
-  { key: 'scheduled', label: 'Agendado', description: 'Programado para publicar' },
-  { key: 'posted', label: 'Postado', description: 'Publicado' },
+  { key: 'recorded', label: 'Brutos', description: 'Captação terminou. Hora de pegar.', accent: '#17181C', soft: '#F5F3EE', icon: Film },
+  { key: 'editing', label: 'Em edição', description: 'O corte está acontecendo.', accent: '#3A85FD', soft: '#EEF5FF', icon: Clapperboard },
+  { key: 'approved', label: 'Pronto', description: 'Final fechado. Pode seguir.', accent: '#86B800', soft: '#F4FFD3', icon: CheckCircle2 },
+  { key: 'dated', label: 'Na grade', description: 'Já ganhou data e destino.', accent: '#EC0567', soft: '#FFF0F6', icon: CalendarDays },
+  { key: 'scheduled', label: 'Agendado', description: 'Programado para entrar no ar.', accent: '#3A85FD', soft: '#EEF5FF', icon: Clock3 },
+  { key: 'posted', label: 'No ar', description: 'Publicado. Saiu da fila.', accent: '#17181C', soft: '#F1F1F2', icon: Video },
 ];
 
 const PLATFORM_LABELS = {
@@ -121,6 +121,28 @@ function daysLabel(client) {
   return `${client.days_without_recording} dias sem gravar`;
 }
 
+function videoNextMove(video) {
+  const map = {
+    recorded: 'Começar a edição',
+    editing: 'Fechar a versão final',
+    approved: 'Dar data e mandar pra grade',
+    dated: 'Confirmar o agendamento',
+    scheduled: 'Publicar e fechar a fila',
+    posted: 'Nenhuma ação pendente',
+  };
+  return map[video?.status] || 'Revisar o próximo passo';
+}
+
+function productionFocusLabel(key) {
+  return ({
+    all: 'Tudo',
+    edit: 'Edição',
+    ready: 'Prontos',
+    publish: 'Pra publicar',
+    posted: 'No ar',
+  })[key] || 'Tudo';
+}
+
 function StatusPill({ status }) {
   const map = {
     scheduled: ['Agendada', 'bg-blue-50 text-blue-700'],
@@ -131,9 +153,9 @@ function StatusPill({ status }) {
   return <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${className}`}>{label}</span>;
 }
 
-// Linha de produção (Gravado > Em edição > Aprovado > Datado > Agendado) pausada por enquanto.
-// Para reativar, troque para true. Nenhum dado é apagado.
-const PRODUCTION_ENABLED = false;
+// A esteira audiovisual é parte central da operação: a gravação concluída já cria
+// os vídeos brutos e eles seguem até edição, grade, agendamento e publicação.
+const PRODUCTION_ENABLED = true;
 
 export default function Audiovisual() {
   const { user } = useAuth();
@@ -391,7 +413,7 @@ export default function Audiovisual() {
         });
       }
       setEditModal(null);
-      setNotice(form.final_file ? 'Vídeo enviado, salvo e aprovado.' : 'Link do vídeo final registrado e aprovado.');
+      setNotice(form.final_file ? 'Vídeo final salvo. Já pode seguir para a grade.' : 'Vídeo final registrado. Já pode seguir para a grade.');
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível concluir a edição.');
@@ -625,11 +647,37 @@ export default function Audiovisual() {
   const operationalClient = operationalClientId
     ? clientCatalog.find((client) => Number(client.id) === Number(operationalClientId))
     : null;
+  const productionOverview = {
+    raw: videos.filter((video) => video.status === 'recorded').length,
+    editing: videos.filter((video) => video.status === 'editing').length,
+    ready: videos.filter((video) => video.status === 'approved').length,
+    dated: videos.filter((video) => video.status === 'dated').length,
+    scheduled: videos.filter((video) => video.status === 'scheduled').length,
+    posted: videos.filter((video) => video.status === 'posted').length,
+  };
+  const audiovisualHeadline = Number(stats.overdue_recordings || 0) > 0
+    ? 'TEM GRAVAÇÃO PEDINDO FECHAMENTO.'
+    : clientsNotScheduledThisMonth > 0
+      ? 'TEM CLIENTE SEM DATA NA AGENDA.'
+      : productionOverview.editing > 0
+        ? 'A EDIÇÃO TÁ GIRANDO.'
+        : productionOverview.ready > 0
+          ? 'TEM VÍDEO PRONTO PRA SAIR.'
+          : 'CÂMERA EM DIA.';
+  const audiovisualSubline = Number(stats.overdue_recordings || 0) > 0
+    ? `${stats.overdue_recordings} gravação(ões) já passaram e ainda precisam ser encerradas.`
+    : clientsNotScheduledThisMonth > 0
+      ? `${clientsNotScheduledThisMonth} cliente(s) ainda não têm gravação marcada neste mês.`
+      : productionOverview.editing > 0
+        ? `${productionOverview.editing} vídeo(s) estão em edição agora. A esteira segue até entrar no ar.`
+        : productionOverview.ready > 0
+          ? `${productionOverview.ready} vídeo(s) já fecharam a edição e estão esperando data.`
+          : 'Captação, edição e publicação sem peça perdida no caminho.';
 
   const tabs = [
     ['overview', 'Painel'],
     ['agenda', 'Agenda'],
-    ...(PRODUCTION_ENABLED ? [['production', 'Produção']] : []),
+    ...(PRODUCTION_ENABLED ? [['production', 'Esteira']] : []),
     ['clients', 'Clientes'],
   ];
 
@@ -674,6 +722,52 @@ export default function Audiovisual() {
 
       {error && <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertTriangle className="mt-0.5 shrink-0" size={16} /> <span>{error}</span><button onClick={() => setError('')} className="ml-auto"><X size={15} /></button></div>}
       {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</div>}
+
+      <section className="relative overflow-hidden rounded-[30px] bg-[#17181C] px-5 py-6 text-white sm:px-7 sm:py-7">
+        <div className="pointer-events-none absolute -right-14 -top-16 h-56 w-56 rounded-full border-[34px] border-[#3A85FD]/90" />
+        <div className="pointer-events-none absolute -bottom-24 right-32 h-52 w-52 rounded-full border-[30px] border-[#C9FF2F]/90" />
+        <div className="pointer-events-none absolute right-7 top-8 h-16 w-5 rotate-[32deg] rounded-full bg-[#EC0567]" />
+        <div className="relative grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div className="max-w-3xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/40">Audiovisual / da captação à rua</p>
+            <h1 className="brand-display mt-3 max-w-3xl text-3xl font-black leading-[0.95] tracking-[-0.035em] sm:text-4xl lg:text-[46px]">{audiovisualHeadline}</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">{audiovisualSubline}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 lg:w-[330px]">
+            {[
+              { label: 'Pra gravar', value: clientsMissingThisMonth, color: '#EC0567' },
+              { label: 'Em edição', value: productionOverview.editing, color: '#3A85FD' },
+              { label: 'Prontos', value: productionOverview.ready, color: '#C9FF2F' },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => item.label === 'Pra gravar' ? setTab('clients') : setTab('production')}
+                className="rounded-[18px] border border-white/10 bg-white/[0.06] p-3 text-left backdrop-blur-sm transition hover:bg-white/[0.1]"
+              >
+                <div className="mb-3 h-1.5 w-8 rounded-full" style={{ backgroundColor: item.color }} />
+                <p className="text-2xl font-black leading-none">{item.value}</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">{item.label}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="relative mt-5 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
+          <span className="mr-1 text-[9px] font-black uppercase tracking-[0.2em] text-white/40">Fluxo</span>
+          {VIDEO_COLUMNS.map((column, index) => (
+            <button
+              key={column.key}
+              type="button"
+              onClick={() => setTab('production')}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[10px] font-bold text-white/70 transition hover:bg-white/[0.09] hover:text-white"
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: column.accent }} />
+              {column.label}
+              {index < VIDEO_COLUMNS.length - 1 && <span className="text-white/25">→</span>}
+            </button>
+          ))}
+        </div>
+      </section>
 
       {operationalClient && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
@@ -1011,7 +1105,7 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
         <Metric icon={CheckCircle2} label="Concluídas" value={stats.recordings_completed_month || 0} />
         <Metric icon={Video} label="Vídeos gravados" value={stats.videos_recorded_month || 0} />
         <Metric icon={Film} label="Em edição" value={stats.editing || 0} />
-        <Metric icon={Check} label="Aprovados" value={stats.edited_waiting_schedule || 0} />
+        <Metric icon={Check} label="Prontos" value={stats.edited_waiting_schedule || 0} />
         <Metric icon={Sparkles} label="Postados no mês" value={stats.posted_month || 0} />
         <Metric icon={Clapperboard} label="Gravações totais" value={stats.recordings_total || 0} />
       </div>
@@ -1183,75 +1277,185 @@ function FinalVideoAsset({ links = [] }) {
 }
 
 function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDraggedVideoId, currentDraggedVideo, setVideoStatus, setScheduleModal, deleteSchedule }) {
+  const [focus, setFocus] = useState('all');
+
   function canDrag(video) {
     if (['recorded', 'editing', 'approved'].includes(video.status)) return canEdit;
     if (['dated', 'scheduled', 'posted'].includes(video.status)) return canPublish;
     return canPublish || canEdit;
   }
+
+  const counts = useMemo(() => ({
+    all: videos.length,
+    edit: videos.filter((video) => ['recorded', 'editing'].includes(video.status)).length,
+    ready: videos.filter((video) => video.status === 'approved').length,
+    publish: videos.filter((video) => ['dated', 'scheduled'].includes(video.status)).length,
+    posted: videos.filter((video) => video.status === 'posted').length,
+  }), [videos]);
+
+  const focusStatuses = {
+    all: VIDEO_COLUMNS.map((column) => column.key),
+    edit: ['recorded', 'editing'],
+    ready: ['approved'],
+    publish: ['dated', 'scheduled'],
+    posted: ['posted'],
+  };
+  const visibleColumns = VIDEO_COLUMNS.filter((column) => (focusStatuses[focus] || focusStatuses.all).includes(column.key));
+  const minWidth = Math.max(760, visibleColumns.length * 270);
+
   return (
-    <div className="overflow-x-auto pb-3">
-      <div className="grid min-w-[1580px] grid-cols-6 gap-3">
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
         {VIDEO_COLUMNS.map((column) => {
-          const items = videos.filter((video) => video.status === column.key);
+          const ColumnIcon = column.icon;
+          const value = videos.filter((video) => video.status === column.key).length;
           return (
-            <section
+            <button
               key={column.key}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (currentDraggedVideo) setVideoStatus(currentDraggedVideo, column.key);
+              type="button"
+              onClick={() => {
+                if (column.key === 'recorded' || column.key === 'editing') setFocus('edit');
+                else if (column.key === 'approved') setFocus('ready');
+                else if (column.key === 'dated' || column.key === 'scheduled') setFocus('publish');
+                else setFocus('posted');
               }}
-              className={`min-h-[520px] rounded-[22px] border bg-slate-50/70 p-3 transition ${draggedVideoId ? 'border-blue-200' : 'border-slate-200'}`}
+              className="relative min-w-0 overflow-hidden rounded-[18px] border border-slate-200/80 bg-white px-3 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-slate-300"
             >
-              <div className="mb-3 flex items-center justify-between px-1">
-                <div><h2 className="text-sm font-bold text-slate-900">{column.label}</h2><p className="mt-0.5 text-[10px] text-slate-400">{column.description}</p></div>
-                <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-500 shadow-sm">{items.length}</span>
+              <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: column.accent }} />
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 sm:text-[11px]">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: column.soft, color: column.accent }}><ColumnIcon size={12} /></span>
+                <span className="truncate">{column.label}</span>
               </div>
-              <div className="space-y-2.5">
-                {items.map((video) => (
-                  <article
-                    key={video.id}
-                    draggable={canDrag(video)}
-                    onDragStart={() => setDraggedVideoId(video.id)}
-                    onDragEnd={() => setDraggedVideoId(null)}
-                    className={`rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm ${canDrag(video) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0"><p className="truncate text-[11px] font-bold uppercase tracking-wide" style={{ color: video.client_color || '#0969ff' }}>{video.client_name}</p><h3 className="mt-1 line-clamp-2 text-sm font-bold text-slate-900">{video.title}</h3></div>
-                      <span className="shrink-0 rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-400">#{String(video.video_number).padStart(2, '0')}</span>
-                    </div>
-                    <p className="mt-2 text-[11px] text-slate-400">Gravado em {formatDate(video.recording_date)}</p>
-
-                    {(video.raw_links || []).length > 0 && <a href={video.raw_links[0]} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-600"><Link2 size={12} /> Arquivos brutos</a>}
-                    <FinalVideoAsset links={video.final_links || []} />
-
-                    {(video.schedules || []).length > 0 && (
-                      <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-2.5">
-                        {video.schedules.map((schedule) => (
-                          <div key={schedule.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[10px]">
-                            <span className="font-bold text-slate-600">{PLATFORM_LABELS[schedule.platform] || schedule.platform}</span>
-                            <span className="ml-auto text-slate-400">{formatDate(schedule.scheduled_at, { time: true })}</span>
-                            {canPublish && schedule.status === 'scheduled' && <button type="button" onClick={() => deleteSchedule(video.id, schedule.id)} className="text-slate-300 hover:text-red-500"><X size={11} /></button>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
-                      {canEdit && video.status === 'recorded' && <button type="button" onClick={() => setVideoStatus(video, 'editing')} className="rounded-lg bg-slate-950 px-2.5 py-1.5 text-[10px] font-bold text-white">Iniciar edição</button>}
-                      {canEdit && video.status === 'editing' && <button type="button" onClick={() => setVideoStatus(video, 'approved')} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-bold text-white">Concluir e aprovar</button>}
-                      {canPublish && video.status === 'approved' && <button type="button" onClick={() => setScheduleModal({ id: video.id, title: video.title, scheduled_at: localDateTimeInput(new Date(Date.now() + 86400000)), platform: 'instagram' })} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700">Enviar pra grade</button>}
-                      {canPublish && video.status === 'dated' && <button type="button" onClick={() => setVideoStatus(video, 'scheduled')} className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[10px] font-bold text-indigo-700">Marcar agendado</button>}
-                      {canPublish && video.status === 'scheduled' && <button type="button" onClick={() => setVideoStatus(video, 'posted')} className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-[10px] font-bold text-white">Marcar postado</button>}
-                    </div>
-                  </article>
-                ))}
-                {!items.length && <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-10 text-center text-[11px] text-slate-400">Nenhum vídeo nesta etapa.</div>}
-              </div>
-            </section>
+              <p className="mt-2 text-xl font-black leading-none text-[#17181C] sm:text-2xl">{value}</p>
+            </button>
           );
         })}
       </div>
+
+      <div className="toolbar-panel flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Olhar rápido</p>
+          <p className="mt-1 text-xs text-slate-500">A esteira mostra exatamente onde cada vídeo parou e qual é o próximo movimento.</p>
+        </div>
+        <div className="flex max-w-full gap-1.5 overflow-x-auto">
+          {[
+            { key: 'all', label: 'Tudo' },
+            { key: 'edit', label: 'Edição' },
+            { key: 'ready', label: 'Prontos' },
+            { key: 'publish', label: 'Pra publicar' },
+            { key: 'posted', label: 'No ar' },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setFocus(item.key)}
+              className={`inline-flex min-w-max items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${focus === item.key ? 'border-[#17181C] bg-[#17181C] text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}
+            >
+              {item.label}<span className={focus === item.key ? 'text-[#C9FF2F]' : 'text-slate-300'}>{counts[item.key]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto pb-3">
+        <div
+          className="grid gap-3"
+          style={{ minWidth: `${minWidth}px`, gridTemplateColumns: `repeat(${visibleColumns.length}, minmax(250px, 1fr))` }}
+        >
+          {visibleColumns.map((column) => {
+            const ColumnIcon = column.icon;
+            const items = videos.filter((video) => video.status === column.key);
+            return (
+              <section
+                key={column.key}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (currentDraggedVideo) setVideoStatus(currentDraggedVideo, column.key);
+                }}
+                className="relative min-h-[540px] overflow-hidden rounded-[24px] border p-3 transition"
+                style={{ borderColor: `${column.accent}33`, backgroundColor: column.soft }}
+              >
+                <div className="absolute inset-x-0 top-0 h-1.5" style={{ backgroundColor: column.accent }} />
+                <div className="mb-3 flex items-start justify-between gap-2 px-1 pt-2">
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white" style={{ color: column.accent }}><ColumnIcon size={17} /></span>
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-black text-[#17181C]">{column.label}</h2>
+                      <p className="mt-0.5 text-[10px] leading-4 text-slate-500">{column.description}</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500">{items.length}</span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {items.map((video) => (
+                    <article
+                      key={video.id}
+                      draggable={canDrag(video)}
+                      onDragStart={() => setDraggedVideoId(video.id)}
+                      onDragEnd={() => setDraggedVideoId(null)}
+                      className={`relative overflow-hidden rounded-[18px] border border-white bg-white p-3.5 transition ${canDrag(video) ? 'cursor-grab active:cursor-grabbing' : ''} ${Number(draggedVideoId) === Number(video.id) ? 'opacity-60' : ''}`}
+                    >
+                      <div className="absolute bottom-0 left-0 top-0 w-1" style={{ backgroundColor: column.accent }} />
+                      <div className="pl-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-[10px] font-black uppercase tracking-[0.12em]" style={{ color: video.client_color || '#3A85FD' }}>{video.client_name}</p>
+                            <h3 className="mt-1 line-clamp-2 text-sm font-black leading-5 text-[#17181C]">{video.title}</h3>
+                          </div>
+                          <span className="shrink-0 rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-400">#{String(video.video_number).padStart(2, '0')}</span>
+                        </div>
+
+                        <div className="mt-2.5 rounded-xl bg-slate-50 px-2.5 py-2">
+                          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Próximo movimento</p>
+                          <p className="mt-0.5 text-[11px] font-bold text-slate-700">{videoNextMove(video)}</p>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                          <span>Gravado {formatDate(video.recording_date)}</span>
+                          {video.editor_name && <span>Editor: <strong className="font-bold text-slate-600">{video.editor_name}</strong></span>}
+                        </div>
+
+                        {(video.raw_links || []).length > 0 && <a href={video.raw_links[0]} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-[#3A85FD]"><Link2 size={12} /> Abrir brutos</a>}
+                        {['approved', 'dated', 'scheduled', 'posted'].includes(video.status) && <FinalVideoAsset links={video.final_links || []} />}
+
+                        {(video.schedules || []).length > 0 && (
+                          <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-2.5">
+                            {video.schedules.map((schedule) => (
+                              <div key={schedule.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[10px]">
+                                <span className="font-bold text-slate-600">{PLATFORM_LABELS[schedule.platform] || schedule.platform}</span>
+                                <span className="ml-auto text-slate-400">{formatDate(schedule.scheduled_at, { time: true })}</span>
+                                {canPublish && schedule.status === 'scheduled' && <button type="button" onClick={() => deleteSchedule(video.id, schedule.id)} className="text-slate-300 hover:text-[#EC0567]"><X size={11} /></button>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                          {canEdit && video.status === 'recorded' && <button type="button" onClick={() => setVideoStatus(video, 'editing')} className="rounded-lg bg-[#17181C] px-2.5 py-1.5 text-[10px] font-black text-white">Pegar pra editar</button>}
+                          {canEdit && video.status === 'editing' && <button type="button" onClick={() => setVideoStatus(video, 'approved')} className="rounded-lg bg-[#3A85FD] px-2.5 py-1.5 text-[10px] font-black text-white">Fechar edição</button>}
+                          {canPublish && video.status === 'approved' && <button type="button" onClick={() => setScheduleModal({ id: video.id, title: video.title, scheduled_at: localDateTimeInput(new Date(Date.now() + 86400000)), platform: 'instagram' })} className="rounded-lg bg-[#C9FF2F] px-2.5 py-1.5 text-[10px] font-black text-[#17181C]">Mandar pra grade</button>}
+                          {canPublish && video.status === 'dated' && <button type="button" onClick={() => setVideoStatus(video, 'scheduled')} className="rounded-lg bg-[#EC0567] px-2.5 py-1.5 text-[10px] font-black text-white">Confirmar agendado</button>}
+                          {canPublish && video.status === 'scheduled' && <button type="button" onClick={() => setVideoStatus(video, 'posted')} className="rounded-lg bg-[#17181C] px-2.5 py-1.5 text-[10px] font-black text-white">Marcar no ar</button>}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                  {!items.length && (
+                    <div className="rounded-[18px] border border-dashed border-slate-300/70 bg-white/55 px-3 py-10 text-center">
+                      <CheckCircle2 size={18} className="mx-auto mb-2 text-slate-300" />
+                      <p className="text-[11px] font-bold text-slate-400">Nada parado aqui.</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="text-center text-[10px] text-slate-400">Filtro ativo: <strong className="font-bold text-slate-600">{productionFocusLabel(focus)}</strong> · arraste entre etapas ou use os botões do card.</p>
     </div>
   );
 }
@@ -1470,7 +1674,7 @@ function CompleteRecordingModal({ form, setForm, saving, onClose, onSave }) {
 
 function EditCompleteModal({ form, setForm, saving, onClose, onSave }) {
   return (
-    <ModalShell title="Concluir edição" subtitle={form.title} onClose={onClose} saving={saving}>
+    <ModalShell title="Fechar edição" subtitle={form.title} onClose={onClose} saving={saving}>
       <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
         Envie o vídeo diretamente para ele ficar disponível no card. Se o arquivo for maior ou estiver no Drive, mantenha a opção de link.
       </div>
@@ -1490,7 +1694,7 @@ function EditCompleteModal({ form, setForm, saving, onClose, onSave }) {
         <TextArea label="Link do vídeo (Drive, Frame.io, Dropbox...)" value={form.final_links_text} onChange={(value) => setForm({ ...form, final_links_text: value })} placeholder="Cole um link por linha" rows={3} />
         <TextArea label="Observação da edição" value={form.edit_notes} onChange={(value) => setForm({ ...form, edit_notes: value })} placeholder="Versão final, observações, ajustes feitos..." rows={3} />
       </div>
-      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel={saving ? 'Enviando...' : 'Concluir e aprovar'} />
+      <ModalActions saving={saving} onClose={onClose} onSave={() => onSave(form)} saveLabel={saving ? 'Enviando...' : 'Fechar e deixar pronto'} />
     </ModalShell>
   );
 }
