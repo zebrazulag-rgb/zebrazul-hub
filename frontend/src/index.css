@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --agency-primary: #0969ff;
-  --agency-secondary: #4f8cff;
-  --agency-sidebar: #121620;
-  --agency-login-bg: #121620;
+  --agency-primary: #3A85FD;
+  --agency-secondary: #EC0567;
+  --agency-sidebar: #17181C;
+  --agency-login-bg: #17181C;
 }
 
 html, body, #root {
@@ -16,7 +16,7 @@ html, body, #root {
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Manrope', 'Avenir Next', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #121620;
   background: #f5f7fb;
   overflow-x: hidden;
@@ -256,3 +256,203 @@ body {
 
 /* Zebra Leitor: leitura em tela cheia no celular */
 body.zl-reader-open .mobile-bottom-nav { display: none !important; }
+
+
+/* =========================================================
+   ZEBRAZUL REBRAND — camada visual do ZebraHub
+   Interface funcional primeiro; personalidade nos pontos de memória.
+   ========================================================= */
+:root {
+  --zebra-ink: #17181C;
+  --zebra-paper: #F5F3EE;
+  --zebra-blue: #3A85FD;
+  --zebra-pink: #EC0567;
+  --zebra-lime: #C9FF2F;
+}
+
+.brand-display {
+  font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', 'Manrope', sans-serif;
+  font-stretch: condensed;
+}
+
+.brand-sidebar {
+  background-image:
+    radial-gradient(circle at -18% 12%, rgba(58,133,253,.22), transparent 25%),
+    radial-gradient(circle at 120% 84%, rgba(236,5,103,.12), transparent 28%);
+  box-shadow: 14px 0 42px rgba(23,24,28,.10);
+}
+
+.brand-sidebar::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 92px;
+  width: 3px;
+  height: 72px;
+  border-radius: 999px;
+  background: var(--zebra-lime);
+  opacity: .82;
+  pointer-events: none;
+}
+
+.brand-sidebar-mark {
+  background: rgba(255,255,255,.035);
+}
+
+.brand-sidebar-name {
+  font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', 'Manrope', sans-serif;
+}
+
+.brand-topbar {
+  border-color: rgba(23,24,28,.08);
+  background: color-mix(in srgb, var(--zebra-paper) 91%, transparent);
+}
+
+.brand-topbar-kicker { color: var(--zebra-blue); }
+
+.brand-app-main {
+  background:
+    linear-gradient(180deg, #F7F5F1 0%, #F5F3EE 44%, #F7F7F5 100%);
+}
+
+.brand-canvas-accent {
+  background:
+    radial-gradient(circle at 74% -24%, rgba(58,133,253,.16), transparent 43%),
+    radial-gradient(circle at 96% 6%, rgba(236,5,103,.07), transparent 24%);
+}
+
+.brand-dashboard-hero {
+  border-radius: 22px;
+  padding: clamp(24px, 4vw, 46px);
+  background:
+    radial-gradient(circle at 88% 18%, rgba(58,133,253,.38), transparent 25%),
+    linear-gradient(135deg, #17181C 0%, #17181C 63%, #101114 100%);
+  box-shadow: 0 18px 54px rgba(23,24,28,.13);
+}
+
+.brand-dashboard-hero::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  background: var(--zebra-blue);
+}
+
+.brand-hero-scribble {
+  position: absolute;
+  width: 250px;
+  height: 250px;
+  right: -54px;
+  bottom: -112px;
+  border: 28px solid var(--zebra-lime);
+  border-radius: 48% 52% 42% 58% / 58% 38% 62% 42%;
+  transform: rotate(-22deg);
+  opacity: .92;
+}
+
+.brand-hero-scribble::after {
+  content: '';
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  left: -46px;
+  top: -66px;
+  border: 20px solid var(--zebra-pink);
+  border-radius: 58% 42% 61% 39% / 43% 57% 38% 62%;
+  opacity: .72;
+}
+
+.brand-kicker-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--zebra-lime);
+  color: var(--zebra-ink);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .16em;
+}
+
+.brand-hero-primary,
+.brand-hero-secondary {
+  min-height: 44px;
+  border-radius: 12px;
+  padding: 0 16px;
+  font-weight: 800;
+  transition: transform .16s ease, background .16s ease, border-color .16s ease;
+}
+.brand-hero-primary { background: var(--zebra-blue); color: #fff; }
+.brand-hero-primary:hover { transform: translateY(-2px); background: #2478fb; }
+.brand-hero-secondary { border: 1px solid rgba(255,255,255,.20); background: rgba(255,255,255,.06); color: #fff; }
+.brand-hero-secondary:hover { transform: translateY(-2px); background: rgba(255,255,255,.11); }
+
+.brand-stat-card {
+  border: 1px solid rgba(23,24,28,.09);
+  border-radius: 16px;
+  background: rgba(255,255,255,.84);
+  box-shadow: 0 8px 28px rgba(23,24,28,.035);
+}
+.brand-stat-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(23,24,28,.16);
+  box-shadow: 0 14px 34px rgba(23,24,28,.07);
+}
+.brand-stat-accent { border-radius: 0 0 999px 0; max-width: 76%; }
+.brand-completion-card {
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 105% -10%, rgba(58,133,253,.35), transparent 42%),
+    var(--zebra-ink);
+}
+
+.brand-login::before {
+  content: '';
+  position: absolute;
+  width: 330px;
+  height: 330px;
+  right: -180px;
+  bottom: -130px;
+  border: 32px solid var(--zebra-lime);
+  border-radius: 47% 53% 41% 59%;
+  transform: rotate(-21deg);
+  opacity: .9;
+}
+.brand-login::after {
+  content: '';
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  left: -128px;
+  top: 12%;
+  border: 24px solid var(--zebra-pink);
+  border-radius: 55% 45% 63% 37%;
+  transform: rotate(18deg);
+  opacity: .72;
+}
+
+/* Menos “SaaS genérico”: superfícies mais secas e tipografia mais firme. */
+.surface-card,
+.card,
+.toolbar-panel,
+.data-row {
+  border-radius: 16px;
+}
+
+.btn-primary,
+.btn-secondary,
+.input-field {
+  border-radius: 11px;
+}
+
+.btn-primary { font-weight: 800; }
+.page-title { font-weight: 900; letter-spacing: -0.035em; }
+.section-title { font-weight: 800; }
+
+@media (max-width: 767px) {
+  .brand-dashboard-hero { border-radius: 18px; padding: 24px 20px 28px; }
+  .brand-hero-scribble { width: 170px; height: 170px; right: -90px; bottom: -90px; border-width: 20px; opacity: .6; }
+}

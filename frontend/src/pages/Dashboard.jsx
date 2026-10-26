@@ -255,6 +255,35 @@ export default function Dashboard() {
     },
   ];
 
+  const dashboardVoice = (() => {
+    if (isCommercialTeam) {
+      return {
+        kicker: 'COMERCIAL EM MOVIMENTO',
+        title: commercialStats.negotiation > 0 ? 'TEM NEGÓCIO NA MESA.' : 'VAMOS BOTAR NEGÓCIO PRA ANDAR.',
+        copy: `${commercialStats.open} lead${commercialStats.open === 1 ? '' : 's'} aberto${commercialStats.open === 1 ? '' : 's'} e ${commercialStats.negotiation} negociação${commercialStats.negotiation === 1 ? '' : 'ões'} em andamento.`,
+      };
+    }
+    if (taskStats.overdue > 0) {
+      return {
+        kicker: 'OPERAÇÃO AGORA',
+        title: 'TEM COISA PEDINDO ATENÇÃO.',
+        copy: `${taskStats.overdue} demanda${taskStats.overdue === 1 ? '' : 's'} atrasada${taskStats.overdue === 1 ? '' : 's'} e ${pendingApproval.length} conteúdo${pendingApproval.length === 1 ? '' : 's'} esperando aprovação.`,
+      };
+    }
+    if (pendingApproval.length > 0) {
+      return {
+        kicker: 'OPERAÇÃO AGORA',
+        title: 'A BOLA TÁ COM A APROVAÇÃO.',
+        copy: `${pendingApproval.length} conteúdo${pendingApproval.length === 1 ? '' : 's'} aguardando decisão para a operação continuar andando.`,
+      };
+    }
+    return {
+      kicker: 'OPERAÇÃO AGORA',
+      title: 'TÁ TUDO NO EIXO.',
+      copy: 'O fluxo está andando. Aproveita a calmaria antes da próxima arenga.',
+    };
+  })();
+
   if (loading) {
     return (
       <div className="space-y-5 animate-pulse">
@@ -268,19 +297,26 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <section className="py-2">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 lg:text-[28px]">Painel</h1>
-            <p className="mt-1 text-xs font-medium capitalize tracking-wide text-slate-400">{formatDate(new Date())}</p>
-            {isManager && <p className="mt-1 text-xs text-slate-400">Visão da agência inteira. Não depende do filtro de cliente.</p>}
+      <section className="brand-dashboard-hero relative overflow-hidden">
+        <div className="brand-hero-scribble" aria-hidden="true" />
+        <div className="relative z-10 grid gap-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="brand-kicker-pill">{dashboardVoice.kicker}</span>
+              <span className="text-[11px] font-bold capitalize tracking-wide text-white/45">{formatDate(new Date())}</span>
+            </div>
+            <h1 className="brand-display mt-5 max-w-[920px] text-[38px] font-black uppercase leading-[0.92] tracking-[-0.055em] text-white sm:text-[52px] lg:text-[64px]">
+              {dashboardVoice.title}
+            </h1>
+            <p className="mt-5 max-w-2xl text-sm font-medium leading-relaxed text-white/62 sm:text-[15px]">{dashboardVoice.copy}</p>
+            {isManager && <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-[#C9FF2F]/75">Visão geral da agência · sem depender do filtro de cliente</p>}
           </div>
 
-          <div className="flex flex-wrap gap-2.5">
-            <Link to="/designer" className="btn-primary inline-flex items-center gap-2 text-sm">
+          <div className="flex flex-wrap gap-2.5 lg:justify-end">
+            <Link to="/designer" className="brand-hero-primary inline-flex items-center gap-2 text-sm">
               <Plus size={17} /> Nova tarefa
             </Link>
-            <Link to={isCommercialTeam ? '/comercial' : '/aprovacao'} className="btn-secondary inline-flex items-center gap-2 text-sm">
+            <Link to={isCommercialTeam ? '/comercial' : '/aprovacao'} className="brand-hero-secondary inline-flex items-center gap-2 text-sm">
               {isCommercialTeam ? 'Abrir comercial' : 'Ver aprovações'} <ArrowUpRight size={16} />
             </Link>
           </div>
@@ -294,8 +330,8 @@ export default function Dashboard() {
       {!isManager && (
       <section className={`grid grid-cols-2 gap-4 ${isCommercialTeam ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
         {contentStats.map((stat) => (
-          <Link key={stat.label} to={stat.href} className="group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.045)] transition hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
-            <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${stat.accent}`} />
+          <Link key={stat.label} to={stat.href} className="brand-stat-card group relative overflow-hidden p-5 transition">
+            <div className={`brand-stat-accent absolute inset-x-0 top-0 h-[5px] bg-gradient-to-r ${stat.accent}`} />
             <div className="flex items-start justify-between gap-4">
               <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${stat.iconClass}`}>
                 <stat.icon size={20} strokeWidth={2.2} />
@@ -414,7 +450,7 @@ export default function Dashboard() {
               ))}
             </div>
 
-            <div className="rounded-2xl bg-[#121620] p-5 text-white">
+            <div className="brand-completion-card p-5 text-white">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium uppercase tracking-[0.16em] text-white/35">Conclusão</span>
                 <Target size={17} className="text-[#63a0ff]" />
@@ -422,7 +458,7 @@ export default function Dashboard() {
               <p className="mt-5 text-4xl font-bold">{taskStatsLoading ? '—' : `${completionRate}%`}</p>
               <p className="mt-1 text-sm text-white/45">das demandas e subtarefas do período foram concluídas.</p>
               <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-gradient-to-r from-[#0969ff] to-[#63a0ff] transition-all" style={{ width: `${completionRate}%` }} />
+                <div className="h-full rounded-full bg-[#C9FF2F] transition-all" style={{ width: `${completionRate}%` }} />
               </div>
               <Link to="/designer" className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-white/75 transition hover:text-white">
                 Abrir Designer <ChevronRight size={15} />

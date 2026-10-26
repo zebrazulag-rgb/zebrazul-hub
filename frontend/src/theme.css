@@ -1,13 +1,13 @@
 :root,
 html[data-zebrahub-theme="light"] {
-  --zh-bg: #f5f7fb;
-  --zh-bg-soft: #eef2f7;
+  --zh-bg: #F5F3EE;
+  --zh-bg-soft: #EEECE6;
   --zh-surface: #ffffff;
   --zh-surface-2: #f8fafc;
   --zh-surface-3: #eef2f7;
   --zh-border: #e2e8f0;
   --zh-border-soft: #edf1f5;
-  --zh-text: #121620;
+  --zh-text: #17181C;
   --zh-text-soft: #475569;
   --zh-muted: #64748b;
   --zh-muted-2: #94a3b8;

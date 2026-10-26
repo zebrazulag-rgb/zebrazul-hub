@@ -41,7 +41,7 @@ import AvatarUpload from './AvatarUpload.jsx';
 import ModalBackdrop from './ModalBackdrop.jsx';
 import api from '../api';
 import { formChanged } from '../utils/formState.js';
-import zebraHubLogo from '../assets/logo-hub-white.png';
+import zebraHubLogo from '../assets/zebrazul-mark-light.png';
 import { isBeeClient } from '../utils/beeClientAccess.js';
 import NotificationBell from './NotificationBell.jsx';
 import ClientHealthModal, { HEALTH_LEVELS } from './ClientHealthModal.jsx';
@@ -463,9 +463,9 @@ export default function Layout({ children }) {
     ? visibleWorkspaceItems.slice(4)
     : visibleWorkspaceItems.filter((item) => ['/organizacao','/aprovacao','/agendamento','/moodboard','/leitor','/bussola','/ia','/relatorios','/rematriculas'].includes(item.to));
 
-  const accentColor = selectedClient?.logo_color || agency?.primary_color || '#0969ff';
-  const agencyPrimary = agency?.primary_color || '#0969ff';
-  const agencySidebar = agency?.sidebar_color || '#121620';
+  const accentColor = selectedClient?.logo_color || agency?.primary_color || '#3A85FD';
+  const agencyPrimary = agency?.primary_color || '#3A85FD';
+  const agencySidebar = agency?.sidebar_color || '#17181C';
   const agencyLogo = agency?.logo_data || zebraHubLogo;
   const topbarLabel = (() => {
     const path = location.pathname;
@@ -575,15 +575,25 @@ export default function Layout({ children }) {
   return (
     <div className="app-shell flex h-screen min-h-0 overflow-hidden bg-[#f5f7fb] text-slate-900">
       <aside
-        className={`app-sidebar ${isNativeApp ? 'hidden' : 'hidden md:flex'} sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white shadow-[16px_0_48px_rgba(15,23,42,0.08)] transition-[width] duration-300 ${sidebarCollapsed ? 'w-[68px]' : 'w-[218px]'}`}
+        className={`app-sidebar brand-sidebar ${isNativeApp ? 'hidden' : 'hidden md:flex'} sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-white/5 text-white transition-[width] duration-300 ${sidebarCollapsed ? 'w-[72px]' : 'w-[232px]'}`}
         style={{ backgroundColor: agencySidebar }}
       >
-        <div className={`relative flex min-h-[58px] items-center ${sidebarCollapsed ? 'justify-center px-2' : 'px-3'} py-2.5`}>
-          <img
-            src={agencyLogo}
-            alt={agency?.name || 'Agência'}
-            className={`w-auto object-contain transition-all duration-300 ${sidebarCollapsed ? 'max-h-8 max-w-[36px]' : 'max-h-11 max-w-[146px]'}`}
-          />
+        <div className={`relative flex min-h-[72px] items-center ${sidebarCollapsed ? 'justify-center px-2' : 'px-3.5'} py-2.5`}>
+          <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
+            <span className="brand-sidebar-mark flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+              <img
+                src={agencyLogo}
+                alt={agency?.name || 'Zebrazul'}
+                className="h-10 w-10 object-contain"
+              />
+            </span>
+            {!sidebarCollapsed && (
+              <div className="min-w-0 leading-none">
+                <p className="brand-sidebar-name truncate text-[18px] font-black tracking-[-0.045em] text-white">ZebraHub</p>
+                <p className="mt-1 truncate text-[8px] font-bold uppercase tracking-[0.16em] text-white/35">O que só você pode ser</p>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setSidebarCollapsed((current) => !current)}
@@ -839,11 +849,11 @@ export default function Layout({ children }) {
         </div>
       </aside>
 
-      <main className="app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-        <div className="sticky top-0 z-20 flex min-h-[58px] items-center gap-2 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:px-6 md:px-8 xl:px-10">
+      <main className="app-main brand-app-main relative h-screen min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <div className="brand-topbar sticky top-0 z-20 flex min-h-[62px] items-center gap-2 border-b px-4 backdrop-blur-xl sm:px-6 md:px-8 xl:px-10">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Workspace</p>
-            <p className="truncate text-sm font-bold text-slate-900">{topbarLabel}</p>
+            <p className="brand-topbar-kicker text-[9px] font-black uppercase tracking-[0.2em]">ZEBRAHUB</p>
+            <p className="truncate text-sm font-extrabold text-slate-900">{topbarLabel}</p>
           </div>
 
           <div id="zebrahub-topbar-tools" className="ml-3 hidden min-w-0 flex-1 items-center gap-2 overflow-x-auto lg:flex" />
@@ -994,7 +1004,7 @@ export default function Layout({ children }) {
             <NotificationBell />
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-0 top-[58px] h-80 bg-[radial-gradient(circle_at_70%_-20%,rgba(9,105,255,0.12),transparent_48%)]" />
+        <div className="brand-canvas-accent pointer-events-none absolute inset-x-0 top-[62px] h-80" />
         <div className={`relative mx-auto w-full max-w-[1320px] min-w-0 px-4 pb-28 pt-5 sm:px-6 ${isNativeApp ? '' : 'md:px-8 md:py-8 xl:px-10'}`}>{children}</div>
       </main>
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
-import zebraHubLogo from '../assets/logo-hub-white.png';
+import zebraHubLogo from '../assets/zebrazul-mark-light.png';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -32,11 +32,11 @@ export default function Login() {
   }
 
   const logo = agency?.logo_data || zebraHubLogo;
-  const primary = agency?.primary_color || '#0266FE';
-  const background = agency?.login_background_color || '#121620';
+  const primary = agency?.primary_color || '#3A85FD';
+  const background = agency?.login_background_color || '#17181C';
 
   return (
-    <div className="relative min-h-screen overflow-hidden px-5 py-10" style={{ backgroundColor: background }}>
+    <div className="brand-login relative min-h-screen overflow-hidden px-5 py-10" style={{ backgroundColor: background }}>
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[420px]"
@@ -45,9 +45,9 @@ export default function Login() {
 
       <main className="relative z-10 mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-[390px] flex-col justify-center">
         <header className="mb-10 text-center">
-          <img src={logo} alt={agency?.name || 'Agência'} className="mx-auto max-h-24 w-auto max-w-[260px] object-contain" />
-          <h1 className="mt-10 text-2xl font-semibold tracking-tight text-white">Bem-vindo de volta</h1>
-          <p className="mt-2 text-sm text-slate-400">Entre para acessar {agency?.product_name || 'sua plataforma'}.</p>
+          <img src={logo} alt={agency?.name || 'Agência'} className="mx-auto h-24 w-24 object-contain" />
+          <p className="mt-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#C9FF2F]">ZEBRAHUB</p><h1 className="brand-display mt-3 text-4xl font-black uppercase leading-none tracking-[-0.045em] text-white">BORA TRABALHAR.</h1>
+          <p className="mt-3 text-sm text-white/45">Entre para acessar {agency?.product_name || 'seu espaço'}.</p>
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-4">
