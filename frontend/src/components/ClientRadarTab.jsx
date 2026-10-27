@@ -209,7 +209,7 @@ function SourcesPanel({ client }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
-  const [topic, setTopic] = useState({ query: '', days: 0 });
+  const [topic, setTopic] = useState({ query: '', days: 30 });
   const [addingTopic, setAddingTopic] = useState(false);
 
   async function addTopic(e) {
@@ -217,7 +217,7 @@ function SourcesPanel({ client }) {
     try {
       const { data } = await api.post(`/radar/clients/${client.id}/topic-source`, topic);
       setNotice(`Assunto adicionado${data.warning ? ` (aviso: ${data.warning})` : ` · ${data.collected} notícia(s) coletada(s)`}.`);
-      setTopic({ query: '', days: 0 }); await load();
+      setTopic({ query: '', days: 30 }); await load();
     } catch (err) { setError(errMsg(err, 'Não foi possível adicionar o assunto.')); } finally { setAddingTopic(false); }
   }
 
@@ -304,7 +304,7 @@ function SourcesPanel({ client }) {
         <form onSubmit={addTopic} className="mt-3 flex flex-wrap gap-2">
           <input value={topic.query} onChange={(e) => setTopic({ ...topic, query: e.target.value })} placeholder='Ex.: saúde mental, "reforma tributária" advocacia' className={`${input} min-w-[220px] flex-1`} required minLength={2} maxLength={200} />
           <select value={topic.days} onChange={(e) => setTopic({ ...topic, days: Number(e.target.value) })} className={`${input} !w-auto`} aria-label="Período">
-            <option value={0}>Qualquer data</option><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option>
+            <option value={30}>Últimos 30 dias</option><option value={7}>Últimos 7 dias</option>
           </select>
           <button type="submit" disabled={addingTopic || sources.length >= limit} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#17181C] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
             {addingTopic ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Acompanhar
@@ -359,7 +359,7 @@ function SourcesPanel({ client }) {
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-[11px] leading-5 text-slate-400">Desativar para a coleta e esconde as notícias da fonte; ao reativar, elas voltam. Remover apaga a fonte e as notícias coletadas, mas o histórico de prompts já gerados é mantido.</p>
+        <p className="mt-3 text-[11px] leading-5 text-slate-400">Desativar para a coleta e esconde as notícias da fonte; ao reativar, elas voltam. Remover apaga a fonte e as notícias coletadas, mas o histórico de prompts já gerados é mantido. O Radar guarda e mostra apenas notícias dos últimos 30 dias.</p>
       </section>
     </div>
   );

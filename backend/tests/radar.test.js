@@ -15,11 +15,12 @@ const mk = (n) => Number(db.prepare("INSERT INTO clients (agency_id, name, segme
 const A = mk('Clínica A'); const B = mk('Clínica B');
 const admin = { id: 1, agency_id: agencyId, role: 'admin' };
 
+const daysAgo = (n) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(10, 0, 0, 0); return d; };
 const RSS = `<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Blog Odonto</title><link>https://odonto.test/</link>
-<item><title><![CDATA[Clareamento: o que muda em 2026]]></title><link>/p/clareamento</link><guid>g1</guid><pubDate>Mon, 26 Oct 2026 10:00:00 GMT</pubDate><description><![CDATA[<p>Novas regras &amp; <b>cuidados</b> para o clareamento.</p>]]></description></item>
-<item><title>Implantes &amp; próteses</title><link>https://odonto.test/p/implantes</link><guid>g2</guid><pubDate>Sun, 25 Oct 2026 10:00:00 GMT</pubDate><description>Texto simples sobre implantes.</description></item></channel></rss>`;
+<item><title><![CDATA[Clareamento: o que muda em 2026]]></title><link>/p/clareamento</link><guid>g1</guid><pubDate>${daysAgo(1).toUTCString()}</pubDate><description><![CDATA[<p>Novas regras &amp; <b>cuidados</b> para o clareamento.</p>]]></description></item>
+<item><title>Implantes &amp; próteses</title><link>https://odonto.test/p/implantes</link><guid>g2</guid><pubDate>${daysAgo(2).toUTCString()}</pubDate><description>Texto simples sobre implantes.</description></item></channel></rss>`;
 const ATOM = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Atom Vet</title><link rel="alternate" href="https://vet.test/"/><link rel="self" href="https://vet.test/atom"/>
-<entry><title>Vacinas de inverno</title><link rel="alternate" href="https://vet.test/vacinas"/><id>tag:vet,1</id><published>2026-10-24T12:00:00Z</published><summary>Resumo das vacinas.</summary></entry></feed>`;
+<entry><title>Vacinas de inverno</title><link rel="alternate" href="https://vet.test/vacinas"/><id>tag:vet,1</id><published>${daysAgo(3).toISOString()}</published><summary>Resumo das vacinas.</summary></entry></feed>`;
 const HTML = `<html><head><link rel="alternate" type="application/rss+xml" title="Feed" href="/blog/rss.xml"></head><body>oi</body></html>`;
 
 let routes = {}; let calls = [];
@@ -47,7 +48,7 @@ test('parser RSS: título, trecho limpo, link absoluto, data e CDATA', () => {
   assert.equal(p.items[0].title, 'Clareamento: o que muda em 2026');
   assert.equal(p.items[0].summary, 'Novas regras & cuidados para o clareamento.');
   assert.equal(p.items[0].link, 'https://odonto.test/p/clareamento');
-  assert.equal(p.items[0].published_at, '2026-10-26T10:00:00.000Z');
+  assert.equal(p.items[0].published_at, daysAgo(1).toISOString());
   assert.equal(p.items[1].title, 'Implantes & próteses');
 });
 
@@ -85,9 +86,9 @@ test('redirecionamento para rede interna é bloqueado', async () => {
 
 test('prompts: incluem cliente, referências, dados da notícia e instruções', () => {
   const client = { name: 'Clínica A', segment: 'Odontologia', editorial_references: 'Tom acolhedor, estilo @perfilx.' };
-  const item = { title: 'Clareamento 2026', summary: 'Trecho X', link: 'https://odonto.test/p', published_at: '2026-10-26T10:00:00.000Z' };
+  const item = { title: 'Clareamento 2026', summary: 'Trecho X', link: 'https://odonto.test/p', published_at: daysAgo(1).toISOString() };
   const c = buildPrompt({ kind: 'carousel', client, item, source: { name: 'Blog Odonto' }, angle: 'foco em mitos' });
-  for (const t of ['Clínica A', 'Tom acolhedor, estilo @perfilx.', 'Clareamento 2026', 'Trecho X', 'Blog Odonto', '26/10/2026', 'https://odonto.test/p', 'CARROSSEL', 'foco em mitos', '[CONFIRMAR]']) assert.ok(c.includes(t), t);
+  for (const t of ['Clínica A', 'Tom acolhedor, estilo @perfilx.', 'Clareamento 2026', 'Trecho X', 'Blog Odonto', new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Fortaleza' }).format(daysAgo(1)), 'https://odonto.test/p', 'CARROSSEL', 'foco em mitos', '[CONFIRMAR]']) assert.ok(c.includes(t), t);
   const v = buildPrompt({ kind: 'video', client: { name: 'Clínica A' }, item, source: { name: 'Blog' } });
   assert.ok(v.includes('ROTEIRO DE VÍDEO')); assert.ok(v.includes('Nenhuma referência cadastrada'));
   assert.throws(() => buildPrompt({ kind: 'x', client, item }));
@@ -141,7 +142,7 @@ test('filtros: data, fonte e palavras-chave (E / OU)', async () => {
   assert.equal((await call('GET', `/clients/${A}/items?q=clareamento`)).body.total, 1);
   assert.equal((await call('GET', `/clients/${A}/items?q=clareamento%20implantes`)).body.total, 0);
   assert.equal((await call('GET', `/clients/${A}/items?q=clareamento%20implantes&match=any`)).body.total, 2);
-  assert.equal((await call('GET', `/clients/${A}/items?from=2026-10-26&to=2026-10-26`)).body.total, 1);
+  assert.equal((await call('GET', `/clients/${A}/items?from=${daysAgo(1).toISOString().slice(0, 10)}&to=${daysAgo(1).toISOString().slice(0, 10)}`)).body.total, 1);
   assert.equal((await call('GET', `/clients/${A}/items?source_id=${blog.id}`)).body.total, 2);
   assert.equal((await call('GET', `/clients/${A}/items?q=100%25`)).body.total, 0); // % tratado como texto
 });
@@ -338,4 +339,24 @@ test('referências editoriais longas são salvas por inteiro (sem limite de 4000
   const r = await call('PUT', `/clients/${A}/editorial`, { editorial_references: big });
   assert.equal(r.status, 200); assert.equal(r.body.editorial_references.length, big.trim().length);
   assert.equal((await call('GET', `/clients/${A}/editorial`)).body.editorial_references.length, big.trim().length);
+});
+
+test('só entram e aparecem notícias dos últimos 30 dias', async () => {
+  CUR = admin;
+  const D = mk('Clínica D');
+  const old = `<?xml version="1.0"?><rss version="2.0"><channel><title>Velho</title>
+<item><title>Notícia recente</title><link>https://old.test/novo</link><guid>n1</guid><pubDate>${daysAgo(5).toUTCString()}</pubDate><description>ok</description></item>
+<item><title>Notícia antiga</title><link>https://old.test/velho</link><guid>n2</guid><pubDate>${daysAgo(45).toUTCString()}</pubDate><description>velha</description></item></channel></rss>`;
+  routes = { 'https://old.test/feed': ok(old) };
+  const created = await call('POST', `/clients/${D}/sources`, { feed_url: 'https://old.test/feed' });
+  assert.equal(created.body.collected, 1);
+  assert.deepEqual((await call('GET', `/clients/${D}/items`)).body.items.map((i) => i.title), ['Notícia recente']);
+  // item que envelhece dentro do banco: some da lista na hora e é apagado na limpeza
+  const src = db.prepare('SELECT id, agency_id FROM radar_sources WHERE client_id = ?').get(D);
+  db.prepare("INSERT INTO radar_items (agency_id, client_id, source_id, guid, title, published_at) VALUES (?, ?, ?, 'x', 'Velha no banco', ?)").run(src.agency_id, D, src.id, daysAgo(40).toISOString());
+  assert.equal((await call('GET', `/clients/${D}/items`)).body.total, 1);
+  assert.equal((await call('GET', `/clients/${D}/overview`)).body.stats.total, 1);
+  require('../services/radar').pruneOldItems();
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM radar_items WHERE client_id = ?').get(D).n, 1);
+  assert.match(feed.googleNewsFeedUrl('saúde'), /when%3A30d/);
 });

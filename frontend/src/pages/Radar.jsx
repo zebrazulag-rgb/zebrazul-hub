@@ -23,7 +23,7 @@ function updatedLabel(value) {
   if (!value) return 'ainda sem leitura';
   return timeAgo(`${String(value).replace(' ', 'T')}${String(value).includes('T') ? '' : 'Z'}`);
 }
-const PERIODS = [['all', 'Tudo'], ['today', 'Hoje'], ['7', '7 dias'], ['30', '30 dias']];
+const PERIODS = [['all', 'Últimos 30 dias'], ['today', 'Hoje'], ['7', '7 dias']];
 function periodRange(period) {
   const iso = (d) => new Date(d).toISOString().slice(0, 10);
   if (period === 'today') return { from: iso(Date.now() - 3 * 3600 * 1000) };

@@ -2,7 +2,9 @@
 const db = require('../db/database');
 const { fetchUrl, parseFeed, truncate } = require('./radarFeed');
 
-const RETENTION_DAYS = Math.max(7, Number(process.env.RADAR_RETENTION_DAYS || 60));
+// O Radar só guarda e mostra notícias dos últimos 30 dias (pode ser reduzido por RADAR_RETENTION_DAYS, nunca aumentado).
+const RETENTION_DAYS = Math.min(30, Math.max(7, Number(process.env.RADAR_RETENTION_DAYS || 30)));
+const cutoffIso = () => new Date(Date.now() - RETENTION_DAYS * 86400000).toISOString();
 const MANUAL_MIN_GAP_MS = 60 * 1000;
 const FAILURE_BACKOFF_THRESHOLD = 5;
 
@@ -15,8 +17,10 @@ function saveItems(source, parsed) {
   `);
   let added = 0;
   const run = db.transaction(() => {
+    const cutoff = cutoffIso();
     for (const item of parsed.items) {
       const published = item.published_at || new Date().toISOString();
+      if (published < cutoff) continue; // mais velha que o período do Radar
       const result = insert.run(source.agency_id, source.client_id, source.id, item.guid, item.title, item.summary || null, item.link, published);
       added += result.changes;
     }
@@ -70,6 +74,7 @@ async function refreshClient(clientId, { force = false } = {}) {
     if (result.ok) summary.added += result.added || 0;
     else { summary.failed += 1; summary.errors.push(result.error); }
   }
+  pruneOldItems();
   return summary;
 }
 
@@ -98,4 +103,4 @@ function pruneOldItems() {
   return db.prepare(`DELETE FROM radar_items WHERE published_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)`).run(`-${RETENTION_DAYS} days`).changes;
 }
 
-module.exports = { refreshSource, refreshClient, refreshAllActive, pruneOldItems, RETENTION_DAYS };
+module.exports = { cutoffIso, refreshSource, refreshClient, refreshAllActive, pruneOldItems, RETENTION_DAYS };

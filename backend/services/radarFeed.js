@@ -302,7 +302,7 @@ async function discoverFeeds(rawUrl) {
 function googleNewsFeedUrl(query, { days = 0 } = {}) {
   const q = String(query || '').trim().replace(/\s+/g, ' ').slice(0, 200);
   if (q.length < 2) throw new Error('Digite o assunto (ex.: saúde mental).');
-  const full = days > 0 ? `${q} when:${Math.min(30, days)}d` : q;
+  const full = `${q} when:${days > 0 ? Math.min(30, days) : 30}d`; // o Radar só mostra os últimos 30 dias
   return `https://news.google.com/rss/search?q=${encodeURIComponent(full)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
 }
 

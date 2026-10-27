@@ -4,7 +4,7 @@ const express = require('express');
 const db = require('../db/database');
 const { canAccessClient } = require('../middleware/auth');
 const { discoverFeeds, tryParseFeed, normalizeUrl, googleNewsFeedUrl } = require('../services/radarFeed');
-const { refreshSource, refreshClient } = require('../services/radar');
+const { refreshSource, refreshClient, cutoffIso } = require('../services/radar');
 const { buildPrompt, KINDS } = require('../services/radarPrompts');
 const { trendingTerms, fold } = require('../services/radarInsights');
 
@@ -174,8 +174,8 @@ function lastSeen(userId, clientId) {
 const sqlNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 function visibleBase(req, clientId) {
-  const where = ['i.client_id = ?', 'i.agency_id = ?', 's.is_active = 1'];
-  const params = [clientId, req.user.agency_id];
+  const where = ['i.client_id = ?', 'i.agency_id = ?', 's.is_active = 1', 'i.published_at >= ?'];
+  const params = [clientId, req.user.agency_id, cutoffIso()];
   if (isClientUser(req)) where.push('s.client_visible = 1');
   return { where, params, from: 'FROM radar_items i JOIN radar_sources s ON s.id = i.source_id' };
 }
@@ -187,8 +187,8 @@ function dayBound(value, end) {
 
 router.get('/clients/:clientId/items', (req, res) => {
   const client = ensureClient(req, res, req.params.clientId); if (!client) return;
-  const where = ['i.client_id = ?', 'i.agency_id = ?', 's.is_active = 1'];
-  const params = [client.id, req.user.agency_id];
+  const where = ['i.client_id = ?', 'i.agency_id = ?', 's.is_active = 1', 'i.published_at >= ?'];
+  const params = [client.id, req.user.agency_id, cutoffIso()];
   if (isClientUser(req)) where.push('s.client_visible = 1');
   const from = dayBound(req.query.from, false); const to = dayBound(req.query.to, true);
   if (from) { where.push('i.published_at >= ?'); params.push(from); }
@@ -308,9 +308,9 @@ router.get('/summary', (req, res) => {
       SELECT COUNT(DISTINCT s.id) AS sources,
         COALESCE(SUM(CASE WHEN i.fetched_at > ? THEN 1 ELSE 0 END), 0) AS fresh,
         COALESCE(SUM(CASE WHEN i.published_at >= ? THEN 1 ELSE 0 END), 0) AS week
-      FROM radar_sources s LEFT JOIN radar_items i ON i.source_id = s.id
+      FROM radar_sources s LEFT JOIN radar_items i ON i.source_id = s.id AND i.published_at >= ?
       WHERE s.client_id = ? AND s.agency_id = ? AND s.is_active = 1${clientSide}
-    `).get(seenAt, new Date(Date.now() - 7 * 86400000).toISOString(), c.id, req.user.agency_id);
+    `).get(seenAt, new Date(Date.now() - 7 * 86400000).toISOString(), cutoffIso(), c.id, req.user.agency_id);
     return { ...c, sources: row.sources, new_since_visit: row.fresh, week: row.week };
   });
   res.json({ clients, total_new: clients.reduce((sum, c) => sum + c.new_since_visit, 0) });
