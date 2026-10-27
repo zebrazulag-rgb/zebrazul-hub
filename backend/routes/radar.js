@@ -153,7 +153,7 @@ router.get('/clients/:clientId/editorial', (req, res) => {
 
 router.put('/clients/:clientId/editorial', (req, res) => {
   const client = ensureClient(req, res, req.params.clientId); if (!client) return;
-  const text = String(req.body?.editorial_references ?? '').slice(0, 4000);
+  const text = String(req.body?.editorial_references ?? '').slice(0, 200000); // teto de segurança, na prática sem limite
   db.prepare('UPDATE clients SET editorial_references = ? WHERE id = ? AND agency_id = ?').run(text.trim() || null, client.id, req.user.agency_id);
   res.json({ editorial_references: text.trim() });
 });

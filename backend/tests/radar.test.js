@@ -332,3 +332,10 @@ test('acompanhar assunto cria fonte do Google Notícias (RSS) e coleta', async (
   assert.equal((await call('POST', `/clients/${B}/topic-source`, { query: 'saúde mental', days: 7 })).status, 409);
   assert.equal((await call('POST', `/clients/${B}/topic-source`, { query: '' })).status, 400);
 });
+
+test('referências editoriais longas são salvas por inteiro (sem limite de 4000)', async () => {
+  CUR = admin; const big = 'Referência editorial. '.repeat(1000); // ~22 mil caracteres
+  const r = await call('PUT', `/clients/${A}/editorial`, { editorial_references: big });
+  assert.equal(r.status, 200); assert.equal(r.body.editorial_references.length, big.trim().length);
+  assert.equal((await call('GET', `/clients/${A}/editorial`)).body.editorial_references.length, big.trim().length);
+});

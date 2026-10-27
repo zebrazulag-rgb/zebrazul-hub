@@ -384,11 +384,11 @@ function ReferencesPanel({ client, canEdit }) {
   return (
     <div className="space-y-3">
       <p className="text-xs leading-5 text-slate-500">Estas referências entram automaticamente em todos os prompts deste cliente: perfis admirados, tom de voz, palavras a usar ou evitar, formatos que funcionam.</p>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} readOnly={!canEdit} maxLength={4000} rows={9}
+      <textarea value={text} onChange={(e) => setText(e.target.value)} readOnly={!canEdit} rows={12}
         placeholder={'Ex.:\n- Tom: acolhedor, direto, sem jargão técnico\n- Referências: @perfil1 (didático), @perfil2 (bastidores)\n- Evitar: promessas de resultado, termos alarmistas'}
         className="w-full rounded-xl border border-slate-200 p-3 text-sm leading-6 outline-none focus:border-[#3A85FD]" />
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-slate-400">{text.length}/4000</span>
+        <span className="text-[11px] text-slate-400">{text.length.toLocaleString('pt-BR')} caracteres</span>
         <div className="flex items-center gap-3">
           {msg && <span className="text-xs font-semibold text-slate-500">{msg}</span>}
           {canEdit && <button type="button" onClick={save} disabled={saving || text === saved} className="rounded-xl bg-[#3A85FD] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">{saving ? 'Salvando…' : 'Salvar referências'}</button>}
