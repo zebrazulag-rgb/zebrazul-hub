@@ -273,3 +273,37 @@ test('resumo por cliente respeita o acesso; cliente não vê contagem de prompts
   const p = (path, method = 'GET') => apiPermissionForRequest({ path, method, user: {}, body: {} });
   for (const x of ['/radar/summary', '/radar/clients/1/overview', '/radar/clients/1/seen', '/radar/items/3/save']) assert.equal(p(x, x.endsWith('seen') ? 'POST' : 'GET'), 'radar.view');
 });
+
+test('lookup protegido funciona nos dois formatos do Node (all:true e all:false) e bloqueia IP interno', async () => {
+  const lookup = (host, opts) => new Promise((resolve) => feed.guardedLookup(host, opts, (err, a, f) => resolve({ err, a, f })));
+  const one = await lookup('localhost', { all: false });
+  assert.ok(one.err, 'localhost deve ser bloqueado');
+  const many = await lookup('localhost', { all: true });
+  assert.ok(many.err, 'localhost deve ser bloqueado também com all:true');
+  const ip = await lookup('8.8.8.8', { all: true });
+  assert.ok(!ip.err && Array.isArray(ip.a) && ip.a[0].address === '8.8.8.8');
+});
+
+test('requisição real passa pelo lookup protegido (servidor local é bloqueado, não "Invalid IP")', async () => {
+  const http = require('http');
+  const srv = http.createServer((q, r) => r.end('x')); await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  feed.setFetcherForTests(null); // usa o leitor real
+  try {
+    await assert.rejects(() => feed.fetchUrl(`http://127.0.0.1:${srv.address().port}/`), /não permitido/);
+    await assert.rejects(() => feed.fetchUrl(`http://localhost:${srv.address().port}/`), /não permitido/);
+  } finally { srv.close(); }
+});
+
+test('conexão real de ponta a ponta (Node atual) lê RSS, gzip e segue redirecionamento', async () => {
+  const http = require('http'); const zlib = require('zlib');
+  const srv = http.createServer((q, r) => {
+    if (q.url === '/old') { r.writeHead(301, { Location: '/feed' }); return r.end(); }
+    r.writeHead(200, { 'Content-Type': 'application/rss+xml', 'Content-Encoding': 'gzip' }); r.end(zlib.gzipSync(RSS));
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  feed.setFetcherForTests(null); feed.setAllowPrivateForTests(true);
+  try {
+    const { feed: parsed } = await feed.tryParseFeed(`http://localhost:${srv.address().port}/old`);
+    assert.equal(parsed.items.length, 2);
+  } finally { feed.setAllowPrivateForTests(false); feed.setFetcherForTests(async (url) => { const r = routes[url.toString()]; return r || { status: 404, headers: {}, body: Buffer.from('nf') }; }); srv.close(); }
+});

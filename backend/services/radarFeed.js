@@ -16,7 +16,11 @@ const USER_AGENT = 'ZebraHub-Radar/1.0 (+leitor de RSS; contato: agencia)';
 const COMMON_FEED_PATHS = ['/feed', '/feed/', '/rss', '/rss.xml', '/atom.xml', '/feed.xml', '/index.xml', '/feeds/posts/default', '/blog/feed', '/noticias/feed'];
 
 // ---------- Segurança de rede (SSRF) ----------
+let allowPrivateForTests = false; // só para testes locais
+function setAllowPrivateForTests(v) { allowPrivateForTests = Boolean(v); }
+
 function isPrivateAddress(address) {
+  if (allowPrivateForTests) return false;
   if (!address) return true;
   if (net.isIPv4(address)) {
     const [a, b] = address.split('.').map(Number);
@@ -41,10 +45,18 @@ function isPrivateAddress(address) {
 
 // O lookup roda no momento da conexão, então vale também para redirecionamentos e evita DNS rebinding.
 function guardedLookup(hostname, options, callback) {
-  dns.lookup(hostname, { ...options, all: false }, (error, address, family) => {
-    if (error) return callback(error);
-    if (isPrivateAddress(address)) return callback(new Error('Endereço não permitido (rede interna).'));
-    return callback(null, address, family);
+  const opts = typeof options === 'function' ? {} : (options || {});
+  const cb = typeof options === 'function' ? options : callback;
+  dns.lookup(hostname, opts, (error, address, family) => {
+    if (error) return cb(error);
+    // Node 20+ pode pedir todos os endereços (all: true); nesse caso o retorno é uma lista.
+    if (Array.isArray(address)) {
+      const allowed = address.filter((entry) => !isPrivateAddress(entry.address));
+      if (!allowed.length) return cb(new Error('Endereço não permitido (rede interna).'));
+      return cb(null, allowed);
+    }
+    if (isPrivateAddress(address)) return cb(new Error('Endereço não permitido (rede interna).'));
+    return cb(null, address, family);
   });
 }
 
@@ -58,7 +70,7 @@ function normalizeUrl(raw) {
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Use apenas endereços http ou https.');
   if (url.username || url.password) throw new Error('Endereços com usuário e senha não são aceitos.');
   if (net.isIP(url.hostname) && isPrivateAddress(url.hostname)) throw new Error('Endereço não permitido (rede interna).');
-  if (/^(localhost|.*\.local|.*\.internal)$/i.test(url.hostname)) throw new Error('Endereço não permitido (rede interna).');
+  if (!allowPrivateForTests && /^(localhost|.*\.local|.*\.internal)$/i.test(url.hostname)) throw new Error('Endereço não permitido (rede interna).');
   return url;
 }
 
@@ -256,6 +268,6 @@ async function discoverFeeds(rawUrl) {
 }
 
 module.exports = {
-  isPrivateAddress, normalizeUrl, fetchUrl, parseFeed, discoverFeeds, tryParseFeed, findFeedLinksInHtml,
-  setFetcherForTests, stripHtml, truncate,
+  isPrivateAddress, guardedLookup, normalizeUrl, fetchUrl, parseFeed, discoverFeeds, tryParseFeed, findFeedLinksInHtml,
+  setFetcherForTests, setAllowPrivateForTests, stripHtml, truncate,
 };
