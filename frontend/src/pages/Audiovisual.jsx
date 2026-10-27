@@ -19,6 +19,7 @@ import {
   Sparkles,
   Trash2,
   Unlink,
+  UserMinus,
   Users,
   Video,
   UploadCloud,
@@ -179,6 +180,7 @@ export default function Audiovisual() {
   const [scheduleModal, setScheduleModal] = useState(null);
   const [settingsModal, setSettingsModal] = useState(null);
   const [clientSelectionModal, setClientSelectionModal] = useState(null);
+  const [removeClientModal, setRemoveClientModal] = useState(null);
   const [scriptsModal, setScriptsModal] = useState(null);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptSavingId, setScriptSavingId] = useState(null);
@@ -475,6 +477,35 @@ export default function Audiovisual() {
     });
   }
 
+  // Tirar UM cliente da operação de gravação (ele não grava). Histórico e vídeos continuam guardados.
+  function askRemoveClient(clientId) {
+    const id = Number(clientId);
+    const client = clientCatalog.find((item) => Number(item.id) === id)
+      || (dashboard?.clients || []).find((item) => Number(item.id) === id);
+    if (!client) return;
+    const scheduled = recordings.filter((item) => Number(item.client_id) === id && item.status === 'scheduled').length;
+    setRemoveClientModal({ id, name: client.name, scheduled });
+  }
+
+  async function confirmRemoveClient() {
+    if (!removeClientModal) return;
+    const { id, name } = removeClientModal;
+    setSaving(true);
+    setError('');
+    try {
+      await api.put(`/audiovisual/clients/${id}/recording`, { is_recording_client: false });
+      setRemoveClientModal(null);
+      if (operationalClientId && Number(operationalClientId) === id) setOperationalClientId('');
+      setNotice(`${name} saiu do Audiovisual. Para voltar, use o botão "Clientes de gravação" no topo.`);
+      await loadData({ quiet: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Não foi possível tirar o cliente do Audiovisual.');
+      setRemoveClientModal(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveClientSelection(form) {
     setSaving(true);
     setError('');
@@ -700,6 +731,11 @@ export default function Audiovisual() {
             <RefreshCw size={14} />
           </button>
           {canManage && (
+            <button type="button" onClick={openClientSelection} title="Clientes de gravação: escolher quem entra e quem sai" aria-label="Clientes de gravação" className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+              <Users size={14} /> <span className="hidden xl:inline">Clientes</span> <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{recordingClientCount}</span>
+            </button>
+          )}
+          {canManage && (
             <button type="button" onClick={() => openHistoricalRecording()} title="Registrar gravação realizada" aria-label="Registrar gravação realizada" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0969ff] text-white shadow-sm transition hover:bg-blue-700">
               <Clock3 size={15} />
             </button>
@@ -717,6 +753,7 @@ export default function Audiovisual() {
           <button key={key} type="button" onClick={() => setTab(key)} className={`min-w-max rounded-lg px-3 py-2 text-[11px] font-semibold transition ${tab === key ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-500'}`}>{label}</button>
         ))}
         <button type="button" onClick={() => loadData({ quiet: true })} className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500"><RefreshCw size={14} /></button>
+        {canManage && <button type="button" onClick={openClientSelection} aria-label="Clientes de gravação" className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-slate-50 px-2 text-[11px] font-bold text-slate-500"><Users size={14} />{recordingClientCount}</button>}
         {canManage && <button type="button" onClick={() => openNewRecording()} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0969ff] text-white"><Plus size={15} /></button>}
       </div>
 
@@ -803,6 +840,7 @@ export default function Audiovisual() {
           canEditScripts={canEdit}
           openScripts={openScripts}
           setTab={setTab}
+          onRemoveClient={askRemoveClient}
         />
       )}
 
@@ -857,6 +895,7 @@ export default function Audiovisual() {
           openNewRecording={openNewRecording}
           openHistoricalRecording={openHistoricalRecording}
           openClientSelection={openClientSelection}
+          onRemoveClient={askRemoveClient}
         />
       )}
 
@@ -911,6 +950,15 @@ export default function Audiovisual() {
         <SettingsModal form={settingsModal} setForm={setSettingsModal} saving={saving} onClose={() => setSettingsModal(null)} onSave={saveClientSettings} />
       )}
 
+      {removeClientModal && (
+        <RemoveClientModal
+          info={removeClientModal}
+          saving={saving}
+          onClose={() => setRemoveClientModal(null)}
+          onConfirm={confirmRemoveClient}
+        />
+      )}
+
       {clientSelectionModal && (
         <ClientSelectionModal
           form={clientSelectionModal}
@@ -925,7 +973,7 @@ export default function Audiovisual() {
   );
 }
 
-function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, clientsNotScheduled, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, recordings, canEditScripts, openScripts, setTab }) {
+function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, clientsNotScheduled, clientsMissing, referenceMonth, canManage, openNewRecording, openComplete, openHistoricalRecording, recordings, canEditScripts, openScripts, setTab, onRemoveClient }) {
   const clients = dashboard?.clients || [];
   const priorityClients = [...clients].sort((a, b) => {
     const stage = (client) => {
@@ -1028,6 +1076,10 @@ function OverviewTab({ dashboard, stats, scheduledProgress, recordedProgress, cl
 
                     {canManage && !scheduled && !recorded && (
                       <button type="button" onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">Marcar</button>
+                    )}
+
+                    {canManage && onRemoveClient && !recorded && (
+                      <button type="button" onClick={() => onRemoveClient(client.id)} title="Não gravo este cliente: tirar do Audiovisual" aria-label={`Tirar ${client.name} do Audiovisual`} className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600"><UserMinus size={13} /></button>
                     )}
 
                     {scheduled && !recorded && scheduledRecording && canEditScripts && (
@@ -1460,10 +1512,13 @@ function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDragged
   );
 }
 
-function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewRecording, openHistoricalRecording, openClientSelection }) {
+function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewRecording, openHistoricalRecording, openClientSelection, onRemoveClient }) {
   return (
     <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-bold text-slate-900">Saúde audiovisual por cliente</h2><p className="mt-1 text-xs text-slate-400">Ordenado automaticamente por quem está há mais tempo sem gravar.</p></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div><h2 className="font-bold text-slate-900">Saúde audiovisual por cliente</h2><p className="mt-1 text-xs text-slate-400">Ordenado automaticamente por quem está há mais tempo sem gravar.</p></div>
+        {canManage && <button type="button" onClick={openClientSelection} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"><Users size={14} /> Gerenciar clientes de gravação</button>}
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left">
           <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -1485,7 +1540,7 @@ function ClientsTab({ clients, referenceMonth, canManage, openSettings, openNewR
                   <td className="px-3 py-3.5 font-semibold text-slate-700">{formatDate(client.next_post_suggested)}</td>
                   <td className="px-3 py-3.5">{client.next_recording_suggested ? <span className={client.recording_delay_days > 0 ? 'font-bold text-red-600' : 'font-semibold text-blue-600'}>{formatDate(client.next_recording_suggested)}{client.recording_delay_days > 0 ? ` · ${client.recording_delay_days}d atrasado` : ''}</span> : <span className="text-slate-400">Sem histórico</span>}</td>
                   <td className="px-3 py-3.5 text-slate-500">{client.settings?.videos_per_period || 2} vídeo(s) / {client.settings?.cadence_period === 'month' ? 'mês' : 'semana'}</td>
-                  <td className="px-5 py-3.5"><div className="flex justify-end gap-1.5">{canManage && <button onClick={() => openHistoricalRecording(client.id)} className="rounded-lg border border-slate-200 px-2 py-1.5 font-bold text-slate-500">Histórico</button>}{canManage && <button onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 px-2 py-1.5 font-bold text-blue-600">Gravar</button>}{canManage && <button onClick={() => openSettings(client)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><Settings2 size={14} /></button>}</div></td>
+                  <td className="px-5 py-3.5"><div className="flex justify-end gap-1.5">{canManage && <button onClick={() => openHistoricalRecording(client.id)} className="rounded-lg border border-slate-200 px-2 py-1.5 font-bold text-slate-500">Histórico</button>}{canManage && <button onClick={() => openNewRecording(client.id)} className="rounded-lg border border-slate-200 px-2 py-1.5 font-bold text-blue-600">Gravar</button>}{canManage && <button onClick={() => openSettings(client)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><Settings2 size={14} /></button>}{canManage && onRemoveClient && <button type="button" onClick={() => onRemoveClient(client.id)} title="Não gravo este cliente: tirar do Audiovisual" aria-label={`Tirar ${client.name} do Audiovisual`} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><UserMinus size={14} /></button>}</div></td>
                 </tr>
               );
             })}
@@ -1550,6 +1605,31 @@ function ScriptsModal({ data, loading, savingId, onClose, onAdd, onChange, onSav
         </div>
       )}
     </ModalShell>
+  );
+}
+
+function RemoveClientModal({ info, saving, onClose, onConfirm }) {
+  return (
+    <ModalBackdrop onClose={onClose} disabled={saving}>
+      <div role="dialog" aria-modal="true" aria-label={`Tirar ${info.name} do Audiovisual`} className="w-full max-w-md rounded-[26px] border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600"><UserMinus size={18} /></span>
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">Tirar {info.name} do Audiovisual?</h2>
+            <p className="mt-1.5 text-sm leading-6 text-slate-500">Ele deixa de aparecer na fila, nos indicadores, no ranking de dias sem gravar e nas sugestões de gravação.</p>
+          </div>
+        </div>
+        <ul className="mt-4 space-y-1.5 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+          <li>O histórico de gravações e os vídeos <strong>continuam guardados</strong>.</li>
+          <li>Você pode trazer de volta quando quiser, em <strong>Clientes de gravação</strong> (botão no topo).</li>
+          {info.scheduled > 0 && <li className="font-semibold text-amber-700">Tem {info.scheduled} gravação(ões) marcada(s) para ele. Elas não somem do Google Agenda; saem desta tela até você incluir o cliente de novo.</li>}
+        </ul>
+        <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Manter</button>
+          <button type="button" onClick={onConfirm} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">{saving && <Loader2 className="animate-spin" size={13} />} Tirar do Audiovisual</button>
+        </div>
+      </div>
+    </ModalBackdrop>
   );
 }
 

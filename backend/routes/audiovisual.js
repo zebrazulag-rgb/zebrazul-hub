@@ -1090,6 +1090,30 @@ router.post('/videos/:id/post', (req, res) => {
   res.json({ ok: true });
 });
 
+// Tira (ou devolve) UM cliente da operação de gravação, sem reenviar a lista inteira.
+// Só muda o marcador: histórico de gravações, vídeos e configurações do cliente ficam intactos.
+router.put('/clients/:clientId/recording', requireAny(['audiovisual.manage']), (req, res) => {
+  const client = ensureClient(req, res, req.params.clientId);
+  if (!client) return;
+  if (req.body?.is_recording_client === undefined) return res.status(400).json({ error: 'Informe is_recording_client.' });
+  const enabled = bool(req.body.is_recording_client) ? 1 : 0;
+  db.prepare(`
+    INSERT INTO audiovisual_client_settings (
+      agency_id, client_id, is_recording_client, videos_per_period, cadence_period,
+      recording_lead_days, preferred_days_json, updated_by, updated_at
+    ) VALUES (?, ?, ?, 2, 'week', 7, '[]', ?, datetime('now'))
+    ON CONFLICT(agency_id, client_id) DO UPDATE SET
+      is_recording_client = excluded.is_recording_client,
+      updated_by = excluded.updated_by,
+      updated_at = datetime('now')
+  `).run(req.user.agency_id, client.id, enabled, req.user.id);
+  const upcoming = db.prepare(`
+    SELECT COUNT(*) AS n FROM audiovisual_recordings
+    WHERE agency_id = ? AND client_id = ? AND status = 'scheduled'
+  `).get(req.user.agency_id, client.id).n;
+  res.json({ ok: true, client_id: Number(client.id), is_recording_client: Boolean(enabled), scheduled_recordings: Number(upcoming || 0) });
+});
+
 router.put('/clients/:clientId/settings', requireAny(['audiovisual.manage']), (req, res) => {
   const client = ensureClient(req, res, req.params.clientId);
   if (!client) return;
