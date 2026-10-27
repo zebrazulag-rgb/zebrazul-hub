@@ -2160,6 +2160,74 @@ if (!installationId) {
   db.prepare("INSERT INTO system_meta (key, value) VALUES ('installation_id', ?)").run(randomUUID());
 }
 
+// Radar de Conteúdo: fontes RSS/Atom por cliente, notícias coletadas e histórico de prompts.
+tryAddColumn('clients', 'editorial_references', 'TEXT');
+db.exec(`
+CREATE TABLE IF NOT EXISTS radar_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  site_url TEXT,
+  feed_url TEXT NOT NULL,
+  feed_type TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  client_visible INTEGER NOT NULL DEFAULT 1,
+  etag TEXT,
+  last_modified TEXT,
+  last_fetched_at TEXT,
+  last_success_at TEXT,
+  last_status TEXT,
+  last_error TEXT,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE (client_id, feed_url),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS radar_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  source_id INTEGER NOT NULL,
+  guid TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT,
+  link TEXT,
+  published_at TEXT NOT NULL,
+  fetched_at TEXT DEFAULT (datetime('now')),
+  UNIQUE (source_id, guid),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (source_id) REFERENCES radar_sources(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS radar_prompt_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  item_id INTEGER,
+  kind TEXT NOT NULL,
+  angle TEXT,
+  prompt_text TEXT NOT NULL,
+  item_title TEXT,
+  item_link TEXT,
+  source_name TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id) REFERENCES radar_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_radar_sources_client ON radar_sources(agency_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_radar_items_client_date ON radar_items(client_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_radar_items_source ON radar_items(source_id);
+CREATE INDEX IF NOT EXISTS idx_radar_history_client ON radar_prompt_history(client_id, created_at DESC);
+`);
+
 // Na primeira atualização para o controle por cliente, preserva o comportamento
 // anterior: membros de equipe já existentes começam com acesso aos clientes atuais.
 // Depois disso, novos acessos passam a ser definidos explicitamente pelo administrador.

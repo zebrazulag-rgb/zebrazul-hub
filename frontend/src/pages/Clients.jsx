@@ -25,6 +25,8 @@ import AvatarUpload from '../components/AvatarUpload.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { formChanged } from '../utils/formState.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import ClientRadarTab from '../components/ClientRadarTab.jsx';
+import { hasPermission } from '../permissions.js';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import PageHero from '../components/PageHero.jsx';
 import SettingsSectionHeader from '../components/SettingsSectionHeader.jsx';
@@ -298,6 +300,7 @@ export default function Clients({ embedded = false }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [portalCopied, setPortalCopied] = useState(false);
+  const [fichaTab, setFichaTab] = useState('cadastro');
 
   useEffect(() => {
     loadClients();
@@ -319,6 +322,7 @@ export default function Clients({ embedded = false }) {
     setAccounts(data.accounts);
     setConfirmDelete(false);
     setPortalCopied(false);
+    setFichaTab('cadastro');
   }
 
   async function copyClientPortal() {
@@ -482,6 +486,18 @@ export default function Clients({ embedded = false }) {
               <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
             </div>
 
+            {hasPermission(user, 'radar.view') && (
+              <div className="flex gap-1 border-b border-slate-100 px-6 pt-3">
+                {[['cadastro', 'Cadastro'], ['radar', 'Radar de Conteúdo']].map(([key, label]) => (
+                  <button key={key} type="button" onClick={() => setFichaTab(key)}
+                    className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold transition ${fichaTab === key ? 'border-[#3A85FD] text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>{label}</button>
+                ))}
+              </div>
+            )}
+
+            {fichaTab === 'radar' && hasPermission(user, 'radar.view') ? (
+              <div className="p-6"><ClientRadarTab client={selected} user={user} /></div>
+            ) : (
             <div className="p-6 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <AvatarUpload
@@ -569,6 +585,7 @@ export default function Clients({ embedded = false }) {
                 </div>
               )}
             </div>
+            )}
           </div>
         </ModalBackdrop>
       )}

@@ -22,6 +22,11 @@ const PERMISSION_CATALOG = [
   { key: 'social.messages', group: 'Social Media', label: 'Mensagens do Instagram', description: 'Visualizar conversas e responder DMs da conta profissional conectada.' },
   { key: 'social.reports', group: 'Social Media', label: 'Relatórios', description: 'Acessar relatórios orgânicos e de mídia paga.' },
   { key: 'social.connections', group: 'Social Media', label: 'Conexões Meta/Instagram', description: 'Gerenciar conexões e sincronizações das redes.' },
+  { key: 'radar.view', group: 'Radar de Conteúdo', label: 'Ver Radar de Conteúdo', description: 'Ver as notícias coletadas das fontes do cliente.' },
+  { key: 'radar.refresh', group: 'Radar de Conteúdo', label: 'Atualizar notícias', description: 'Forçar a atualização das fontes do cliente.' },
+  { key: 'radar.sources', group: 'Radar de Conteúdo', label: 'Gerenciar fontes e referências', description: 'Adicionar, ativar, desativar e remover fontes RSS/Atom e editar as referências editoriais do cliente.' },
+  { key: 'radar.prompts', group: 'Radar de Conteúdo', label: 'Gerar prompts', description: 'Gerar prompts de carrossel e roteiro de vídeo a partir das notícias.' },
+  { key: 'radar.history', group: 'Radar de Conteúdo', label: 'Histórico de prompts', description: 'Ver o histórico de prompts gerados por cliente.' },
   { key: 'commercial.view', group: 'Comercial', label: 'Comercial', description: 'Acessar o pipeline comercial.' },
   { key: 'commercial.manage', group: 'Comercial', label: 'Gerenciar pipeline', description: 'Criar/editar leads e organizar quadros.' },
   { key: 'commercial.import', group: 'Comercial', label: 'Importar leads', description: 'Importar listas de leads em CSV.' },
@@ -58,6 +63,7 @@ const DEFAULTS = {
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish', 'audiovisual.calendar',
+    'radar.view', 'radar.refresh', 'radar.sources', 'radar.prompts', 'radar.history',
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
   ]),
   team: new Set([
@@ -65,6 +71,7 @@ const DEFAULTS = {
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish',
+    'radar.view', 'radar.refresh', 'radar.prompts', 'radar.history',
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'settings.clients',
   ]),
   commercial_team: new Set([
@@ -72,7 +79,7 @@ const DEFAULTS = {
   ]),
   client: new Set([
     'tasks.view', 'tasks.approval', 'social.view', 'social.feed', 'social.calendar', 'social.reports',
-    'materials.view',
+    'materials.view', 'radar.view',
   ]),
 };
 
@@ -214,6 +221,14 @@ function apiPermissionForRequest(req) {
     if (/^\/clients\/\d+\/feed-highlights(?:\/.*)?$/.test(path)) return method === 'GET' ? 'social.feed' : 'social.feed_create';
     if (/^\/clients\/\d+\/accounts$/.test(path)) return 'social.connections';
     return method === 'GET' ? null : 'settings.clients';
+  }
+  if (path === '/radar' || path.startsWith('/radar/')) {
+    if (/^\/radar\/clients\/\d+\/items$/.test(path)) return 'radar.view';
+    if (/^\/radar\/clients\/\d+\/refresh$/.test(path)) return 'radar.refresh';
+    if (/^\/radar\/items\/\d+\/prompt$/.test(path)) return 'radar.prompts';
+    if (/^\/radar\/clients\/\d+\/history$/.test(path)) return 'radar.history';
+    if (/^\/radar\/clients\/\d+\/editorial$/.test(path)) return method === 'GET' ? ['radar.prompts', 'radar.sources'] : 'radar.sources';
+    return 'radar.sources'; // fontes, descoberta de feed, edição e remoção
   }
   if (path === '/manager-dashboard' || path.startsWith('/manager-dashboard/')) return 'dashboard.view';
   if (path === '/my-work' || path.startsWith('/my-work/')) return 'dashboard.view';

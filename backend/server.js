@@ -61,6 +61,8 @@ const permissionsRoutes = require('./routes/permissions');
 const activityRoutes = require('./routes/activity');
 const organizerRoutes = require('./routes/organizer');
 const audiovisualRoutes = require('./routes/audiovisual');
+const radarRoutes = require('./routes/radar');
+const { refreshAllActive: refreshRadarSources } = require('./services/radar');
 const googleCalendarOAuthRoutes = require('./routes/googleCalendarOAuth');
 const productDevelopmentRoutes = require('./routes/productDevelopment');
 const { runMediaMigration } = require('./services/mediaMigration');
@@ -196,6 +198,7 @@ app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
 app.use('/api/commercial', commercialRoutes);
 app.use('/api/audiovisual', audiovisualRoutes);
+app.use('/api/radar', radarRoutes);
 app.use('/api/product', productDevelopmentRoutes);
 app.use('/api/reenrollments', reenrollmentRoutes);
 app.use('/api/bee-campaign-briefing', beeCampaignBriefingRoutes);
@@ -327,6 +330,20 @@ app.listen(PORT, async () => {
     console.warn('[META] Sincronizacao automatica desativada por configuracao.');
   }
 
+
+  // Radar de Conteúdo: coleta de feeds RSS/Atom (sem IA). Desligue com RADAR_AUTO_REFRESH=false.
+  if (String(process.env.RADAR_AUTO_REFRESH || 'true').toLowerCase() === 'true') {
+    const radarHours = Math.max(1, Number(process.env.RADAR_REFRESH_INTERVAL_HOURS || 6));
+    const runRadar = async (label) => {
+      try {
+        const result = await refreshRadarSources();
+        console.log(`[RADAR] Atualização ${label}: ${result.sources} fonte(s), ${result.added} nova(s), ${result.failed} falha(s).`);
+      } catch (error) { console.error('[RADAR] Falha na atualização:', error.message); }
+    };
+    setTimeout(() => runRadar('inicial'), 60 * 1000).unref();
+    setInterval(() => runRadar('agendada'), radarHours * 60 * 60 * 1000).unref();
+    console.log(`[RADAR] Atualização automática ativa: a cada ${radarHours} hora(s).`);
+  }
 
   // Publicador do Instagram: verifica a fila a cada minuto no backend.
   try { await publishDuePosts(); } catch (error) { console.error('[INSTAGRAM PUBLISH] Falha ao processar fila no startup:', error.message); }
