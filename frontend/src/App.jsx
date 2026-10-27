@@ -7,7 +7,7 @@ import MyWork from './pages/MyWork.jsx';
 import Alerts from './pages/Alerts.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
-import Approval from './pages/Approval.jsx';
+import ClientApproval from './pages/ClientApproval.jsx';
 import DesignerApproval from './pages/DesignerApproval.jsx';
 import Scheduling from './pages/Scheduling.jsx';
 import UnifiedCalendar from './pages/UnifiedCalendar.jsx';
@@ -150,7 +150,7 @@ export default function App() {
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
       <Route path="/cliente/inicio" element={<ProtectedRoute roles={["client"]}><ClientPortalHome /></ProtectedRoute>} />
       <Route path="/cliente/solicitar" element={<ProtectedRoute roles={["client"]}><ClientDemand /></ProtectedRoute>} />
-      <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><Approval /></ProtectedRoute>} />
+      <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><ClientApproval /></ProtectedRoute>} />
       <Route path="/cliente/grade" element={<Navigate to="/cliente/aprovacao" replace />} />
       <Route path="/cliente/relatorios" element={<ProtectedRoute roles={["client"]} permission="social.reports"><Reports /></ProtectedRoute>} />
       <Route path="/cliente/materiais" element={<ProtectedRoute roles={["client"]} permission="materials.view"><Materials /></ProtectedRoute>} />

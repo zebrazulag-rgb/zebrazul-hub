@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { authRequired, canAccessClient } = require('../middleware/auth');
 const { hasPermission } = require('../services/permissions');
 const { syncRecordingEvent, deleteRecordingEvent } = require('../services/googleCalendar');
+const { createBackup } = require('../db/backup');
 const { persistMediaBuffer } = require('../services/mediaStorage');
 
 const router = express.Router();
@@ -203,7 +204,11 @@ function clientSelectionRows(user) {
       COALESCE(s.is_recording_client, 0) AS is_recording_client,
       COALESCE(s.videos_per_period, 2) AS videos_per_period,
       COALESCE(s.cadence_period, 'week') AS cadence_period,
-      COALESCE(s.recording_lead_days, 7) AS recording_lead_days
+      COALESCE(s.recording_lead_days, 7) AS recording_lead_days,
+      (SELECT COUNT(*) FROM audiovisual_recordings r WHERE r.agency_id = c.agency_id AND r.client_id = c.id) AS history_recordings,
+      (SELECT COUNT(*) FROM audiovisual_recordings r WHERE r.agency_id = c.agency_id AND r.client_id = c.id AND r.status = 'scheduled') AS history_scheduled,
+      (SELECT COUNT(*) FROM audiovisual_videos v WHERE v.agency_id = c.agency_id AND v.client_id = c.id) AS history_videos,
+      (SELECT COUNT(*) FROM audiovisual_videos v WHERE v.agency_id = c.agency_id AND v.client_id = c.id AND v.status = 'posted') AS history_posted_videos
     FROM clients c
     LEFT JOIN audiovisual_client_settings s
       ON s.agency_id = c.agency_id AND s.client_id = c.id
@@ -214,6 +219,10 @@ function clientSelectionRows(user) {
   `).all(user.agency_id, ...available).map((row) => ({
     ...row,
     is_recording_client: Boolean(Number(row.is_recording_client || 0)),
+    history_recordings: Number(row.history_recordings || 0),
+    history_scheduled: Number(row.history_scheduled || 0),
+    history_videos: Number(row.history_videos || 0),
+    history_posted_videos: Number(row.history_posted_videos || 0),
   }));
 }
 
@@ -1112,6 +1121,40 @@ router.put('/clients/:clientId/recording', requireAny(['audiovisual.manage']), (
     WHERE agency_id = ? AND client_id = ? AND status = 'scheduled'
   `).get(req.user.agency_id, client.id).n;
   res.json({ ok: true, client_id: Number(client.id), is_recording_client: Boolean(enabled), scheduled_recordings: Number(upcoming || 0) });
+});
+
+// Apaga o histórico de gravações de um cliente que JÁ está fora do Audiovisual.
+// Leva junto, por cascata: vídeos, roteiros e datas de publicação das gravações.
+// NÃO apaga posts do feed, tarefas nem as configurações de cadência do cliente.
+// Antes de apagar, salva um backup do banco; se o backup falhar, não apaga nada.
+router.delete('/clients/:clientId/recording-history', requireAny(['audiovisual.manage']), async (req, res) => {
+  const client = ensureClient(req, res, req.params.clientId);
+  if (!client) return;
+  if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirme a exclusão do histórico.' });
+  if (isRecordingClient(req.user.agency_id, client.id)) {
+    return res.status(409).json({ error: 'Tire o cliente do Audiovisual antes de apagar o histórico de gravações.' });
+  }
+
+  const agencyId = req.user.agency_id;
+  const recordings = db.prepare('SELECT * FROM audiovisual_recordings WHERE agency_id = ? AND client_id = ?').all(agencyId, client.id);
+  const videos = Number(db.prepare('SELECT COUNT(*) AS n FROM audiovisual_videos WHERE agency_id = ? AND client_id = ?').get(agencyId, client.id).n || 0);
+  const postedVideos = Number(db.prepare("SELECT COUNT(*) AS n FROM audiovisual_videos WHERE agency_id = ? AND client_id = ? AND status = 'posted'").get(agencyId, client.id).n || 0);
+  if (!recordings.length) return res.json({ ok: true, deleted: { recordings: 0, videos: 0, posted_videos: 0 }, backup: false });
+
+  try {
+    await createBackup('antes-apagar-historico-audiovisual');
+  } catch (error) {
+    console.error('[AUDIOVISUAL] Backup antes de apagar histórico falhou:', error.message);
+    return res.status(500).json({ error: 'Não foi possível criar o backup de segurança. Nada foi apagado.' });
+  }
+
+  // Só as gravações ainda marcadas têm evento "vivo" no Google Agenda; as já realizadas ficam como memória da agenda.
+  for (const recording of recordings.filter((item) => item.status === 'scheduled' && item.google_event_id)) {
+    try { await deleteRecordingEvent({ recording, agencyId }); } catch (error) { console.warn('[AUDIOVISUAL] Falha ao remover evento:', error.message); }
+  }
+
+  db.prepare('DELETE FROM audiovisual_recordings WHERE agency_id = ? AND client_id = ?').run(agencyId, client.id);
+  res.json({ ok: true, deleted: { recordings: recordings.length, videos, posted_videos: postedVideos }, backup: true });
 });
 
 router.put('/clients/:clientId/settings', requireAny(['audiovisual.manage']), (req, res) => {

@@ -181,6 +181,7 @@ export default function Audiovisual() {
   const [settingsModal, setSettingsModal] = useState(null);
   const [clientSelectionModal, setClientSelectionModal] = useState(null);
   const [removeClientModal, setRemoveClientModal] = useState(null);
+  const [purgeModal, setPurgeModal] = useState(null);
   const [scriptsModal, setScriptsModal] = useState(null);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptSavingId, setScriptSavingId] = useState(null);
@@ -484,23 +485,60 @@ export default function Audiovisual() {
       || (dashboard?.clients || []).find((item) => Number(item.id) === id);
     if (!client) return;
     const scheduled = recordings.filter((item) => Number(item.client_id) === id && item.status === 'scheduled').length;
-    setRemoveClientModal({ id, name: client.name, scheduled });
+    setRemoveClientModal({
+      id,
+      name: client.name,
+      scheduled,
+      history_recordings: Number(client.history_recordings || 0),
+      history_videos: Number(client.history_videos || 0),
+      history_posted_videos: Number(client.history_posted_videos || 0),
+      purge: false,
+    });
   }
 
   async function confirmRemoveClient() {
     if (!removeClientModal) return;
-    const { id, name } = removeClientModal;
+    const { id, name, purge } = removeClientModal;
     setSaving(true);
     setError('');
     try {
       await api.put(`/audiovisual/clients/${id}/recording`, { is_recording_client: false });
+      let purged = null;
+      if (purge) {
+        try {
+          const { data } = await api.delete(`/audiovisual/clients/${id}/recording-history`, { data: { confirm: true } });
+          purged = data?.deleted || null;
+        } catch (purgeError) {
+          setError(purgeError.response?.data?.error || 'O cliente saiu do Audiovisual, mas não foi possível apagar o histórico.');
+        }
+      }
       setRemoveClientModal(null);
       if (operationalClientId && Number(operationalClientId) === id) setOperationalClientId('');
-      setNotice(`${name} saiu do Audiovisual. Para voltar, use o botão "Clientes de gravação" no topo.`);
+      if (purge && purged) setNotice(`${name} saiu do Audiovisual e o histórico de gravações foi apagado (${purged.recordings} gravação(ões), ${purged.videos} vídeo(s)).`);
+      else if (!purge) setNotice(`${name} saiu do Audiovisual. Para voltar, use o botão "Clientes de gravação" no topo.`);
       await loadData({ quiet: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível tirar o cliente do Audiovisual.');
       setRemoveClientModal(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmPurgeHistory() {
+    if (!purgeModal) return;
+    const { id, name } = purgeModal;
+    setSaving(true);
+    setError('');
+    try {
+      const { data } = await api.delete(`/audiovisual/clients/${id}/recording-history`, { data: { confirm: true } });
+      const d = data?.deleted || {};
+      setPurgeModal(null);
+      setNotice(`Histórico de ${name} apagado: ${d.recordings || 0} gravação(ões) e ${d.videos || 0} vídeo(s). Um backup de segurança foi salvo antes.`);
+      await loadData({ quiet: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Não foi possível apagar o histórico.');
+      setPurgeModal(null);
     } finally {
       setSaving(false);
     }
@@ -956,6 +994,16 @@ export default function Audiovisual() {
           saving={saving}
           onClose={() => setRemoveClientModal(null)}
           onConfirm={confirmRemoveClient}
+          onChange={setRemoveClientModal}
+        />
+      )}
+
+      {purgeModal && (
+        <PurgeHistoryModal
+          info={purgeModal}
+          saving={saving}
+          onClose={() => setPurgeModal(null)}
+          onConfirm={confirmPurgeHistory}
         />
       )}
 
@@ -967,6 +1015,7 @@ export default function Audiovisual() {
           saving={saving}
           onClose={() => setClientSelectionModal(null)}
           onSave={saveClientSelection}
+          onPurge={(client) => setPurgeModal({ id: Number(client.id), name: client.name, recordings: Number(client.history_recordings || 0), videos: Number(client.history_videos || 0), posted: Number(client.history_posted_videos || 0), scheduled: Number(client.history_scheduled || 0) })}
         />
       )}
     </div>
@@ -1608,7 +1657,8 @@ function ScriptsModal({ data, loading, savingId, onClose, onAdd, onChange, onSav
   );
 }
 
-function RemoveClientModal({ info, saving, onClose, onConfirm }) {
+function RemoveClientModal({ info, saving, onClose, onConfirm, onChange }) {
+  const hasHistory = info.history_recordings > 0;
   return (
     <ModalBackdrop onClose={onClose} disabled={saving}>
       <div role="dialog" aria-modal="true" aria-label={`Tirar ${info.name} do Audiovisual`} className="w-full max-w-md rounded-[26px] border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
@@ -1620,20 +1670,57 @@ function RemoveClientModal({ info, saving, onClose, onConfirm }) {
           </div>
         </div>
         <ul className="mt-4 space-y-1.5 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-          <li>O histórico de gravações e os vídeos <strong>continuam guardados</strong>.</li>
+          <li>{info.purge ? <>O histórico de gravações e os vídeos <strong>serão apagados</strong>.</> : <>O histórico de gravações e os vídeos <strong>continuam guardados</strong>.</>}</li>
           <li>Você pode trazer de volta quando quiser, em <strong>Clientes de gravação</strong> (botão no topo).</li>
           {info.scheduled > 0 && <li className="font-semibold text-amber-700">Tem {info.scheduled} gravação(ões) marcada(s) para ele. Elas não somem do Google Agenda; saem desta tela até você incluir o cliente de novo.</li>}
         </ul>
+        {hasHistory && (
+          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-red-100 bg-red-50/60 px-4 py-3 text-xs leading-5 text-red-800">
+            <input type="checkbox" checked={Boolean(info.purge)} onChange={(event) => onChange({ ...info, purge: event.target.checked })} className="mt-0.5 h-4 w-4 accent-red-600" />
+            <span><strong>Apagar também o histórico de gravações</strong><br />{info.history_recordings} gravação(ões) e {info.history_videos} vídeo(s){info.history_posted_videos ? `, ${info.history_posted_videos} já postado(s)` : ''}. Não dá para desfazer pelo sistema (um backup de segurança é salvo antes). Posts do feed e tarefas não são afetados.</span>
+          </label>
+        )}
         <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Manter</button>
-          <button type="button" onClick={onConfirm} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">{saving && <Loader2 className="animate-spin" size={13} />} Tirar do Audiovisual</button>
+          <button type="button" onClick={onConfirm} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">{saving && <Loader2 className="animate-spin" size={13} />} {info.purge ? 'Tirar e apagar histórico' : 'Tirar do Audiovisual'}</button>
         </div>
       </div>
     </ModalBackdrop>
   );
 }
 
-function ClientSelectionModal({ form, setForm, clients, saving, onClose, onSave }) {
+function PurgeHistoryModal({ info, saving, onClose, onConfirm }) {
+  const [understood, setUnderstood] = useState(false);
+  return (
+    <ModalBackdrop onClose={onClose} disabled={saving}>
+      <div role="dialog" aria-modal="true" aria-label={`Apagar histórico de ${info.name}`} className="w-full max-w-md rounded-[26px] border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600"><Trash2 size={18} /></span>
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">Apagar histórico de {info.name}?</h2>
+            <p className="mt-1.5 text-sm leading-6 text-slate-500">Todas as gravações, vídeos, roteiros e agendamentos de vídeo deste cliente no Audiovisual serão removidos.</p>
+          </div>
+        </div>
+        <ul className="mt-4 space-y-1.5 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+          <li><strong>{info.recordings}</strong> gravação(ões) e <strong>{info.videos}</strong> vídeo(s){info.posted ? <>, sendo <strong>{info.posted}</strong> já postado(s)</> : ''}.</li>
+          <li>Posts do feed, tarefas e as configurações do cliente <strong>não são apagados</strong>.</li>
+          {info.scheduled > 0 && <li>{info.scheduled} gravação(ões) ainda marcada(s) terão o evento removido do Google Agenda.</li>}
+          <li>Um backup de segurança do banco é salvo antes. Se ele falhar, nada é apagado.</li>
+        </ul>
+        <label className="mt-3 flex cursor-pointer items-start gap-3 text-xs font-semibold text-slate-700">
+          <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} className="mt-0.5 h-4 w-4 accent-red-600" />
+          Entendi que isso não pode ser desfeito pelo sistema.
+        </label>
+        <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600">Cancelar</button>
+          <button type="button" onClick={onConfirm} disabled={saving || !understood} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">{saving && <Loader2 className="animate-spin" size={13} />} Apagar histórico</button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+function ClientSelectionModal({ form, setForm, clients, saving, onClose, onSave, onPurge }) {
   const selectedIds = (form.selected_ids || []).map(Number);
 
   function toggleClient(clientId) {
@@ -1652,7 +1739,7 @@ function ClientSelectionModal({ form, setForm, clients, saving, onClose, onSave 
       saving={saving}
     >
       <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
-        <strong>{selectedIds.length} cliente(s) selecionado(s).</strong> Clientes desmarcados deixam de entrar no KPI “clientes gravados no mês”, nos dias sem gravar e nas sugestões. O histórico existente não é apagado.
+        <strong>{selectedIds.length} cliente(s) selecionado(s).</strong> Clientes desmarcados deixam de entrar no KPI “clientes gravados no mês”, nos dias sem gravar e nas sugestões. O histórico existente não é apagado, a menos que você use “Apagar histórico” ao lado do cliente.
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -1674,6 +1761,9 @@ function ClientSelectionModal({ form, setForm, clients, saving, onClose, onSave 
                 <small className="mt-0.5 block text-[11px] text-slate-400">{active ? 'Incluído na gestão de gravações' : 'Fora da gestão de gravações'}</small>
               </span>
               {active && <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white"><Check size={14} /></span>}
+              {!active && !client.is_recording_client && Number(client.history_recordings) > 0 && onPurge && (
+                <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onPurge(client); }} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-red-600 hover:bg-red-50"><Trash2 size={11} /> Apagar histórico ({client.history_recordings})</button>
+              )}
             </label>
           );
         })}

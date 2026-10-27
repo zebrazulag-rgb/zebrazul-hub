@@ -279,6 +279,19 @@ router.post('/:id/portal-share', requireRole('admin', 'team', 'client'), (req, r
 });
 
 
+// O cliente logado usa o mesmo feed de aprovação do link público, dentro do portal.
+router.get('/:id/feed-token', (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const client = db.prepare('SELECT id, feed_share_token FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  let token = client.feed_share_token;
+  if (!token) {
+    token = require('crypto').randomBytes(16).toString('hex');
+    db.prepare('UPDATE clients SET feed_share_token = ? WHERE id = ? AND agency_id = ?').run(token, client.id, req.user.agency_id);
+  }
+  res.json({ token });
+});
+
 router.post('/:id/feed-share', requireRole('admin', 'team'), (req, res) => {
   if (!ensureClientAccess(req, res, req.params.id)) return;
   const client = db.prepare('SELECT * FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);

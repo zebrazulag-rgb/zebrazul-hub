@@ -11,8 +11,9 @@ import zebrazulMark from '../assets/zebrazul-mark-dark.png';
 
 const publicApi = attachMediaResolver(axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' }));
 
-export default function PublicFeed() {
-  const { token } = useParams();
+export default function PublicFeed({ token: tokenProp = null, embedded = false } = {}) {
+  const params = useParams();
+  const token = tokenProp || params.token;
   const [client, setClient] = useState(null);
   const [posts, setPosts] = useState([]);
   const [highlights, setHighlights] = useState([]);
@@ -79,10 +80,10 @@ export default function PublicFeed() {
   if (error) return <div className="min-h-screen flex items-center justify-center bg-[#F5F3EE] p-4"><div className="max-w-sm border-l-4 border-[#EC0567] bg-white p-8 text-center"><img src={zebrazulMark} alt="Zebrazul" className="mx-auto mb-5 w-28" /><p className="text-sm font-semibold text-slate-600">{error}</p></div></div>;
 
   return (
-    <div className="min-h-screen bg-[#F5F3EE] px-3 py-7">
+    <div className={embedded ? 'px-3 py-5' : 'min-h-screen bg-[#F5F3EE] px-3 py-7'}>
       <div className="mx-auto mb-6 flex w-full max-w-[560px] items-end justify-between gap-4 border-b border-[#17181C]/10 pb-4">
         <div className="min-w-0">
-          <img src={zebrazulMark} alt="Zebrazul" className="w-28" />
+          {!embedded && <img src={zebrazulMark} alt="Zebrazul" className="w-28" />}
           <p className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#3A85FD]">Aprovação do cliente</p>
           <h1 className="brand-display mt-1 text-3xl font-black uppercase leading-none text-[#17181C]">A BOLA TÁ COM VOCÊ.</h1>
           <p className="mt-2 text-sm leading-5 text-slate-500">Abra uma peça, revise e diga se ela segue ou volta para ajuste.</p>
