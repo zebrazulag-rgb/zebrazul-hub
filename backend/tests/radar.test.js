@@ -307,3 +307,28 @@ test('conexão real de ponta a ponta (Node atual) lê RSS, gzip e segue redireci
     assert.equal(parsed.items.length, 2);
   } finally { feed.setAllowPrivateForTests(false); feed.setFetcherForTests(async (url) => { const r = routes[url.toString()]; return r || { status: 404, headers: {}, body: Buffer.from('nf') }; }); srv.close(); }
 });
+
+test('descoberta por padrões: BBC (tópico) e links <a> de RSS; resumo igual ao título é descartado', async () => {
+  const guesses = feed.guessFeedUrls('https://www.bbc.com/portuguese/topics/c06gq6k9d9qt').map((g) => g.feed_url);
+  assert.ok(guesses.includes('https://feeds.bbci.co.uk/portuguese/topics/c06gq6k9d9qt/rss.xml'));
+  assert.ok(guesses.includes('https://www.bbc.com/portuguese/topics/c06gq6k9d9qt/rss.xml'));
+  const links = feed.findFeedLinksInHtml('<a href="/rss/saude">RSS</a><a href="/contato">x</a><a href="https://x.test/feed.xml">f</a>', 'https://x.test/p');
+  assert.deepEqual(links.map((l) => l.feed_url), ['https://x.test/rss/saude', 'https://x.test/feed.xml']);
+  routes = { 'https://bbc.test/pt/topics/abc': ok('<html>sem feed</html>'), 'https://bbc.test/pt/topics/abc/rss.xml': ok(RSS) };
+  const found = await feed.discoverFeeds('https://bbc.test/pt/topics/abc');
+  assert.equal(found[0].feed_url, 'https://bbc.test/pt/topics/abc/rss.xml'); assert.equal(found[0].method, 'padrão da seção');
+  const g = feed.parseFeed('<rss><channel><title>G</title><item><title>Saúde mental cresce - Folha</title><link>https://n.test/1</link><description>&lt;a href="x"&gt;Saúde mental cresce&lt;/a&gt; Folha</description></item></channel></rss>');
+  assert.equal(g.items[0].summary, '');
+});
+
+test('acompanhar assunto cria fonte do Google Notícias (RSS) e coleta', async () => {
+  CUR = admin;
+  const url = feed.googleNewsFeedUrl('saúde mental', { days: 7 });
+  assert.match(url, /^https:\/\/news\.google\.com\/rss\/search\?q=sa%C3%BAde%20mental%20when%3A7d&hl=pt-BR/);
+  assert.throws(() => feed.googleNewsFeedUrl(' '));
+  routes = { [url]: ok(ATOM.replace('<feed', '<feed')) };
+  const r = await call('POST', `/clients/${B}/topic-source`, { query: 'saúde mental', days: 7 });
+  assert.equal(r.status, 201); assert.equal(r.body.source.name, 'Assunto: saúde mental'); assert.equal(r.body.collected, 1);
+  assert.equal((await call('POST', `/clients/${B}/topic-source`, { query: 'saúde mental', days: 7 })).status, 409);
+  assert.equal((await call('POST', `/clients/${B}/topic-source`, { query: '' })).status, 400);
+});

@@ -209,6 +209,17 @@ function SourcesPanel({ client }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const [topic, setTopic] = useState({ query: '', days: 0 });
+  const [addingTopic, setAddingTopic] = useState(false);
+
+  async function addTopic(e) {
+    e.preventDefault(); setAddingTopic(true); setError(''); setNotice('');
+    try {
+      const { data } = await api.post(`/radar/clients/${client.id}/topic-source`, topic);
+      setNotice(`Assunto adicionado${data.warning ? ` (aviso: ${data.warning})` : ` · ${data.collected} notícia(s) coletada(s)`}.`);
+      setTopic({ query: '', days: 0 }); await load();
+    } catch (err) { setError(errMsg(err, 'Não foi possível adicionar o assunto.')); } finally { setAddingTopic(false); }
+  }
 
   const load = useCallback(async () => {
     try { const { data } = await api.get(`/radar/clients/${client.id}/sources`); setSources(data.sources); setLimit(data.limit); }
@@ -222,7 +233,7 @@ function SourcesPanel({ client }) {
       const { data } = await api.post(`/radar/clients/${client.id}/discover`, { url: site });
       setCandidates(data.candidates);
       if (data.candidates[0]) setForm({ name: data.candidates[0].title || '', feed_url: data.candidates[0].feed_url, site_url: data.candidates[0].site_url || site, force: false });
-      else { setForm({ name: '', feed_url: '', site_url: site, force: false }); setNotice('Não encontrei um feed automaticamente. Se você souber o endereço do RSS/Atom, cole abaixo.'); }
+      else { setForm({ name: '', feed_url: '', site_url: site, force: false }); setNotice('Essa página não publica um feed que eu consiga achar. Você pode colar abaixo o endereço do RSS/Atom (se souber) ou acompanhar o assunto por palavra-chave, no bloco “Acompanhar um assunto”.'); }
     } catch (err) { setError(errMsg(err, 'Não foi possível analisar o endereço.')); } finally { setDetecting(false); }
   }
 
@@ -269,7 +280,7 @@ function SourcesPanel({ client }) {
                 {candidates.map((c) => (
                   <label key={c.feed_url} className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2 text-xs ${form.feed_url === c.feed_url ? 'border-[#3A85FD] bg-white' : 'border-slate-200 bg-white'}`}>
                     <input type="radio" name="cand" checked={form.feed_url === c.feed_url} onChange={() => setForm({ ...form, feed_url: c.feed_url, name: c.title || form.name, force: false })} className="mt-0.5" />
-                    <span className="min-w-0"><strong className="block truncate text-slate-800">{c.title || c.feed_url}</strong><span className="block truncate text-slate-400">{c.feed_url} · {c.type?.toUpperCase()} · {c.sample_count} item(ns)</span></span>
+                    <span className="min-w-0"><strong className="block truncate text-slate-800">{c.title || c.feed_url}</strong><span className="block truncate text-slate-400">{c.feed_url} · {c.type?.toUpperCase()} · {c.sample_count} item(ns)</span>{c.method && c.method !== 'direto' && <span className="block text-[10px] text-slate-400">Encontrado por: {c.method}</span>}</span>
                   </label>
                 ))}
               </div>
@@ -286,6 +297,19 @@ function SourcesPanel({ client }) {
             </div>
           </form>
         )}
+      </section>
+      <section className="rounded-2xl border border-[#C9FF2F]/60 bg-[#C9FF2F]/10 p-4">
+        <h4 className="text-sm font-bold text-slate-800">Acompanhar um assunto</h4>
+        <p className="mt-0.5 text-xs text-slate-500">Não precisa de site: digite o tema e o Radar traz as notícias de vários veículos sobre ele (via busca do Google Notícias).</p>
+        <form onSubmit={addTopic} className="mt-3 flex flex-wrap gap-2">
+          <input value={topic.query} onChange={(e) => setTopic({ ...topic, query: e.target.value })} placeholder='Ex.: saúde mental, "reforma tributária" advocacia' className={`${input} min-w-[220px] flex-1`} required minLength={2} maxLength={200} />
+          <select value={topic.days} onChange={(e) => setTopic({ ...topic, days: Number(e.target.value) })} className={`${input} !w-auto`} aria-label="Período">
+            <option value={0}>Qualquer data</option><option value={7}>Últimos 7 dias</option><option value={30}>Últimos 30 dias</option>
+          </select>
+          <button type="submit" disabled={addingTopic || sources.length >= limit} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#17181C] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+            {addingTopic ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Acompanhar
+          </button>
+        </form>
       </section>
       {notice && <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">{notice}</p>}
       {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}

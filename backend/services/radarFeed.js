@@ -204,10 +204,13 @@ function parseFeed(xmlInput, baseUrl = 'https://example.com/') {
     const link = resolveLink(isAtom ? atomLink(block) : (stripHtml(unwrap(tagBlock(block, ['link']) || '')) || attr((block.match(/<link\b[^>]*>/i) || [''])[0], 'href')), baseUrl);
     const rawSummary = tagBlock(block, isAtom ? ['summary', 'content'] : ['description', 'content:encoded', 'summary']);
     const summary = truncate(stripHtml(unwrap(rawSummary || '')), SUMMARY_LIMIT);
+    const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+    const nt = norm(title); const ns = norm(summary);
+    const sameAsTitle = Boolean(ns) && (ns === nt || nt.startsWith(ns) || (ns.startsWith(nt) && ns.length - nt.length < 40));
     const published = toIso(unwrap(tagBlock(block, isAtom ? ['published', 'updated'] : ['pubDate', 'dc:date', 'published', 'updated']) || ''));
     const guid = stripHtml(unwrap(tagBlock(block, isAtom ? ['id'] : ['guid']) || '')) || link || title;
     if (!title && !summary) continue;
-    items.push({ guid: String(guid).slice(0, 500), title: truncate(title || summary, 300), summary, link, published_at: published });
+    items.push({ guid: String(guid).slice(0, 500), title: truncate(title || summary, 300), summary: sameAsTitle ? '' : summary, link, published_at: published });
   }
   return { type, title: feedTitle, site_url: feedSiteLink, items };
 }
@@ -224,7 +227,32 @@ function findFeedLinksInHtml(html, baseUrl) {
       if (href) found.push({ feed_url: href, title: attr(tag, 'title') || null });
     }
   }
+  for (const m of String(html || '').matchAll(/<a\b[^>]*\bhref\s*=\s*("([^"]*)"|'([^']*)')[^>]*>/gi)) {
+    const href = decodeEntities(m[2] ?? m[3]);
+    if (/(^|[\/._-])(rss|atom|feed|feeds)([\/._?-]|$)|\.xml($|\?)/i.test(href)) {
+      const abs = resolveLink(href, baseUrl);
+      if (abs && !found.some((f) => f.feed_url === abs)) found.push({ feed_url: abs, title: null });
+    }
+  }
   return found;
+}
+
+// Padrões conhecidos de feed a partir do endereço colado (seção/tópico) e de sites que os publicam em outro domínio.
+function guessFeedUrls(pageUrl) {
+  const url = new URL(pageUrl);
+  const out = [];
+  const path = url.pathname.replace(/\/+$/, '');
+  if (path) {
+    const base = `${url.origin}${path}`;
+    out.push({ feed_url: `${base}/rss.xml`, method: 'padrão da seção' }, { feed_url: `${base}.rss`, method: 'padrão da seção' },
+      { feed_url: `${base}/feed`, method: 'padrão da seção' }, { feed_url: `${base}/rss`, method: 'padrão da seção' }, { feed_url: `${base}?format=rss`, method: 'padrão da seção' });
+  }
+  const bbc = /(^|\.)bbc\.(com|co\.uk)$/i.test(url.hostname) ? path.match(/^\/([a-z-]+)\/topics\/([a-z0-9]+)/i) : null;
+  if (bbc) {
+    out.push({ feed_url: `https://feeds.bbci.co.uk/${bbc[1]}/topics/${bbc[2]}/rss.xml`, method: 'feed do tópico (BBC)' },
+      { feed_url: `https://feeds.bbci.co.uk/${bbc[1]}/rss.xml`, method: 'feed geral do site (BBC), não só deste tópico' });
+  }
+  return out;
 }
 
 async function tryParseFeed(url) {
@@ -253,21 +281,33 @@ async function discoverFeeds(rawUrl) {
 
   const origin = new URL(first.finalUrl).origin;
   const declared = findFeedLinksInHtml(text, first.finalUrl);
-  const guesses = COMMON_FEED_PATHS.map((p) => ({ feed_url: `${origin}${p}`, title: null }));
-  const queue = [...declared.map((d) => ({ ...d, method: 'declarado na página' })), ...guesses.map((g) => ({ ...g, method: 'endereço comum' }))];
+  const queue = [
+    ...declared.map((d) => ({ ...d, method: 'declarado na página' })),
+    ...guessFeedUrls(first.finalUrl),
+    ...COMMON_FEED_PATHS.map((p) => ({ feed_url: `${origin}${p}`, title: null, method: 'endereço comum' })),
+  ];
+  const deadline = Date.now() + 25000;
   for (const entry of queue) {
-    if (seen.has(entry.feed_url) || candidates.length >= 5) continue;
+    if (candidates.length >= 5 || Date.now() > deadline) break;
+    if (seen.has(entry.feed_url)) continue;
     try {
       const { feed, finalUrl } = await tryParseFeed(entry.feed_url);
       add({ feed_url: finalUrl, title: feed.title || entry.title, type: feed.type, site_url: feed.site_url || origin, sample_count: feed.items.length, method: entry.method });
     } catch { /* tenta o próximo */ }
-    // se a página declarou um feed válido, não precisa testar chutes
-    if (candidates.length && entry.method === 'declarado na página' && !queue.some((q) => q.method === 'declarado na página' && !seen.has(q.feed_url) && q !== entry)) break;
   }
   return candidates;
 }
 
+// Feed de busca do Google Notícias (RSS real) para acompanhar um assunto, mesmo sem site com feed.
+function googleNewsFeedUrl(query, { days = 0 } = {}) {
+  const q = String(query || '').trim().replace(/\s+/g, ' ').slice(0, 200);
+  if (q.length < 2) throw new Error('Digite o assunto (ex.: saúde mental).');
+  const full = days > 0 ? `${q} when:${Math.min(30, days)}d` : q;
+  return `https://news.google.com/rss/search?q=${encodeURIComponent(full)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+}
+
 module.exports = {
+  googleNewsFeedUrl, guessFeedUrls,
   isPrivateAddress, guardedLookup, normalizeUrl, fetchUrl, parseFeed, discoverFeeds, tryParseFeed, findFeedLinksInHtml,
   setFetcherForTests, setAllowPrivateForTests, stripHtml, truncate,
 };

@@ -3,7 +3,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { canAccessClient } = require('../middleware/auth');
-const { discoverFeeds, tryParseFeed, normalizeUrl } = require('../services/radarFeed');
+const { discoverFeeds, tryParseFeed, normalizeUrl, googleNewsFeedUrl } = require('../services/radarFeed');
 const { refreshSource, refreshClient } = require('../services/radar');
 const { buildPrompt, KINDS } = require('../services/radarPrompts');
 const { trendingTerms, fold } = require('../services/radarInsights');
@@ -84,6 +84,24 @@ router.post('/clients/:clientId/sources', async (req, res) => {
     INSERT INTO radar_sources (agency_id, client_id, name, site_url, feed_url, feed_type, is_active, client_visible, created_by)
     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
   `).run(req.user.agency_id, client.id, name, siteUrl || discoveredSite, feedUrl, feedType, req.body?.client_visible === false ? 0 : 1, req.user.id);
+  const refresh = await refreshSource(info.lastInsertRowid);
+  const row = db.prepare('SELECT * FROM radar_sources WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json({ source: publicSource(row), collected: refresh.ok ? refresh.added : 0, warning: refresh.ok ? null : refresh.error });
+});
+
+// Acompanhar um assunto (ex.: "saúde mental") via feed de busca do Google Notícias.
+router.post('/clients/:clientId/topic-source', async (req, res) => {
+  const client = ensureClient(req, res, req.params.clientId); if (!client) return;
+  let feedUrl;
+  try { feedUrl = googleNewsFeedUrl(req.body?.query, { days: Number(req.body?.days) || 0 }); } catch (error) { return res.status(400).json({ error: error.message }); }
+  const count = db.prepare('SELECT COUNT(*) n FROM radar_sources WHERE client_id = ?').get(client.id).n;
+  if (count >= MAX_SOURCES_PER_CLIENT) return res.status(409).json({ error: `Limite de ${MAX_SOURCES_PER_CLIENT} fontes por cliente.` });
+  if (db.prepare('SELECT id FROM radar_sources WHERE client_id = ? AND feed_url = ?').get(client.id, feedUrl)) return res.status(409).json({ error: 'Este assunto já está sendo acompanhado.' });
+  const label = String(req.body?.query).trim().replace(/\s+/g, ' ').slice(0, 80);
+  const info = db.prepare(`
+    INSERT INTO radar_sources (agency_id, client_id, name, site_url, feed_url, feed_type, is_active, client_visible, created_by)
+    VALUES (?, ?, ?, 'https://news.google.com/', ?, 'rss', 1, ?, ?)
+  `).run(req.user.agency_id, client.id, cleanName(req.body?.name, `Assunto: ${label}`), feedUrl, req.body?.client_visible === false ? 0 : 1, req.user.id);
   const refresh = await refreshSource(info.lastInsertRowid);
   const row = db.prepare('SELECT * FROM radar_sources WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json({ source: publicSource(row), collected: refresh.ok ? refresh.added : 0, warning: refresh.ok ? null : refresh.error });
