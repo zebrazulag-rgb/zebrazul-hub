@@ -8,6 +8,7 @@ import Alerts from './pages/Alerts.jsx';
 import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
 import ClientApproval from './pages/ClientApproval.jsx';
+import Radar from './pages/Radar.jsx';
 import DesignerApproval from './pages/DesignerApproval.jsx';
 import Scheduling from './pages/Scheduling.jsx';
 import UnifiedCalendar from './pages/UnifiedCalendar.jsx';
@@ -160,6 +161,8 @@ export default function App() {
       <Route path="/minha-fila" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view"><MyWork /></ProtectedRoute>} />
       <Route path="/alertas" element={<ProtectedRoute permission="dashboard.view"><Alerts /></ProtectedRoute>} />
       <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><DesignerApproval /></ProtectedRoute>} />
+      <Route path="/radar" element={<ProtectedRoute roles={["admin","team"]} permission="radar.view"><Radar /></ProtectedRoute>} />
+      <Route path="/cliente/radar" element={<ProtectedRoute roles={["client"]} permission="radar.view"><Radar /></ProtectedRoute>} />
       <Route path="/leitor" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitor /></ProtectedRoute>} />
       <Route path="/leitor/:id" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitorReader /></ProtectedRoute>} />
       <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><Scheduling /></ProtectedRoute>} />

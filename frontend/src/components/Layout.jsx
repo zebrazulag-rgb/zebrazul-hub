@@ -35,6 +35,7 @@ import {
   BellRing,
   Gauge,
   Zap,
+  Radar,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -420,6 +421,7 @@ export default function Layout({ children }) {
     { to: '/cliente/inicio', label: 'Início', mobileLabel: 'Início', icon: LayoutDashboard },
     { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
     { to: '/cliente/aprovacao', label: 'Aprovação', mobileLabel: 'Aprovação', icon: CheckCircle2, permission: 'tasks.approval' },
+    { to: '/cliente/radar', label: 'Radar', mobileLabel: 'Radar', icon: Radar, permission: 'radar.view' },
     { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/cliente/relatorios', label: 'Relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
@@ -428,6 +430,7 @@ export default function Layout({ children }) {
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
     { to: '/minha-fila', label: 'Minha fila', icon: ListChecks, permission: 'dashboard.view' },
+    { to: '/radar', label: 'Radar', icon: Radar, permission: 'radar.view' },
     { to: '/alertas', label: 'Alertas', icon: BellRing, permission: 'dashboard.view' },
     { to: '/calendario', label: 'Calendário', icon: CalendarDays, permission: 'dashboard.view' },
     { to: '/inteligencia', label: 'Inteligência', icon: Gauge, permission: 'dashboard.view' },
@@ -450,9 +453,20 @@ export default function Layout({ children }) {
   const workspaceClient = user?.role === 'client' ? roleClientRecord : selectedClient;
   const beeWorkspaceActive = isBeeClient(workspaceClient);
 
+  const [radarNew, setRadarNew] = useState(0);
+  useEffect(() => {
+    if (!user || !hasPermission(user, 'radar.view')) return undefined;
+    let alive = true;
+    const load = () => api.get('/radar/summary').then(({ data }) => { if (alive) setRadarNew(Number(data.total_new) || 0); }).catch(() => {});
+    load();
+    const timer = setInterval(load, 5 * 60 * 1000);
+    window.addEventListener('radar:seen', load);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('radar:seen', load); };
+  }, [user]);
+
   const visibleWorkspaceItems = isClientPortal
-    ? clientPortalItems.filter((item) => !item.permission || hasPermission(user, item.permission))
-    : workspaceItems.filter((item) => {
+    ? clientPortalItems.filter((item) => !item.permission || hasPermission(user, item.permission)).map((item) => (item.to === '/cliente/radar' ? { ...item, badge: radarNew } : item))
+    : workspaceItems.map((item) => (item.to === '/radar' ? { ...item, badge: radarNew } : item)).filter((item) => {
         if (item.beeOnly && !beeWorkspaceActive) return false;
         if (item.managementOnly && !(user?.role === 'admin' || Number(user?.is_operations_head) === 1)) return false;
         if (item.to === '/bussola') {
@@ -490,6 +504,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/cliente/inicio')) return 'Meu portal';
     if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
     if (path.startsWith('/cliente/aprovacao') || path.startsWith('/cliente/grade')) return 'Aprovação';
+    if (path.startsWith('/cliente/radar')) return 'Radar';
     if (path.startsWith('/cliente/relatorios')) return 'Relatórios';
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
@@ -504,6 +519,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/site-lp')) return 'Site/LP';
     if (path.startsWith('/aprovacao')) return 'Aprovação';
     if (path.startsWith('/agendamento')) return 'Agendamento';
+    if (path.startsWith('/radar')) return 'Radar de Conteúdo';
     if (path.startsWith('/leitor')) return 'Zebra Leitor';
     if (path.startsWith('/moodboard')) return 'Moodboard';
     if (path.startsWith('/conversas')) return 'Conversas';
@@ -1223,6 +1239,7 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/site-lp')) return 'Site/LP';
   if (path.startsWith('/aprovacao')) return 'Aprovação';
   if (path.startsWith('/agendamento')) return 'Agendamento';
+  if (path.startsWith('/radar')) return 'Radar de Conteúdo';
   if (path.startsWith('/leitor')) return 'Zebra Leitor';
   if (path.startsWith('/moodboard')) return 'Moodboard';
   if (path.startsWith('/bussola')) return 'Bússola';
@@ -1271,6 +1288,7 @@ function SidebarLink({ item, agencyPrimary, collapsed = false, activeOverride = 
             <item.icon size={compact ? 15 : 17} strokeWidth={2} />
           </span>
           {!collapsed && <span className="truncate">{item.label}</span>}
+          {!collapsed && item.badge > 0 && <span className="ml-auto rounded-full bg-[#C9FF2F] px-2 py-0.5 text-[10px] font-black text-[#17181C]">{item.badge > 99 ? '99+' : item.badge}</span>}
         </>
         );
       }}

@@ -6,6 +6,7 @@ const { canAccessClient } = require('../middleware/auth');
 const { discoverFeeds, tryParseFeed, normalizeUrl } = require('../services/radarFeed');
 const { refreshSource, refreshClient } = require('../services/radar');
 const { buildPrompt, KINDS } = require('../services/radarPrompts');
+const { trendingTerms, fold } = require('../services/radarInsights');
 
 const router = express.Router();
 const MAX_SOURCES_PER_CLIENT = 20;
@@ -146,6 +147,21 @@ router.post('/clients/:clientId/refresh', async (req, res) => {
   res.json(summary);
 });
 
+// Primeira visita: considera "novo" o que chegou nas últimas 48 h (assim a página já abre com vida).
+function lastSeen(userId, clientId) {
+  const row = db.prepare('SELECT last_seen_at FROM radar_visits WHERE user_id = ? AND client_id = ?').get(userId, clientId);
+  if (row) return row.last_seen_at;
+  return new Date(Date.now() - 48 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+}
+const sqlNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+function visibleBase(req, clientId) {
+  const where = ['i.client_id = ?', 'i.agency_id = ?', 's.is_active = 1'];
+  const params = [clientId, req.user.agency_id];
+  if (isClientUser(req)) where.push('s.client_visible = 1');
+  return { where, params, from: 'FROM radar_items i JOIN radar_sources s ON s.id = i.source_id' };
+}
+
 function dayBound(value, end) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return null;
   return end ? `${value}T23:59:59.999Z` : `${value}T00:00:00.000Z`;
@@ -167,14 +183,22 @@ router.get('/clients/:clientId/items', (req, res) => {
     where.push(`(${parts.join(joiner)})`);
     terms.forEach((t) => { const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`; params.push(like, like); });
   }
+  if (req.query.saved === '1') {
+    where.push('EXISTS (SELECT 1 FROM radar_item_saves sv WHERE sv.item_id = i.id AND sv.user_id = ?)');
+    params.push(req.user.id);
+  }
+  const seenAt = lastSeen(req.user.id, client.id);
+  if (req.query.only_new === '1') { where.push('i.fetched_at > ?'); params.push(seenAt); }
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
   const offset = Math.max(0, Number(req.query.offset) || 0);
   const base = `FROM radar_items i JOIN radar_sources s ON s.id = i.source_id WHERE ${where.join(' AND ')}`;
   const total = db.prepare(`SELECT COUNT(*) n ${base}`).get(...params).n;
   const items = db.prepare(`
-    SELECT i.id, i.source_id, s.name AS source_name, i.title, i.summary, i.link, i.published_at ${base}
+    SELECT i.id, i.source_id, s.name AS source_name, i.title, i.summary, i.link, i.published_at,
+      (i.fetched_at > ?) AS is_new,
+      EXISTS (SELECT 1 FROM radar_item_saves sv WHERE sv.item_id = i.id AND sv.user_id = ?) AS saved ${base}
     ORDER BY i.published_at DESC, i.id DESC LIMIT ? OFFSET ?
-  `).all(...params, limit, offset);
+  `).all(seenAt, req.user.id, ...params, limit, offset).map((row) => ({ ...row, is_new: Boolean(row.is_new), saved: Boolean(row.saved) }));
   const sourceFilter = isClientUser(req) ? ' AND client_visible = 1' : '';
   const sources = db.prepare(`SELECT id, name FROM radar_sources WHERE client_id = ? AND agency_id = ? AND is_active = 1${sourceFilter} ORDER BY name`).all(client.id, req.user.agency_id);
   res.json({ items, total, sources, limit, offset });
@@ -213,6 +237,80 @@ router.get('/clients/:clientId/history', (req, res) => {
     WHERE h.client_id = ? AND h.agency_id = ?${kindSql} ORDER BY h.created_at DESC, h.id DESC LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
   res.json({ history: rows, total, limit, offset });
+});
+
+// ---- Página do Radar: visão geral, "em alta", visitas e salvos ----
+router.get('/clients/:clientId/overview', (req, res) => {
+  const client = ensureClient(req, res, req.params.clientId); if (!client) return;
+  const { where, params, from } = visibleBase(req, client.id);
+  const seenAt = lastSeen(req.user.id, client.id);
+  const iso = (days) => new Date(Date.now() - days * 86400000).toISOString();
+  const startOfToday = `${new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)}T03:00:00.000Z`; // dia em America/Fortaleza
+  const count = (extra, ...p) => db.prepare(`SELECT COUNT(*) n ${from} WHERE ${where.join(' AND ')} ${extra}`).get(...params, ...p).n;
+  const titles = db.prepare(`SELECT i.title ${from} WHERE ${where.join(' AND ')} AND i.published_at >= ? ORDER BY i.published_at DESC LIMIT 400`).all(...params, iso(7)).map((r) => r.title);
+  const sourcesActive = db.prepare(`SELECT COUNT(*) n FROM radar_sources WHERE client_id = ? AND agency_id = ? AND is_active = 1${isClientUser(req) ? ' AND client_visible = 1' : ''}`).get(client.id, req.user.agency_id).n;
+  const lastRow = db.prepare(`SELECT MAX(last_success_at) AS t FROM radar_sources WHERE client_id = ? AND agency_id = ? AND is_active = 1`).get(client.id, req.user.agency_id);
+  const promptsTotal = isClientUser(req) ? null : db.prepare('SELECT COUNT(*) n FROM radar_prompt_history WHERE client_id = ? AND agency_id = ?').get(client.id, req.user.agency_id).n;
+  res.json({
+    client: { id: client.id, name: client.name, segment: client.segment, logo_color: client.logo_color },
+    stats: {
+      new_since_visit: count('AND i.fetched_at > ?', seenAt),
+      today: count('AND i.published_at >= ?', startOfToday),
+      week: count('AND i.published_at >= ?', iso(7)),
+      total: count(''),
+      sources_active: sourcesActive,
+      prompts_total: promptsTotal,
+      last_updated_at: lastRow?.t || null,
+    },
+    trending: trendingTerms(titles),
+    last_seen_at: seenAt,
+  });
+});
+
+router.post('/clients/:clientId/seen', (req, res) => {
+  const client = ensureClient(req, res, req.params.clientId); if (!client) return;
+  db.prepare(`INSERT INTO radar_visits (user_id, client_id, last_seen_at) VALUES (?, ?, ?)
+    ON CONFLICT(user_id, client_id) DO UPDATE SET last_seen_at = excluded.last_seen_at`).run(req.user.id, client.id, sqlNow());
+  res.json({ ok: true });
+});
+
+// Resumo para a vitrine de clientes e para o selo do menu.
+router.get('/summary', (req, res) => {
+  let rows;
+  if (req.user.role === 'admin' || req.user.is_operations_head) {
+    rows = db.prepare("SELECT id, name, segment, logo_color FROM clients WHERE agency_id = ? AND status != 'inactive' ORDER BY name").all(req.user.agency_id);
+  } else {
+    const ids = isClientUser(req) ? [Number(req.user.client_id)] : (Array.isArray(req.user.client_ids) ? req.user.client_ids : []);
+    rows = ids.length ? db.prepare(`SELECT id, name, segment, logo_color FROM clients WHERE agency_id = ? AND id IN (${ids.map(() => '?').join(',')}) ORDER BY name`).all(req.user.agency_id, ...ids) : [];
+  }
+  const clientSide = isClientUser(req) ? ' AND s.client_visible = 1' : '';
+  const clients = rows.map((c) => {
+    const seenAt = lastSeen(req.user.id, c.id);
+    const row = db.prepare(`
+      SELECT COUNT(DISTINCT s.id) AS sources,
+        COALESCE(SUM(CASE WHEN i.fetched_at > ? THEN 1 ELSE 0 END), 0) AS fresh,
+        COALESCE(SUM(CASE WHEN i.published_at >= ? THEN 1 ELSE 0 END), 0) AS week
+      FROM radar_sources s LEFT JOIN radar_items i ON i.source_id = s.id
+      WHERE s.client_id = ? AND s.agency_id = ? AND s.is_active = 1${clientSide}
+    `).get(seenAt, new Date(Date.now() - 7 * 86400000).toISOString(), c.id, req.user.agency_id);
+    return { ...c, sources: row.sources, new_since_visit: row.fresh, week: row.week };
+  });
+  res.json({ clients, total_new: clients.reduce((sum, c) => sum + c.new_since_visit, 0) });
+});
+
+router.post('/items/:id/save', (req, res) => {
+  const item = db.prepare('SELECT id, client_id FROM radar_items WHERE id = ? AND agency_id = ?').get(Number(req.params.id), req.user.agency_id);
+  if (!item) return res.status(404).json({ error: 'Notícia não encontrada.' });
+  if (!ensureClient(req, res, item.client_id)) return;
+  db.prepare('INSERT OR IGNORE INTO radar_item_saves (user_id, item_id) VALUES (?, ?)').run(req.user.id, item.id);
+  res.json({ saved: true });
+});
+router.delete('/items/:id/save', (req, res) => {
+  const item = db.prepare('SELECT id, client_id FROM radar_items WHERE id = ? AND agency_id = ?').get(Number(req.params.id), req.user.agency_id);
+  if (!item) return res.status(404).json({ error: 'Notícia não encontrada.' });
+  if (!ensureClient(req, res, item.client_id)) return;
+  db.prepare('DELETE FROM radar_item_saves WHERE user_id = ? AND item_id = ?').run(req.user.id, item.id);
+  res.json({ saved: false });
 });
 
 module.exports = router;

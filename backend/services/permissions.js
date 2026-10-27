@@ -223,7 +223,7 @@ function apiPermissionForRequest(req) {
     return method === 'GET' ? null : 'settings.clients';
   }
   if (path === '/radar' || path.startsWith('/radar/')) {
-    if (/^\/radar\/clients\/\d+\/items$/.test(path)) return 'radar.view';
+    if (/^\/radar\/clients\/\d+\/(items|overview|seen)$/.test(path) || path === '/radar/summary' || /^\/radar\/items\/\d+\/save$/.test(path)) return 'radar.view';
     if (/^\/radar\/clients\/\d+\/refresh$/.test(path)) return 'radar.refresh';
     if (/^\/radar\/items\/\d+\/prompt$/.test(path)) return 'radar.prompts';
     if (/^\/radar\/clients\/\d+\/history$/.test(path)) return 'radar.history';

@@ -27,7 +27,7 @@ async function copyText(text) {
   }
 }
 
-function CopyButton({ text, label = 'Copiar' }) {
+export function CopyButton({ text, label = 'Copiar' }) {
   const [done, setDone] = useState(false);
   return (
     <button type="button" onClick={async () => { if (await copyText(text)) { setDone(true); setTimeout(() => setDone(false), 1800); } }}
@@ -37,7 +37,7 @@ function CopyButton({ text, label = 'Copiar' }) {
   );
 }
 
-function PromptModal({ item, kind, onClose, onGenerated }) {
+export function PromptModal({ item, kind, onClose, onGenerated }) {
   const [angle, setAngle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
@@ -421,7 +421,7 @@ function HistoryPanel({ client, refreshKey }) {
   );
 }
 
-export default function ClientRadarTab({ client, user }) {
+export default function ClientRadarTab({ client, user, hideNews = false }) {
   const can = useMemo(() => ({
     refresh: hasPermission(user, 'radar.refresh'),
     sources: hasPermission(user, 'radar.sources'),
@@ -429,12 +429,12 @@ export default function ClientRadarTab({ client, user }) {
     history: hasPermission(user, 'radar.history'),
   }), [user]);
   const tabs = [
-    { key: 'news', label: 'Notícias' },
+    !hideNews && { key: 'news', label: 'Notícias' },
     can.sources && { key: 'sources', label: 'Fontes' },
     (can.sources || can.prompts) && { key: 'refs', label: 'Referências editoriais' },
     can.history && { key: 'history', label: 'Histórico de prompts' },
   ].filter(Boolean);
-  const [tab, setTab] = useState('news');
+  const [tab, setTab] = useState(hideNews ? (can.sources ? 'sources' : can.prompts ? 'refs' : 'history') : 'news');
   const [historyKey, setHistoryKey] = useState(0);
   return (
     <div className="space-y-4">
@@ -443,7 +443,7 @@ export default function ClientRadarTab({ client, user }) {
           <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${tab === t.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{t.label}</button>
         ))}
       </div>
-      {tab === 'news' && <NewsPanel client={client} canRefresh={can.refresh} canPrompt={can.prompts} onPromptGenerated={() => setHistoryKey((k) => k + 1)} />}
+      {tab === 'news' && !hideNews && <NewsPanel client={client} canRefresh={can.refresh} canPrompt={can.prompts} onPromptGenerated={() => setHistoryKey((k) => k + 1)} />}
       {tab === 'sources' && can.sources && <SourcesPanel client={client} />}
       {tab === 'refs' && <ReferencesPanel client={client} canEdit={can.sources} />}
       {tab === 'history' && can.history && <HistoryPanel client={client} refreshKey={historyKey} />}

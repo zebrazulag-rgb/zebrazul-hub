@@ -2222,6 +2222,22 @@ CREATE TABLE IF NOT EXISTS radar_prompt_history (
   FOREIGN KEY (item_id) REFERENCES radar_items(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS radar_visits (
+  user_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, client_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS radar_item_saves (
+  user_id INTEGER NOT NULL,
+  item_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, item_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id) REFERENCES radar_items(id) ON DELETE CASCADE
+);
 CREATE INDEX IF NOT EXISTS idx_radar_sources_client ON radar_sources(agency_id, client_id);
 CREATE INDEX IF NOT EXISTS idx_radar_items_client_date ON radar_items(client_id, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_radar_items_source ON radar_items(source_id);

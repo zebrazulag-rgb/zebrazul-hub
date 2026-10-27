@@ -224,3 +224,52 @@ test('permissões padrão por função', () => {
   assert.deepEqual(got(u({ role: 'client', client_id: A })), [true, false, false, false, false]);
   assert.deepEqual(got(u({ role: 'team', is_commercial_team: 1 })), [false, false, false, false, false]);
 });
+
+
+// ---------- página do Radar ----------
+test('"em alta": conta termos em notícias diferentes e ignora palavras comuns', () => {
+  const { trendingTerms } = require('../services/radarInsights');
+  const out = trendingTerms(['Clareamento dental: o que muda', 'Clareamento a laser, vale a pena?', 'Implante dental em 2026', 'Como escolher um dentista'], { minCount: 2 });
+  assert.deepEqual(out.map((e) => [e.term, e.count]), [['clareamento', 2], ['dental', 2]]);
+});
+
+test('visão geral, novidades desde a última visita e salvos', async () => {
+  const C = mk('Clínica C'); CUR = admin;
+  routes = { 'https://odonto.test/feed': ok(RSS) };
+  await call('POST', `/clients/${C}/sources`, { feed_url: 'https://odonto.test/feed', name: 'Blog Odonto' });
+  let ov = (await call('GET', `/clients/${C}/overview`)).body;
+  assert.equal(ov.stats.new_since_visit, 2); assert.equal(ov.stats.total, 2); assert.equal(ov.stats.sources_active, 1); assert.equal(ov.stats.prompts_total, 0);
+  let list = (await call('GET', `/clients/${C}/items`)).body.items;
+  assert.ok(list.every((i) => i.is_new === true && i.saved === false));
+  assert.equal((await call('POST', `/clients/${C}/seen`)).status, 200);
+  ov = (await call('GET', `/clients/${C}/overview`)).body;
+  assert.equal(ov.stats.new_since_visit, 0);
+  list = (await call('GET', `/clients/${C}/items`)).body.items;
+  assert.ok(list.every((i) => i.is_new === false));
+  assert.equal((await call('GET', `/clients/${C}/items?only_new=1`)).body.total, 0);
+  // salvar é por usuário
+  assert.equal((await call('POST', `/items/${list[0].id}/save`)).body.saved, true);
+  assert.equal((await call('GET', `/clients/${C}/items?saved=1`)).body.total, 1);
+  CUR = { ...admin, id: 2 };
+  db.prepare("INSERT OR IGNORE INTO users (id, agency_id, name, email, password_hash, role) VALUES (2, ?, 'Outro', 'o@t.com', 'x', 'admin')").run(agencyId);
+  assert.equal((await call('GET', `/clients/${C}/items?saved=1`)).body.total, 0);
+  CUR = admin;
+  assert.equal((await call('DELETE', `/items/${list[0].id}/save`)).body.saved, false);
+  assert.equal((await call('GET', `/clients/${C}/items?saved=1`)).body.total, 0);
+});
+
+test('resumo por cliente respeita o acesso; cliente não vê contagem de prompts', async () => {
+  CUR = admin;
+  const all = (await call('GET', '/summary')).body;
+  assert.ok(all.clients.length >= 3);
+  CUR = { id: 5, agency_id: agencyId, role: 'team', client_ids: [B] };
+  const mine = (await call('GET', '/summary')).body;
+  assert.deepEqual(mine.clients.map((c) => c.id), [B]);
+  const firstClient = all.clients[0].id;
+  CUR = { id: 9, agency_id: agencyId, role: 'client', client_id: A, client_ids: [A] };
+  assert.deepEqual((await call('GET', '/summary')).body.clients.map((c) => c.id), [A]);
+  assert.equal((await call('GET', `/clients/${A}/overview`)).body.stats.prompts_total, null);
+  assert.equal((await call('GET', `/clients/${firstClient === A ? B : firstClient}/overview`)).status, 403);
+  const p = (path, method = 'GET') => apiPermissionForRequest({ path, method, user: {}, body: {} });
+  for (const x of ['/radar/summary', '/radar/clients/1/overview', '/radar/clients/1/seen', '/radar/items/3/save']) assert.equal(p(x, x.endsWith('seen') ? 'POST' : 'GET'), 'radar.view');
+});
