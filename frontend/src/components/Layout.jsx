@@ -419,7 +419,7 @@ export default function Layout({ children }) {
   const clientPortalItems = [
     { to: '/cliente/inicio', label: 'Início', mobileLabel: 'Início', icon: LayoutDashboard },
     { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
-    { to: '/cliente/grade', label: 'Ver grade', mobileLabel: 'Grade', icon: Grid3x3, permission: 'social.feed' },
+    { to: '/cliente/aprovacao', label: 'Aprovação', mobileLabel: 'Aprovação', icon: CheckCircle2, permission: 'tasks.approval' },
     { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/cliente/relatorios', label: 'Relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
@@ -489,7 +489,7 @@ export default function Layout({ children }) {
     const path = location.pathname;
     if (path.startsWith('/cliente/inicio')) return 'Meu portal';
     if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
-    if (path.startsWith('/cliente/grade')) return 'Ver grade';
+    if (path.startsWith('/cliente/aprovacao') || path.startsWith('/cliente/grade')) return 'Aprovação';
     if (path.startsWith('/cliente/relatorios')) return 'Relatórios';
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
