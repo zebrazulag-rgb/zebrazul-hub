@@ -2308,6 +2308,7 @@ CREATE TABLE IF NOT EXISTS presence_diagnostics (
   segment TEXT,
   respondent TEXT,
   progress INTEGER NOT NULL DEFAULT 0,
+  share_token TEXT,
   answers_json TEXT NOT NULL DEFAULT '{}',
   result_json TEXT,
   submitted_at TEXT,
@@ -2322,6 +2323,11 @@ CREATE INDEX IF NOT EXISTS idx_presence_diagnostics_client
   ON presence_diagnostics(agency_id, client_id, status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_presence_diagnostics_submitted
   ON presence_diagnostics(agency_id, client_id, submitted_at DESC);
+`);
+tryAddColumn('presence_diagnostics', 'share_token', 'TEXT');
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_presence_diagnostics_share_token
+  ON presence_diagnostics(share_token) WHERE share_token IS NOT NULL;
 `);
 
 // Na primeira atualização para o controle por cliente, preserva o comportamento

@@ -37,6 +37,7 @@ import StrategicDiagnosis from './pages/StrategicDiagnosis.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
 import CompassPage from './pages/Compass.jsx';
 import PublicDiagnostic from './pages/PublicDiagnostic.jsx';
+import PublicPresenceDiagnosis from './pages/PublicPresenceDiagnosis.jsx';
 import Sales from './pages/Sales.jsx';
 import CommercialFunnel from './pages/CommercialFunnel.jsx';
 import CommercialSectionNav from './components/CommercialSectionNav.jsx';
@@ -148,6 +149,7 @@ export default function App() {
       <Route path="/link-social-media/:token" element={<PublicSocialMediaFeed />} />
       <Route path="/post/:token" element={<PublicPost />} />
       <Route path="/diagnostico/:token" element={<PublicDiagnostic />} />
+      <Route path="/mapa-da-marca/:token" element={<PublicPresenceDiagnosis />} />
       <Route path="/briefing-bee-2027/:token" element={<PublicBeeCampaignBriefing />} />
       <Route path="/solicitar/:token" element={<PublicTaskRequest />} />
       <Route path="/agenda/:token" element={<PublicTaskCalendar />} />

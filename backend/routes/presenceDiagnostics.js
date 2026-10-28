@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, canAccessClient } = require('../middleware/auth');
 
@@ -34,6 +35,7 @@ function normalizeRow(row, includePayload = false) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     submitted_at: row.submitted_at || null,
+    share_token: row.share_token || null,
   };
   if (includePayload) result.answers = safeJson(row.answers_json, {});
   return result;
@@ -99,6 +101,7 @@ router.post('/', (req, res) => {
     if (active) return res.status(200).json({ diagnostic: normalizeRow(active, true), reused: true });
   }
 
+  const shareToken = crypto.randomBytes(24).toString('hex');
   const source = req.user?.role === 'client'
     ? (req.user?.trial?.is_trial ? 'trial' : 'client')
     : 'team';
@@ -106,9 +109,9 @@ router.post('/', (req, res) => {
   const info = db.prepare(`
     INSERT INTO presence_diagnostics (
       agency_id, client_id, created_by, respondent_user_id, source, version,
-      status, niche_key, company_name, segment, respondent, progress,
+      status, niche_key, company_name, segment, respondent, progress, share_token,
       answers_json, result_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, '0.3', 'draft', 'geral', ?, ?, ?, 0, '{}', NULL, datetime('now'), datetime('now'))
+    ) VALUES (?, ?, ?, ?, ?, '0.3', 'draft', 'geral', ?, ?, ?, 0, ?, '{}', NULL, datetime('now'), datetime('now'))
   `).run(
     req.user.agency_id,
     client.id,
@@ -118,6 +121,7 @@ router.post('/', (req, res) => {
     client.name,
     client.segment || '',
     respondent,
+    shareToken,
   );
   const row = db.prepare(`
     SELECT p.*, c.name AS client_name FROM presence_diagnostics p
@@ -174,6 +178,42 @@ router.put('/:id', (req, res) => {
     db.prepare('UPDATE clients SET segment = ? WHERE id = ? AND agency_id = ?').run(segment, client.id, req.user.agency_id);
   }
 
+  const updated = db.prepare(`
+    SELECT p.*, c.name AS client_name FROM presence_diagnostics p
+    JOIN clients c ON c.id = p.client_id WHERE p.id = ?
+  `).get(row.id);
+  res.json({ diagnostic: normalizeRow(updated, true) });
+});
+
+
+router.post('/:id/share-link', (req, res) => {
+  if (!['admin', 'team'].includes(req.user?.role)) return res.status(403).json({ error: 'Apenas a equipe pode gerar links para clientes.' });
+  const row = db.prepare('SELECT * FROM presence_diagnostics WHERE id = ? AND agency_id = ?').get(Number(req.params.id), req.user.agency_id);
+  if (!row) return res.status(404).json({ error: 'Diagnóstico não encontrado.' });
+  const { client, error, status } = clientForRequest(req, row.client_id);
+  if (!client) return res.status(status || 400).json({ error });
+  let shareToken = row.share_token;
+  if (!shareToken) {
+    shareToken = crypto.randomBytes(24).toString('hex');
+    db.prepare("UPDATE presence_diagnostics SET share_token = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+      .run(shareToken, row.id, req.user.agency_id);
+  }
+  const updated = db.prepare(`
+    SELECT p.*, c.name AS client_name FROM presence_diagnostics p
+    JOIN clients c ON c.id = p.client_id WHERE p.id = ?
+  `).get(row.id);
+  res.json({ diagnostic: normalizeRow(updated, true) });
+});
+
+router.post('/:id/regenerate-share-link', (req, res) => {
+  if (!['admin', 'team'].includes(req.user?.role)) return res.status(403).json({ error: 'Apenas a equipe pode gerar links para clientes.' });
+  const row = db.prepare('SELECT * FROM presence_diagnostics WHERE id = ? AND agency_id = ?').get(Number(req.params.id), req.user.agency_id);
+  if (!row) return res.status(404).json({ error: 'Diagnóstico não encontrado.' });
+  const { client, error, status } = clientForRequest(req, row.client_id);
+  if (!client) return res.status(status || 400).json({ error });
+  const shareToken = crypto.randomBytes(24).toString('hex');
+  db.prepare("UPDATE presence_diagnostics SET share_token = ?, updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
+    .run(shareToken, row.id, req.user.agency_id);
   const updated = db.prepare(`
     SELECT p.*, c.name AS client_name FROM presence_diagnostics p
     JOIN clients c ON c.id = p.client_id WHERE p.id = ?

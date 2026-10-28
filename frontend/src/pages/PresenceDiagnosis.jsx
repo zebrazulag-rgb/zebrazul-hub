@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, Clock3, FilePlus2, History, Loader2, RefreshCw, Target, Trash2 } from 'lucide-react';
+import { BarChart3, Clock3, Copy, FilePlus2, History, Link2, Loader2, MessageCircle, RefreshCw, Send, Target, Trash2, X } from 'lucide-react';
 import api from '../api.js';
 import PageHero from '../components/PageHero.jsx';
 import CompassSectionNav from '../components/CompassSectionNav.jsx';
@@ -151,6 +151,9 @@ export default function PresenceDiagnosis() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareDiagnostic, setShareDiagnostic] = useState(null);
   const [frameHeight, setFrameHeight] = useState(900);
   const iframeRef = useRef(null);
   const frameReadyRef = useRef(false);
@@ -292,6 +295,62 @@ export default function PresenceDiagnosis() {
     } catch (err) { setError(err.response?.data?.error || 'Não foi possível arquivar.'); }
   }
 
+  function publicShareUrl(item = shareDiagnostic) {
+    return item?.share_token ? `${window.location.origin}/mapa-da-marca/${item.share_token}` : '';
+  }
+
+  async function prepareShareLink() {
+    if (!clientId || isClient || shareBusy) return;
+    setShareBusy(true); setError(''); setMessage('');
+    try {
+      let target = selected && selected.status !== 'submitted'
+        ? selected
+        : items.find((item) => ['draft', 'in_progress'].includes(item.status));
+      if (!target) {
+        const { data } = await api.post('/presence-diagnostics', { client_id: clientId });
+        target = data.diagnostic;
+      }
+      const { data } = await api.post(`/presence-diagnostics/${target.id}/share-link`);
+      setShareDiagnostic(data.diagnostic);
+      setSelectedId(data.diagnostic.id);
+      await loadList(data.diagnostic.id);
+      setShareOpen(true);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível gerar o link para o cliente.');
+    } finally { setShareBusy(false); }
+  }
+
+  async function copyShareLink() {
+    const link = publicShareUrl();
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setMessage('Link do Mapa da Marca copiado.');
+    } catch {
+      window.prompt('Copie o link do Mapa da Marca:', link);
+    }
+  }
+
+  async function nativeShareLink() {
+    const link = publicShareUrl();
+    if (!link) return;
+    const text = `Olá! A Zebra Azul preparou o Mapa da Marca da ${clientName}. Responda pelo link abaixo:`;
+    if (navigator.share) {
+      try { await navigator.share({ title: `Mapa da Marca · ${clientName}`, text, url: link }); return; } catch (err) { if (err?.name === 'AbortError') return; }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${text}
+${link}`)}`, '_blank', 'noopener,noreferrer');
+  }
+
+  function sendWhatsApp() {
+    const link = publicShareUrl();
+    if (!link) return;
+    const text = `Olá! A Zebra Azul preparou o Mapa da Marca da ${clientName}. Responda com calma pelo link abaixo. O progresso fica salvo automaticamente.
+
+${link}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  }
+
   const submitted = items.filter((item) => item.status === 'submitted');
   const selectedIndex = submitted.findIndex((item) => item.id === selectedId);
   const previous = selectedIndex >= 0 ? submitted[selectedIndex + 1] : null;
@@ -320,11 +379,20 @@ export default function PresenceDiagnosis() {
         eyebrow="Mapa de presença e conexão"
         title="Mapa da Marca"
         description="Diagnóstico estratégico salvo no ZebraHub para orientar comunicação, concorrência, ambientes prioritários e evolução da marca ao longo do tempo."
-        actions={selected?.status === 'submitted' ? (
-          <button type="button" onClick={createNew} disabled={creating} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] disabled:opacity-50">
-            {creating ? <Loader2 size={16} className="animate-spin" /> : <FilePlus2 size={16} />} Novo diagnóstico
-          </button>
-        ) : null}
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            {!isClient ? (
+              <button type="button" onClick={prepareShareLink} disabled={shareBusy} className="inline-flex items-center gap-2 rounded-xl bg-[#CBFF3B] px-4 py-2.5 text-sm font-black text-[#17181C] transition hover:-translate-y-0.5 disabled:opacity-50">
+                {shareBusy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Enviar link ao cliente
+              </button>
+            ) : null}
+            {selected?.status === 'submitted' ? (
+              <button type="button" onClick={createNew} disabled={creating} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#121620] disabled:opacity-50">
+                {creating ? <Loader2 size={16} className="animate-spin" /> : <FilePlus2 size={16} />} Novo diagnóstico
+              </button>
+            ) : null}
+          </div>
+        )}
       >
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-white/[.06] p-4"><p className="text-[10px] font-black uppercase tracking-[.12em] text-white/45">Empresa</p><p className="mt-1 font-black text-white">{clientName}</p></div>
@@ -385,6 +453,36 @@ export default function PresenceDiagnosis() {
           )}
         </main>
       </div>
+
+      {shareOpen && shareDiagnostic ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShareOpen(false); }}>
+          <div className="w-full max-w-xl rounded-[28px] bg-white p-6 shadow-2xl sm:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#17181C] text-[#CBFF3B]"><Link2 size={20} /></div>
+                <p className="mt-5 text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Mapa da Marca · link do cliente</p>
+                <h2 className="mt-1 text-2xl font-black tracking-[-.03em] text-slate-900">Enviar para {clientName}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">O cliente não precisa entrar no ZebraHub. Ele abre o link, responde no próprio celular ou computador e o progresso fica salvo automaticamente no cadastro dele.</p>
+              </div>
+              <button type="button" onClick={() => setShareOpen(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-[.12em] text-slate-400">Link exclusivo</p>
+              <div className="flex items-center gap-2">
+                <input readOnly value={publicShareUrl()} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs font-semibold text-slate-600 outline-none" />
+                <button type="button" onClick={copyShareLink} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-100" title="Copiar link"><Copy size={17} /></button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={sendWhatsApp} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-black text-white"><MessageCircle size={17} /> Enviar no WhatsApp</button>
+              <button type="button" onClick={nativeShareLink} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17181C] px-4 py-3 text-sm font-black text-white"><Send size={17} /> Compartilhar link</button>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-slate-400">Quando ele concluir, o resultado entra automaticamente no histórico do cliente e passa a alimentar o direcionamento estratégico do ZebraHub.</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
