@@ -252,7 +252,7 @@ function getPermissionSetForUser(user) {
   if (user?.role === 'client' && user?.client_stage === 'trial') {
     ALL_KEYS.forEach((key) => { map[key] = false; });
     if (!user?.trial?.expired) {
-      ['radar.view', 'radar.refresh', 'radar.prompts', 'radar.history'].forEach((key) => {
+      ['radar.view', 'radar.refresh', 'radar.prompts', 'radar.history', 'commercial.view', 'commercial.manage', 'commercial.import'].forEach((key) => {
         if (Object.prototype.hasOwnProperty.call(map, key)) map[key] = true;
       });
     }

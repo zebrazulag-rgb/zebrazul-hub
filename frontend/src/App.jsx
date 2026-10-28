@@ -4,6 +4,7 @@ import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import TrialSignup from './pages/TrialSignup.jsx';
 import TrialExperience from './pages/TrialExperience.jsx';
+import ZebrazulAgency from './pages/ZebrazulAgency.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import MyWork from './pages/MyWork.jsx';
 import Alerts from './pages/Alerts.jsx';
@@ -154,6 +155,7 @@ export default function App() {
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
       <Route path="/cliente/experiencia" element={<ProtectedRoute roles={["client"]} trialAllowed><TrialExperience /></ProtectedRoute>} />
+      <Route path="/cliente/zebrazul" element={<ProtectedRoute roles={["client"]} trialAllowed><ZebrazulAgency /></ProtectedRoute>} />
       <Route path="/cliente/inicio" element={<ProtectedRoute roles={["client"]}><ClientPortalHome /></ProtectedRoute>} />
       <Route path="/cliente/solicitar" element={<ProtectedRoute roles={["client"]}><ClientDemand /></ProtectedRoute>} />
       <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><ClientApproval /></ProtectedRoute>} />
@@ -212,8 +214,8 @@ export default function App() {
       <Route path="/ciclo-90-dias" element={<Navigate to="/bussola" replace />} />
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola" replace />} />
 
-      <Route path="/comercial" element={<ProtectedRoute permission="commercial.view"><CommercialPage><Sales /></CommercialPage></ProtectedRoute>} />
-      <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view"><CommercialPage><CommercialFunnel /></CommercialPage></ProtectedRoute>} />
+      <Route path="/comercial" element={<ProtectedRoute permission="commercial.view" trialAllowed><CommercialPage><Sales /></CommercialPage></ProtectedRoute>} />
+      <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view" trialAllowed><CommercialPage><CommercialFunnel /></CommercialPage></ProtectedRoute>} />
       <Route path="/comercial/contratos" element={<ProtectedRoute permission="commercial.view" platformOnly><CommercialPage><Contracts /></CommercialPage></ProtectedRoute>} />
       <Route path="/contratos" element={<Navigate to="/comercial/contratos" replace />} />
 

@@ -431,6 +431,8 @@ export default function Layout({ children }) {
   const trialClientPortalItems = [
     { to: '/cliente/experiencia', label: 'Minha experiência', mobileLabel: 'Experiência', icon: Sparkles },
     { to: '/cliente/radar', label: 'Radar', mobileLabel: 'Radar', icon: Radar, permission: 'radar.view' },
+    { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
+    { to: '/cliente/zebrazul', label: 'Zebrazul', mobileLabel: 'Zebrazul', icon: Building2 },
   ];
   const clientPortalItems = isTrialClient ? trialClientPortalItems : regularClientPortalItems;
 
@@ -509,6 +511,7 @@ export default function Layout({ children }) {
   const topbarLabel = (() => {
     const path = location.pathname;
     if (path.startsWith('/cliente/experiencia')) return 'ZebraHub Experience';
+    if (path.startsWith('/cliente/zebrazul')) return 'Conheça a Zebrazul';
     if (path.startsWith('/cliente/inicio')) return 'Meu portal';
     if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
     if (path.startsWith('/cliente/aprovacao') || path.startsWith('/cliente/grade')) return 'Aprovação';
