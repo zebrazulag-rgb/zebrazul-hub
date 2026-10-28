@@ -233,7 +233,14 @@ router.post('/items/:id/prompt', (req, res) => {
   const kind = String(req.body?.kind || '');
   if (!KINDS[kind]) return res.status(400).json({ error: 'Escolha carrossel ou roteiro de vídeo.' });
   const angle = String(req.body?.angle || '').trim().slice(0, 500);
-  const prompt = buildPrompt({ kind, client, item, source: { name: item.source_name }, angle });
+  const diagnosisRow = db.prepare(`
+    SELECT result_json FROM presence_diagnostics
+    WHERE agency_id = ? AND client_id = ? AND status = 'submitted'
+    ORDER BY submitted_at DESC, id DESC LIMIT 1
+  `).get(req.user.agency_id, client.id);
+  let presenceDiagnostic = null;
+  try { presenceDiagnostic = diagnosisRow?.result_json ? JSON.parse(diagnosisRow.result_json) : null; } catch {}
+  const prompt = buildPrompt({ kind, client, item, source: { name: item.source_name }, angle, presenceDiagnostic });
   const info = db.prepare(`
     INSERT INTO radar_prompt_history (agency_id, client_id, item_id, kind, angle, prompt_text, item_title, item_link, source_name, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

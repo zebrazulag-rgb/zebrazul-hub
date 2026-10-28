@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa de Presença e Conexão — Zebrazul</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Anton&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#17181C;--paper:#F5F3EE;--blue:#3A85FD;--pink:#EC0567;--lime:#CBFF3B;--muted:#6b6c66;--line:rgba(23,24,28,.16);--soft:#ecebe6}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:Manrope,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.app{max-width:1240px;margin:auto;padding:24px 20px 72px}
+h1,h2,h3{margin:0}
+.display{font-family:Anton,"Arial Black",sans-serif;text-transform:uppercase;letter-spacing:-.01em}
+
+/* HERO */
+.hero{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:28px;padding:34px;background:radial-gradient(circle at 85% 15%,rgba(203,255,59,.65),transparent 20%),radial-gradient(circle at 72% 72%,rgba(236,5,103,.2),transparent 26%),linear-gradient(135deg,rgba(58,133,253,.18),rgba(255,255,255,.15))}
+.hero:after{content:"";position:absolute;right:-110px;top:-90px;width:290px;height:290px;border:28px solid var(--ink);border-radius:50%;opacity:.08}
+.brand{font-weight:800;font-size:13px;letter-spacing:.14em;text-transform:uppercase}
+.hero h1{margin-top:16px;max-width:900px;font-size:clamp(40px,7vw,82px);line-height:.96}
+.hero p{max-width:820px;font-size:17px;line-height:1.55;margin:18px 0 0;color:#333}
+.tag-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
+.tag{border:1px solid var(--ink);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;background:rgba(245,243,238,.72)}
+
+/* CLIENT FIELDS */
+.client{margin-top:22px;border:1px solid var(--line);border-radius:24px;background:rgba(255,255,255,.6);padding:22px 24px}
+.sub{font-size:13px;color:var(--muted);margin:6px 0 0;line-height:1.5}
+.niche-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin-top:14px}
+.niche-note{margin-top:12px;font-size:13px;font-weight:600;min-height:18px}
+.niche-note .badge{display:inline-block;margin-left:8px;padding:4px 9px;border-radius:999px;background:var(--pink);color:#fff;font-size:11px;font-weight:800}
+.comp-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.comp{border-radius:16px;padding:16px;font-size:13.5px;line-height:1.5}
+.comp ul{margin:8px 0 0;padding-left:18px}
+.comp.ok{background:rgba(203,255,59,.3)}
+.comp.no{background:rgba(236,5,103,.08)}
+@media(max-width:700px){.comp-grid{grid-template-columns:1fr}}
+.client-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+.field label{display:block;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.field input{width:100%;font:inherit;font-weight:600;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+.field input:focus{outline:2px solid var(--blue);outline-offset:1px}
+.field.missing input{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink)}
+
+/* PROGRESS */
+.progress-wrap{position:sticky;top:0;z-index:5;margin:18px -20px 6px;padding:12px 20px;background:rgba(245,243,238,.92);backdrop-filter:blur(6px)}
+.progress-meta{display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:8px}
+.progress{height:8px;background:#deddd7;border-radius:999px;overflow:hidden}
+.progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--pink));transition:.3s}
+
+/* QUESTIONS */
+.section{margin-top:22px;border:1px solid var(--line);border-radius:24px;background:rgba(255,255,255,.52);overflow:hidden}
+.section-head{padding:22px 24px;display:flex;align-items:flex-start;gap:14px;border-bottom:1px solid var(--line)}
+.num{min-width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:var(--paper);font-weight:800}
+.section-head h2{font-size:20px}.section-head p{margin:5px 0 0;color:var(--muted);font-size:13px}
+.questions{padding:8px 22px 22px}
+.q{padding:18px 0;border-bottom:1px dashed var(--line);scroll-margin-top:80px}
+.q:last-child{border-bottom:0}
+.q-title{font-weight:800;font-size:15px;margin-bottom:4px}
+.q-hint{font-size:12.5px;color:var(--muted);margin-bottom:12px}
+.q-title+.opts{margin-top:12px}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}
+label.opt{display:flex;gap:9px;align-items:flex-start;padding:12px 13px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.56);cursor:pointer;transition:.2s;font-size:14px;line-height:1.35}
+label.opt:hover{transform:translateY(-1px);border-color:rgba(23,24,28,.35)}
+label.opt input{accent-color:var(--pink);margin-top:2px;flex-shrink:0}
+label.opt:has(input:checked){border-color:var(--ink);background:linear-gradient(135deg,rgba(58,133,253,.12),rgba(203,255,59,.15));box-shadow:inset 0 0 0 1px var(--ink)}
+.q-msg{display:none;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--pink)}
+.q.missing .q-msg,.q.warn .q-msg{display:block}
+.q.missing .q-title{color:var(--pink)}
+
+/* BUTTONS */
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:22px;align-items:center}
+button,.btn{border:0;border-radius:999px;padding:13px 18px;font-weight:800;cursor:pointer;font-family:inherit;font-size:14px;text-decoration:none;display:inline-flex;align-items:center}
+.btn-main{background:var(--ink);color:var(--paper)}
+.btn-alt{background:var(--lime);color:var(--ink)}
+.btn-pink{background:var(--pink);color:#fff}
+.btn-ghost{background:transparent;border:1px solid var(--ink);color:var(--ink)}
+.form-error{flex-basis:100%;text-align:right;font-size:13px;font-weight:700;color:var(--pink);min-height:18px}
+
+/* RESULTS */
+.results{display:none;margin-top:34px}
+.results.show{display:block}
+.report-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-bottom:16px;border-bottom:2px solid var(--ink);margin-bottom:18px}
+.report-head .display{font-size:clamp(28px,4vw,44px);line-height:1}
+.report-meta{font-size:13px;color:var(--muted);text-align:right;line-height:1.6}
+.report-meta strong{color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.card{border:1px solid var(--line);border-radius:24px;background:#fff;padding:22px;break-inside:avoid}
+.card h3{font-size:18px;margin-top:4px}
+.card .sub{font-size:13px;color:var(--muted);margin:6px 0 0;line-height:1.5}
+.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:800;color:var(--muted)}
+
+.arch{background:var(--ink);color:var(--paper);border:0;position:relative;overflow:hidden}
+.arch:after{content:"";position:absolute;right:-70px;bottom:-90px;width:240px;height:240px;border:24px solid var(--lime);border-radius:50%;opacity:.18}
+.arch .eyebrow{color:var(--lime)}
+.arch-name{font-family:Anton,"Arial Black",sans-serif;text-transform:uppercase;font-size:clamp(38px,6vw,64px);line-height:1;margin:10px 0 12px}
+.arch p{max-width:760px;font-size:16px;line-height:1.6;margin:0;color:#e6e4de}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:22px;position:relative;z-index:1}
+.kpi{border:1px solid rgba(245,243,238,.2);border-radius:16px;padding:14px}
+.kpi span{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:800;color:#b9b8b1}
+.kpi strong{display:block;font-family:Anton,"Arial Black",sans-serif;font-size:30px;margin-top:4px;font-weight:400}
+.kpi em{font-style:normal;font-size:12px;color:var(--lime)}
+
+.bars{margin-top:16px;display:grid;gap:10px}
+.bar-row{display:grid;grid-template-columns:170px 1fr 40px;gap:10px;align-items:center;font-size:13px}
+.bar-row.top{font-weight:800}
+.bar-track{height:9px;background:var(--soft);border-radius:999px;overflow:hidden}
+.bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--pink))}
+.bar-row:not(.top) .bar-fill{background:#a9b9d6}
+.bar-row strong{text-align:right}
+
+.svgwrap{margin-top:12px}
+.svgwrap svg{width:100%;height:auto;display:block}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;font-weight:700;margin-top:8px}
+.legend i{display:inline-block;width:14px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+.insight{margin-top:14px;padding:16px;border-left:5px solid var(--blue);background:var(--paper);border-radius:0 14px 14px 0;line-height:1.6;font-size:14.5px}
+
+table.plan{width:100%;border-collapse:collapse;margin-top:14px;font-size:13.5px}
+table.plan th{text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:10px 10px;border-bottom:1px solid var(--line)}
+table.plan td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.45}
+table.plan tr:last-child td{border-bottom:0}
+.chip{display:inline-block;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
+.q-atacar{background:var(--ink);color:var(--lime)}
+.q-gargalo{background:var(--pink);color:#fff}
+.q-manter{background:#dfe9fb;color:#1c4fa3}
+.q-adiar{background:var(--soft);color:var(--muted)}
+.mini{display:inline-block;min-width:34px;font-weight:800}
+.table-scroll{overflow-x:auto}
+
+.pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.pillar{border:1px solid var(--line);border-radius:18px;padding:18px;background:var(--paper)}
+.pillar .tagn{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--pink)}
+.pillar h4{margin:6px 0 6px;font-size:17px}
+.pillar p{margin:0;font-size:13.5px;line-height:1.5;color:#3a3b38}
+.pillar ul{margin:12px 0 0;padding-left:18px;font-size:13.5px;line-height:1.5}
+.pillar .kpi-line{margin-top:12px;font-size:12px;font-weight:700;color:var(--muted)}
+
+.alerts{display:grid;gap:10px;margin-top:14px}
+.alert{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:14px;line-height:1.5}
+.alert b{display:block;margin-bottom:2px}
+.alert .ic{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;background:var(--pink);color:#fff}
+.alert.info .ic{background:var(--blue)}
+
+.cta-box{margin-top:18px;border-radius:24px;padding:26px;background:linear-gradient(135deg,var(--blue),#2a5fc0);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+.cta-box h3{font-size:22px}.cta-box p{margin:6px 0 0;opacity:.85;font-size:14px}
+
+.footer{margin-top:28px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.zebra-mark{font-family:Anton,"Arial Black",sans-serif;text-transform:uppercase;letter-spacing:.03em;color:var(--ink)}
+
+@media(max-width:900px){.grid2,.pillars{grid-template-columns:1fr}.client-grid{grid-template-columns:1fr 1fr}.kpis{grid-template-columns:1fr}}
+@media(max-width:560px){.app{padding:16px 16px 60px}.hero{padding:24px}.section-head{padding:18px}.questions{padding:6px 16px 18px}.bar-row{grid-template-columns:118px 1fr 34px}.client-grid{grid-template-columns:1fr}.progress-wrap{margin:14px -16px 6px;padding:10px 16px}.report-meta{text-align:left}}
+@media print{
+  @page{margin:14mm}
+  body{background:#fff}
+  .app{max-width:none;padding:0}
+  .no-print,.progress-wrap,.actions,.cta-box{display:none!important}
+  body.done .form-area{display:none!important}
+  .results{margin-top:0}
+  .card,.pillar,.alert,.section{break-inside:avoid}
+  .arch{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .bar-fill,.chip,.alert .ic{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="form-area">
+<section class="hero">
+  <div class="brand">Zebrazul · diagnóstico estratégico</div>
+  <h1 class="display">Mapa de presença e conexão</h1>
+  <p>Um diagnóstico objetivo para transformar as necessidades reais da empresa em prioridades de comunicação no Instagram — cruzando marca, público, concorrência, comportamento de compra e capacidade de execução.</p>
+  <div class="tag-row"><span class="tag">Necessidades de comunicação</span><span class="tag">Prioridade × viabilidade</span><span class="tag">Pressão × diferenciação</span><span class="tag">Plano por ambiente</span></div>
+</section>
+
+<section class="client">
+  <div class="eyebrow">Identificação</div>
+  <div class="client-grid">
+    <div class="field" id="f-empresa"><label for="c_empresa">Empresa *</label><input id="c_empresa" data-client="empresa" placeholder="Nome da empresa"></div>
+    <div class="field"><label for="c_segmento">Segmento</label><input id="c_segmento" data-client="segmento" placeholder="Ex.: clínica odontológica"></div>
+    <div class="field"><label for="c_resp">Responsável</label><input id="c_resp" data-client="responsavel" placeholder="Quem respondeu"></div>
+    <div class="field"><label for="c_data">Data</label><input id="c_data" type="date" data-client="data"></div>
+  </div>
+</section>
+
+<section class="client">
+  <div class="eyebrow">Nicho do cliente</div>
+  <p class="sub">O nicho adapta a linguagem das perguntas, acrescenta perguntas específicas e ajusta pautas, alertas e regras de publicidade no resultado.</p>
+  <div class="niche-grid" id="nichePicker"></div>
+  <div class="niche-note" id="nicheNote"></div>
+</section>
+
+<div class="progress-wrap"><div class="progress-meta"><span>Progresso do diagnóstico</span><span id="progressLabel">0%</span></div><div class="progress"><div id="progressBar"></div></div></div>
+
+<form id="diagnosticForm" novalidate>
+  <div id="sections"></div>
+  <div class="actions">
+    <div class="form-error" id="formError"></div>
+    <button type="button" class="btn-ghost" id="resetBtn">Limpar respostas</button>
+    <button type="button" class="btn-alt" id="sampleBtn" hidden>Preencher exemplo</button>
+    <button type="submit" class="btn-main">Gerar diagnóstico</button>
+  </div>
+</form>
+</div>
+
+<section class="results" id="results">
+  <div class="report-head">
+    <div><div class="eyebrow">Mapa de presença e conexão · Zebrazul</div><div class="display" id="rEmpresa">—</div></div>
+    <div class="report-meta" id="rMeta"></div>
+  </div>
+
+  <div class="card arch">
+    <div class="eyebrow">Arquétipo de comunicação</div>
+    <div class="arch-name" id="archName">—</div>
+    <p id="archText"></p>
+    <div class="kpis">
+      <div class="kpi"><span>Necessidade dominante</span><strong id="kNeed">—</strong><em id="kNeedV"></em></div>
+      <div class="kpi"><span>Pressão do mercado</span><strong id="kPress">—</strong><em id="kPressL"></em></div>
+      <div class="kpi"><span>Força de diferenciação</span><strong id="kDiff">—</strong><em id="kDiffL"></em></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="eyebrow">Mapa 01 · necessidades de comunicação</div>
+      <h3>O que a marca mais precisa transformar</h3>
+      <p class="sub">Escala de 0 a 100. As três primeiras definem as funções prioritárias da mensagem.</p>
+      <div class="bars" id="needsBars"></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Mapa 02 · posicionamento competitivo</div>
+      <h3 id="posTitle">—</h3>
+      <div class="svgwrap" id="posSvg"></div>
+      <div class="insight" id="posText"></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="eyebrow">Mapa 03 · ambientes do Instagram</div>
+      <h3>Onde colocar energia × o que é possível sustentar</h3>
+      <div class="svgwrap" id="radarSvg"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>Prioridade estratégica</span><span><i style="background:var(--pink)"></i>Viabilidade de execução</span></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Mapa 04 · matriz de decisão</div>
+      <h3>Prioridade × viabilidade</h3>
+      <div class="svgwrap" id="matrixSvg"></div>
+      <p class="sub">Linha horizontal: corte de prioridade (média do diagnóstico, entre 50 e 65). Linha vertical: 60% de viabilidade.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="eyebrow">Plano por ambiente</div>
+    <h3>Papel, cadência e indicador de cada ambiente</h3>
+    <div class="table-scroll"><table class="plan" id="planTable"></table></div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="eyebrow">Pilares de conteúdo</div>
+    <h3>Funções prioritárias da mensagem</h3>
+    <p class="sub">Derivados das três maiores necessidades. Pautas de partida, para adaptar à linguagem do cliente.</p>
+    <div class="pillars" id="pillars"></div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="eyebrow">Pontos de atenção</div>
+    <h3>O que pode travar o resultado</h3>
+    <div class="alerts" id="alerts"></div>
+  </div>
+
+  <div class="card" style="margin-top:18px" id="compCard" hidden>
+    <div class="eyebrow">Regras de publicidade do nicho</div>
+    <h3 id="compOrg">—</h3>
+    <div id="compBody"></div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="eyebrow">Síntese</div>
+    <h3>Leitura estratégica da marca</h3>
+    <div class="insight" id="summary"></div>
+    <div class="actions" style="justify-content:flex-start">
+      <button type="button" class="btn-main" onclick="window.print()">Imprimir / salvar em PDF</button>
+      <button type="button" class="btn-ghost" id="editBtn">Editar respostas</button>
+    </div>
+  </div>
+
+  <div class="cta-box" id="ctaBox" hidden>
+    <div><h3>Quer transformar este mapa em plano?</h3><p>Uma leitura de 30 minutos com um estrategista da Zebrazul, a partir deste diagnóstico.</p></div>
+    <a class="btn btn-alt" id="ctaLink" target="_blank" rel="noopener">Agendar leitura</a>
+  </div>
+</section>
+
+<div class="footer"><span id="versionLabel">Mapa de presença e conexão · v0.2</span><span class="zebra-mark">não seguimos padrões. identificamos o seu.</span></div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIGURAÇÃO
+   whatsapp: número com DDI/DDD, só dígitos (ex.: "5584999999999").
+   Vazio = bloco de CTA oculto.
+   Modo demonstração: abra o arquivo com ?demo no final da URL.
+   ============================================================ */
+const CONFIG={version:"0.3",whatsapp:"",storageKey:"zebrazul_mapa_presenca_v03"};
+
+const NEEDS={D:"Descoberta",P:"Percepção de marca",E:"Informação / Educação",I:"Institucional",C:"Credibilidade",A:"Atualidade / Relevância",R:"Relacionamento",W:"Desejo",V:"Conversão"};
+const NK=Object.keys(NEEDS);
+const ENVS=["Reels","Feed","Perfil","Stories","Direct","Live","Canais","Anúncios"];
+/* Peso de cada necessidade em cada ambiente (0–5), na ordem de ENVS */
+const WEIGHTS={
+ D:[5,2,1,1,1,1,0,5],
+ P:[4,5,5,3,1,2,2,3],
+ E:[4,5,3,3,2,5,3,2],
+ I:[2,4,5,2,2,1,1,2],
+ C:[3,5,5,5,2,4,2,2],
+ A:[5,3,1,5,1,3,5,1],
+ R:[1,2,1,5,5,5,5,1],
+ W:[5,4,3,4,1,2,2,4],
+ V:[2,2,4,4,5,2,2,5]
+};
+
+const o=(label,fx={},x={})=>({label,fx,...x});
+/* escala: mesmos rótulos, valores por chave */
+const sc=(labels,map)=>labels.map((l,i)=>{const fx={};Object.entries(map).forEach(([k,v])=>{if(v[i])fx[k]=v[i]});return o(l,fx)});
+const capOpts=(labels,vals)=>labels.map((l,i)=>o(l,{},{v:vals[i]}));
+
+const SECTIONS=[
+{title:"Contexto do negócio",desc:"O que a empresa precisa alcançar e como ela vende.",items:[
+ {id:"objetivo",text:"Qual é o principal objetivo do negócio nos próximos 6 meses?",opts:[
+   o("Ganhar visibilidade e expandir público",{D:4,A:1}),
+   o("Reposicionar ou fortalecer a marca",{P:4,I:2}),
+   o("Gerar leads qualificados",{V:3,C:2}),
+   o("Vender diretamente",{V:4,W:2}),
+   o("Fidelizar e gerar recompra",{R:4,W:1}),
+   o("Lançar produto ou serviço",{D:2,E:2,W:2})]},
+ {id:"modelo",text:"Para quem a empresa vende?",opts:[
+   o("Pessoas físicas (B2C)",{},{flag:{model:"B2C"}}),
+   o("Empresas (B2B)",{},{flag:{model:"B2B"}}),
+   o("Ambos",{},{flag:{model:"MIX"}})]},
+ {id:"ticket",text:"Como é o {ticket} em relação ao mercado?",opts:[
+   o("Baixo — compra rápida",{V:3,W:2}),
+   o("Médio",{V:2,C:1,W:1}),
+   o("Alto",{C:3,R:2}),
+   o("Muito alto / venda consultiva",{C:4,R:3,E:1})]},
+ {id:"fechamento",text:"Onde a venda normalmente é fechada?",opts:[
+   o("WhatsApp ou Direct",{},{flag:{closing:"dm"}}),
+   o("Site ou e-commerce",{},{flag:{closing:"site"}}),
+   o("Loja ou atendimento presencial",{},{flag:{closing:"loja"}}),
+   o("Reunião com equipe comercial",{},{flag:{closing:"meeting"}})]},
+ {id:"perfil",text:"Qual é o estado atual do perfil no Instagram?",opts:[
+   o("Inativo ou abandonado",{I:3,C:2,D:1},{flag:{profileGap:3}}),
+   o("Posta sem constância",{I:2,C:1},{flag:{profileGap:2}}),
+   o("Constante, mas sem estratégia clara",{P:3},{flag:{profileGap:1}}),
+   o("Constante e estratégico",{},{flag:{profileGap:0}})]},
+ {id:"trafego",text:"Como está o investimento em anúncios hoje?",opts:[
+   o("Não investe",{D:1},{flag:{paid:10}}),
+   o("Investe pouco e sem estratégia",{},{flag:{paid:6}}),
+   o("Investe com alguma estratégia",{},{flag:{paid:2}}),
+   o("Investimento estruturado e mensurado",{},{flag:{paid:0}})]}
+]},
+{title:"Situação da marca",desc:"Como a empresa é percebida hoje.",items:[
+ {id:"awareness",text:"Hoje, o nível de conhecimento da marca entre {osClis} em potencial é:",opts:sc(["Pouco conhecida","Conhecida por um público pequeno","Conhecida no segmento","Muito conhecida","Referência"],{D:[4,3,2,1,0]})},
+ {id:"clarity",text:"{OsClis} entendem claramente o que a empresa faz?",opts:sc(["Não entende","Entende pouco","Entende parcialmente","Entende bem","Entende e diferencia"],{I:[4,3,2,1,0],P:[2,1.5,1,.5,0]})},
+ {id:"main_gap",text:"Na sua visão, qual é o maior problema da comunicação hoje?",hint:"Resposta de percepção. Ela tem peso menor no cálculo e é comparada com o resultado do diagnóstico.",opts:[
+   o("Falta de alcance",{D:2},{self:"D"}),
+   o("Falta de clareza",{I:2},{self:"I"}),
+   o("Falta de diferenciação",{P:2},{self:"P"}),
+   o("Falta de confiança",{C:2},{self:"C"}),
+   o("Falta de relacionamento",{R:2},{self:"R"}),
+   o("Falta de conversão",{V:2},{self:"V"})]}
+]},
+{title:"Comportamento de compra",desc:"Como o público decide e o que precisa acontecer antes da compra.",items:[
+ {id:"decision_need",text:"Antes de {acao}, {oCli} geralmente precisa principalmente de:",opts:[
+   o("Conhecer a solução",{D:3}),o("Entender o serviço",{E:3,I:1}),o("Comparar opções",{P:3}),
+   o("Confiar na empresa",{C:3}),o("Conversar com alguém",{R:3}),o("Ver provas e resultados",{C:3,W:1})]},
+ {id:"decision_time",text:"A decisão de {acao} costuma levar:",opts:sc(["Minutos ou horas","Poucos dias","Algumas semanas","Um a três meses","Mais de três meses"],{R:[0,1,2,3,4],C:[0,.5,1,1.5,2]})},
+ {id:"choice_factor",text:"{OCli} escolhe principalmente por:",opts:[
+   o("Preço",{V:3}),o("Confiança",{C:3}),o("Qualidade percebida",{W:3,P:1}),o("Especialização",{C:2,E:2}),
+   o("Experiência",{W:3}),o("Indicação e reputação",{C:2,R:2}),o("Conveniência",{V:3})]},
+ {id:"education",text:"Quanto {oCli} precisa entender antes de perceber valor?",opts:sc(["Nada","Pouco","Médio","Bastante","Muito"],{E:[0,1,2,3,4]})},
+ {id:"risk",text:"Quanto {oCli} sente que arrisca se escolher errado?",opts:sc(["Quase nada","Pouco","Moderadamente","Muito","Risco alto (saúde, dinheiro, segurança ou reputação)"],{C:[0,1,2,3,4]})},
+ {id:"visualize",text:"{OCli} consegue imaginar o resultado ou a experiência antes de {acao}?",opts:sc(["Com facilidade","Razoavelmente","Com dificuldade","Não consegue"],{W:[0,1.5,3,4]})},
+ {id:"friction",text:"Quando alguém se interessa, quão fácil é virar {conv}?",opts:sc(["Muito fácil","Fácil","Existe atrito","Muito difícil — perdemos muita gente"],{V:[0,1,2.5,4]})}
+]},
+{title:"Pressão do mercado",desc:"O quanto o ambiente competitivo disputa a atenção do mesmo público.",items:[
+ {id:"competitors",text:"Quantos {conc} disputam o mesmo público?",opts:sc(["Poucos","Alguns","Muitos","Mercado saturado"],{pr:[0,1,3,4]})},
+ {id:"comp_quality",text:"A comunicação dos concorrentes no Instagram é:",opts:sc(["Praticamente inexistente","Fraca","Mediana","Boa","Muito profissional"],{pr:[0,1,2,3,4]})},
+ {id:"similarity",text:"Os concorrentes produzem conteúdos muito parecidos entre si?",opts:sc(["Não","Pouco","Alguns","A maioria","Quase todos"],{pr:[0,1,2,3,4],P:[0,.5,1,1.5,2]})},
+ {id:"comp_paid",text:"Os concorrentes anunciam com frequência?",opts:sc(["Não, ou não sabemos","Alguns","A maioria"],{pr:[0,2,4]})},
+ {id:"market_dynamic",text:"O mercado muda com frequência e exige atualização constante?",opts:sc(["Quase nunca","Às vezes","Frequentemente","O tempo todo"],{A:[0,1,3,4]})}
+]},
+{title:"Força de diferenciação",desc:"O quanto a marca tem — e comunica — algo próprio.",items:[
+ {id:"difference",text:"A proposta da empresa é percebida como diferente dos concorrentes?",opts:sc(["Não","Muito pouco","Parcialmente","Sim","Sim, claramente"],{df:[0,1,2,3,4],P:[4,3,2,1,0]})},
+ {id:"copyable",text:"A empresa possui algo difícil de copiar?",opts:[
+   o("Não",{P:4}),
+   o("Ainda não sabemos",{P:4,df:1}),
+   o("Sim, mas pouco comunicado",{P:4,C:2,df:3},{wasted:true}),
+   o("Sim, e bem comunicado",{df:4})]},
+ {id:"comparison",text:"Quando alguém compara a empresa com concorrentes, a diferença é:",opts:sc(["Quase imperceptível","Pequena","Razoável","Muito clara"],{df:[0,1,3,4],P:[4,3,2,0]})}
+]},
+{title:"Prioridades declaradas",desc:"O que a empresa quer transformar agora.",items:[
+ {id:"priority_needs",type:"checkbox",max:4,text:"Marque de 1 a 4 prioridades atuais:",opts:[
+   o("Ser descoberta",{},{need:"D"}),o("Ser lembrada",{},{need:"P"}),o("Mudar percepção",{},{need:"P"}),o("Se diferenciar",{},{need:"P"}),
+   o("Explicar melhor os serviços",{},{need:"I"}),o("Educar o mercado",{},{need:"E"}),o("Demonstrar autoridade",{},{need:"C"}),o("Mostrar resultados",{},{need:"C"}),
+   o("Criar confiança",{},{need:"C"}),o("Criar relacionamento",{},{need:"R"}),o("Gerar desejo",{},{need:"W"}),o("Acompanhar assuntos atuais",{},{need:"A"}),
+   o("Gerar oportunidades comerciais",{},{need:"V"}),o("Aumentar vendas",{},{need:"V"})]}
+]},
+{title:"Capacidade de execução",desc:"O que a empresa consegue sustentar na prática.",items:[
+ {id:"video",cap:"video",text:"A empresa consegue produzir vídeos com frequência?",opts:capOpts(["Não","Pouco","Sim","Sim, com facilidade"],[.15,.45,.8,1])},
+ {id:"people",cap:"people",text:"Existem pessoas disponíveis para aparecer?",opts:capOpts(["Ninguém","Raramente","Algumas pessoas","Sim, com frequência"],[.15,.45,.8,1])},
+ {id:"proof",cap:"proof",text:"A empresa possui {prova} para mostrar?",opts:capOpts(["Quase nenhum","Alguns","Muitos","Muitos e bem documentados"],[.2,.5,.8,1])},
+ {id:"interaction",cap:"interaction",text:"Existe alguém disponível para responder mensagens e interagir?",opts:capOpts(["Não","Parcialmente","Sim","Sim, com agilidade"],[.15,.45,.8,1])},
+ {id:"budget",cap:"budget",text:"Existe verba disponível para anúncios?",opts:capOpts(["Nenhuma","Pequena","Moderada","Robusta"],[.1,.45,.8,1])}
+]}
+];
+SECTIONS.forEach(s=>s.items.forEach(it=>{it.type=it.type||"radio"}));
+/* ============================================================
+   NICHOS — vocabulário, perguntas específicas, pautas, regras
+   ============================================================ */
+const VOCAB_DEFAULT={oCli:"o cliente",osClis:"os clientes",acao:"comprar ou contratar",conv:"contato ou venda",prova:"casos, resultados ou histórias",ticket:"ticket médio",conc:"concorrentes diretos"};
+const capF=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>{const lk=k.charAt(0).toLowerCase()+k.slice(1);const val=v[lk];return val==null?m:(k[0]!==lk[0]?capF(val):val)});
+const yn3=(a,b,c)=>[a,b,c];
+const NICHES={
+geral:{name:"Geral / outro",desc:"Perguntas padrão, sem adaptação de nicho."},
+
+contabilidade:{name:"Contabilidade",desc:"Escritórios contábeis, BPO financeiro e consultoria tributária.",
+ vocab:{oCli:"o empresário",osClis:"os empresários",acao:"contratar",conv:"contrato",prova:"casos de clientes (economia, regularização, crescimento)",ticket:"honorário mensal médio",conc:"escritórios contábeis"},
+ override:{choice_factor:{opts:[o("Preço do honorário",{V:3}),o("Segurança e confiança",{C:3}),o("Atendimento próximo",{R:3}),o("Especialização no segmento",{C:2,E:2}),o("Tecnologia e agilidade",{W:2,P:2}),o("Indicação",{C:2,R:2})]}},
+ extras:[
+  {id:"nicho",text:"O escritório atende um nicho específico (ex.: médicos, e-commerce, MEI)?",opts:[o("Não, atende todos",{P:4}),o("Tem preferência, mas não comunica",{P:3,df:1}),o("Sim, e comunica",{df:4})]},
+  {id:"troca",text:"Os clientes trocam de contador principalmente por:",opts:[o("Atendimento ruim",{R:3}),o("Preço",{V:2}),o("Erro, multa ou insegurança",{C:3}),o("Falta de orientação estratégica",{E:3,W:1})]},
+  {id:"alem",text:"O escritório oferece algo além do operacional (planejamento tributário, BPO, consultoria)?",opts:[o("Não",{}),o("Sim, mas pouco vendido",{W:3,E:2},{wasted:true}),o("Sim, e é carro-chefe",{W:1,df:2})]},
+  {id:"picos",text:"Há picos de demanda ao longo do ano (IR, abertura de empresas, prazos)?",opts:[o("Não",{}),o("Alguns",{A:2}),o("Sim, bem marcados",{A:4},{flag:{seasonal:true}})]}],
+ bias:{Feed:4,Live:2,Anúncios:3},
+ pautas:{D:["5 erros que fazem o pequeno empresário pagar imposto a mais","MEI, ME ou LTDA: qual faz sentido para você?"],P:["Por que contabilidade não é só guia de imposto","O que fazemos que o contador 'despachante' não faz"],E:["Simples Nacional explicado em um carrossel","Calendário fiscal do mês: o que vence e quando"],I:["Como funciona a entrada de um novo cliente","Quem é a equipe por trás das suas guias"],C:["Caso autorizado: empresa que regularizou e economizou","Bastidor do fechamento mensal"],A:["Reforma tributária: o que muda para o seu negócio","Nova regra da Receita: o que fazer agora"],R:["Caixinha de dúvidas fiscais respondida","Dia de fechamento no escritório"],W:["Como é ter um contador que pensa junto","Crescer sem medo do fiscal"],V:["Diagnóstico tributário gratuito para empresas do Simples","Trocar de contador: como funciona, sem dor de cabeça"]}},
+
+advocacia:{name:"Advocacia",desc:"Escritórios e advogados. Comunicação sujeita às regras da OAB.",
+ vocab:{oCli:"o cliente",osClis:"os clientes",acao:"contratar",conv:"atendimento",prova:"materiais de autoridade (artigos, palestras, publicações)",ticket:"honorário médio",conc:"escritórios e advogados"},
+ override:{choice_factor:{opts:[o("Confiança",{C:3}),o("Especialização na área",{C:2,E:2}),o("Reputação e indicação",{C:2,R:2}),o("Preço",{V:3}),o("Atendimento e clareza",{R:2,I:2}),o("Localização ou conveniência",{V:2})]}},
+ extras:[
+  {id:"area",text:"O escritório atua em uma área definida do Direito?",opts:[o("Generalista",{P:4}),o("Algumas áreas, sem foco claro",{P:3,df:1}),o("Área principal clara",{P:1,df:3}),o("Nicho específico e bem comunicado",{df:4})]},
+  {id:"momento",text:"O cliente costuma procurar o advogado:",opts:[o("Em urgência — o problema já aconteceu",{V:3,D:2}),o("De forma preventiva",{E:3,C:1}),o("Ambos",{V:1,E:1})]},
+  {id:"direito",text:"O público sabe que tem um direito ou problema jurídico?",opts:sc(["Sim","Parcialmente","Não, precisa ser educado"],{E:[0,2,4]})},
+  {id:"regras",text:"A equipe conhece as regras de publicidade da OAB (Provimento 205/2021)?",opts:[o("Não conhece",{C:1},{flag:{complianceRisk:2}}),o("Conhece em parte",{},{flag:{complianceRisk:1}}),o("Sim, e aplica",{}),o("Já houve questionamento ético",{C:2},{flag:{complianceRisk:3}})]}],
+ bias:{Feed:4,Live:3,Anúncios:-4},
+ compliance:{org:"OAB · Provimento 205/2021",ok:["Conteúdo informativo e educativo sobre direitos","Impulsionamento de conteúdo informativo, sem oferta de serviço","Google Ads respondendo a buscas, com anúncio informativo","Lives e vídeos educativos, com sobriedade","Telefone, e-mail e WhatsApp com link direto"],no:["Divulgar honorários, descontos ou formas de pagamento","Chamadas como \"me contrate\" ou \"procure seus direitos aqui\"","Citar resultados de processos ou casos concretos","Autoengrandecimento e comparação com outros escritórios","Ostentação de bens, viagens ou carros"]},
+ alerts:[[d=>d.ranked.slice(0,3).includes("V"),"","Conversão dentro das regras da OAB","Na advocacia, a conversão não pode usar chamada de contratação nem preço. Converta por conteúdo que faz o cliente reconhecer o próprio problema, Google Ads de busca e um perfil com contato fácil."],[d=>d.ranked.slice(0,3).includes("C"),"info","Credibilidade sem expor casos","Resultados de processos não podem ser divulgados. Construa autoridade com análise técnica, artigos, palestras, eventos e bastidores de estudo."]],
+ pautas:{D:["Seus direitos na demissão: o que pouca gente sabe","Mitos sobre pensão alimentícia"],P:["Como pensamos a advocacia na nossa área","O que perguntar antes de escolher um advogado"],E:["Passo a passo de um inventário extrajudicial","Prazo para entrar com ação: quando é tarde demais"],I:["Como funciona o primeiro atendimento","Áreas de atuação e quem cuida de cada uma"],C:["Artigo ou palestra do sócio sobre o tema","Bastidor do estudo de uma tese, sem expor clientes"],A:["Decisão recente do STF: o que muda na prática","Lei nova em vigor: impactos para você"],R:["Caixinha de dúvidas jurídicas","Rotina do escritório: como cuidamos dos prazos"],W:["Como é ter o problema conduzido com clareza","Tranquilidade jurídica para família e empresa"],V:["Quando procurar um advogado: sinais de alerta","Canais de contato do escritório, fixados no perfil"]}},
+
+saude:{name:"Profissional da saúde",desc:"Nutrição, fisioterapia, psicologia, odontologia, fonoaudiologia e afins.",
+ vocab:{oCli:"o paciente",osClis:"os pacientes",acao:"agendar",conv:"agendamento",prova:"resultados e depoimentos de pacientes",ticket:"valor da consulta ou pacote",conc:"profissionais da mesma área"},
+ override:{choice_factor:{opts:[o("Confiança",{C:3}),o("Especialização",{C:2,E:2}),o("Indicação",{C:2,R:2}),o("Preço ou convênio",{V:3}),o("Acolhimento e proximidade",{R:3}),o("Resultado visível",{W:3,C:1})]}},
+ extras:[
+  {id:"area",text:"Qual é a área de atuação?",opts:[o("Nutrição",{E:1,W:1}),o("Fisioterapia",{E:1}),o("Psicologia",{R:2,E:1},{flag:{psico:true}}),o("Odontologia",{W:2},{flag:{aesthetic:true}}),o("Outra área da saúde",{})]},
+  {id:"formato",text:"O atendimento é:",opts:[o("Presencial",{}),o("Online",{D:2}),o("Híbrido",{D:1})]},
+  {id:"origem",text:"O paciente costuma chegar principalmente:",opts:[o("Por indicação de outro profissional",{C:1,R:1}),o("Pelas redes sociais",{D:1,W:1}),o("Pelo convênio",{P:2}),o("Por busca no Google",{I:1})]},
+  {id:"metodo",text:"Existe um método ou protocolo próprio de atendimento?",opts:[o("Não",{P:3}),o("Sim, mas não comunico",{P:3,df:3},{wasted:true}),o("Sim, e comunico",{df:4})]}],
+ bias:{Stories:3,Reels:2},
+ compliance:{org:"Conselhos de classe (CFN, COFFITO, CFP, CFO, CFFa…)",ok:["Conteúdo educativo dentro da área de formação","Divulgar formação, especialidade e estrutura","Bastidores que preservem a privacidade do paciente"],no:["Prometer resultados ou usar sensacionalismo","Expor paciente sem autorização formal","Comparações e autopromoção depreciativa"],note:"Depoimentos, antes e depois e divulgação de preço têm regras diferentes em cada conselho. Confirme no código de ética da profissão antes de publicar."},
+ alerts:[[d=>d.flags.psico,"","Psicologia exige cuidado redobrado","Sigilo e ética são centrais: evite depoimentos e qualquer conteúdo que exponha atendimentos. Autoridade vem de educação emocional e posicionamento."]],
+ pautas:{D:["3 sinais de que você precisa desse cuidado","Mito × verdade sobre um tema da área"],P:["Como eu atendo e por que é diferente","O que eu não faço — e por quê"],E:["Como funciona a primeira consulta","O que levar e o que esperar do acompanhamento"],I:["Formação e especialização","Estrutura do consultório"],C:["Depoimento autorizado, dentro das regras do conselho","Como acompanho a evolução do paciente"],A:["Tendência de saúde do momento: vale a pena?","Campanha de conscientização do mês"],R:["Caixinha de dúvidas","Bastidor de um dia de atendimento"],W:["A vida depois de cuidar disso","A experiência de ser acompanhado de perto"],V:["Horários disponíveis desta semana","Como agendar em um minuto"]}},
+
+academia:{name:"Academia",desc:"Academias, estúdios, boxes de crossfit e centros de treinamento.",
+ vocab:{oCli:"o aluno",osClis:"os alunos",acao:"se matricular",conv:"matrícula",prova:"transformações e histórias de alunos",ticket:"valor da mensalidade",conc:"academias e estúdios da região"},
+ override:{choice_factor:{opts:[o("Preço",{V:3}),o("Localização",{V:3}),o("Estrutura e equipamentos",{W:2,I:1}),o("Ambiente e comunidade",{R:3,W:1}),o("Professores e atendimento",{C:2,R:1}),o("Modalidades exclusivas",{P:3})]}},
+ extras:[
+  {id:"desafio",text:"Qual é o principal desafio hoje?",opts:[o("Atrair novos alunos",{D:3,V:1}),o("Reter alunos (evasão)",{R:4},{flag:{retention:true}}),o("Vender planos mais longos",{W:2,V:2}),o("Ocupar horários vazios",{V:3})]},
+  {id:"posic",text:"A academia tem um posicionamento claro (premium, low cost, funcional, feminina…)?",opts:sc(["Não","Mais ou menos","Sim"],{P:[4,2,0],df:[0,1,4]})},
+  {id:"sazon",text:"Há sazonalidade forte (janeiro, pré-verão)?",opts:[o("Não",{}),o("Alguma",{A:2}),o("Forte",{A:4},{flag:{seasonal:true}})]},
+  {id:"comunidade",text:"Existe comunidade ativa entre alunos (grupos, desafios, eventos)?",opts:sc(["Não","Pouca","Sim, forte"],{R:[3,2,0],df:[0,0,2]})}],
+ bias:{Reels:4,Stories:3,Canais:2,Anúncios:3},
+ alerts:[[d=>d.flags.retention,"info","Retenção vale tanto quanto captação","Use Stories e Canais para comunidade: desafios mensais, aluno destaque e reconhecimento de frequência. Aluno que se sente visto cancela menos."]],
+ pautas:{D:["Treino de 20 minutos para quem não tem tempo","Erros que travam seu resultado na academia"],P:["Por que aqui não é só mais uma academia","Nosso jeito de treinar"],E:["Musculação para iniciantes: por onde começar","Como montar sua rotina semanal"],I:["Tour pela estrutura","Conheça os professores"],C:["Transformação de aluno, com autorização e sem promessa","Como acompanhamos a evolução"],A:["Desafio do mês","Tendência fitness: funciona ou não?"],R:["Aluno da semana","Bastidor da aula coletiva"],W:["Treinar num lugar onde te chamam pelo nome","A sensação de voltar a ter energia"],V:["Aula experimental gratuita","Condição de matrícula por tempo limitado"]}},
+
+medico:{name:"Médico",desc:"Médicos e consultórios. Comunicação sujeita às regras do CFM.",
+ vocab:{oCli:"o paciente",osClis:"os pacientes",acao:"agendar",conv:"agendamento",prova:"conteúdo educativo e casos autorizados",ticket:"valor da consulta",conc:"médicos da mesma especialidade"},
+ override:{choice_factor:{opts:[o("Confiança",{C:3}),o("Especialidade e titulação",{C:2,E:2}),o("Indicação",{C:2,R:2}),o("Convênio ou preço",{V:3}),o("Acolhimento",{R:3}),o("Agilidade para agendar",{V:3})]}},
+ extras:[
+  {id:"tipo",text:"Qual é o tipo de atuação principal?",opts:[o("Clínica ou consultório",{I:1}),o("Procedimentos estéticos ou cirúrgicos",{W:3,C:1},{flag:{aesthetic:true}}),o("Diagnóstico e tratamento especializado",{E:2,C:1}),o("Telemedicina",{D:2})]},
+  {id:"conv",text:"O atendimento é:",opts:[o("Só particular",{W:1,C:1}),o("Particular e convênio",{}),o("Majoritariamente convênio",{P:2})]},
+  {id:"origem",text:"O paciente chega principalmente:",opts:[o("Por indicação médica",{C:1}),o("Pelas redes sociais",{D:1,W:1}),o("Por Google ou plataformas de agendamento",{I:2}),o("Pelo convênio",{P:2})]},
+  {id:"regras",text:"A equipe conhece as regras de publicidade do CFM (Resolução 2.336/2023)?",opts:[o("Não",{},{flag:{complianceRisk:2}}),o("Parcialmente",{},{flag:{complianceRisk:1}}),o("Sim",{})]}],
+ bias:{Feed:3,Reels:2},
+ compliance:{org:"CFM · Resolução 2.336/2023",ok:["Divulgar valor da consulta e campanhas promocionais","Mostrar equipamentos e estrutura do local de trabalho","Imagens de pacientes com finalidade educativa, sem identificação e sem manipulação","Repostar agradecimentos e depoimentos sóbrios"],no:["Antes e depois sem contexto: precisa mostrar indicações, resultados possíveis e complicações","Depoimentos com adjetivos de superioridade ou promessa de resultado","Ensinar técnicas médicas a não médicos","Filmagem de procedimentos por terceiros (exceto partos)"]},
+ alerts:[[d=>d.ranked.slice(0,3).includes("V"),"info","Preço e campanhas são permitidos","Desde a Resolução CFM 2.336/2023, valores de consulta e campanhas promocionais podem ser divulgados — um atalho de conversão que muitos médicos ainda não usam."]],
+ pautas:{D:["Sintomas que não devem ser ignorados","Mitos sobre uma condição da especialidade"],P:["Como conduzo o tratamento","Medicina que explica antes de prescrever"],E:["Como funciona o exame, passo a passo","Quando procurar um especialista"],I:["Formação e RQE","Estrutura e equipamentos do consultório"],C:["Caso educativo com indicações e limites","Depoimento sóbrio de paciente, repostado"],A:["Estudo ou diretriz nova: o que muda para você","Campanha de saúde do mês"],R:["Caixinha de dúvidas de pacientes","Um dia de atendimento"],W:["Como é o acompanhamento do início ao fim","Qualidade de vida depois do tratamento"],V:["Horários disponíveis e como agendar","Valores e convênios atendidos"]}},
+
+corretor:{name:"Corretor de Imóveis",desc:"Corretores autônomos e imobiliárias.",
+ vocab:{oCli:"o comprador",osClis:"os compradores",acao:"fechar negócio",conv:"visita ou proposta",prova:"negócios fechados e depoimentos de clientes",ticket:"valor médio dos imóveis",conc:"corretores e imobiliárias"},
+ override:{choice_factor:{opts:[o("Confiança no corretor",{C:3}),o("Portfólio de imóveis",{W:3}),o("Conhecimento da região",{C:2,E:2}),o("Condição ou preço",{V:3}),o("Atendimento ágil",{R:2,V:1}),o("Indicação",{C:2,R:2})]}},
+ extras:[
+  {id:"foco",text:"Atua mais com:",opts:[o("Lançamentos",{W:2,A:1}),o("Revenda (usados)",{V:2}),o("Alto padrão",{W:3,C:1}),o("Locação",{V:3})]},
+  {id:"captacao",text:"Captar imóveis (proprietários) também é objetivo?",opts:[o("Não",{}),o("Às vezes",{D:1}),o("Sim, é prioridade",{D:2,C:2})]},
+  {id:"territorio",text:"Há um território definido (bairro, cidade, tipo de imóvel)?",opts:sc(["Não","Mais ou menos","Sim, e comunico"],{P:[4,2,0],df:[0,1,4]})},
+  {id:"video",text:"Os imóveis são apresentados com vídeo ou tour?",opts:sc(["Não","Às vezes","Sempre"],{W:[3,1,0],df:[0,0,1]})}],
+ bias:{Reels:5,Stories:3,Direct:4,Anúncios:5},
+ compliance:{org:"COFECI / CRECI",ok:["Tour, bastidores de visitas e conteúdo de mercado","Divulgar imóveis com informações verídicas e autorização do proprietário"],no:["Peças sem o número do CRECI","Informações enganosas sobre preço, metragem ou condições"],note:"Inclua o CRECI na bio, nos anúncios e nos materiais de cada imóvel."},
+ pautas:{D:["Quanto custa morar neste bairro hoje","O que dá para comprar com determinado valor na cidade"],P:["Por que trabalho só com este território","Como escolho os imóveis que apresento"],E:["Financiamento passo a passo, sem susto","Custos além do valor do imóvel (ITBI, escritura)"],I:["Como funciona meu atendimento","Quem sou e onde atuo"],C:["Chave entregue: história de cliente","Bastidor de uma negociação, sem expor dados"],A:["Juros mudaram: o que fazer agora","Lançamento da semana"],R:["Enquete: casa ou apartamento?","Um dia de visitas"],W:["Tour do imóvel da semana","Como é a vida neste bairro"],V:["Oportunidade da semana com chamada para visita","Imóveis disponíveis: chame no Direct"]}},
+
+terceirizacao:{name:"Terceirização de Mão de Obra",desc:"Limpeza, portaria, facilities e mão de obra especializada (B2B).",
+ vocab:{oCli:"a empresa contratante",osClis:"as empresas contratantes",acao:"contratar",conv:"proposta comercial",prova:"contratos ativos, clientes atendidos e indicadores",ticket:"valor médio de contrato",conc:"empresas de terceirização"},
+ override:{
+  choice_factor:{opts:[o("Preço",{V:3}),o("Confiabilidade e segurança jurídica",{C:3}),o("Qualidade da equipe",{W:2,C:1}),o("Agilidade na reposição",{I:2,C:1}),o("Gestão e supervisão",{I:2,E:1}),o("Indicação",{C:2,R:2})]},
+  fechamento:{opts:[o("Reunião ou visita técnica",{},{flag:{closing:"meeting"}}),o("Licitação",{I:1},{flag:{closing:"meeting"}}),o("WhatsApp",{},{flag:{closing:"dm"}}),o("Indicação direta",{},{flag:{closing:"meeting"}})]}},
+ extras:[
+  {id:"decisor",text:"Quem decide a contratação?",opts:[o("Dono ou diretor",{R:2}),o("RH ou compras",{E:2,I:1}),o("Síndico ou administradora",{C:2,R:1}),o("Comissão de licitação",{I:2})]},
+  {id:"servico",text:"Quais são os principais serviços?",opts:[o("Limpeza e conservação",{P:2}),o("Portaria e segurança",{C:1}),o("Facilities completo",{I:1,df:1}),o("Mão de obra especializada",{df:2})]},
+  {id:"recruta",text:"A empresa também precisa recrutar pelo Instagram?",opts:[o("Não",{}),o("Às vezes",{D:1,R:1},{flag:{employer:1}}),o("Sim, constantemente",{D:2,R:2},{flag:{employer:2}})]},
+  {id:"compliance",text:"Certificações, compliance trabalhista e indicadores estão documentados?",opts:sc(["Não","Alguns","Sim, e são comunicados"],{C:[3,2,0],df:[0,1,3]})}],
+ bias:{Feed:3,Perfil:3,Reels:-2,Live:-2,Anúncios:2},
+ alerts:[[d=>d.flags.employer>=1,"info","O perfil cumpre duas funções: vender e recrutar","Separe as linhas editoriais e crie um destaque \"Trabalhe conosco\". Vagas no feed sem critério confundem o decisor que está avaliando a empresa."]],
+ pautas:{D:["O custo oculto de manter equipe própria","Terceirizar ou contratar: a conta real"],P:["Como garantimos reposição rápida","Terceirização com gestão, não só mão de obra"],E:["O que o contratante precisa saber sobre responsabilidade trabalhista","Checklist para escolher uma terceirizada"],I:["Nossa estrutura de supervisão","Segmentos que atendemos"],C:["Indicadores de contrato (absenteísmo, reposição)","Depoimento de gestor cliente"],A:["Mudança na legislação trabalhista: impacto","Data comemorativa da categoria"],R:["Colaborador destaque do mês","Bastidor do treinamento da equipe"],W:["Facilities sem dor de cabeça","Ambiente impecável sem você precisar gerenciar"],V:["Diagnóstico gratuito de custos","Solicite proposta em 24h"]}},
+
+escola:{name:"Escola",desc:"Escolas de educação infantil, fundamental e médio.",
+ vocab:{oCli:"a família",osClis:"as famílias",acao:"matricular",conv:"visita ou matrícula",prova:"projetos, conquistas e depoimentos de famílias",ticket:"valor da mensalidade",conc:"escolas da região"},
+ override:{
+  choice_factor:{opts:[o("Proposta pedagógica",{P:3,E:1}),o("Confiança e segurança",{C:3}),o("Localização",{V:2}),o("Preço",{V:3}),o("Estrutura",{W:2,I:1}),o("Aprovações e resultados",{C:3}),o("Valores da escola",{P:2,R:1})]},
+  fechamento:{opts:[o("Visita presencial à escola",{},{flag:{closing:"loja"}}),o("WhatsApp ou Direct",{},{flag:{closing:"dm"}}),o("Secretaria ou telefone",{},{flag:{closing:"loja"}}),o("Site ou formulário",{},{flag:{closing:"site"}})]}},
+ extras:[
+  {id:"segmento",text:"Quais segmentos a escola atende?",opts:[o("Educação infantil",{R:2,C:2}),o("Fundamental",{E:1,C:1}),o("Ensino médio ou pré-vestibular",{C:3}),o("Todos",{I:2})]},
+  {id:"proposta",text:"A proposta pedagógica é clara para as famílias?",opts:sc(["Não","Pouco","Parcialmente","Sim"],{I:[4,3,2,0],P:[2,1,0,0],df:[0,0,1,3]})},
+  {id:"matriculas",text:"O período de matrículas é concentrado (ex.: setembro a janeiro)?",opts:[o("Não",{}),o("Parcialmente",{A:2}),o("Sim",{A:4},{flag:{seasonal:true}})]},
+  {id:"imagem",text:"Existe autorização de imagem das famílias para uso nas redes?",opts:[o("Não",{},{flag:{minors:2}}),o("Parcial",{},{flag:{minors:1}}),o("Sim, organizada",{})]}],
+ bias:{Stories:3,Canais:3,Reels:2,Anúncios:3},
+ compliance:{org:"ECA e LGPD (imagem de crianças e adolescentes)",ok:["Bastidores e projetos com autorização formal dos responsáveis","Conteúdo pedagógico, estrutura e equipe"],no:["Expor alunos sem termo de autorização","Associar nome completo, imagem e rotina do aluno","Publicar localização em tempo real de passeios"],note:"Organize o termo de uso de imagem na matrícula e mantenha uma lista de alunos que não podem aparecer."},
+ pautas:{D:["Como escolher a escola certa para seu filho","Sinais de que seu filho precisa de outra abordagem"],P:["Nossa proposta pedagógica em um minuto","Do que não abrimos mão na educação"],E:["Como funciona a alfabetização aqui","Um dia na rotina da escola"],I:["Conheça a coordenação","Tour pela estrutura"],C:["Projeto do mês","Depoimento de família"],A:["Checklist de volta às aulas","Tema atual com leitura pedagógica"],R:["Bastidor da sala de aula, com autorização","Recado da direção"],W:["O que seu filho vive aqui","Evento ou formatura com emoção"],V:["Agende uma visita","Matrículas abertas com condição até a data"]}},
+
+ensino:{name:"Profissional Autônomo de Ensino",desc:"Professores particulares, idiomas, música, mentores e infoprodutores.",
+ vocab:{oCli:"o aluno",osClis:"os alunos",acao:"se inscrever",conv:"inscrição",prova:"resultados e depoimentos de alunos",ticket:"valor das aulas ou do curso",conc:"professores e cursos online"},
+ override:{choice_factor:{opts:[o("Didática",{W:2,E:2}),o("Resultado de alunos",{C:3}),o("Preço",{V:3}),o("Flexibilidade de horário",{V:2}),o("Identificação com o professor",{R:3,P:1}),o("Especialização",{C:2,E:1})]}},
+ extras:[
+  {id:"formato",text:"Qual é o formato principal?",opts:[o("Aulas particulares presenciais",{R:1}),o("Aulas online ao vivo",{D:2}),o("Curso gravado ou infoproduto",{D:3,V:2}),o("Turmas e grupos",{R:2})]},
+  {id:"metodo",text:"Existe um método ou abordagem própria?",opts:[o("Não",{P:4}),o("Sim, mas não comunico",{P:3,df:3},{wasted:true}),o("Sim, e comunico",{df:4})]},
+  {id:"turmas",text:"A venda acontece por turmas ou lançamentos com data?",opts:[o("Não",{}),o("Às vezes",{A:2}),o("Sim",{A:3,V:2},{flag:{seasonal:true}})]},
+  {id:"rosto",text:"A personalidade do professor faz parte da marca?",opts:sc(["Não","Um pouco","Totalmente"],{P:[2,1,0],R:[0,0,1],df:[0,0,2]})}],
+ bias:{Reels:5,Live:4,Canais:3,Stories:2},
+ pautas:{D:["O erro que todo iniciante comete","Desafio de um minuto"],P:["Meu método e por que funciona","O que o ensino tradicional erra"],E:["Mini-aula em carrossel","Plano de estudos para 30 dias"],I:["Como funcionam as aulas","Minha trajetória"],C:["Evolução de aluno (nota, fluência, aprovação)","Feedback de aluno, com autorização"],A:["Prova ou edital do momento","Novidade da área explicada"],R:["Respondo dúvidas dos alunos","Bastidor da preparação da aula"],W:["Imagine dominar isso em 3 meses","Como é estudar comigo"],V:["Turma aberta, vagas limitadas","Aula experimental gratuita"]}},
+
+eventos:{name:"Eventos",desc:"Produtoras, buffets, espaços, cerimoniais e eventos abertos ao público.",
+ vocab:{oCli:"o contratante",osClis:"os contratantes",acao:"fechar o evento",conv:"orçamento",prova:"eventos realizados (fotos, vídeos e depoimentos)",ticket:"valor médio por evento",conc:"empresas e espaços de eventos"},
+ override:{choice_factor:{opts:[o("Estética e portfólio",{W:3}),o("Confiança na execução",{C:3}),o("Preço",{V:3}),o("Atendimento e personalização",{R:2,W:1}),o("Disponibilidade de data",{V:2}),o("Indicação",{C:2,R:2})]}},
+ extras:[
+  {id:"tipo",text:"Qual é o tipo principal de evento?",opts:[o("Casamentos e eventos sociais",{W:3,R:1}),o("Corporativos",{C:2,I:1}),o("Espaço para locação",{W:2,V:1}),o("Shows ou eventos abertos ao público",{D:3,A:2},{flag:{ticketing:true}})]},
+  {id:"antecedencia",text:"Com quanta antecedência o evento é contratado?",opts:[o("Até 1 mês",{V:2}),o("De 1 a 6 meses",{R:1}),o("Mais de 6 meses",{R:3,C:1})]},
+  {id:"sazon",text:"Há sazonalidade (fim de ano, temporada de casamentos)?",opts:[o("Não",{}),o("Alguma",{A:2}),o("Forte",{A:4},{flag:{seasonal:true}})]},
+  {id:"registro",text:"Os eventos são registrados em foto e vídeo profissional?",opts:sc(["Não","Às vezes","Sempre"],{W:[3,1,0],df:[0,0,2]})}],
+ bias:{Reels:5,Stories:3,Anúncios:2},
+ alerts:[[d=>d.flags.ticketing,"info","Eventos abertos: venda por lote","Trabalhe contagem regressiva, viradas de lote e prova social de edições anteriores. Concentre anúncios nas semanas de virada."]],
+ pautas:{D:["Ideias de decoração em alta","Quanto custa um evento para 100 convidados"],P:["Nossa assinatura em cada evento","O que torna um evento memorável"],E:["Checklist de planejamento 6 meses antes","Como montar o orçamento do evento"],I:["Do orçamento ao dia D: como trabalhamos","Conheça o espaço e a equipe"],C:["Evento realizado: bastidor e resultado","Depoimento dos anfitriões"],A:["Tendências de eventos para o próximo ano","Datas disponíveis da temporada"],R:["Bastidor da montagem","Equipe em ação"],W:["O grande momento em Reels","Detalhes que emocionam"],V:["Datas abertas para o próximo mês","Peça seu orçamento"]}},
+
+marketing:{name:"Marketing",desc:"Agências, social medias, gestores de tráfego e consultores.",
+ vocab:{oCli:"o cliente",osClis:"os clientes",acao:"contratar",conv:"reunião comercial",prova:"cases com números",ticket:"fee mensal médio",conc:"agências e freelancers"},
+ override:{choice_factor:{opts:[o("Resultados comprovados",{C:3}),o("Especialização em nicho",{C:2,P:2}),o("Criatividade e portfólio",{W:3}),o("Preço",{V:3}),o("Proximidade e atendimento",{R:3}),o("Método",{P:2,E:1})]}},
+ extras:[
+  {id:"nicho",text:"Existe um nicho ou especialidade definida?",opts:sc(["Não","Mais ou menos","Sim"],{P:[4,2,0],df:[0,1,4]})},
+  {id:"casa",text:"O perfil próprio pratica o que é vendido aos clientes?",opts:[o("Não",{C:3,P:2},{flag:{houseGap:true}}),o("Parcialmente",{C:2}),o("Sim",{df:2})]},
+  {id:"cases",text:"Há cases com números autorizados para divulgar?",opts:sc(["Não","Poucos","Vários"],{C:[3,2,0],df:[0,0,2]})},
+  {id:"socios",text:"Os sócios são a cara da marca?",opts:sc(["Não","Em parte","Sim"],{R:[1,0,1],df:[0,0,1]})}],
+ bias:{Reels:3,Feed:3,Live:2},
+ alerts:[[d=>d.flags.houseGap,"","Casa de ferreiro","O perfil da agência é a prova número um. Antes de escalar a venda, o próprio Instagram precisa demonstrar o método que é oferecido aos clientes."]],
+ pautas:{D:["Erros que fazem empresas queimarem verba em anúncio","O que mudou no algoritmo este mês"],P:["Por que não fazemos post de data comemorativa","Nosso jeito de fazer marketing"],E:["Como montar um funil simples","Métricas que importam e métricas de vaidade"],I:["Nosso método em etapas","Quem é o time"],C:["Case: o antes, o processo e os números","Bastidor do planejamento de um cliente"],A:["Nova função do Instagram: como usar","Trend da semana com leitura estratégica"],R:["Opinião sincera sobre uma tendência","Bastidor da agência"],W:["Marketing que dá para medir","Antes e depois de uma marca"],V:["Diagnóstico gratuito","Vagas para novos clientes no mês"]}},
+
+desenvolvimento:{name:"Desenvolvimento Humano",desc:"Consultorias de RH, treinamentos, mentorias e coaching.",
+ vocab:{oCli:"o cliente",osClis:"os clientes",acao:"contratar",conv:"conversa diagnóstica",prova:"cases, depoimentos e indicadores de impacto",ticket:"investimento médio do programa",conc:"consultorias, coaches e mentores"},
+ override:{choice_factor:{opts:[o("Credibilidade e formação",{C:3}),o("Identificação com o facilitador",{R:3}),o("Método",{P:2,E:1}),o("Resultados de clientes",{C:3}),o("Preço",{V:3}),o("Indicação",{C:2,R:2})]}},
+ extras:[
+  {id:"publico",text:"Quem é o público principal?",opts:[o("Pessoas físicas",{R:2,W:2}),o("Empresas (RH e lideranças)",{C:2,I:2}),o("Ambos",{I:1})]},
+  {id:"generico",text:"O mercado entende a diferença entre o seu trabalho e o \"coaching genérico\"?",opts:sc(["Não","Pouco","Sim"],{P:[4,3,0],C:[2,1,0],df:[0,0,3]})},
+  {id:"metodo",text:"Existe um método próprio, com nome?",opts:[o("Não",{P:3}),o("Sim, mas pouco comunicado",{P:3,df:3},{wasted:true}),o("Sim, e comunicado",{df:4})]},
+  {id:"medicao",text:"Os resultados são medidos (indicadores, avaliação antes e depois)?",opts:sc(["Não","Às vezes","Sempre"],{C:[3,2,0],df:[0,0,2]})}],
+ bias:{Feed:3,Live:4,Canais:2},
+ pautas:{D:["Sinais de que a liderança está esgotando a equipe","Por que bons profissionais pedem demissão"],P:["Por que não fazemos treinamento motivacional","O que acreditamos sobre desenvolvimento"],E:["Ferramenta prática: feedback em 4 passos","Como medir clima organizacional"],I:["Como funciona o programa","Quem conduz"],C:["Indicadores antes e depois de um programa","Depoimento de gestor"],A:["Pesquisa recente sobre trabalho e saúde mental","Tema do momento no RH"],R:["Reflexão da semana","Bastidor de um workshop"],W:["Como é uma equipe que funciona","A transformação de um líder"],V:["Conversa diagnóstica gratuita","Inscrições abertas para a próxima turma"]}},
+
+hotel:{name:"Hotel",desc:"Hotéis, pousadas e resorts.",
+ vocab:{oCli:"o hóspede",osClis:"os hóspedes",acao:"reservar",conv:"reserva",prova:"avaliações e experiências de hóspedes",ticket:"valor da diária média",conc:"hotéis, pousadas e aluguéis por temporada"},
+ override:{
+  choice_factor:{opts:[o("Localização",{V:2}),o("Preço da diária",{V:3}),o("Experiência e estrutura",{W:3}),o("Avaliações",{C:3}),o("Atendimento",{R:2,C:1}),o("Estética do lugar",{W:3,D:1})]},
+  fechamento:{opts:[o("WhatsApp ou Direct",{},{flag:{closing:"dm"}}),o("Site ou motor de reservas próprio",{},{flag:{closing:"site"}}),o("OTAs (Booking, Decolar…)",{V:1},{flag:{closing:"site",ota:true}}),o("Telefone ou balcão",{},{flag:{closing:"loja"}})]}},
+ extras:[
+  {id:"publico",text:"Qual é o público principal?",opts:[o("Lazer e turismo",{W:3,D:1}),o("Corporativo",{V:2,I:1}),o("Eventos e casamentos",{W:2,C:1}),o("Misto",{I:1})]},
+  {id:"avaliacao",text:"Como estão as avaliações no Google e nas OTAs?",opts:sc(["Abaixo da média","Boas","Excelentes e destacadas"],{C:[4,2,0],df:[0,0,2]})},
+  {id:"sazon",text:"Qual é o peso da sazonalidade?",opts:[o("Baixo",{}),o("Médio",{A:2}),o("Alto — temporadas bem marcadas",{A:4},{flag:{seasonal:true}})]},
+  {id:"experiencias",text:"Existem experiências além da hospedagem (gastronomia, passeios, spa)?",opts:[o("Não",{}),o("Sim, mas pouco divulgadas",{W:3,df:2},{wasted:true}),o("Sim, e divulgadas",{df:3})]}],
+ bias:{Reels:5,Stories:3,Anúncios:4,Canais:1},
+ alerts:[[d=>d.flags.ota,"","Dependência de OTAs","Use o Instagram para puxar reserva direta: benefício exclusivo para quem reserva pelo site ou WhatsApp, link no perfil e destaque \"Reserve direto\". Cada reserva direta é comissão economizada."]],
+ pautas:{D:["Roteiro de 3 dias no destino","Lugares secretos perto do hotel"],P:["O que só existe aqui","Nossa forma de receber"],E:["Melhor época para visitar","Como chegar e o que levar"],I:["Tour pelos quartos","Estrutura e serviços"],C:["Avaliação do hóspede da semana","Nossa nota no Google e no Booking"],A:["Agenda de eventos da cidade","Feriado chegando: datas disponíveis"],R:["Bastidor do café da manhã","A equipe que cuida de você"],W:["Amanhecer na varanda","A experiência do check-in ao check-out"],V:["Reserve direto e ganhe um benefício","Pacote do feriado"]}},
+
+clinica:{name:"Clínica no Geral",desc:"Clínicas odontológicas, estéticas, multiespecialidade e veterinárias.",
+ vocab:{oCli:"o paciente",osClis:"os pacientes",acao:"agendar",conv:"agendamento",prova:"resultados, depoimentos e estrutura",ticket:"ticket médio por paciente",conc:"clínicas da região"},
+ override:{choice_factor:{opts:[o("Confiança",{C:3}),o("Estrutura e tecnologia",{W:2,I:1}),o("Preço ou convênio",{V:3}),o("Localização",{V:2}),o("Atendimento e acolhimento",{R:3}),o("Variedade de especialidades",{I:2})]}},
+ extras:[
+  {id:"tipo",text:"Qual é o tipo de clínica?",opts:[o("Odontológica",{W:2,C:1},{flag:{aesthetic:true}}),o("Estética",{W:3,C:1},{flag:{aesthetic:true}}),o("Multiespecialidade médica",{I:3}),o("Veterinária",{R:2,C:2}),o("Outra",{})]},
+  {id:"estrela",text:"A clínica depende de um profissional-estrela ou da própria marca?",opts:[o("De um profissional-estrela",{P:2},{flag:{starDep:true}}),o("Equilibrado",{}),o("Da marca da clínica",{df:2})]},
+  {id:"retorno",text:"Como é a taxa de retorno dos pacientes?",opts:sc(["Baixa","Média","Alta"],{R:[3,2,0],df:[0,0,1]})},
+  {id:"agenda",text:"A agenda tem horários ociosos?",opts:sc(["Muitos","Alguns","Quase nunca"],{V:[3,2,0]})}],
+ bias:{Stories:3,Direct:3,Anúncios:3},
+ compliance:{org:"Conselhos da área (CFM, CFO, CRMV…)",ok:["Conteúdo educativo, estrutura, equipe e tecnologia","Depoimentos e resultados dentro das regras do conselho de cada profissional"],no:["Promessa de resultado e sensacionalismo","Expor paciente sem autorização formal"],note:"As regras de antes e depois, depoimentos e preços mudam conforme o conselho do profissional responsável. Valide cada linha de conteúdo com o responsável técnico."},
+ alerts:[[d=>d.flags.starDep,"info","Marca dependente de uma pessoa","Equilibre o conteúdo do especialista com conteúdo de equipe, estrutura e método. Isso protege a clínica se o profissional se ausentar e facilita a escala."]],
+ pautas:{D:["Sinais de que é hora de procurar a especialidade","Mitos sobre um procedimento"],P:["O que nos diferencia de uma clínica popular","Nosso padrão de atendimento"],E:["Como funciona a primeira consulta","Procedimento explicado passo a passo"],I:["Tour pela clínica","Conheça o corpo clínico"],C:["Resultado ou caso dentro das regras do conselho","Avaliações no Google"],A:["Campanha de saúde do mês","Nova tecnologia disponível"],R:["Bastidor da equipe","Dúvidas respondidas"],W:["A experiência de ser bem atendido","Autoestima depois do tratamento"],V:["Horários desta semana","Avaliação inicial com condição especial"]}}
+};
+Object.entries(NICHES).forEach(([k,N])=>N.key=k);
+let currentNiche="geral";
+function getSections(nk){
+ const N=NICHES[nk]||NICHES.geral,v={...VOCAB_DEFAULT,...(N.vocab||{})},ov=N.override||{};
+ const secs=SECTIONS.map(s=>({...s,items:s.items.map(it=>{const t={...it,...(ov[it.id]||{})};return{...t,text:fill(t.text,v),hint:t.hint?fill(t.hint,v):""}})}));
+ if(N.extras&&N.extras.length)secs.splice(1,0,{title:"Particularidades · "+N.name,desc:"Perguntas específicas do nicho.",items:N.extras.map(e=>({type:"radio",...e,id:nk+"_"+e.id}))});
+ return secs;
+}
+function getItems(nk=currentNiche){return getSections(nk).flatMap(s=>s.items)}
+
+
+/* ============================================================
+   CONTEÚDO ESTRATÉGICO
+   ============================================================ */
+const ARCHETYPES={
+ D:["Marca invisível","O problema não é o que a marca diz, é quem ainda não ouviu. A prioridade é alcance qualificado: entrar na conversa de quem ainda não conhece a empresa, com temas de entrada fortes e distribuição paga."],
+ P:["Marca indistinta","A marca existe, mas se confunde com o mercado. Aumentar o volume só amplifica a semelhança. A prioridade é construir território próprio: ponto de vista, linguagem e diferencial percebido."],
+ I:["Marca mal explicada","O público não entende com clareza o que a empresa faz, como faz e para quem. Antes de atrair mais gente, quem chega precisa entender — e encontrar motivo para ficar."],
+ E:["Marca que precisa ensinar","O valor da solução só aparece depois que o cliente entende o problema. A comunicação precisa educar, reduzir complexidade e conduzir a decisão."],
+ C:["Marca sem prova","O público até considera a empresa, mas não se sente seguro para escolher. A prioridade é tornar a confiança visível: resultados, casos, processo e bastidores."],
+ A:["Marca fora do tempo","O mercado se move rápido e a comunicação não acompanha. Participar das conversas atuais com leitura própria é o que sustenta relevância."],
+ R:["Marca distante","A decisão depende de vínculo, e a marca ainda fala de longe. Presença humana, conversa e recorrência são as principais alavancas."],
+ W:["Marca sem desejo","O cliente entende, mas não deseja. A comunicação precisa materializar a experiência e a transformação, elevando o valor percebido antes do preço."],
+ V:["Marca que não converte","Existe atenção, mas ela não vira oportunidade. A prioridade é encurtar o caminho: CTA claro, oferta, vitrine de perfil e atendimento ágil."]
+};
+const PILLARS={
+ D:["Portas de entrada","Temas amplos e ganchos fortes para quem ainda não conhece a marca.",["Erros comuns que o público comete sem perceber","Mitos × verdades do segmento"],"Alcance em não seguidores"],
+ P:["Ponto de vista","O que a marca defende, recusa e faz diferente.",["O que fazemos diferente — e por quê","O que o mercado normalizou e nós discordamos"],"Compartilhamentos e comentários"],
+ E:["Repertório","Explicar, orientar e simplificar a decisão.",["Guia: como escolher sem errar","O passo a passo do processo, sem jargão"],"Salvamentos"],
+ I:["Quem somos e como fazemos","Método, estrutura, equipe e serviços com clareza.",["Nosso método em etapas","Quem é a equipe que cuida de você"],"Visitas ao perfil → cliques no link"],
+ C:["Prova","Casos, resultados, depoimentos e bastidores do processo.",["Caso real comentado: problema, solução, resultado","Depoimento com o contexto da dor inicial"],"Respostas e conversas iniciadas"],
+ A:["Leitura de contexto","Notícias, tendências e datas com interpretação própria.",["O que essa mudança significa para você","Tendência do mês: vale ou não vale"],"Alcance e compartilhamentos"],
+ R:["Presença humana","Conversa, bastidor, perguntas e respostas.",["Caixinha de perguntas respondida","Um dia na rotina da equipe"],"Respostas aos stories"],
+ W:["Transformação","Experiência, aspiração e valor percebido.",["Como é a experiência do início ao fim","A vida depois do problema resolvido"],"Salvamentos e cliques no link"],
+ V:["Oportunidade","Oferta, CTA e condução direta para o contato.",["Para quem é — e para quem não é","Agenda ou condição da semana, com CTA direto"],"Conversas, leads e custo por lead"]
+};
+const ENV_INFO={
+ Reels:{role:"Descoberta, identificação rápida, ponto de vista e desejo.",kpi:"Alcance em não seguidores, retenção, compartilhamentos",hi:"3x por semana",mid:"1x por semana"},
+ Feed:{role:"Repertório, posicionamento, educação, prova e memória.",kpi:"Salvamentos, compartilhamentos, comentários qualificados",hi:"3x por semana (carrossel como base)",mid:"2x por semana"},
+ Perfil:{role:"Ambiente de confirmação: bio, destaques, fixados, provas e CTA.",kpi:"Visitas ao perfil → seguidores e cliques no link",hi:"Revisão mensal + 3 posts fixados estratégicos",mid:"Revisão trimestral"},
+ Stories:{role:"Frequência, proximidade, bastidor, prova, objeções e chamadas.",kpi:"Retenção da sequência, respostas, toques no link",hi:"Diário (5 a 8 telas)",mid:"3x por semana"},
+ Direct:{role:"Relação e conversão: atendimento, continuidade e escuta.",kpi:"Conversas iniciadas, tempo de resposta, taxa de fechamento",hi:"Resposta em até 1h útil + roteiro de atendimento",mid:"Resposta no mesmo dia"},
+ Live:{role:"Profundidade, autoridade e interação em tempo real.",kpi:"Espectadores médios, perguntas, leads pós-live",hi:"1x por mês",mid:"1x por trimestre"},
+ Canais:{role:"Comunidade, recorrência e novidades para público aquecido.",kpi:"Membros, reações, cliques",hi:"2x por semana",mid:"1x por semana"},
+ Anúncios:{role:"Distribuição paga: acelera descoberta e conversão do que já funciona.",kpi:"Custo por resultado, CTR, custo por conversa",hi:"Campanha contínua (topo + conversão)",mid:"Impulsionamento pontual do melhor conteúdo"}
+};
+const QUAD={
+ atacar:["Atacar agora","q-atacar"],
+ gargalo:["Gargalo","q-gargalo"],
+ manter:["Manutenção","q-manter"],
+ adiar:["Adiar","q-adiar"]
+};
+const POSITION={
+ livre:["Terreno livre","O mercado ainda exerce pouca pressão, mas a marca também não tem diferencial percebido. Existe uma janela para ocupar território antes dos concorrentes — clareza e consistência rendem mais aqui do que em qualquer outro cenário."],
+ invis:["Zona de invisibilidade","Mercado disputado e marca parecida com os concorrentes: o cenário mais perigoso. Aumentar volume de conteúdo só reforça a semelhança. A prioridade absoluta é diferenciação percebida — linguagem, ponto de vista e prova próprios."],
+ disputa:["Disputa de autoridade","Mercado disputado, mas a marca tem diferencial claro. A vitória vem de amplificar esse diferencial com prova, consistência e distribuição paga, antes que ele seja copiado."],
+ vantagem:["Vantagem a explorar","Pouca pressão e diferencial claro. A marca está em posição favorável: o gargalo passa a ser alcance e frequência. Escalar distribuição é o próximo passo."]
+};
+
+/* ============================================================
+   CÁLCULO (funções puras)
+   ============================================================ */
+const clamp=(v,a=0,b=100)=>Math.max(a,Math.min(b,v));
+const lvl=v=>v<25?"baixa":v<50?"moderada":v<75?"alta":"muito alta";
+
+function calculate(ans,nk=currentNiche){
+ const N=NICHES[nk]||NICHES.geral;
+ const raw={},max={};NK.forEach(k=>{raw[k]=0;max[k]=0});
+ let pr=0,prMax=0,df=0,dfMax=0,self=null,wasted=false;
+ const cap={video:1,people:1,proof:1,interaction:1,budget:1};
+ const flags={model:null,closing:null,profileGap:0,paid:0,seasonal:false,complianceRisk:0,minors:0,aesthetic:false,employer:0,ota:false,starDep:false,retention:false,ticketing:false,houseGap:false,psico:false};
+
+ getItems(nk).forEach(it=>{
+  const a=ans[it.id];
+  if(it.type==="checkbox"){
+   [...new Set(it.opts.map(x=>x.need))].forEach(k=>max[k]+=5);
+   [...new Set((a||[]).map(i=>it.opts[i].need))].forEach(k=>raw[k]+=5);
+   return;
+  }
+  NK.forEach(k=>{max[k]+=Math.max(0,...it.opts.map(x=>x.fx[k]||0))});
+  prMax+=Math.max(0,...it.opts.map(x=>x.fx.pr||0));
+  dfMax+=Math.max(0,...it.opts.map(x=>x.fx.df||0));
+  if(a==null)return;
+  const op=it.opts[a];
+  NK.forEach(k=>raw[k]+=op.fx[k]||0);
+  pr+=op.fx.pr||0;df+=op.fx.df||0;
+  if(it.cap)cap[it.cap]=op.v;
+  if(op.flag)Object.assign(flags,op.flag);
+  if(op.self)self=op.self;
+  if(op.wasted)wasted=true;
+ });
+
+ const needs={};NK.forEach(k=>needs[k]=max[k]?Math.round(raw[k]/max[k]*100):0);
+ const ranked=NK.slice().sort((a,b)=>needs[b]-needs[a]);
+
+ /* Prioridade: necessidades ao quadrado → as maiores dominam o cálculo */
+ const sq=NK.map(k=>(needs[k]/100)**2),den=5*sq.reduce((a,b)=>a+b,0);
+ let prio=ENVS.map((_,i)=>den?NK.reduce((acc,k,j)=>acc+sq[j]*WEIGHTS[k][i],0)/den*100:0);
+ const add=(env,v)=>{prio[ENVS.indexOf(env)]+=v};
+ ({dm:()=>add("Direct",10),meeting:()=>{add("Direct",6);add("Live",4)},site:()=>{add("Perfil",6);add("Anúncios",4)},loja:()=>{add("Stories",6);add("Reels",3)}}[flags.closing]||(()=>{}))();
+ if(flags.model==="B2B"){add("Live",5);add("Direct",4)}
+ if(flags.model==="B2C"){add("Reels",4);add("Stories",3)}
+ add("Anúncios",flags.paid);
+ add("Perfil",flags.profileGap*4);
+ Object.entries(N.bias||{}).forEach(([e,v])=>add(e,v));
+ prio=prio.map(v=>Math.round(clamp(v)));
+
+ /* Viabilidade: o que a empresa consegue sustentar */
+ const c=cap;
+ const via=[
+  c.video*.6+c.people*.4,
+  .6+.4*c.proof,
+  .7+.3*c.proof,
+  c.people*.4+c.interaction*.3+c.video*.3,
+  c.interaction,
+  c.people*.5+c.video*.2+c.interaction*.3,
+  c.interaction*.6+c.people*.4,
+  c.budget*.6+c.video*.2+c.proof*.2
+ ].map(v=>Math.round(clamp(v*100)));
+
+ const mean=prio.reduce((a,b)=>a+b,0)/prio.length;
+ const cut=Math.round(clamp(mean,50,65));
+ const quad=ENVS.map((_,i)=>prio[i]>=cut?(via[i]>=60?"atacar":"gargalo"):(via[i]>=60?"manter":"adiar"));
+
+ const pressure=prMax?Math.round(pr/prMax*100):0;
+ const diff=dfMax?Math.round(df/dfMax*100):0;
+ const position=pressure>=50?(diff>=50?"disputa":"invis"):(diff>=50?"vantagem":"livre");
+
+ return{needs,ranked,prio,via,quad,cut,pressure,diff,position,cap,flags,self,wasted,nk};
+}
+
+function buildAlerts(d){
+ const out=[],top3=d.ranked.slice(0,3),E=n=>ENVS.indexOf(n);
+ if(d.self&&d.self!==d.ranked[0]&&!top3.includes(d.self))
+  out.push(["info","Percepção × diagnóstico",`A empresa aponta <strong>${NEEDS[d.self]}</strong> como maior problema, mas o diagnóstico indica <strong>${NEEDS[d.ranked[0]]}</strong>. Vale aprofundar essa diferença na reunião: ela costuma revelar onde a energia está sendo gasta no lugar errado.`]);
+ else if(d.self&&d.self!==d.ranked[0])
+  out.push(["info","Percepção × diagnóstico",`A empresa aponta <strong>${NEEDS[d.self]}</strong> como maior problema. O diagnóstico confirma a relevância, mas indica <strong>${NEEDS[d.ranked[0]]}</strong> como necessidade anterior a ela.`]);
+ if(top3.includes("C")&&d.cap.proof<.6)
+  out.push(["","Credibilidade sem banco de provas",d.nk==="advocacia"?"Confiança é prioridade, mas há pouco material de autoridade. Como resultados de processos não podem ser divulgados, estruture um banco de artigos, palestras, participações em eventos e análises técnicas reutilizáveis.":"Confiança é prioridade, mas há poucas provas documentadas. Antes de produzir, estruture a captação contínua de depoimentos, casos, números e bastidores, sempre com autorização."]);
+ if(d.quad[E("Reels")]==="gargalo")
+  out.push(["","Reels é prioridade, mas não é sustentável hoje","A marca precisa de vídeo e não tem estrutura para produzir. Solução: dia de gravação mensal em lote, roteiros prontos e formatos que não exigem rosto (narração, tela, produto)."]);
+ if(top3.includes("V")&&d.cap.interaction<.6)
+  out.push(["","Gerar demanda sem atendimento desperdiça verba","Conversão é prioridade, mas a resposta a mensagens é lenta ou inexistente. Defina responsável, tempo de resposta e roteiro de atendimento antes de escalar anúncios."]);
+ if(d.flags.paid>=6&&d.pressure>=50)
+  out.push(["","Concorrência comprando atenção","O mercado é disputado e a marca não investe de forma estratégica em anúncios. Conteúdo orgânico sozinho tende a perder alcance para quem paga pela distribuição."]);
+ if(d.flags.profileGap>=2)
+  out.push(["","Arrume a vitrine antes de escalar alcance","O perfil está inativo ou sem constância. Tráfego e Reels vão levar pessoas a um perfil que não confirma valor. Revise bio, destaques e fixados primeiro."]);
+ if(d.wasted)
+  out.push(["info","Diferencial subutilizado","A empresa tem algo difícil de copiar, mas pouco comunicado. É o ativo de posicionamento mais barato de ativar: transforme-o em pilar fixo de conteúdo."]);
+ if(d.quad[E("Anúncios")]==="gargalo")
+  out.push(["","Anúncios são estratégicos, mas falta verba","O diagnóstico indica distribuição paga como prioridade. Mesmo uma verba enxuta e contínua, aplicada ao melhor conteúdo orgânico, muda o jogo."]);
+ const N=NICHES[d.nk]||NICHES.geral,f=d.flags;
+ if(f.complianceRisk>=2)out.push(["","Risco ético na comunicação","A equipe não domina as regras de publicidade do conselho profissional. Antes de escalar conteúdo e anúncios, crie um checklist de aprovação com base nas regras do nicho, listadas neste relatório."]);
+ if(f.minors>=1)out.push(["","Autorização de imagem de alunos","Crianças e adolescentes só podem aparecer com autorização formal dos responsáveis. Organize o termo de uso de imagem antes de produzir bastidores."]);
+ if(f.aesthetic)out.push(["info","Antes e depois exige método","Resultados visuais vendem, mas seguem as regras do conselho: sem identificar o paciente, sem manipulação de imagem e com contexto educativo sobre indicações e limites."]);
+ if(f.seasonal)out.push(["info","Sazonalidade marcada","Monte o calendário com 60 dias de antecedência do pico de decisão e concentre a verba de anúncios nesse período. Fora dele, priorize autoridade e relacionamento."]);
+ (N.alerts||[]).forEach(([cond,...rest])=>{try{if(cond(d))out.push(rest)}catch(e){}});
+ if(!out.length)out.push(["info","Sem travas críticas","As capacidades da empresa sustentam as prioridades identificadas. O foco agora é consistência e mensuração."]);
+ return out;
+}
+
+function buildSummary(d){
+ const t=d.ranked.slice(0,3).map(k=>NEEDS[k]);
+ const atk=ENVS.filter((_,i)=>d.quad[i]==="atacar");
+ const gar=ENVS.filter((_,i)=>d.quad[i]==="gargalo");
+ const pos=POSITION[d.position][0];
+ let s=`O diagnóstico classifica a marca como <strong>${ARCHETYPES[d.ranked[0]][0]}</strong>, com as maiores necessidades em <strong>${t.join(", ")}</strong>. No cenário competitivo, ela está em <strong>${pos.toLowerCase()}</strong> (pressão ${lvl(d.pressure)}, diferenciação ${lvl(d.diff)}).<br><br>`;
+ s+=atk.length?`A presença deve concentrar energia imediata em <strong>${atk.join(", ")}</strong> — ambientes de alta prioridade que a empresa já consegue sustentar. `:`Nenhum ambiente prioritário está plenamente viável hoje, o que indica necessidade de estruturar a operação antes de escalar. `;
+ if(gar.length)s+=`<strong>${gar.join(", ")}</strong> ${gar.length>1?"são estratégicos, mas exigem":"é estratégico, mas exige"} estrutura de produção ou apoio da agência para sair do papel. `;
+ s+=d.position==="invis"?"<br><br>Como a marca disputa atenção num mercado parecido com ela, aumentar a frequência não resolve: a mensagem precisa ganhar linguagem e território próprios.":d.position==="disputa"?"<br><br>O diferencial existe: o trabalho é amplificá-lo com prova e distribuição antes que o mercado o copie.":d.position==="vantagem"?"<br><br>A posição é favorável: o gargalo é alcance, e distribuição paga tende a ter retorno acima da média.":"<br><br>Há uma janela de oportunidade: consistência e clareza agora geram vantagem difícil de recuperar depois.";
+ return s;
+}
+
+/* ============================================================
+   INTERFACE
+   ============================================================ */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+
+function renderQuestions(){
+ const root=$("sections");root.innerHTML="";
+ getSections(currentNiche).forEach((sec,i)=>{
+  const box=document.createElement("section");box.className="section";
+  box.innerHTML=`<div class="section-head"><div class="num">${String(i+1).padStart(2,"0")}</div><div><h2>${sec.title}</h2><p>${sec.desc}</p></div></div><div class="questions"></div>`;
+  const qr=box.querySelector(".questions");
+  sec.items.forEach(it=>{
+   const w=document.createElement("div");w.className="q";w.id="q-"+it.id;
+   const t=it.type==="checkbox"?"checkbox":"radio";
+   w.innerHTML=`<div class="q-title">${it.text}</div>${it.hint?`<div class="q-hint">${it.hint}</div>`:""}<div class="opts">${it.opts.map((op,idx)=>`<label class="opt"><input type="${t}" name="${it.id}" value="${idx}"><span>${op.label}</span></label>`).join("")}</div><div class="q-msg">${it.type==="checkbox"?"Escolha de 1 a "+it.max+" opções.":"Responda esta pergunta."}</div>`;
+   if(it.type==="checkbox")w.addEventListener("change",e=>{
+    const ch=[...w.querySelectorAll("input:checked")];
+    if(ch.length>it.max){e.target.checked=false;w.classList.add("warn");w.querySelector(".q-msg").textContent=`Máximo de ${it.max} opções. Desmarque uma para trocar.`;}
+    else{w.classList.remove("warn","missing");w.querySelector(".q-msg").textContent=`Escolha de 1 a ${it.max} opções.`}
+   });
+   else w.addEventListener("change",()=>w.classList.remove("missing"));
+   qr.appendChild(w);
+  });
+  root.appendChild(box);
+ });
+}
+
+function readAnswers(){
+ const a={};
+ getItems().forEach(it=>{
+  const sel=[...document.querySelectorAll(`input[name="${it.id}"]:checked`)].map(x=>+x.value);
+  a[it.id]=it.type==="checkbox"?sel:(sel.length?sel[0]:null);
+ });
+ return a;
+}
+function readClient(){const c={};document.querySelectorAll("[data-client]").forEach(i=>c[i.dataset.client]=i.value.trim());return c}
+
+function save(){try{localStorage.setItem(CONFIG.storageKey,JSON.stringify({a:readAnswers(),c:readClient(),n:currentNiche}))}catch(e){}}
+function readStore(){try{return JSON.parse(localStorage.getItem(CONFIG.storageKey)||"null")}catch(e){return null}}
+function restore(a){Object.entries(a||{}).forEach(([id,v])=>{[].concat(v??[]).forEach(idx=>{const el=document.querySelector(`input[name="${id}"][value="${idx}"]`);if(el)el.checked=true})})}
+function load(d){
+ if(!d)return;
+ restore(d.a);
+ Object.entries(d.c||{}).forEach(([k,v])=>{const el=document.querySelector(`[data-client="${k}"]`);if(el&&v)el.value=v});
+}
+
+function updateProgress(){
+ const a=readAnswers();
+ const done=getItems().filter(it=>it.type==="checkbox"?a[it.id].length>0:a[it.id]!=null).length;
+ const pct=Math.round(done/getItems().length*100);
+ $("progressBar").style.width=pct+"%";$("progressLabel").textContent=`${pct}% · ${done} de ${getItems().length}`;
+}
+
+function validate(){
+ const a=readAnswers(),miss=[];
+ getItems().forEach(it=>{
+  const ok=it.type==="checkbox"?a[it.id].length>0:a[it.id]!=null;
+  $("q-"+it.id).classList.toggle("missing",!ok);if(!ok)miss.push(it.id);
+ });
+ const emp=$("c_empresa").value.trim();$("f-empresa").classList.toggle("missing",!emp);
+ if(!emp)miss.unshift("__empresa");
+ return miss;
+}
+
+/* --- SVG helpers --- */
+function radarSVG(p,v){
+ const W=520,cx=260,cy=260,R=168,n=ENVS.length,ang=i=>-Math.PI/2+i*2*Math.PI/n;
+ const pt=(i,r)=>[cx+Math.cos(ang(i))*r,cy+Math.sin(ang(i))*r];
+ let s=`<svg viewBox="0 0 ${W} ${W}" role="img" aria-label="Radar de prioridade e viabilidade por ambiente">`;
+ for(let k=1;k<=4;k++)s+=`<polygon points="${ENVS.map((_,i)=>pt(i,R*k/4).join(",")).join(" ")}" fill="none" stroke="rgba(23,24,28,.13)"/>`;
+ ENVS.forEach((name,i)=>{const[x,y]=pt(i,R),[lx,ly]=pt(i,R+36);const anc=Math.abs(lx-cx)<8?"middle":lx>cx?"start":"end";
+  s+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="rgba(23,24,28,.1)"/><text x="${lx}" y="${ly}" text-anchor="${anc}" dominant-baseline="middle" font-family="Manrope,Arial" font-weight="800" font-size="13" fill="#17181C">${name.toUpperCase()}</text><text x="${lx}" y="${ly+16}" text-anchor="${anc}" dominant-baseline="middle" font-family="Manrope,Arial" font-weight="700" font-size="11" fill="#6b6c66">${p[i]} · ${v[i]}</text>`});
+ const poly=(vals,color,fill,dash)=>`<polygon points="${vals.map((val,i)=>pt(i,R*val/100).join(",")).join(" ")}" fill="${fill}" stroke="${color}" stroke-width="3" ${dash?'stroke-dasharray="7 6"':""} stroke-linejoin="round"/>`;
+ s+=poly(v,"#EC0567","rgba(236,5,103,.07)",true)+poly(p,"#3A85FD","rgba(58,133,253,.22)",false);
+ p.forEach((val,i)=>{const[x,y]=pt(i,R*val/100);s+=`<circle cx="${x}" cy="${y}" r="5" fill="#3A85FD" stroke="#fff" stroke-width="2"/>`});
+ return s+"</svg>";
+}
+function matrixSVG(d){
+ const W=520,H=440,L=50,T=20,Rg=500,B=390,X=v=>L+(Rg-L)*v/100,Y=v=>B-(B-T)*v/100;
+ let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Matriz prioridade por viabilidade">`;
+ const qx=X(60),qy=Y(d.cut);
+ s+=`<rect x="${qx}" y="${T}" width="${Rg-qx}" height="${qy-T}" fill="rgba(203,255,59,.28)"/><rect x="${L}" y="${T}" width="${qx-L}" height="${qy-T}" fill="rgba(236,5,103,.08)"/>`;
+ s+=`<rect x="${L}" y="${T}" width="${Rg-L}" height="${B-T}" fill="none" stroke="rgba(23,24,28,.25)"/>`;
+ s+=`<line x1="${qx}" y1="${T}" x2="${qx}" y2="${B}" stroke="#17181C" stroke-dasharray="4 4" opacity=".5"/><line x1="${L}" y1="${qy}" x2="${Rg}" y2="${qy}" stroke="#17181C" stroke-dasharray="4 4" opacity=".5"/>`;
+ const lab=(x,y,t,anc)=>`<text x="${x}" y="${y}" text-anchor="${anc}" font-family="Manrope,Arial" font-size="10.5" font-weight="800" letter-spacing="1" fill="#6b6c66">${t}</text>`;
+ s+=lab(Rg-8,T+16,"ATACAR AGORA","end")+lab(L+8,T+16,"GARGALO","start")+lab(Rg-8,B-8,"MANUTENÇÃO","end")+lab(L+8,B-8,"ADIAR","start");
+ s+=`<text x="${(L+Rg)/2}" y="${H-12}" text-anchor="middle" font-family="Manrope,Arial" font-size="12" font-weight="700" fill="#17181C">Viabilidade de execução →</text>`;
+ s+=`<text transform="translate(16 ${(T+B)/2}) rotate(-90)" text-anchor="middle" font-family="Manrope,Arial" font-size="12" font-weight="700" fill="#17181C">Prioridade estratégica →</text>`;
+ const pts=ENVS.map((n,i)=>({n,x:X(d.via[i]),y:Y(d.prio[i]),q:d.quad[i]}));
+ const boxes=[[Rg-100,T+4,Rg-4,T+20],[L+4,T+4,L+70,T+20],[Rg-90,B-20,Rg-4,B-2],[L+4,B-20,L+50,B-2]];
+ pts.forEach(p=>boxes.push([p.x-8,p.y-8,p.x+8,p.y+8]));
+ const hit=b=>boxes.some(o=>b[0]<o[2]&&b[2]>o[0]&&b[1]<o[3]&&b[3]>o[1]);
+ let dots="",labels="";
+ pts.sort((a,b)=>a.y-b.y).forEach(p=>{
+  const w=p.n.length*7.6+4,col=p.q==="gargalo"?"#EC0567":p.q==="atacar"?"#17181C":"#3A85FD";
+  const cands=[[p.x+11,p.y+4,"start"],[p.x-11,p.y+4,"end"],[p.x,p.y-12,"middle"],[p.x,p.y+20,"middle"],[p.x+11,p.y+18,"start"],[p.x-11,p.y+18,"end"],[p.x+11,p.y-10,"start"],[p.x-11,p.y-10,"end"]];
+  const box=([x,y,a])=>{const x0=a==="start"?x:a==="end"?x-w:x-w/2;return[x0,y-11,x0+w,y+3]};
+  let c=cands.find(c=>{const b=box(c);return b[0]>=L&&b[2]<=Rg&&b[1]>=T&&b[3]<=B&&!hit(b)})||cands[0];
+  boxes.push(box(c));
+  dots+=`<circle cx="${p.x}" cy="${p.y}" r="7" fill="${col}" stroke="#fff" stroke-width="2"/>`;
+  labels+=`<text x="${c[0]}" y="${c[1]}" text-anchor="${c[2]}" font-family="Manrope,Arial" font-size="12.5" font-weight="800" fill="#17181C" stroke="#fff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">${p.n}</text>`;
+ });
+ s+=dots+labels;
+ return s+"</svg>";
+}
+function positionSVG(d){
+ const W=520,H=330,L=50,T=14,Rg=506,B=286,X=v=>L+(Rg-L)*v/100,Y=v=>B-(B-T)*v/100,mx=X(50),my=Y(50);
+ let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Quadrante de pressão e diferenciação">`;
+ const cells=[["invis",L,T,mx-L,my-T],["disputa",mx,T,Rg-mx,my-T],["livre",L,my,mx-L,B-my],["vantagem",mx,my,Rg-mx,B-my]];
+ cells.forEach(([k,x,y,w,h])=>{const on=k===d.position;s+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${on?"rgba(203,255,59,.45)":"rgba(23,24,28,.03)"}" stroke="rgba(23,24,28,.18)"/><text x="${x+w/2}" y="${y+h/2}" text-anchor="middle" dominant-baseline="middle" font-family="Manrope,Arial" font-size="12" font-weight="800" letter-spacing=".5" fill="${on?"#17181C":"#9a9a94"}">${POSITION[k][0].toUpperCase()}</text>`});
+ s+=`<text x="${(L+Rg)/2}" y="${H-10}" text-anchor="middle" font-family="Manrope,Arial" font-size="12" font-weight="700">Força de diferenciação →</text><text transform="translate(16 ${(T+B)/2}) rotate(-90)" text-anchor="middle" font-family="Manrope,Arial" font-size="12" font-weight="700">Pressão do mercado →</text>`;
+ const px=X(d.diff),py=Y(d.pressure);
+ s+=`<circle cx="${px}" cy="${py}" r="16" fill="rgba(236,5,103,.18)"/><circle cx="${px}" cy="${py}" r="8" fill="#EC0567" stroke="#fff" stroke-width="2"/>`;
+ return s+"</svg>";
+}
+
+function render(d,client){
+ /* cabeçalho */
+ $("rEmpresa").textContent=client.empresa||"—";
+ const dt=client.data?new Date(client.data+"T12:00:00").toLocaleDateString("pt-BR"):"";
+ const NC=NICHES[currentNiche];
+ $("rMeta").innerHTML=[NC.key!=="geral"&&`<strong>${NC.name}</strong>`,client.segmento&&`<strong>${esc(client.segmento)}</strong>`,client.responsavel&&`Respondido por ${esc(client.responsavel)}`,dt].filter(Boolean).join("<br>");
+ /* arquétipo */
+ const top=d.ranked[0],[an,at]=ARCHETYPES[top];
+ $("archName").textContent=an;$("archText").textContent=at;
+ $("kNeed").textContent=NEEDS[top];$("kNeedV").textContent=d.needs[top]+" / 100";
+ $("kPress").textContent=d.pressure+"%";$("kPressL").textContent="Pressão "+lvl(d.pressure);
+ $("kDiff").textContent=d.diff+"%";$("kDiffL").textContent="Diferenciação "+lvl(d.diff);
+ /* barras */
+ $("needsBars").innerHTML=d.ranked.map((k,i)=>`<div class="bar-row${i<3?" top":""}"><div>${NEEDS[k]}</div><div class="bar-track"><div class="bar-fill" style="width:${d.needs[k]}%"></div></div><strong>${d.needs[k]}</strong></div>`).join("");
+ /* posicionamento */
+ $("posTitle").textContent=POSITION[d.position][0];$("posSvg").innerHTML=positionSVG(d);$("posText").textContent=POSITION[d.position][1];
+ /* radar + matriz */
+ $("radarSvg").innerHTML=radarSVG(d.prio,d.via);$("matrixSvg").innerHTML=matrixSVG(d);
+ /* plano */
+ const order=ENVS.map((n,i)=>i).sort((a,b)=>{const r={atacar:0,gargalo:1,manter:2,adiar:3};return r[d.quad[a]]-r[d.quad[b]]||d.prio[b]-d.prio[a]});
+ $("planTable").innerHTML=`<thead><tr><th>Ambiente</th><th>Prioridade</th><th>Viabilidade</th><th>Decisão</th><th>Papel na estratégia</th><th>Cadência sugerida</th><th>Indicador-chave</th></tr></thead><tbody>${order.map(i=>{
+  const n=ENVS[i],info=ENV_INFO[n],q=d.quad[i];
+  const cad=q==="atacar"?info.hi:q==="gargalo"?`Meta: ${info.hi.toLowerCase()} — estruturar produção primeiro`:q==="manter"?info.mid:"Não priorizar agora";
+  return`<tr><td><strong>${n}</strong></td><td><span class="mini">${d.prio[i]}</span></td><td><span class="mini">${d.via[i]}</span></td><td><span class="chip ${QUAD[q][1]}">${QUAD[q][0]}</span></td><td>${info.role}</td><td>${cad}</td><td>${info.kpi}</td></tr>`}).join("")}</tbody>`;
+ /* pilares */
+ $("pillars").innerHTML=d.ranked.slice(0,3).map((k,i)=>{const NN=NICHES[currentNiche],[t,desc,pautas0,kpi]=PILLARS[k],pautas=(NN.pautas&&NN.pautas[k])||pautas0;return`<div class="pillar"><div class="tagn">Pilar ${i+1} · ${NEEDS[k]}</div><h4>${t}</h4><p>${desc}</p><ul>${pautas.map(x=>`<li>${x}</li>`).join("")}</ul><div class="kpi-line">KPI: ${kpi}</div></div>`}).join("");
+ /* alertas */
+ $("alerts").innerHTML=buildAlerts(d).map(([type,t,txt])=>`<div class="alert ${type}"><div class="ic">${type==="info"?"i":"!"}</div><div><b>${t}</b>${txt}</div></div>`).join("");
+ /* regras do nicho */
+ const comp=NC.compliance;$("compCard").hidden=!comp;
+ if(comp){$("compOrg").textContent=comp.org;$("compBody").innerHTML=`<div class="comp-grid"><div class="comp ok"><b>Pode</b><ul>${comp.ok.map(x=>`<li>${x}</li>`).join("")}</ul></div><div class="comp no"><b>Evite</b><ul>${comp.no.map(x=>`<li>${x}</li>`).join("")}</ul></div></div>${comp.note?`<p class="sub">${comp.note}</p>`:""}<p class="sub">Resumo orientativo. Confirme sempre no código de ética e nas resoluções vigentes do conselho.</p>`}
+ /* síntese */
+ $("summary").innerHTML=buildSummary(d);
+ /* CTA */
+ if(CONFIG.whatsapp){$("ctaBox").hidden=false;$("ctaLink").href=`https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent("Olá! Fiz o Mapa de Presença e Conexão"+(client.empresa?" da "+client.empresa:"")+" e quero agendar a leitura com um estrategista.")}`}
+}
+
+function renderNiches(){
+ $("nichePicker").innerHTML=Object.entries(NICHES).map(([k,N])=>`<label class="opt"><input type="radio" name="niche" value="${k}" ${k===currentNiche?"checked":""}><span>${N.name}</span></label>`).join("");
+}
+function updateNicheNote(){const N=NICHES[currentNiche];$("nicheNote").innerHTML=esc(N.desc)+(N.compliance?`<span class="badge">Regras de publicidade: ${esc(N.compliance.org)}</span>`:"")}
+function init(){
+ const stored=readStore();
+ if(stored&&stored.n&&NICHES[stored.n])currentNiche=stored.n;
+ renderNiches();updateNicheNote();
+ renderQuestions();
+ $("nichePicker").addEventListener("change",e=>{
+  if(e.target.name!=="niche")return;
+  const prev=NICHES[currentNiche],next=NICHES[e.target.value],a=readAnswers();
+  [prev,next].forEach(N=>Object.entries(N.override||{}).forEach(([id,o])=>{if(o.opts)delete a[id]}));
+  currentNiche=e.target.value;renderQuestions();restore(a);updateNicheNote();
+  $("results").classList.remove("show");document.body.classList.remove("done");
+ });
+ $("versionLabel").textContent=`Mapa de presença e conexão · v${CONFIG.version}`;
+ $("c_data").value=new Date().toISOString().slice(0,10);
+ load(stored);updateProgress();
+ const form=$("diagnosticForm");
+ document.addEventListener("change",()=>{updateProgress();save();});
+ document.addEventListener("input",e=>{if(e.target.dataset.client){save();if(e.target.id==="c_empresa")$("f-empresa").classList.remove("missing")}});
+ form.addEventListener("submit",e=>{
+  e.preventDefault();
+  const miss=validate();
+  if(miss.length){
+   const n=miss.filter(x=>x!=="__empresa").length;
+   $("formError").textContent=[miss.includes("__empresa")&&"Informe o nome da empresa",n&&`${n} pergunta${n>1?"s":""} sem resposta`].filter(Boolean).join(" · ");
+   const first=miss[0]==="__empresa"?$("f-empresa"):$("q-"+miss[0]);first.scrollIntoView({behavior:"smooth",block:"center"});return;
+  }
+  $("formError").textContent="";
+  render(calculate(readAnswers()),readClient());
+  document.body.classList.add("done");$("results").classList.add("show");
+  $("results").scrollIntoView({behavior:"smooth",block:"start"});
+ });
+ $("editBtn").addEventListener("click",()=>{document.body.classList.remove("done");$("sections").scrollIntoView({behavior:"smooth"})});
+ $("resetBtn").addEventListener("click",()=>{
+  if(!confirm("Apagar todas as respostas deste diagnóstico?"))return;
+  form.reset();document.querySelectorAll("[data-client]").forEach(i=>i.value="");$("c_data").value=new Date().toISOString().slice(0,10);
+  document.querySelectorAll(".missing,.warn").forEach(x=>x.classList.remove("missing","warn"));
+  $("results").classList.remove("show");document.body.classList.remove("done");$("formError").textContent="";
+  try{localStorage.removeItem(CONFIG.storageKey)}catch(e){}
+  updateProgress();window.scrollTo({top:0,behavior:"smooth"});
+ });
+ /* modo demonstração: ?demo na URL */
+ if(/[?&#]demo/.test(location.search+location.hash)){
+  const b=$("sampleBtn");b.hidden=false;
+  b.addEventListener("click",()=>{
+   const picks={objetivo:2,modelo:0,ticket:2,fechamento:0,perfil:2,trafego:1,awareness:1,clarity:2,main_gap:5,decision_need:3,decision_time:2,choice_factor:1,education:3,risk:3,visualize:2,friction:1,competitors:2,comp_quality:3,similarity:3,comp_paid:1,market_dynamic:1,difference:1,copyable:2,comparison:1,video:1,people:2,proof:1,interaction:2,budget:1};
+   Object.entries(picks).forEach(([n,i])=>{const el=document.querySelector(`input[name="${n}"][value="${i}"]`);if(el)el.checked=true});
+   getItems().forEach(it=>{if(it.id.startsWith(currentNiche+"_")||(NICHES[currentNiche].override||{})[it.id]){const el=document.querySelector(`input[name="${it.id}"][value="1"]`);if(el)el.checked=true}});
+   [2,3,8,12].forEach(i=>{const el=document.querySelector(`input[name="priority_needs"][value="${i}"]`);if(el)el.checked=true});
+   if(!$("c_empresa").value)$("c_empresa").value="Empresa Exemplo";
+   if(!$("c_segmento").value)$("c_segmento").value="Clínica odontológica";
+   updateProgress();save();
+  });
+ }
+}
+if(typeof document!=="undefined")init();
+</script>
+</body>
+</html>

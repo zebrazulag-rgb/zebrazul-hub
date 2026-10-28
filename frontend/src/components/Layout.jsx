@@ -37,6 +37,7 @@ import {
   Zap,
   Radar,
   Sparkles,
+  Target,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -423,6 +424,7 @@ export default function Layout({ children }) {
     { to: '/cliente/inicio', label: 'Início', mobileLabel: 'Início', icon: LayoutDashboard },
     { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
     { to: '/cliente/aprovacao', label: 'Aprovação', mobileLabel: 'Aprovação', icon: CheckCircle2, permission: 'tasks.approval' },
+    { to: '/cliente/diagnostico', label: 'Diagnóstico', mobileLabel: 'Diagnóstico', icon: Target },
     { to: '/cliente/radar', label: 'Radar', mobileLabel: 'Radar', icon: Radar, permission: 'radar.view' },
     { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/cliente/relatorios', label: 'Relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
@@ -430,9 +432,8 @@ export default function Layout({ children }) {
   ];
   const trialClientPortalItems = [
     { to: '/cliente/experiencia', label: 'Minha experiência', mobileLabel: 'Experiência', icon: Sparkles },
+    { to: '/cliente/diagnostico', label: 'Diagnóstico', mobileLabel: 'Diagnóstico', icon: Target },
     { to: '/cliente/radar', label: 'Radar', mobileLabel: 'Radar', icon: Radar, permission: 'radar.view' },
-    { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
-    { to: '/cliente/zebrazul', label: 'Zebrazul', mobileLabel: 'Zebrazul', icon: Building2 },
   ];
   const clientPortalItems = isTrialClient ? trialClientPortalItems : regularClientPortalItems;
 
@@ -487,8 +488,15 @@ export default function Layout({ children }) {
         return true;
       });
 
-  const visibleSquadItems = isClientPortal ? [] : visibleWorkspaceItems.filter((item) => item.group === 'squad');
-  const visibleMainWorkspaceItems = isClientPortal ? visibleWorkspaceItems : visibleWorkspaceItems.filter((item) => item.group !== 'squad');
+  const permittedSquadItems = isClientPortal ? [] : visibleWorkspaceItems.filter((item) => item.group === 'squad');
+  // Se o cargo só possui uma frente do Squad (ex.: Design ou Audiovisual), não faz
+  // sentido criar um submenu com uma única opção. Mostra a própria área diretamente
+  // na barra lateral. O agrupador Squad continua existindo para cargos com 2+ frentes.
+  const singleSquadFront = permittedSquadItems.length === 1;
+  const visibleSquadItems = singleSquadFront ? [] : permittedSquadItems;
+  const visibleMainWorkspaceItems = isClientPortal
+    ? visibleWorkspaceItems
+    : visibleWorkspaceItems.filter((item) => item.group !== 'squad' || singleSquadFront);
   const squadActive = visibleSquadItems.some((item) => location.pathname.startsWith(item.to));
 
   const canSeeSettings = !isClientPortal && anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']);
@@ -511,10 +519,10 @@ export default function Layout({ children }) {
   const topbarLabel = (() => {
     const path = location.pathname;
     if (path.startsWith('/cliente/experiencia')) return 'ZebraHub Experience';
-    if (path.startsWith('/cliente/zebrazul')) return 'Conheça a Zebrazul';
     if (path.startsWith('/cliente/inicio')) return 'Meu portal';
     if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
     if (path.startsWith('/cliente/aprovacao') || path.startsWith('/cliente/grade')) return 'Aprovação';
+    if (path.startsWith('/cliente/diagnostico')) return 'Mapa da Marca';
     if (path.startsWith('/cliente/radar')) return 'Radar';
     if (path.startsWith('/cliente/relatorios')) return 'Relatórios';
     if (path.startsWith('/cliente/materiais')) return 'Materiais';

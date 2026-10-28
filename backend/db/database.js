@@ -2290,6 +2290,40 @@ CREATE INDEX IF NOT EXISTS idx_radar_items_source ON radar_items(source_id);
 CREATE INDEX IF NOT EXISTS idx_radar_history_client ON radar_prompt_history(client_id, created_at DESC);
 `);
 
+// Mapa de Presença e Conexão — diagnóstico estratégico persistido por cliente.
+// Mantém histórico de versões para que Experience, clientes atuais e equipe possam
+// comparar a evolução sem depender do localStorage do navegador.
+db.exec(`
+CREATE TABLE IF NOT EXISTS presence_diagnostics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  client_id INTEGER NOT NULL,
+  created_by INTEGER,
+  respondent_user_id INTEGER,
+  source TEXT NOT NULL DEFAULT 'client' CHECK(source IN ('trial','client','team')),
+  version TEXT NOT NULL DEFAULT '0.3',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','in_progress','submitted','archived')),
+  niche_key TEXT NOT NULL DEFAULT 'geral',
+  company_name TEXT,
+  segment TEXT,
+  respondent TEXT,
+  progress INTEGER NOT NULL DEFAULT 0,
+  answers_json TEXT NOT NULL DEFAULT '{}',
+  result_json TEXT,
+  submitted_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (respondent_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_presence_diagnostics_client
+  ON presence_diagnostics(agency_id, client_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_presence_diagnostics_submitted
+  ON presence_diagnostics(agency_id, client_id, submitted_at DESC);
+`);
+
 // Na primeira atualização para o controle por cliente, preserva o comportamento
 // anterior: membros de equipe já existentes começam com acesso aos clientes atuais.
 // Depois disso, novos acessos passam a ser definidos explicitamente pelo administrador.
@@ -2310,7 +2344,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '36', datetime('now'))
+   VALUES ('schema_version', '37', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

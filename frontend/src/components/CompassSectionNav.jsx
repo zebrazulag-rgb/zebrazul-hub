@@ -1,4 +1,4 @@
-import { Compass, FolderOpen } from 'lucide-react';
+import { Compass, FolderOpen, Target } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
@@ -9,6 +9,7 @@ function NavItems({ compact = false }) {
   const location = useLocation();
   const items = [
     { to: '/bussola', label: 'Visão geral', icon: Compass, exact: true, visible: hasPermission(user, 'compass.view') },
+    { to: '/bussola/diagnostico', label: 'Diagnóstico', icon: Target, visible: hasPermission(user, 'compass.view') },
     { to: '/bussola/materiais', label: 'Materiais', icon: FolderOpen, visible: hasPermission(user, 'materials.view') },
   ].filter((item) => item.visible);
 

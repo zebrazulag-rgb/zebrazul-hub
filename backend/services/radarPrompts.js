@@ -18,7 +18,7 @@ const KINDS = {
   video: 'roteiro de vídeo',
 };
 
-function buildPrompt({ kind, client, item, source, angle = '' }) {
+function buildPrompt({ kind, client, item, source, angle = '', presenceDiagnostic = null }) {
   if (!KINDS[kind]) throw new Error('Tipo de prompt inválido.');
   const references = String(client.editorial_references || '').trim();
   const angleText = String(angle || '').trim();
@@ -40,6 +40,21 @@ function buildPrompt({ kind, client, item, source, angle = '' }) {
   ].filter((line) => line !== null);
 
   const angleBlock = angleText ? ['', '## ÂNGULO PEDIDO PELA AGÊNCIA', angleText] : [];
+  const diagnosisBlock = presenceDiagnostic ? [
+    '',
+    '## DIREÇÃO ESTRATÉGICA DO MAPA DA MARCA',
+    presenceDiagnostic.archetype_name ? `Leitura atual: ${presenceDiagnostic.archetype_name}` : null,
+    presenceDiagnostic.top_need_name ? `Necessidade dominante: ${presenceDiagnostic.top_need_name}` : null,
+    Array.isArray(presenceDiagnostic.top_needs) && presenceDiagnostic.top_needs.length
+      ? `Prioridades: ${presenceDiagnostic.top_needs.map((item) => `${item.name} (${item.score}/100)`).join(', ')}`
+      : null,
+    Number.isFinite(Number(presenceDiagnostic.pressure)) ? `Pressão do mercado: ${Number(presenceDiagnostic.pressure)}%` : null,
+    Number.isFinite(Number(presenceDiagnostic.diff)) ? `Força de diferenciação: ${Number(presenceDiagnostic.diff)}%` : null,
+    Array.isArray(presenceDiagnostic.priority_environments) && presenceDiagnostic.priority_environments.length
+      ? `Ambientes prioritários: ${presenceDiagnostic.priority_environments.slice(0, 3).map((item) => item.name).join(', ')}`
+      : null,
+    'Use esta direção para decidir o ângulo da notícia. Não force uma notícia irrelevante só porque combina com uma prioridade.',
+  ].filter(Boolean) : [];
 
   const rules = [
     '',
@@ -74,7 +89,7 @@ function buildPrompt({ kind, client, item, source, angle = '' }) {
     '6. Lista curta do que precisa ser conferido antes de gravar.',
   ];
 
-  return [...context, ...angleBlock, ...rules, ...task].join('\n');
+  return [...context, ...diagnosisBlock, ...angleBlock, ...rules, ...task].join('\n');
 }
 
 module.exports = { buildPrompt, KINDS, formatDate };

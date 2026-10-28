@@ -30,6 +30,7 @@ const JOURNEY = [
       { id: 'servicos-produtos', title: 'Serviços / produtos', type: 'text' },
       { id: 'historia', title: 'História', type: 'text' },
       { id: 'publico-alvo', title: 'Público-alvo', type: 'text' },
+      { id: 'mapa-marca', title: 'Mapa da Marca · diagnóstico estratégico', type: 'diagnostic' },
       { id: 'proposito-missao-visao-valores', title: 'Propósito, missão, visão e valores', type: 'text' },
       { id: 'analise-concorrentes', title: 'Análise dos concorrentes', type: 'competition' },
     ],
@@ -280,6 +281,18 @@ export default function CompassPage() {
     const draftValue = entryDrafts[key] ?? savedEntry?.value ?? '';
 
     if (item.type === 'check') return null;
+
+    if (item.type === 'diagnostic') {
+      return (
+        <button
+          type="button"
+          onClick={() => navigate('/bussola/diagnostico')}
+          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-2.5 py-2 text-xs font-bold text-violet-700 transition hover:border-violet-300 hover:bg-violet-50"
+        >
+          <Compass size={14} /> Abrir Mapa da Marca <ChevronRight size={13} />
+        </button>
+      );
+    }
 
     if (item.type === 'competition') {
       return (

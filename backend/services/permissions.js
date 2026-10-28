@@ -163,11 +163,14 @@ function ensureTeamRolePresets(agencyId) {
       role.name = preset.name;
     }
 
-    const existingRows = db.prepare('SELECT permission_key FROM custom_role_permissions WHERE custom_role_id = ?').all(role.id);
-    const existingKeys = new Set(existingRows.map((row) => row.permission_key));
+    // Estes cargos são presets oficiais do ZebraHub. Sincronize SEMPRE a matriz inteira,
+    // inclusive permissões que já existiam no banco. Antes, apenas permissões ausentes
+    // eram inseridas; por isso um Design criado numa versão anterior podia continuar
+    // vendo Minha fila, Alertas, Calendário, Site/LP, Leitor etc. mesmo depois do preset
+    // ser reduzido. A sincronização exata evita esse vazamento em todos os presets.
+    db.prepare('DELETE FROM custom_role_permissions WHERE custom_role_id = ?').run(role.id);
     const insertPermission = db.prepare('INSERT INTO custom_role_permissions (custom_role_id, permission_key, allowed) VALUES (?, ?, ?)');
     ALL_KEYS.forEach((key) => {
-      if (existingKeys.has(key)) return;
       const allowed = preset.denied?.has(key) ? false : preset.permissions.has(key);
       insertPermission.run(role.id, key, allowed ? 1 : 0);
     });
@@ -213,8 +216,20 @@ function getBuiltInPermissionMap(agencyId, roleKey) {
 }
 
 function getCustomPermissionMap(agencyId, customRoleId) {
-  const role = db.prepare('SELECT id FROM custom_roles WHERE id = ? AND agency_id = ?').get(customRoleId, agencyId);
+  const role = db.prepare('SELECT id, slug FROM custom_roles WHERE id = ? AND agency_id = ?').get(customRoleId, agencyId);
   if (!role) return getBuiltInPermissionMap(agencyId, 'team');
+
+  // Presets oficiais são avaliados diretamente pela configuração atual do código.
+  // Assim, mesmo antes de o administrador abrir a tela de Permissões, usuários de
+  // Design/Audiovisual/Social Media/Branding já recebem o acesso correto após deploy.
+  const preset = TEAM_ROLE_PRESETS.find((item) => item.slug === role.slug);
+  if (preset) {
+    return Object.fromEntries(ALL_KEYS.map((key) => [
+      key,
+      preset.denied?.has(key) ? false : preset.permissions.has(key),
+    ]));
+  }
+
   const map = Object.fromEntries(ALL_KEYS.map((key) => [key, false]));
   const rows = db.prepare(`
     SELECT permission_key, allowed FROM custom_role_permissions
@@ -252,7 +267,7 @@ function getPermissionSetForUser(user) {
   if (user?.role === 'client' && user?.client_stage === 'trial') {
     ALL_KEYS.forEach((key) => { map[key] = false; });
     if (!user?.trial?.expired) {
-      ['radar.view', 'radar.refresh', 'radar.prompts', 'radar.history', 'commercial.view', 'commercial.manage', 'commercial.import'].forEach((key) => {
+      ['radar.view', 'radar.refresh', 'radar.prompts', 'radar.history'].forEach((key) => {
         if (Object.prototype.hasOwnProperty.call(map, key)) map[key] = true;
       });
     }
@@ -387,6 +402,7 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/credentials')) return 'vault.view';
   if (path.startsWith('/video-reviews')) return 'tasks.approval';
   if (path.startsWith('/task-request-links')) return 'tasks.create';
+  if (path.startsWith('/presence-diagnostics')) return req.user?.role === 'client' ? null : 'compass.view';
   if (path.startsWith('/diagnostics') || path.startsWith('/action-plans') || path.startsWith('/planning-documents') || path.startsWith('/bee-campaign-briefing') || path.startsWith('/bee-family-survey')) return 'compass.view';
   if (path.startsWith('/ai')) return 'compass.view';
   return null;

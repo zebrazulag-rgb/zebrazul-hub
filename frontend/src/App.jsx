@@ -4,7 +4,7 @@ import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import TrialSignup from './pages/TrialSignup.jsx';
 import TrialExperience from './pages/TrialExperience.jsx';
-import ZebrazulAgency from './pages/ZebrazulAgency.jsx';
+import PresenceDiagnosis from './pages/PresenceDiagnosis.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import MyWork from './pages/MyWork.jsx';
 import Alerts from './pages/Alerts.jsx';
@@ -155,7 +155,7 @@ export default function App() {
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
       <Route path="/cliente/experiencia" element={<ProtectedRoute roles={["client"]} trialAllowed><TrialExperience /></ProtectedRoute>} />
-      <Route path="/cliente/zebrazul" element={<ProtectedRoute roles={["client"]} trialAllowed><ZebrazulAgency /></ProtectedRoute>} />
+      <Route path="/cliente/diagnostico" element={<ProtectedRoute roles={["client"]} trialAllowed><PresenceDiagnosis /></ProtectedRoute>} />
       <Route path="/cliente/inicio" element={<ProtectedRoute roles={["client"]}><ClientPortalHome /></ProtectedRoute>} />
       <Route path="/cliente/solicitar" element={<ProtectedRoute roles={["client"]}><ClientDemand /></ProtectedRoute>} />
       <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><ClientApproval /></ProtectedRoute>} />
@@ -196,10 +196,10 @@ export default function App() {
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
       <Route path="/concorrentes" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
+      <Route path="/bussola/diagnostico" element={<ProtectedRoute roles={["admin","team"]} permission="compass.view"><PresenceDiagnosis /></ProtectedRoute>} />
       <Route path="/ia" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><LegacyAIRedirect /></ProtectedRoute>} />
       <Route path="/bussola/concorrencia" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
       <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
-      <Route path="/bussola/diagnostico" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />
       <Route path="/bussola/pesquisa-familias-bee" element={<ProtectedRoute permission="compass.view"><BeeFamilySurvey /></ProtectedRoute>} />
       <Route path="/bussola/materiais" element={<ProtectedRoute permission="materials.view"><Materials /></ProtectedRoute>} />
@@ -214,8 +214,8 @@ export default function App() {
       <Route path="/ciclo-90-dias" element={<Navigate to="/bussola" replace />} />
       <Route path="/planejamento-mensal" element={<Navigate to="/bussola" replace />} />
 
-      <Route path="/comercial" element={<ProtectedRoute permission="commercial.view" trialAllowed><CommercialPage><Sales /></CommercialPage></ProtectedRoute>} />
-      <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view" trialAllowed><CommercialPage><CommercialFunnel /></CommercialPage></ProtectedRoute>} />
+      <Route path="/comercial" element={<ProtectedRoute permission="commercial.view"><CommercialPage><Sales /></CommercialPage></ProtectedRoute>} />
+      <Route path="/comercial/funil" element={<ProtectedRoute permission="commercial.view"><CommercialPage><CommercialFunnel /></CommercialPage></ProtectedRoute>} />
       <Route path="/comercial/contratos" element={<ProtectedRoute permission="commercial.view" platformOnly><CommercialPage><Contracts /></CommercialPage></ProtectedRoute>} />
       <Route path="/contratos" element={<Navigate to="/comercial/contratos" replace />} />
 
