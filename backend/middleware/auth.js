@@ -39,7 +39,7 @@ function getUserClientIds(userId, agencyId) {
 function hydrateUserAccess(user) {
   if (!user) return user;
   const agency = db.prepare('SELECT * FROM agencies WHERE id = ?').get(user.agency_id);
-  const base = {
+  let base = {
     ...user,
     custom_role_id: user.custom_role_id ? Number(user.custom_role_id) : null,
     agency_id: Number(user.agency_id),
@@ -49,6 +49,38 @@ function hydrateUserAccess(user) {
     is_commercial_team: Number(user.is_commercial_team) === 1,
     agency: publicAgency(agency),
   };
+
+  // ZebraHub Experience: o estado do trial pertence ao cliente, não ao usuário.
+  // Hidratamos antes das permissões para que o papel `client` receba apenas o escopo experimental.
+  if (user.role === 'client' && user.client_id) {
+    const client = db.prepare(`
+      SELECT id, name, lifecycle_stage, trial_started_at, trial_expires_at, trial_converted_at
+      FROM clients WHERE id = ? AND agency_id = ?
+    `).get(user.client_id, user.agency_id);
+    if (client) {
+      const stage = String(client.lifecycle_stage || 'client');
+      const isTrial = stage === 'trial';
+      const expiresMs = client.trial_expires_at ? new Date(client.trial_expires_at).getTime() : NaN;
+      const expired = Boolean(isTrial && Number.isFinite(expiresMs) && expiresMs <= Date.now());
+      const daysRemaining = isTrial && Number.isFinite(expiresMs)
+        ? Math.max(0, Math.ceil((expiresMs - Date.now()) / (24 * 60 * 60 * 1000)))
+        : 0;
+      base = {
+        ...base,
+        client_name: client.name || null,
+        client_stage: stage,
+        trial: {
+          is_trial: isTrial,
+          expired,
+          started_at: client.trial_started_at || null,
+          expires_at: client.trial_expires_at || null,
+          converted_at: client.trial_converted_at || null,
+          days_remaining: daysRemaining,
+        },
+      };
+    }
+  }
+
   const permissionBase = {
     ...base,
     permission_role_key: roleKeyForUser(base),

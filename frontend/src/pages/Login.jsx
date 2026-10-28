@@ -88,6 +88,19 @@ export default function Login() {
           </button>
         </form>
 
+        <div className="my-6 flex items-center gap-3">
+          <span className="h-px flex-1 bg-white/10" />
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/30">ainda não é cliente?</span>
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate('/experimentar')}
+          className="flex h-12 w-full items-center justify-center rounded-xl border border-white/15 bg-white/[0.05] px-4 text-[14px] font-bold text-white transition hover:bg-white/[0.09]"
+        >
+          Experimentar o ZebraHub por 30 dias
+        </button>
+
         {agency?.show_powered_by !== false && (
           <p className="mt-10 text-center text-xs text-white/35">{agency?.footer_text || 'Tecnologia ZebraHub'}</p>
         )}

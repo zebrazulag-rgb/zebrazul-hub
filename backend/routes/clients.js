@@ -256,6 +256,25 @@ router.put('/:id', requireRole('admin', 'team'), (req, res) => {
   res.json({ ok: true });
 });
 
+
+router.post('/:id/convert-trial', requireRole('admin', 'team'), (req, res) => {
+  if (!ensureClientAccess(req, res, req.params.id)) return;
+  const client = db.prepare('SELECT id, name, lifecycle_stage FROM clients WHERE id = ? AND agency_id = ?')
+    .get(req.params.id, req.user.agency_id);
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (String(client.lifecycle_stage || 'client') !== 'trial') {
+    return res.status(400).json({ error: 'Esta conta nao esta em modo experimental.' });
+  }
+  db.prepare(`
+    UPDATE clients
+    SET lifecycle_stage = 'client',
+        trial_converted_at = COALESCE(trial_converted_at, datetime('now')),
+        status = 'active'
+    WHERE id = ? AND agency_id = ?
+  `).run(client.id, req.user.agency_id);
+  res.json({ ok: true, id: Number(client.id), lifecycle_stage: 'client' });
+});
+
 router.delete('/:id', requireRole('admin'), (req, res) => {
   const client = db.prepare('SELECT id FROM clients WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
   if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });

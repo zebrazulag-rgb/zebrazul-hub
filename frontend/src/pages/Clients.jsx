@@ -19,6 +19,7 @@ import {
   Archive,
   ArrowUpRight,
   Link2,
+  Sparkles,
 } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
@@ -299,6 +300,7 @@ export default function Clients({ embedded = false }) {
   const [accounts, setAccounts] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [convertingTrial, setConvertingTrial] = useState(false);
   const [portalCopied, setPortalCopied] = useState(false);
   const [fichaTab, setFichaTab] = useState('cadastro');
 
@@ -373,6 +375,22 @@ export default function Clients({ embedded = false }) {
     loadClients();
   }
 
+  async function convertTrialClient() {
+    if (!selected?.id || selected.lifecycle_stage !== 'trial') return;
+    const confirmed = window.confirm(`Converter ${selected.name} em cliente? O acesso experimental será mantido e os módulos normais poderão ser liberados.`);
+    if (!confirmed) return;
+    setConvertingTrial(true);
+    try {
+      await api.post(`/clients/${selected.id}/convert-trial`);
+      await loadClients();
+      await openClient({ id: selected.id });
+    } catch (error) {
+      window.alert(error.response?.data?.error || 'Não foi possível converter esta experiência em cliente.');
+    } finally {
+      setConvertingTrial(false);
+    }
+  }
+
   const clientStats = {
     total: clients.length,
     active: clients.filter((client) => client.status === 'active').length,
@@ -445,7 +463,10 @@ export default function Clients({ embedded = false }) {
                 </div>
               )}
               <div className="min-w-0">
-                <p className="truncate text-base font-semibold text-slate-900">{client.name}</p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="truncate text-base font-semibold text-slate-900">{client.name}</p>
+                  {client.lifecycle_stage === 'trial' && <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-violet-700">Experience</span>}
+                </div>
                 <p className="text-xs text-slate-400 truncate">{client.segment || 'Sem segmento definido'}</p>
               </div>
             </div>
@@ -514,13 +535,24 @@ export default function Clients({ embedded = false }) {
                 </div>
                 {user?.role !== 'client' && (
                   <div className="flex shrink-0 flex-wrap gap-2">
-                    <button
-                      onClick={copyClientPortal}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17181C] px-4 py-2.5 text-sm font-black text-white transition hover:bg-black"
-                    >
-                      {portalCopied ? <CheckCircle2 size={16} className="text-[#C9FF2F]" /> : <Link2 size={16} />}
-                      {portalCopied ? 'Portal copiado' : 'Copiar portal'}
-                    </button>
+                    {selected.lifecycle_stage === 'trial' && (
+                      <button
+                        onClick={convertTrialClient}
+                        disabled={convertingTrial}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-black text-white transition hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        <Sparkles size={16} /> {convertingTrial ? 'Convertendo...' : 'Converter em cliente'}
+                      </button>
+                    )}
+                    {selected.lifecycle_stage !== 'trial' && (
+                      <button
+                        onClick={copyClientPortal}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17181C] px-4 py-2.5 text-sm font-black text-white transition hover:bg-black"
+                      >
+                        {portalCopied ? <CheckCircle2 size={16} className="text-[#C9FF2F]" /> : <Link2 size={16} />}
+                        {portalCopied ? 'Portal copiado' : 'Copiar portal'}
+                      </button>
+                    )}
                     <button
                       onClick={() => setFormMode('edit')}
                       className="btn-primary flex items-center justify-center gap-2"

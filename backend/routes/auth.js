@@ -219,6 +219,120 @@ router.post('/trial-signup', async (req, res) => {
   }
 });
 
+
+function parseTrialJson(raw, fallback) {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const TRIAL_ONBOARDING_LIMITS = {
+  services: 1200,
+  audience: 1200,
+  competitors: 1200,
+  instagram: 220,
+  site: 300,
+  objective: 1200,
+  weekly_focus: 1200,
+  notes: 5000,
+};
+
+function sanitizeTrialOnboarding(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const next = {};
+  for (const [key, limit] of Object.entries(TRIAL_ONBOARDING_LIMITS)) {
+    next[key] = String(source[key] || '').trim().slice(0, limit);
+  }
+  return next;
+}
+
+function sanitizeTrialProgress(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => String(item || '').trim().slice(0, 64)).filter(Boolean))].slice(0, 40);
+}
+
+function getTrialClient(req) {
+  if (req.user?.role !== 'client' || !req.user?.client_id) return null;
+  return db.prepare(`
+    SELECT id, agency_id, name, segment, phone, email, lifecycle_stage,
+           trial_started_at, trial_expires_at, trial_converted_at,
+           trial_onboarding_json, trial_progress_json
+    FROM clients
+    WHERE id = ? AND agency_id = ?
+  `).get(req.user.client_id, req.user.agency_id) || null;
+}
+
+router.get('/trial-experience', authRequired, (req, res) => {
+  const client = getTrialClient(req);
+  if (!client) return res.status(404).json({ error: 'Experiência não encontrada.' });
+  if (String(client.lifecycle_stage || 'client') !== 'trial') {
+    return res.status(409).json({ error: 'Esta conta já foi convertida em cliente.' });
+  }
+  res.json({
+    client: {
+      id: Number(client.id),
+      name: client.name,
+      segment: client.segment || '',
+      phone: client.phone || '',
+      email: client.email || '',
+    },
+    onboarding: sanitizeTrialOnboarding(parseTrialJson(client.trial_onboarding_json, {})),
+    progress: sanitizeTrialProgress(parseTrialJson(client.trial_progress_json, [])),
+    trial: req.user.trial || { is_trial: true, expired: false },
+  });
+});
+
+router.put('/trial-experience', authRequired, (req, res) => {
+  const client = getTrialClient(req);
+  if (!client) return res.status(404).json({ error: 'Experiência não encontrada.' });
+  if (String(client.lifecycle_stage || 'client') !== 'trial') {
+    return res.status(409).json({ error: 'Esta conta já foi convertida em cliente.' });
+  }
+  if (req.user?.trial?.expired) {
+    return res.status(403).json({ error: 'Seu período de 30 dias terminou. Seus dados continuam salvos, mas a edição está bloqueada.' });
+  }
+
+  const currentOnboarding = sanitizeTrialOnboarding(parseTrialJson(client.trial_onboarding_json, {}));
+  const currentProgress = sanitizeTrialProgress(parseTrialJson(client.trial_progress_json, []));
+  const onboarding = Object.prototype.hasOwnProperty.call(req.body || {}, 'onboarding')
+    ? sanitizeTrialOnboarding({ ...currentOnboarding, ...(req.body.onboarding || {}) })
+    : currentOnboarding;
+  const progress = Object.prototype.hasOwnProperty.call(req.body || {}, 'progress')
+    ? sanitizeTrialProgress(req.body.progress)
+    : currentProgress;
+
+  db.prepare(`
+    UPDATE clients
+    SET trial_onboarding_json = ?, trial_progress_json = ?
+    WHERE id = ? AND agency_id = ?
+  `).run(JSON.stringify(onboarding), JSON.stringify(progress), client.id, req.user.agency_id);
+
+  recordActivity({
+    agencyId: req.user.agency_id,
+    userId: req.user.id,
+    clientId: client.id,
+    module: 'trial',
+    action: 'progress',
+    entityType: 'client',
+    entityId: client.id,
+    entityLabel: client.name,
+    summary: `Atualizou o ZebraHub Experience (${progress.length} etapas registradas)`,
+    path: '/auth/trial-experience',
+    method: 'PUT',
+  });
+
+  res.json({
+    ok: true,
+    onboarding,
+    progress,
+    trial: req.user.trial || { is_trial: true, expired: false },
+  });
+});
+
 router.post('/login', async (req, res) => {
   const email = normalizeEmail(req.body.email);
   const { password } = req.body;
