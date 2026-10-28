@@ -62,6 +62,9 @@ const method = [
   },
 ];
 
+
+const directArthurHref = `https://wa.me/5584998478978?text=${encodeURIComponent('Olá, Arthur! Estou conhecendo a Zebrazul pelo ZebraHub Experience e quero conversar diretamente com você.')}`;
+
 const deliveries = [
   ['Posicionamento e estratégia', 'Clareza de marca, público, oferta, narrativa e prioridades.'],
   ['Conteúdo e social media', 'Planejamento, criação, produção e organização editorial.'],
@@ -174,11 +177,17 @@ export default function ZebrazulAgency() {
             <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em]">Se fizer sentido</p>
             <h2 className="mt-2 text-3xl font-black leading-8 tracking-[-0.045em]">A gente entra para construir junto.</h2>
             <p className="mt-4 max-w-lg text-sm leading-6 text-[#17181C]/65">Não vendemos uma sequência infinita de peças. Entramos para dar direção, organizar prioridades e executar o que precisa ganhar forma.</p>
-            {contactHref ? (
-              <a href={contactHref} target="_blank" rel="noreferrer" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#17181C] px-4 py-3 text-sm font-black text-white transition hover:-translate-y-0.5">
-                <MessageCircle size={17} /> Conversar com a Zebrazul <ArrowUpRight size={16} />
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a href={directArthurHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-[#17181C] px-4 py-3 text-sm font-black text-white transition hover:-translate-y-0.5">
+                <MessageCircle size={17} /> Falar diretamente com Arthur <ArrowUpRight size={16} />
               </a>
-            ) : null}
+              {contactHref ? (
+                <a href={contactHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-[#17181C]/15 bg-white/55 px-4 py-3 text-sm font-black text-[#17181C] transition hover:-translate-y-0.5">
+                  Conversar com a Zebrazul
+                </a>
+              ) : null}
+            </div>
+            <p className="mt-3 text-xs font-semibold text-[#17181C]/50">WhatsApp direto: (84) 99847-8978</p>
           </div>
         </div>
       </section>
