@@ -95,6 +95,9 @@ function publicUser(user) {
     permission_role_key: hydrated.permission_role_key,
     permission_role_name: hydrated.permission_role_name,
     permissions: hydrated.permissions,
+    client_name: hydrated.client_name || null,
+    client_stage: hydrated.client_stage || 'client',
+    trial: hydrated.trial || { is_trial: false, expired: false },
   };
 }
 
@@ -119,12 +122,13 @@ function attachUserAccess(users, agencyId) {
       ? db.prepare('SELECT id, name FROM clients WHERE agency_id = ? ORDER BY name').all(agencyId)
       : user.role === 'team' ? (byUser.get(user.id) || []) : [];
     const customRole = user.custom_role_id
-      ? db.prepare('SELECT id, name FROM custom_roles WHERE id = ? AND agency_id = ?').get(user.custom_role_id, agencyId)
+      ? db.prepare('SELECT id, name, slug FROM custom_roles WHERE id = ? AND agency_id = ?').get(user.custom_role_id, agencyId)
       : null;
     return {
       ...user,
       custom_role_id: customRole ? Number(customRole.id) : null,
       custom_role_name: customRole?.name || null,
+      custom_role_slug: customRole?.slug || null,
       is_platform_owner: Number(user.is_platform_owner) === 1,
       is_agency_owner: Number(user.is_agency_owner) === 1,
       is_operations_head: operationsHead,
@@ -134,6 +138,86 @@ function attachUserAccess(users, agencyId) {
     };
   });
 }
+
+
+const trialSignupBuckets = new Map();
+function trialSignupAllowed(req) {
+  const now = Date.now();
+  const ip = String(req.ip || req.headers['x-forwarded-for'] || 'unknown').split(',')[0].trim();
+  const previous = trialSignupBuckets.get(ip) || [];
+  const recent = previous.filter((stamp) => now - stamp < 60 * 60 * 1000);
+  if (recent.length >= 8) return false;
+  recent.push(now);
+  trialSignupBuckets.set(ip, recent);
+  return true;
+}
+
+function cleanTrialText(value, limit = 160) {
+  return String(value || '').trim().replace(/\s+/g, ' ').slice(0, limit);
+}
+
+router.post('/trial-signup', async (req, res) => {
+  if (!trialSignupAllowed(req)) return res.status(429).json({ error: 'Muitas tentativas de cadastro. Tente novamente mais tarde.' });
+
+  const agency = resolveAgency(req);
+  if (!agency) return res.status(404).json({ error: 'Ambiente ZebraHub não encontrado.' });
+
+  const name = cleanTrialText(req.body?.name, 120);
+  const companyName = cleanTrialText(req.body?.company_name, 140);
+  const segment = cleanTrialText(req.body?.segment, 120);
+  const phone = cleanTrialText(req.body?.phone, 40);
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password || '');
+  const acceptedTerms = req.body?.accepted_terms === true;
+
+  if (!name || !companyName || !segment || !phone || !email || !password) {
+    return res.status(400).json({ error: 'Preencha nome, empresa, segmento, WhatsApp, e-mail e senha.' });
+  }
+  if (!acceptedTerms) return res.status(400).json({ error: 'É necessário aceitar os Termos de Uso e a Política de Privacidade.' });
+  if (password.length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
+
+  const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND agency_id = ?').get(email, agency.id);
+  if (existing) return res.status(409).json({ error: 'Este e-mail já possui acesso ao ZebraHub. Entre com sua conta existente.' });
+
+  const startedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const created = db.transaction(() => {
+      const clientInfo = db.prepare(`
+        INSERT INTO clients (
+          agency_id, name, segment, phone, email, logo_color, status, lifecycle_stage,
+          trial_started_at, trial_expires_at, trial_progress_json
+        ) VALUES (?, ?, ?, ?, ?, '#3A85FD', 'active', 'trial', ?, ?, '[]')
+      `).run(agency.id, companyName, segment, phone, email, startedAt, expiresAt);
+      const clientId = Number(clientInfo.lastInsertRowid);
+      const passwordHash = bcrypt.hashSync(password, 10);
+      const userInfo = db.prepare(`
+        INSERT INTO users (name, email, password_hash, role, client_id, agency_id)
+        VALUES (?, ?, ?, 'client', ?, ?)
+      `).run(name, email, passwordHash, clientId, agency.id);
+      const userId = Number(userInfo.lastInsertRowid);
+      db.prepare('UPDATE clients SET responsible_user_id = ? WHERE id = ?').run(userId, clientId);
+      return { clientId, userId };
+    })();
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(created.userId);
+    const token = jwt.sign({ id: user.id, agency_id: user.agency_id }, JWT_SECRET, { expiresIn: '7d' });
+    recordActivity({
+      agencyId: agency.id, userId: user.id, clientId: created.clientId,
+      module: 'trial', action: 'created', entityType: 'client', entityId: created.clientId, entityLabel: companyName,
+      summary: 'Iniciou o ZebraHub Experience por 30 dias', path: '/auth/trial-signup', method: 'POST'
+    });
+    return res.status(201).json({ token, user: publicUser(user), trial_expires_at: expiresAt });
+  } catch (error) {
+    console.error('[TRIAL] Falha ao criar experiência:', error);
+    if (String(error?.message || '').toLowerCase().includes('unique')) {
+      return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
+    }
+    return res.status(500).json({ error: 'Não foi possível iniciar sua experiência agora. Tente novamente.' });
+  }
+});
 
 router.post('/login', async (req, res) => {
   const email = normalizeEmail(req.body.email);
@@ -210,7 +294,12 @@ router.post('/users', authRequired, (req, res) => {
   if (role === 'team' && !accessRole.isOperationsHead && !validateClientIds(clientIds, req.user.agency_id)) return res.status(400).json({ error: 'Um ou mais clientes selecionados sao invalidos' });
 
   const plan = db.prepare('SELECT max_users FROM agencies WHERE id = ?').get(req.user.agency_id);
-  const currentCount = db.prepare('SELECT COUNT(*) AS total FROM users WHERE agency_id = ?').get(req.user.agency_id).total;
+  const currentCount = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM users u
+    LEFT JOIN clients c ON c.id = u.client_id AND c.agency_id = u.agency_id
+    WHERE u.agency_id = ? AND NOT (u.role = 'client' AND COALESCE(c.lifecycle_stage, 'client') = 'trial')
+  `).get(req.user.agency_id).total;
   if (!req.user.is_platform_owner && Number(currentCount) >= Number(plan?.max_users || 5)) {
     return res.status(403).json({ error: 'Limite de usuários do plano atingido' });
   }

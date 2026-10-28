@@ -1385,6 +1385,15 @@ tryAddColumn('tasks', 'posted_at', 'TEXT');
 tryAddColumn('tasks', 'posted_by', 'INTEGER');
 tryAddColumn('tasks', 'scheduled_platforms', 'TEXT');
 tryAddColumn('clients', 'demand_level', 'TEXT');
+// ZebraHub Experience: potenciais clientes podem criar o próprio ambiente de 30 dias.
+// Mantemos o registro na mesma tabela de clientes para permitir conversão sem migração de conta/dados.
+tryAddColumn('clients', 'lifecycle_stage', "TEXT DEFAULT 'client'");
+tryAddColumn('clients', 'trial_started_at', 'TEXT');
+tryAddColumn('clients', 'trial_expires_at', 'TEXT');
+tryAddColumn('clients', 'trial_converted_at', 'TEXT');
+tryAddColumn('clients', 'trial_onboarding_json', 'TEXT');
+tryAddColumn('clients', 'trial_progress_json', "TEXT DEFAULT '[]'");
+db.exec("UPDATE clients SET lifecycle_stage = 'client' WHERE lifecycle_stage IS NULL OR trim(lifecycle_stage) = ''");
 
 // Pontuação de saúde do cliente (avaliação interna do gestor, critérios em services/clientHealth.js).
 db.exec(`
@@ -1563,6 +1572,43 @@ tryAddColumn('users', 'is_platform_owner', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_agency_owner', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_operations_head', 'INTEGER DEFAULT 0');
 tryAddColumn('users', 'is_commercial_team', 'INTEGER DEFAULT 0');
+tryAddColumn('users', 'custom_role_id', 'INTEGER');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS custom_roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE (agency_id, slug),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS custom_role_permissions (
+  custom_role_id INTEGER NOT NULL,
+  permission_key TEXT NOT NULL,
+  allowed INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (custom_role_id, permission_key),
+  FOREIGN KEY (custom_role_id) REFERENCES custom_roles(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS agency_role_permissions (
+  agency_id INTEGER NOT NULL,
+  role_key TEXT NOT NULL,
+  permission_key TEXT NOT NULL,
+  allowed INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (agency_id, role_key, permission_key),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS agency_permission_visibility (
+  agency_id INTEGER NOT NULL,
+  permission_key TEXT NOT NULL,
+  owner_only INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (agency_id, permission_key),
+  FOREIGN KEY (agency_id) REFERENCES agencies(id) ON DELETE CASCADE
+);
+`);
 tryAddColumn('commercial_leads', 'client_id', 'INTEGER REFERENCES clients(id)');
 tryAddColumn('commercial_leads', 'stage_key', 'TEXT');
 tryAddColumn('clients', 'agency_id', 'INTEGER REFERENCES agencies(id)');
@@ -2264,7 +2310,7 @@ if (!accessMigration) {
 
 db.prepare(
   `INSERT INTO system_meta (key, value, updated_at)
-   VALUES ('schema_version', '34', datetime('now'))
+   VALUES ('schema_version', '36', datetime('now'))
    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
 ).run();
 

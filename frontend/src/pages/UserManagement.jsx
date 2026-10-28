@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X, Download, RefreshCw, CheckCircle2, AlertTriangle, BriefcaseBusiness, Handshake } from 'lucide-react';
+import { Plus, Shield, Users as UsersIcon, Building2, Pencil, Trash2, KeyRound, X, Download, RefreshCw, CheckCircle2, AlertTriangle, BriefcaseBusiness, Handshake, Palette, Clapperboard, Instagram, Shapes } from 'lucide-react';
 import api from '../api';
 import AvatarUpload from '../components/AvatarUpload.jsx';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
@@ -12,10 +12,42 @@ import SettingsSectionHeader from '../components/SettingsSectionHeader.jsx';
 const ROLE_OPTIONS = [
   { value: 'operations_head', label: 'Head de Operação', icon: BriefcaseBusiness },
   { value: 'team', label: 'Equipe da agência', icon: UsersIcon },
+  { value: 'preset:design', label: 'Design', icon: Palette },
+  { value: 'preset:audiovisual', label: 'Audiovisual', icon: Clapperboard },
+  { value: 'preset:social-media', label: 'Social Media', icon: Instagram },
+  { value: 'preset:branding', label: 'Branding', icon: Shapes },
   { value: 'commercial_team', label: 'Equipe comercial', icon: Handshake },
   { value: 'client', label: 'Cliente', icon: Building2 },
   { value: 'admin', label: 'Administrador', icon: Shield }
 ];
+
+const PRESET_ROLE_INFO = {
+  'preset:design': {
+    slug: 'design',
+    description: 'Painel, Design, Grade e Meu Espaço. Sem Audiovisual, Social Media, Site/LP, Relatórios e demais módulos operacionais.'
+  },
+  'preset:audiovisual': {
+    slug: 'audiovisual',
+    description: 'Painel, Audiovisual, Grade e Meu Espaço. Sem Design, Social Media, Site/LP, Relatórios e demais módulos operacionais.'
+  },
+  'preset:social-media': {
+    slug: 'social-media',
+    description: 'Acesso amplo à operação da agência, exceto Comercial.'
+  },
+  'preset:branding': {
+    slug: 'branding',
+    description: 'Acesso amplo, sem Comercial, Site/LP, Social Media/Mensagens e Agendamento.'
+  },
+};
+
+const isPresetRole = (value) => Boolean(PRESET_ROLE_INFO[value]);
+const isTeamAccessRole = (value) => value === 'team' || value === 'commercial_team' || isPresetRole(value);
+
+function presetCustomRoleId(customRoles, roleValue) {
+  const preset = PRESET_ROLE_INFO[roleValue];
+  if (!preset) return null;
+  return customRoles.find((role) => role.slug === preset.slug)?.id || null;
+}
 
 const EMPTY_FORM = { name: '', email: '', password: '', role: 'team', client_id: '', client_ids: [], custom_role_id: '' };
 
@@ -107,12 +139,26 @@ export default function UserManagement({ embedded = false }) {
     setSuccess('');
   }
 
+  function normalizedRolePayload(values) {
+    if (isPresetRole(values.role)) {
+      return {
+        role: 'team',
+        custom_role_id: presetCustomRoleId(customRoles, values.role),
+      };
+    }
+    return {
+      role: values.role,
+      custom_role_id: values.role === 'team' ? (values.custom_role_id || null) : null,
+    };
+  }
+
   function validateUserForm(values, requirePassword) {
     if (!values.name.trim() || !values.email.trim() || (requirePassword && !values.password)) {
       return requirePassword ? 'Preencha nome, e-mail e senha.' : 'Preencha nome e e-mail.';
     }
     if (values.password && values.password.length < 6) return 'A senha precisa ter pelo menos 6 caracteres.';
     if (values.role === 'client' && !values.client_id) return 'Selecione a qual cliente este usuário pertence.';
+    if (isPresetRole(values.role) && !presetCustomRoleId(customRoles, values.role)) return 'Os perfis da equipe ainda estão carregando. Feche e abra novamente este formulário.';
     return '';
   }
 
@@ -127,13 +173,14 @@ export default function UserManagement({ embedded = false }) {
 
     setSaving(true);
     try {
+      const access = normalizedRolePayload(form);
       await api.post('/auth/users', {
         ...form,
+        ...access,
         name: form.name.trim(),
         email: form.email.trim(),
         client_id: form.role === 'client' ? form.client_id : null,
-        client_ids: ['team', 'commercial_team'].includes(form.role) ? form.client_ids : [],
-        custom_role_id: form.role === 'team' ? (form.custom_role_id || null) : null
+        client_ids: isTeamAccessRole(form.role) ? form.client_ids : [],
       });
       setSuccess(`Usuário "${form.name}" criado com sucesso.`);
       setForm(EMPTY_FORM);
@@ -153,7 +200,13 @@ export default function UserManagement({ embedded = false }) {
       name: user.name || '',
       email: user.email || '',
       password: '',
-      role: user.is_operations_head ? 'operations_head' : user.is_commercial_team ? 'commercial_team' : (user.role || 'team'),
+      role: user.is_operations_head
+        ? 'operations_head'
+        : user.is_commercial_team
+          ? 'commercial_team'
+          : user.custom_role_slug && PRESET_ROLE_INFO[`preset:${user.custom_role_slug}`]
+            ? `preset:${user.custom_role_slug}`
+            : (user.role || 'team'),
       client_id: user.client_id || '',
       client_ids: user.client_ids || [],
       custom_role_id: user.custom_role_id || ''
@@ -170,13 +223,13 @@ export default function UserManagement({ embedded = false }) {
 
     setSaving(true);
     try {
+      const access = normalizedRolePayload(editForm);
       const payload = {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
-        role: editForm.role,
+        ...access,
         client_id: editForm.role === 'client' ? editForm.client_id : null,
-        client_ids: ['team', 'commercial_team'].includes(editForm.role) ? editForm.client_ids : [],
-        custom_role_id: editForm.role === 'team' ? (editForm.custom_role_id || null) : null
+        client_ids: isTeamAccessRole(editForm.role) ? editForm.client_ids : [],
       };
       if (editForm.password) payload.password = editForm.password;
 
@@ -346,6 +399,10 @@ export default function UserManagement({ embedded = false }) {
           <RoleDescription icon={Shield} title="Administrador" description="Acesso total, incluindo criar, editar e apagar usuários." />
           <RoleDescription icon={BriefcaseBusiness} title="Head de Operação" description="Visualiza e gerencia todas as tarefas, subtarefas, clientes e responsáveis da operação. O Financeiro fica disponível dentro de Meu Espaço." />
           <RoleDescription icon={UsersIcon} title={`Equipe ${agency?.name || ""}`.trim()} description="Acessa somente os clientes e áreas operacionais definidos pelo administrador." />
+          <RoleDescription icon={Palette} title="Design" description="Painel, Design, Grade e Meu Espaço." />
+          <RoleDescription icon={Clapperboard} title="Audiovisual" description="Painel, Audiovisual, Grade e Meu Espaço." />
+          <RoleDescription icon={Instagram} title="Social Media" description="Acesso amplo à operação, exceto Comercial." />
+          <RoleDescription icon={Shapes} title="Branding" description="Acesso amplo, sem Comercial, Site/LP, Social Media e Agendamento." />
           <RoleDescription icon={Handshake} title="Equipe Comercial" description="Acessa apenas Painel, Tarefas e Comercial dos clientes liberados pelo administrador." />
           <RoleDescription icon={Building2} title="Cliente" description="Só vê e aprova o conteúdo do próprio cliente vinculado." />
         </div>
@@ -571,8 +628,8 @@ function UserFormModal({
                     ...form,
                     role: role.value,
                     client_id: role.value === 'client' ? form.client_id : '',
-                    client_ids: ['team', 'commercial_team'].includes(role.value) ? (form.client_ids || []) : [],
-                    custom_role_id: role.value === 'team' ? (form.custom_role_id || '') : ''
+                    client_ids: isTeamAccessRole(role.value) ? (form.client_ids || []) : [],
+                    custom_role_id: role.value === 'team' ? (form.custom_role_id || '') : (isPresetRole(role.value) ? (presetCustomRoleId(customRoles, role.value) || '') : '')
                   })}
                   disabled={lockRole}
                   className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-lg border text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
@@ -598,7 +655,7 @@ function UserFormModal({
                 disabled={lockRole}
               >
                 <option value="">Equipe da agência (padrão)</option>
-                {customRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+                {customRoles.filter((role) => !['design', 'audiovisual', 'social-media', 'branding'].includes(role.slug)).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
               </select>
               <p className="mt-1.5 text-[11px] text-slate-400">Crie e configure cargos em Configurações → Permissões.</p>
             </div>
@@ -611,6 +668,12 @@ function UserFormModal({
           {form.role === 'commercial_team' && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               Perfil focado em vendas: o menu exibirá somente Painel, Designer e Comercial. O acesso ao pipeline será limitado aos clientes marcados abaixo.
+            </div>
+          )}
+          {isPresetRole(form.role) && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+              <strong>{ROLE_OPTIONS.find((item) => item.value === form.role)?.label}:</strong>{' '}
+              {PRESET_ROLE_INFO[form.role]?.description}
             </div>
           )}
           {form.role === 'client' && (
@@ -628,7 +691,7 @@ function UserFormModal({
               </select>
             </div>
           )}
-          {['team', 'commercial_team'].includes(form.role) && (
+          {isTeamAccessRole(form.role) && (
             <div>
               <div className="flex items-center justify-between gap-3 mb-2">
                 <label className="text-sm font-medium text-slate-700">Clientes com acesso</label>
@@ -660,7 +723,13 @@ function UserFormModal({
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-400 mt-2">{form.role === 'commercial_team' ? 'A pessoa verá somente Painel, Designer e Comercial destes clientes.' : 'A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.'}</p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {form.role === 'commercial_team'
+                  ? 'A pessoa verá somente Painel, Designer e Comercial destes clientes.'
+                  : isPresetRole(form.role)
+                    ? 'O perfil de acesso acima será aplicado somente aos clientes marcados aqui.'
+                    : 'A pessoa verá apenas tarefas, conteúdos, relatórios e cadastros destes clientes.'}
+              </p>
             </div>
           )}
           {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}

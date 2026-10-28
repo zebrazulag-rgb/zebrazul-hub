@@ -2,6 +2,16 @@ const db = require('../db/database');
 
 const PERMISSION_CATALOG = [
   { key: 'dashboard.view', group: 'Geral', label: 'Painel', description: 'Visualizar o painel principal.' },
+  { key: 'work_queue.view', group: 'Geral', label: 'Minha fila', description: 'Acessar a fila pessoal de trabalho.' },
+  { key: 'alerts.view', group: 'Geral', label: 'Alertas', description: 'Acessar alertas operacionais.' },
+  { key: 'calendar.view', group: 'Geral', label: 'Calendário', description: 'Acessar o calendário operacional unificado.' },
+  { key: 'intelligence.view', group: 'Geral', label: 'Inteligência', description: 'Acessar a inteligência operacional.' },
+  { key: 'designer.view', group: 'Design', label: 'Design', description: 'Acessar a área de produção de design.' },
+  { key: 'approval.view', group: 'Design', label: 'Grade', description: 'Visualizar a grade e o fluxo de aprovação interno.' },
+  { key: 'site_lp.view', group: 'Site/LP', label: 'Site/LP', description: 'Acessar demandas de site e landing pages.' },
+  { key: 'scheduling.view', group: 'Social Media', label: 'Agendamento', description: 'Acessar a fila e o calendário de agendamento de publicações.' },
+  { key: 'moodboard.view', group: 'Design', label: 'Moodboard', description: 'Acessar moodboards e referências visuais.' },
+  { key: 'reader.view', group: 'Geral', label: 'Zebra Leitor', description: 'Acessar a biblioteca Zebra Leitor.' },
   { key: 'tasks.view', group: 'Tarefas', label: 'Visualizar tarefas', description: 'Acessar Kanban, calendário e tarefas dos clientes permitidos.' },
   { key: 'tasks.create', group: 'Tarefas', label: 'Criar e editar tarefas', description: 'Criar tarefas, editar conteúdo e atualizar status.' },
   { key: 'tasks.approval', group: 'Social Media', label: 'Aprovação na grade', description: 'Registrar decisões e feedbacks de aprovação nos conteúdos exibidos na grade.' },
@@ -59,7 +69,9 @@ const ALL_KEYS = PERMISSION_CATALOG.map((item) => item.key);
 const DEFAULTS = {
   admin: new Set(ALL_KEYS),
   operations_head: new Set([
-    'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
+    'dashboard.view', 'work_queue.view', 'alerts.view', 'calendar.view', 'intelligence.view',
+    'designer.view', 'approval.view', 'site_lp.view', 'scheduling.view', 'moodboard.view', 'reader.view',
+    'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish', 'audiovisual.calendar',
@@ -67,7 +79,9 @@ const DEFAULTS = {
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
   ]),
   team: new Set([
-    'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
+    'dashboard.view', 'work_queue.view', 'alerts.view', 'calendar.view', 'intelligence.view',
+    'designer.view', 'approval.view', 'site_lp.view', 'scheduling.view', 'moodboard.view', 'reader.view',
+    'tasks.view', 'tasks.create', 'tasks.approval', 'tasks.import', 'tasks.export', 'tasks.share_calendar',
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish',
@@ -75,7 +89,7 @@ const DEFAULTS = {
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'settings.clients',
   ]),
   commercial_team: new Set([
-    'dashboard.view', 'tasks.view', 'tasks.create', 'tasks.export', 'commercial.view', 'commercial.manage', 'commercial.import', 'reenrollments.view', 'organizer.view', 'activity.view_own',
+    'dashboard.view', 'designer.view', 'tasks.view', 'tasks.create', 'tasks.export', 'commercial.view', 'commercial.manage', 'commercial.import', 'reenrollments.view', 'organizer.view', 'activity.view_own',
   ]),
   client: new Set([
     'tasks.view', 'tasks.approval', 'social.view', 'social.feed', 'social.calendar', 'social.reports',
@@ -90,6 +104,78 @@ const BUILTIN_ROLES = [
   { key: 'commercial_team', name: 'Equipe Comercial', protected: false },
   { key: 'client', name: 'Cliente', protected: false },
 ];
+
+const TEAM_ROLE_PRESETS = [
+  {
+    slug: 'design',
+    name: 'Design',
+    permissions: new Set([
+      'dashboard.view', 'designer.view', 'tasks.view', 'approval.view', 'organizer.view',
+    ]),
+  },
+  {
+    slug: 'audiovisual',
+    name: 'Audiovisual',
+    permissions: new Set([
+      'dashboard.view', 'approval.view', 'tasks.view', 'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit',
+      'audiovisual.publish', 'audiovisual.calendar', 'organizer.view',
+    ]),
+  },
+  {
+    slug: 'social-media',
+    name: 'Social Media',
+    permissions: new Set([
+      ...DEFAULTS.team,
+      'work_queue.view', 'alerts.view', 'calendar.view', 'intelligence.view',
+      'designer.view', 'approval.view', 'site_lp.view', 'scheduling.view', 'moodboard.view', 'reader.view',
+    ]),
+  },
+  {
+    slug: 'branding',
+    name: 'Branding',
+    permissions: new Set([
+      ...DEFAULTS.team,
+      'work_queue.view', 'alerts.view', 'calendar.view', 'intelligence.view',
+      'designer.view', 'approval.view', 'moodboard.view', 'reader.view',
+      'social.reports',
+    ]),
+    denied: new Set([
+      'commercial.view', 'commercial.manage', 'commercial.import',
+      'site_lp.view', 'scheduling.view',
+      'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
+      'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories',
+      'social.messages', 'social.connections',
+    ]),
+  },
+];
+
+function ensureTeamRolePresets(agencyId) {
+  const normalizedAgencyId = Number(agencyId);
+  if (!normalizedAgencyId) return [];
+
+  const ensure = db.transaction(() => TEAM_ROLE_PRESETS.map((preset) => {
+    let role = db.prepare('SELECT id, name, slug FROM custom_roles WHERE agency_id = ? AND slug = ?').get(normalizedAgencyId, preset.slug);
+    if (!role) {
+      const info = db.prepare('INSERT INTO custom_roles (agency_id, name, slug) VALUES (?, ?, ?)').run(normalizedAgencyId, preset.name, preset.slug);
+      role = { id: Number(info.lastInsertRowid), name: preset.name, slug: preset.slug };
+    } else if (role.name !== preset.name) {
+      db.prepare("UPDATE custom_roles SET name = ?, updated_at = datetime('now') WHERE id = ?").run(preset.name, role.id);
+      role.name = preset.name;
+    }
+
+    const existingRows = db.prepare('SELECT permission_key FROM custom_role_permissions WHERE custom_role_id = ?').all(role.id);
+    const existingKeys = new Set(existingRows.map((row) => row.permission_key));
+    const insertPermission = db.prepare('INSERT INTO custom_role_permissions (custom_role_id, permission_key, allowed) VALUES (?, ?, ?)');
+    ALL_KEYS.forEach((key) => {
+      if (existingKeys.has(key)) return;
+      const allowed = preset.denied?.has(key) ? false : preset.permissions.has(key);
+      insertPermission.run(role.id, key, allowed ? 1 : 0);
+    });
+    return { id: Number(role.id), name: preset.name, slug: preset.slug };
+  }));
+
+  return ensure();
+}
 
 function roleKeyForUser(user) {
   if (!user) return 'guest';
@@ -159,6 +245,19 @@ function getPermissionSetForUser(user) {
   ALL_KEYS.forEach((key) => {
     if (ownerOnly[key] && !isOwner) map[key] = false;
   });
+
+  // ZebraHub Experience: o potencial cliente usa o mesmo papel `client`, porém com
+  // um escopo próprio. Isso impede que aprovação, tarefas, relatórios e operação da
+  // agência vazem para o experimental antes da conversão.
+  if (user?.role === 'client' && user?.client_stage === 'trial') {
+    ALL_KEYS.forEach((key) => { map[key] = false; });
+    if (!user?.trial?.expired) {
+      ['radar.view', 'radar.refresh', 'radar.prompts', 'radar.history'].forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(map, key)) map[key] = true;
+      });
+    }
+  }
+
   // Financeiro fica dentro de Meu Espaço e é liberado para todas as contas internas da equipe.
   // O portal de cliente permanece sem acesso.
   map['finance.view'] = Boolean(user && user.role !== 'client');
@@ -175,6 +274,7 @@ function hasPermission(user, permissionKey) {
   }
   const map = getPermissionSetForUser(user);
   if (permissionKey.startsWith('social.') && permissionKey !== 'social.view') {
+    if (permissionKey === 'social.reports') return Boolean(map[permissionKey]);
     const feedChildren = new Set([
       'social.feed_create', 'social.feed_share', 'social.link_social_media', 'social.covers',
       'social.published', 'social.compare', 'social.calendar'
@@ -231,16 +331,15 @@ function apiPermissionForRequest(req) {
     return 'radar.sources'; // fontes, descoberta de feed, edição e remoção
   }
   if (path === '/manager-dashboard' || path.startsWith('/manager-dashboard/')) return 'dashboard.view';
-  if (path === '/my-work' || path.startsWith('/my-work/')) return 'dashboard.view';
-  if (path === '/smart-alerts' || path.startsWith('/smart-alerts/')) return 'dashboard.view';
-  if (path === '/operational-calendar' || path.startsWith('/operational-calendar/')) return 'dashboard.view';
-  if (path === '/operational-intelligence' || path.startsWith('/operational-intelligence/')) return 'dashboard.view';
+  if (path === '/my-work' || path.startsWith('/my-work/')) return 'work_queue.view';
+  if (path === '/smart-alerts' || path.startsWith('/smart-alerts/')) return 'alerts.view';
+  if (path === '/operational-calendar' || path.startsWith('/operational-calendar/')) return 'calendar.view';
+  if (path === '/operational-intelligence' || path.startsWith('/operational-intelligence/')) return 'intelligence.view';
   if (path === '/automations' || path.startsWith('/automations/')) return 'dashboard.view';
-  if (path.startsWith('/moodboards')) return method === 'GET' ? 'tasks.view' : 'tasks.create';
+  if (path.startsWith('/moodboards')) return method === 'GET' ? 'moodboard.view' : 'tasks.create';
   if (path.startsWith('/competitors')) return 'compass.view';
   if (path === '/tasks/schedule-queue' || path === '/tasks/posted-report' || path === '/tasks/posted-report/link' || /^\/tasks\/\d+\/schedule-status$/.test(path) || /^\/tasks\/\d+\/date$/.test(path) || /^\/tasks\/\d+\/platforms$/.test(path) || /^\/tasks\/posts\/\d+\/date$/.test(path)) {
-    // Fila de agendamento da Social Media: basta ver o módulo Social Media ou as tarefas.
-    return ['social.view', 'tasks.view'];
+    return 'scheduling.view';
   }
   if (path === '/tasks' || path.startsWith('/tasks/')) {
     // [FASE 1.5] Check de produção do designer: marcar/desmarcar a própria subtarefa exige apenas
@@ -262,7 +361,7 @@ function apiPermissionForRequest(req) {
     return method === 'GET' ? 'tasks.view' : 'tasks.create';
   }
   if (path === '/posts' || path.startsWith('/posts/')) {
-    if (method === 'GET') return ['social.feed', 'tasks.approval'];
+    if (method === 'GET') return ['social.feed', 'tasks.approval', 'approval.view'];
     if (/\/comments$/.test(path) || /\/share$/.test(path)) return 'tasks.approval';
     if (method === 'PUT' && req.body && Object.keys(req.body).every((key) => ['status', 'client_feedback'].includes(key))) return 'tasks.approval';
     return 'social.feed_create';
@@ -278,6 +377,8 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/product')) return method === 'GET'
     ? 'product.view'
     : ['product.create', 'product.manage', 'product.qa', 'product.release'];
+  if (path.startsWith('/site-lp')) return 'site_lp.view';
+  if (path.startsWith('/books')) return 'reader.view';
   if (path.startsWith('/organizer')) return 'organizer.view';
   if (path.startsWith('/activity')) return ['activity.view_own', 'activity.view_team'];
   if (path.startsWith('/reenrollments')) return 'reenrollments.view';
@@ -296,6 +397,8 @@ module.exports = {
   ALL_KEYS,
   BUILTIN_ROLES,
   DEFAULTS,
+  TEAM_ROLE_PRESETS,
+  ensureTeamRolePresets,
   roleKeyForUser,
   roleNameForUser,
   getPermissionMapForRole,

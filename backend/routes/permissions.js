@@ -8,6 +8,8 @@ const {
   getPermissionMapForRole,
   getOwnerOnlyMap,
   hasPermission,
+  ensureTeamRolePresets,
+  TEAM_ROLE_PRESETS,
 } = require('../services/permissions');
 
 const router = express.Router();
@@ -36,6 +38,7 @@ function normalizePermissions(value) {
 }
 
 function serializeRoles(agencyId) {
+  ensureTeamRolePresets(agencyId);
   const builtins = BUILTIN_ROLES.map((role) => ({
     ...role,
     type: 'builtin',
@@ -70,7 +73,7 @@ function serializeRoles(agencyId) {
     name: role.name,
     slug: role.slug,
     type: 'custom',
-    protected: false,
+    protected: TEAM_ROLE_PRESETS.some((preset) => preset.slug === role.slug),
     users_count: countMap[`custom:${role.id}`] || 0,
     permissions: getPermissionMapForRole(agencyId, `custom:${role.id}`),
   }));
@@ -146,6 +149,11 @@ router.put('/roles/custom/:id', authRequired, adminOnly, (req, res) => {
   const id = Number(req.params.id);
   const name = String(req.body.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Informe o nome do cargo.' });
+  const existingRole = db.prepare('SELECT id, slug FROM custom_roles WHERE id = ? AND agency_id = ?').get(id, req.user.agency_id);
+  if (!existingRole) return res.status(404).json({ error: 'Cargo não encontrado.' });
+  if (TEAM_ROLE_PRESETS.some((preset) => preset.slug === existingRole.slug)) {
+    return res.status(400).json({ error: 'Este é um perfil padrão do ZebraHub e não pode ser renomeado.' });
+  }
   const info = db.prepare('UPDATE custom_roles SET name = ?, updated_at = datetime(\'now\') WHERE id = ? AND agency_id = ?').run(name, id, req.user.agency_id);
   if (!info.changes) return res.status(404).json({ error: 'Cargo não encontrado.' });
   res.json({ ok: true });
@@ -153,8 +161,11 @@ router.put('/roles/custom/:id', authRequired, adminOnly, (req, res) => {
 
 router.delete('/roles/custom/:id', authRequired, adminOnly, (req, res) => {
   const id = Number(req.params.id);
-  const role = db.prepare('SELECT id FROM custom_roles WHERE id = ? AND agency_id = ?').get(id, req.user.agency_id);
+  const role = db.prepare('SELECT id, slug FROM custom_roles WHERE id = ? AND agency_id = ?').get(id, req.user.agency_id);
   if (!role) return res.status(404).json({ error: 'Cargo não encontrado.' });
+  if (TEAM_ROLE_PRESETS.some((preset) => preset.slug === role.slug)) {
+    return res.status(400).json({ error: 'Este é um perfil padrão do ZebraHub e não pode ser excluído.' });
+  }
   const used = Number(db.prepare('SELECT COUNT(*) AS total FROM users WHERE agency_id = ? AND custom_role_id = ?').get(req.user.agency_id, id)?.total || 0);
   if (used > 0) return res.status(400).json({ error: `Este cargo ainda está atribuído a ${used} usuário(s). Troque o cargo deles antes de excluir.` });
   db.prepare('DELETE FROM custom_roles WHERE id = ? AND agency_id = ?').run(id, req.user.agency_id);

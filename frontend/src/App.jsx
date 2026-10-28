@@ -2,6 +2,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
+import TrialSignup from './pages/TrialSignup.jsx';
+import TrialExperience from './pages/TrialExperience.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import MyWork from './pages/MyWork.jsx';
 import Alerts from './pages/Alerts.jsx';
@@ -94,10 +96,10 @@ function LegacyAIRedirect() {
 }
 
 function fallbackRoute(user) {
-  if (user?.role === 'client') return '/cliente/inicio';
+  if (user?.role === 'client') return user?.trial?.is_trial ? '/cliente/experiencia' : '/cliente/inicio';
   if (hasPermission(user, 'dashboard.view')) return '/';
   if (hasPermission(user, 'audiovisual.view')) return '/audiovisual';
-  if (hasPermission(user, 'tasks.view') && user?.role !== 'client') return '/designer';
+  if (hasPermission(user, 'designer.view') && user?.role !== 'client') return '/designer';
   if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
   if (hasPermission(user, 'social.covers')) return '/social-media/capas';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
@@ -107,10 +109,11 @@ function fallbackRoute(user) {
   return '/configuracoes/aparencia';
 }
 
-function ProtectedRoute({ children, roles, platformOnly = false, operationsOnly = false, commercialTeamAllowed = false, commercialAccess = false, permission }) {
+function ProtectedRoute({ children, roles, platformOnly = false, operationsOnly = false, commercialTeamAllowed = false, commercialAccess = false, permission, trialAllowed = false }) {
   const { user, checkingSession } = useAuth();
   if (checkingSession) return <SessionLoader />;
   if (!user) return <Navigate to="/login" replace />;
+  if (user?.trial?.is_trial && !trialAllowed) return <Navigate to="/cliente/experiencia" replace />;
   if (permission && !hasPermission(user, permission)) return <Navigate to={fallbackRoute(user)} replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to={fallbackRoute(user)} replace />;
   if (user.is_commercial_team && !commercialTeamAllowed && !permission) return <Navigate to={fallbackRoute(user)} replace />;
@@ -134,6 +137,7 @@ export default function App() {
     <NarrationProvider>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/experimentar" element={<TrialSignup />} />
       <Route path="/portal/:token" element={<ClientPortal />} />
       <Route path="/npsbee" element={<PublicBeeFamilySurvey />} />
       <Route path="/aprovar/:token" element={<PublicApproval />} />
@@ -149,6 +153,7 @@ export default function App() {
       <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
       <Route path="/termos-de-uso" element={<TermsOfUse />} />
       <Route path="/exclusao-de-dados" element={<DataDeletion />} />
+      <Route path="/cliente/experiencia" element={<ProtectedRoute roles={["client"]} trialAllowed><TrialExperience /></ProtectedRoute>} />
       <Route path="/cliente/inicio" element={<ProtectedRoute roles={["client"]}><ClientPortalHome /></ProtectedRoute>} />
       <Route path="/cliente/solicitar" element={<ProtectedRoute roles={["client"]}><ClientDemand /></ProtectedRoute>} />
       <Route path="/cliente/aprovacao" element={<ProtectedRoute roles={["client"]} permission="tasks.approval"><ClientApproval /></ProtectedRoute>} />
@@ -158,18 +163,18 @@ export default function App() {
       <Route path="/cliente/materiais/:id" element={<ProtectedRoute roles={["client"]} permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/conversas" element={<Navigate to="/" replace />} />
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
-      <Route path="/minha-fila" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view"><MyWork /></ProtectedRoute>} />
-      <Route path="/alertas" element={<ProtectedRoute permission="dashboard.view"><Alerts /></ProtectedRoute>} />
-      <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><DesignerApproval /></ProtectedRoute>} />
+      <Route path="/minha-fila" element={<ProtectedRoute roles={["admin","team"]} permission="work_queue.view"><MyWork /></ProtectedRoute>} />
+      <Route path="/alertas" element={<ProtectedRoute permission="alerts.view"><Alerts /></ProtectedRoute>} />
+      <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="approval.view"><DesignerApproval /></ProtectedRoute>} />
       <Route path="/radar" element={<ProtectedRoute roles={["admin","team"]} permission="radar.view"><Radar /></ProtectedRoute>} />
-      <Route path="/cliente/radar" element={<ProtectedRoute roles={["client"]} permission="radar.view"><Radar /></ProtectedRoute>} />
-      <Route path="/leitor" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitor /></ProtectedRoute>} />
-      <Route path="/leitor/:id" element={<ProtectedRoute roles={["admin","team"]} commercialTeamAllowed><ZebraLeitorReader /></ProtectedRoute>} />
-      <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><Scheduling /></ProtectedRoute>} />
+      <Route path="/cliente/radar" element={<ProtectedRoute roles={["client"]} permission="radar.view" trialAllowed><Radar /></ProtectedRoute>} />
+      <Route path="/leitor" element={<ProtectedRoute roles={["admin","team"]} permission="reader.view"><ZebraLeitor /></ProtectedRoute>} />
+      <Route path="/leitor/:id" element={<ProtectedRoute roles={["admin","team"]} permission="reader.view"><ZebraLeitorReader /></ProtectedRoute>} />
+      <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="scheduling.view"><Scheduling /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/aprovacao/videos/:id" element={<Navigate to="/aprovacao" replace />} />
-      <Route path="/calendario" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view"><UnifiedCalendar /></ProtectedRoute>} />
-      <Route path="/inteligencia" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view"><OperationalIntelligence /></ProtectedRoute>} />
+      <Route path="/calendario" element={<ProtectedRoute roles={["admin","team"]} permission="calendar.view"><UnifiedCalendar /></ProtectedRoute>} />
+      <Route path="/inteligencia" element={<ProtectedRoute roles={["admin","team"]} permission="intelligence.view"><OperationalIntelligence /></ProtectedRoute>} />
       <Route path="/automacoes" element={<ProtectedRoute roles={["admin","team"]} permission="dashboard.view" operationsOnly><Automations /></ProtectedRoute>} />
       <Route path="/social-media" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><SocialMedia /></ProtectedRoute>} />
       <Route path="/social-media/feed" element={<Navigate to="/aprovacao" replace />} />
@@ -179,11 +184,11 @@ export default function App() {
       <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
       <Route path="/feed" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/stories" element={<Navigate to="/social-media/stories" replace />} />
-      <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Tasks workspace="designer" /></ProtectedRoute>} />
-      <Route path="/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><Moodboard /></ProtectedRoute>} />
+      <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="designer.view"><Tasks workspace="designer" /></ProtectedRoute>} />
+      <Route path="/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="moodboard.view"><Moodboard /></ProtectedRoute>} />
       <Route path="/designer/moodboard" element={<Navigate to="/moodboard" replace />} />
       <Route path="/tarefas" element={<DesignerLegacyRedirect />} />
-      <Route path="/site-lp" element={<ProtectedRoute roles={["admin","team"]} permission="tasks.view"><SiteLP /></ProtectedRoute>} />
+      <Route path="/site-lp" element={<ProtectedRoute roles={["admin","team"]} permission="site_lp.view"><SiteLP /></ProtectedRoute>} />
       <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />

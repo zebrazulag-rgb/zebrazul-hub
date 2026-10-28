@@ -200,7 +200,7 @@ export default function PermissionsSettings() {
                   <p className={`truncate text-sm font-semibold ${selectedKey === role.key ? 'text-blue-700' : 'text-slate-700'}`}>{role.name}</p>
                   <p className="mt-0.5 text-[11px] text-slate-400">{role.users_count || 0} usuário(s){role.type === 'custom' ? ' · personalizado' : ''}</p>
                 </button>
-                {role.type === 'custom' && <div className="mr-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                {role.type === 'custom' && !role.protected && <div className="mr-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
                   <button type="button" onClick={() => renameRole(role)} className="rounded-lg p-2 text-slate-300 transition hover:bg-blue-50 hover:text-blue-600" aria-label={`Renomear ${role.name}`}><Pencil size={14} /></button>
                   <button type="button" onClick={() => deleteRole(role)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" aria-label={`Excluir ${role.name}`}><Trash2 size={15} /></button>
                 </div>}

@@ -36,6 +36,7 @@ import {
   Gauge,
   Zap,
   Radar,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTenant } from '../context/TenantContext.jsx';
@@ -92,6 +93,7 @@ export default function Layout({ children }) {
 
   const isNativeApp = typeof window !== 'undefined' && Boolean(window.Capacitor?.isNativePlatform?.());
   const isClientPortal = user?.role === 'client';
+  const isTrialClient = Boolean(user?.trial?.is_trial);
 
   const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
 
@@ -183,7 +185,7 @@ export default function Layout({ children }) {
       const nextClients = res.data.clients || [];
       // O seletor operacional global exibe somente clientes ativos.
       // Clientes inativos continuam preservados no banco e na área de gestão de clientes.
-      const activeClients = nextClients.filter((client) => client.status === 'active');
+      const activeClients = nextClients.filter((client) => client.status === 'active' && client.lifecycle_stage !== 'trial');
       setClients(activeClients);
       if (selectedClient && !activeClients.some((client) => client.id === selectedClient.id)) {
         setSelectedClient(null);
@@ -417,7 +419,7 @@ export default function Layout({ children }) {
     await saveProfileName();
   }
 
-  const clientPortalItems = [
+  const regularClientPortalItems = [
     { to: '/cliente/inicio', label: 'Início', mobileLabel: 'Início', icon: LayoutDashboard },
     { to: '/cliente/solicitar', label: 'Solicitar demanda', mobileLabel: 'Demanda', icon: Send },
     { to: '/cliente/aprovacao', label: 'Aprovação', mobileLabel: 'Aprovação', icon: CheckCircle2, permission: 'tasks.approval' },
@@ -426,23 +428,28 @@ export default function Layout({ children }) {
     { to: '/cliente/relatorios', label: 'Relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
   ];
+  const trialClientPortalItems = [
+    { to: '/cliente/experiencia', label: 'Minha experiência', mobileLabel: 'Experiência', icon: Sparkles },
+    { to: '/cliente/radar', label: 'Radar', mobileLabel: 'Radar', icon: Radar, permission: 'radar.view' },
+  ];
+  const clientPortalItems = isTrialClient ? trialClientPortalItems : regularClientPortalItems;
 
   const workspaceItems = [
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
-    { to: '/minha-fila', label: 'Minha fila', icon: ListChecks, permission: 'dashboard.view' },
+    { to: '/minha-fila', label: 'Minha fila', icon: ListChecks, permission: 'work_queue.view' },
     { to: '/radar', label: 'Radar', icon: Radar, permission: 'radar.view' },
-    { to: '/alertas', label: 'Alertas', icon: BellRing, permission: 'dashboard.view' },
-    { to: '/calendario', label: 'Calendário', icon: CalendarDays, permission: 'dashboard.view' },
-    { to: '/inteligencia', label: 'Inteligência', icon: Gauge, permission: 'dashboard.view' },
+    { to: '/alertas', label: 'Alertas', icon: BellRing, permission: 'alerts.view' },
+    { to: '/calendario', label: 'Calendário', icon: CalendarDays, permission: 'calendar.view' },
+    { to: '/inteligencia', label: 'Inteligência', icon: Gauge, permission: 'intelligence.view' },
     { to: '/automacoes', label: 'Automações', icon: Zap, permission: 'dashboard.view', managementOnly: true },
     { to: '/organizacao', label: 'Meu Espaço', icon: CalendarDays, permission: 'organizer.view' },
     { to: '/audiovisual', label: 'Audiovisual', icon: Clapperboard, permission: 'audiovisual.view', group: 'squad' },
-    { to: '/designer', label: 'Designer', icon: Palette, permission: 'tasks.view', group: 'squad' },
-    { to: '/site-lp', label: 'Site/LP', icon: Code2, permission: 'tasks.view', group: 'squad' },
-    { to: '/aprovacao', label: 'Aprovação', icon: CheckCircle2, permission: 'tasks.view' },
-    { to: '/agendamento', label: 'Agendamento', icon: CalendarCheck, permission: 'social.view' },
-    { to: '/moodboard', label: 'Moodboard', icon: Grid3x3, permission: 'tasks.view' },
-    { to: '/leitor', label: 'Zebra Leitor', mobileLabel: 'Leitor', icon: Headphones },
+    { to: '/designer', label: 'Designer', icon: Palette, permission: 'designer.view', group: 'squad' },
+    { to: '/site-lp', label: 'Site/LP', icon: Code2, permission: 'site_lp.view', group: 'squad' },
+    { to: '/aprovacao', label: ['Design', 'Audiovisual'].includes(user?.permission_role_name) ? 'Grade' : 'Aprovação', icon: CheckCircle2, permission: 'approval.view' },
+    { to: '/agendamento', label: 'Agendamento', icon: CalendarCheck, permission: 'scheduling.view' },
+    { to: '/moodboard', label: 'Moodboard', icon: Grid3x3, permission: 'moodboard.view' },
+    { to: '/leitor', label: 'Zebra Leitor', mobileLabel: 'Leitor', icon: Headphones, permission: 'reader.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
@@ -482,7 +489,7 @@ export default function Layout({ children }) {
   const visibleMainWorkspaceItems = isClientPortal ? visibleWorkspaceItems : visibleWorkspaceItems.filter((item) => item.group !== 'squad');
   const squadActive = visibleSquadItems.some((item) => location.pathname.startsWith(item.to));
 
-  const canSeeSettings = !isClientPortal && (!user?.is_commercial_team || anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']));
+  const canSeeSettings = !isClientPortal && anyPermission(user, ['settings.clients', 'settings.users', 'settings.brand', 'settings.permissions', 'vault.view', 'activity.view_own', 'activity.view_team']);
 
   // No celular, o rodapé sempre fica com quatro atalhos + “Mais”.
   // Isso evita a sexta opção quebrando para uma segunda linha em telas estreitas.
@@ -501,6 +508,7 @@ export default function Layout({ children }) {
   const agencyLogo = agency?.logo_data || zebraHubLogo;
   const topbarLabel = (() => {
     const path = location.pathname;
+    if (path.startsWith('/cliente/experiencia')) return 'ZebraHub Experience';
     if (path.startsWith('/cliente/inicio')) return 'Meu portal';
     if (path.startsWith('/cliente/solicitar')) return 'Solicitar demanda';
     if (path.startsWith('/cliente/aprovacao') || path.startsWith('/cliente/grade')) return 'Aprovação';
@@ -517,7 +525,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/produto')) return 'Produto';
     if (path.startsWith('/designer') || path.startsWith('/tarefas')) return 'Designer';
     if (path.startsWith('/site-lp')) return 'Site/LP';
-    if (path.startsWith('/aprovacao')) return 'Aprovação';
+    if (path.startsWith('/aprovacao')) return ['Design', 'Audiovisual'].includes(user?.permission_role_name) ? 'Grade' : 'Aprovação';
     if (path.startsWith('/agendamento')) return 'Agendamento';
     if (path.startsWith('/radar')) return 'Radar de Conteúdo';
     if (path.startsWith('/leitor')) return 'Zebra Leitor';
