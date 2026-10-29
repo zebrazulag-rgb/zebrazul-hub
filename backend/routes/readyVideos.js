@@ -59,12 +59,15 @@ function ensureSchema() {
   `);
 }
 ensureSchema();
+if (!db.prepare("PRAGMA table_info(ready_videos)").all().some((c) => c.name === 'caption')) {
+  db.exec('ALTER TABLE ready_videos ADD COLUMN caption TEXT');
+}
 
 function present(row, now = Date.now()) {
   const purgeAt = row.purge_after ? Date.parse(`${row.purge_after.replace(' ', 'T')}Z`) : null;
   return {
     id: row.id, client_id: row.client_id, client_name: row.client_name || '', client_color: row.client_color || null,
-    title: row.title, notes: row.notes || '', source: row.source,
+    title: row.title, caption: row.caption || '', notes: row.notes || '', source: row.source,
     media_url: row.file_deleted_at ? null : row.media_url,
     link_url: row.link_url, original_filename: row.original_filename, size_bytes: row.size_bytes,
     status: row.status, uploaded_by_name: row.uploaded_by_name, created_at: row.created_at,
@@ -138,9 +141,9 @@ router.post('/', (req, res) => {
       mediaUrl = `/api/media/${filename}`; source = 'file';
     }
     const info = db.prepare(`
-      INSERT INTO ready_videos (agency_id, client_id, title, notes, source, media_url, link_url, original_filename, size_bytes, uploaded_by, uploaded_by_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.agency_id, clientId, title, text(req.body.notes, 1000), source, mediaUrl, source === 'link' ? link : (/^https?:\/\//i.test(link) ? link : null),
+      INSERT INTO ready_videos (agency_id, client_id, title, caption, notes, source, media_url, link_url, original_filename, size_bytes, uploaded_by, uploaded_by_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.user.agency_id, clientId, title, text(req.body.caption, 5000), text(req.body.notes, 1000), source, mediaUrl, source === 'link' ? link : (/^https?:\/\//i.test(link) ? link : null),
       req.file?.originalname ? text(req.file.originalname, 200) : null, req.file?.size || null, req.user.id, req.user.name || null);
     const row = db.prepare('SELECT r.*, c.name AS client_name, c.logo_color AS client_color FROM ready_videos r JOIN clients c ON c.id = r.client_id WHERE r.id = ?').get(info.lastInsertRowid);
     res.status(201).json({ video: present(row) });
@@ -153,6 +156,17 @@ function loadVideo(req, res) {
   if (!canAccessClient(req.user, row.client_id)) { res.status(403).json({ error: 'Você não possui acesso a este cliente.' }); return null; }
   return row;
 }
+
+// Edita título e legenda (quem envia ou quem agenda).
+router.put('/:id', (req, res) => {
+  if (!hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish'])) return res.status(403).json({ error: 'Você não possui permissão para editar.' });
+  const row = loadVideo(req, res); if (!row) return;
+  const title = req.body.title === undefined ? row.title : text(req.body.title, 160);
+  if (!title) return res.status(400).json({ error: 'O título não pode ficar vazio.' });
+  const caption = req.body.caption === undefined ? (row.caption || '') : text(req.body.caption, 5000);
+  db.prepare('UPDATE ready_videos SET title = ?, caption = ? WHERE id = ? AND agency_id = ?').run(title, caption, row.id, req.user.agency_id);
+  res.json({ ok: true, title, caption });
+});
 
 router.post('/:id/schedule', (req, res) => {
   if (!hasAny(req.user, ['audiovisual.manage', 'audiovisual.publish'])) return res.status(403).json({ error: 'Você não possui permissão para marcar como agendado.' });

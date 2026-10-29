@@ -83,3 +83,16 @@ test('apagar remove registro e arquivo; 404 em outra agência', async () => {
   assert.equal(n('SELECT COUNT(*) n FROM ready_videos WHERE id = ?', a.video.id), 0);
   assert.equal((await fetch(`${base}/rv/99999`, { method: 'DELETE' })).status, 404);
 });
+
+test('edita título e legenda; título vazio é recusado', async () => {
+  const put = (id, body) => fetch(`${base}/rv/${id}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal((await put(linkId, { title: '  Novo título  ', caption: 'Legenda #teste' })).status, 200);
+  const v = (await (await fetch(`${base}/rv`)).json()).videos.find((x) => x.id === linkId);
+  assert.equal(v.title, 'Novo título'); assert.equal(v.caption, 'Legenda #teste');
+  assert.equal((await put(linkId, { title: '   ' })).status, 400);
+  assert.equal((await put(linkId, { caption: 'só legenda' })).status, 200);
+  assert.equal((await (await fetch(`${base}/rv`)).json()).videos.find((x) => x.id === linkId).title, 'Novo título');
+  PERMS = (k) => k === 'audiovisual.view';
+  assert.equal((await put(linkId, { title: 'x' })).status, 403);
+  PERMS = () => true;
+});
