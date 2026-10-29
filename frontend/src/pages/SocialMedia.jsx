@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { Instagram, MessageCircle, Sparkles } from 'lucide-react';
+import { BarChart3, Instagram, MessageCircle, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Feed from './Feed.jsx';
 import StoryHub from './StoryHub.jsx';
 import InstagramMessages from './InstagramMessages.jsx';
+import Reports from './Reports.jsx';
 import TopbarPortal from '../components/TopbarPortal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
@@ -12,6 +13,7 @@ const SECTION_META = {
   messages: { label: 'Mensagens', icon: MessageCircle, path: '/social-media/mensagens' },
   covers: { label: 'Capas', icon: Sparkles, path: '/social-media/capas' },
   stories: { label: 'Stories', icon: Instagram, path: '/social-media/stories' },
+  insights: { label: 'Insights', icon: BarChart3, path: '/social-media/insights' },
 };
 
 export default function SocialMedia({ section = null }) {
@@ -21,6 +23,7 @@ export default function SocialMedia({ section = null }) {
     hasPermission(user, 'social.messages') && 'messages',
     hasPermission(user, 'social.covers') && 'covers',
     hasPermission(user, 'social.stories') && 'stories',
+    hasPermission(user, 'social.reports') && 'insights',
   ].filter(Boolean), [user]);
   const active = section && available.includes(section) ? section : available[0];
 
@@ -60,6 +63,7 @@ export default function SocialMedia({ section = null }) {
       {active === 'messages' && <InstagramMessages />}
       {active === 'covers' && <Feed forcedView="covers" toolMode />}
       {active === 'stories' && <StoryHub />}
+      {active === 'insights' && <Reports />}
     </div>
   );
 }

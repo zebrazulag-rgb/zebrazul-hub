@@ -185,7 +185,7 @@ export default function Reports() {
   if (!clientId) {
     return (
       <div className="space-y-4">
-        <EmptyState title="Nenhum cliente selecionado" description="Escolha um cliente no seletor superior para visualizar os relatórios." />
+        <EmptyState title="Nenhum cliente selecionado" description="Escolha um cliente no seletor superior para visualizar os insights." />
       </div>
     );
   }
@@ -241,7 +241,7 @@ export default function Reports() {
         <span className="pointer-events-none absolute -bottom-16 right-28 h-36 w-36 rounded-full border-[28px] border-[#EC0567]/70" />
         <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C9FF2F]">Relatórios · {currentClient?.name || 'cliente'}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C9FF2F]">Insights · {currentClient?.name || 'cliente'}</p>
             <h1 className="brand-display mt-2 max-w-3xl text-4xl font-black uppercase leading-[0.93] tracking-[-0.025em] sm:text-5xl">
               {reportView === 'competitors' ? 'OLHE O MERCADO. VOLTE PRA SI.' : performanceSignal.title}
             </h1>

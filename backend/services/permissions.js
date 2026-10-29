@@ -30,7 +30,7 @@ const PERMISSION_CATALOG = [
   { key: 'social.calendar', group: 'Social Media', label: 'Calendário do Feed', description: 'Visualizar o calendário editorial do Feed.' },
   { key: 'social.stories', group: 'Social Media', label: 'Stories', description: 'Acessar menções, repostagens e Stories.' },
   { key: 'social.messages', group: 'Social Media', label: 'Mensagens do Instagram', description: 'Visualizar conversas e responder DMs da conta profissional conectada.' },
-  { key: 'social.reports', group: 'Social Media', label: 'Relatórios', description: 'Acessar relatórios orgânicos e de mídia paga.' },
+  { key: 'social.reports', group: 'Social Media', label: 'Insights', description: 'Acessar relatórios orgânicos e de mídia paga.' },
   { key: 'social.connections', group: 'Social Media', label: 'Conexões Meta/Instagram', description: 'Gerenciar conexões e sincronizações das redes.' },
   { key: 'radar.view', group: 'Radar de Conteúdo', label: 'Ver Radar de Conteúdo', description: 'Ver as notícias coletadas das fontes do cliente.' },
   { key: 'radar.refresh', group: 'Radar de Conteúdo', label: 'Atualizar notícias', description: 'Forçar a atualização das fontes do cliente.' },

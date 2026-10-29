@@ -454,7 +454,6 @@ export default function Layout({ children }) {
     { to: '/leitor', label: 'Zebra Leitor', mobileLabel: 'Leitor', icon: Headphones, permission: 'reader.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
-    { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
   ];
@@ -482,7 +481,7 @@ export default function Layout({ children }) {
           if (!anyPermission(user, ['compass.view', 'materials.view'])) return false;
         } else if (item.permission && !hasPermission(user, item.permission)) return false;
         if (item.to === '/social-media') {
-          return anyPermission(user, ['social.messages', 'social.covers', 'social.stories']);
+          return anyPermission(user, ['social.messages', 'social.covers', 'social.stories', 'social.reports']);
         }
         return true;
       });
@@ -541,7 +540,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/leitor')) return 'Zebra Leitor';
     if (path.startsWith('/moodboard')) return 'Moodboard';
     if (path.startsWith('/conversas')) return 'Conversas';
-    if (path.startsWith('/relatorios')) return 'Relatórios';
+    if (path.startsWith('/relatorios')) return 'Insights';
     if (path.startsWith('/organizacao')) return 'Meu Espaço';
     if (path.startsWith('/ia') || path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
@@ -1262,7 +1261,7 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/moodboard')) return 'Moodboard';
   if (path.startsWith('/bussola')) return 'Bússola';
   if (path.startsWith('/ia') || path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
-  if (path.startsWith('/relatorios')) return 'Relatórios';
+  if (path.startsWith('/relatorios')) return 'Insights';
   if (path.startsWith('/comercial')) return 'Comercial';
   if (path.startsWith('/organizacao')) return 'Meu Espaço';
   if (path.startsWith('/configuracoes')) return 'Configurações';

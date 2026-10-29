@@ -84,6 +84,11 @@ function DesignerLegacyRedirect() {
   return <Navigate to={`/designer${location.search || ''}`} replace />;
 }
 
+function RedirectKeepSearch({ to }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search || ''}`} replace />;
+}
+
 function LegacyAIRedirect() {
   const { user } = useAuth();
   const location = useLocation();
@@ -104,7 +109,7 @@ function fallbackRoute(user) {
   if (hasPermission(user, 'social.messages')) return '/social-media/mensagens';
   if (hasPermission(user, 'social.covers')) return '/social-media/capas';
   if (hasPermission(user, 'social.stories')) return '/social-media/stories';
-  if (hasPermission(user, 'social.reports')) return '/relatorios';
+  if (hasPermission(user, 'social.reports')) return '/social-media/insights';
   if (hasPermission(user, 'commercial.view')) return '/comercial';
   if (hasPermission(user, 'materials.view')) return '/bussola/materiais';
   return '/configuracoes/aparencia';
@@ -184,7 +189,8 @@ export default function App() {
       <Route path="/social-media/mensagens" element={<ProtectedRoute roles={["admin","team"]} permission="social.messages"><SocialMedia section="messages" /></ProtectedRoute>} />
       <Route path="/social-media/capas" element={<ProtectedRoute roles={["admin","team"]} permission="social.covers"><SocialMedia section="covers" /></ProtectedRoute>} />
       <Route path="/social-media/stories" element={<ProtectedRoute roles={["admin","team"]} permission="social.stories"><SocialMedia section="stories" /></ProtectedRoute>} />
-      <Route path="/social-media/relatorios" element={<Navigate to="/relatorios" replace />} />
+      <Route path="/social-media/relatorios" element={<RedirectKeepSearch to="/social-media/insights" />} />
+      <Route path="/social-media/insights" element={<ProtectedRoute roles={["admin","team"]} permission="social.reports"><SocialMedia section="insights" /></ProtectedRoute>} />
       <Route path="/feed" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/stories" element={<Navigate to="/social-media/stories" replace />} />
       <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="designer.view"><Tasks workspace="designer" /></ProtectedRoute>} />
@@ -195,11 +201,11 @@ export default function App() {
       <Route path="/organizacao" element={<ProtectedRoute roles={["admin","team"]} permission="organizer.view"><Organizer /></ProtectedRoute>} />
       <Route path="/audiovisual" element={<ProtectedRoute permission="audiovisual.view"><Audiovisual /></ProtectedRoute>} />
       <Route path="/produto" element={<ProtectedRoute roles={["admin","team"]} permission="product.view"><ProductDevelopment /></ProtectedRoute>} />
-      <Route path="/concorrentes" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
+      <Route path="/concorrentes" element={<Navigate to="/social-media/insights?view=concorrentes" replace />} />
       <Route path="/bussola" element={<ProtectedRoute permission="compass.view"><CompassPage /></ProtectedRoute>} />
       <Route path="/bussola/diagnostico" element={<ProtectedRoute roles={["admin","team"]} permission="compass.view"><PresenceDiagnosis /></ProtectedRoute>} />
       <Route path="/ia" element={<ProtectedRoute roles={["admin","team"]} permission="social.view"><LegacyAIRedirect /></ProtectedRoute>} />
-      <Route path="/bussola/concorrencia" element={<Navigate to="/relatorios?view=concorrentes" replace />} />
+      <Route path="/bussola/concorrencia" element={<Navigate to="/social-media/insights?view=concorrentes" replace />} />
       <Route path="/bussola/dme" element={<Navigate to="/bussola" replace />} />
       <Route path="/bussola/briefing-bee-2027" element={<ProtectedRoute permission="compass.view"><BeeCampaignBriefing /></ProtectedRoute>} />
       <Route path="/bussola/pesquisa-familias-bee" element={<ProtectedRoute permission="compass.view"><BeeFamilySurvey /></ProtectedRoute>} />
@@ -221,7 +227,7 @@ export default function App() {
       <Route path="/contratos" element={<Navigate to="/comercial/contratos" replace />} />
 
       <Route path="/rematriculas" element={<ProtectedRoute permission="reenrollments.view"><BeeRematriculas /></ProtectedRoute>} />
-      <Route path="/relatorios" element={<ProtectedRoute permission="social.reports"><Reports /></ProtectedRoute>} />
+      <Route path="/relatorios" element={<RedirectKeepSearch to="/social-media/insights" />} />
       <Route path="/materiais" element={<Navigate to="/bussola/materiais" replace />} />
       <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/senhas" element={<Navigate to="/configuracoes/senhas" replace />} />
