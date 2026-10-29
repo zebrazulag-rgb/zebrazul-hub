@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, Download, ExternalLink, Film, Loader2, Play, Plus, Search, Trash2, Undo2, Upload, X } from 'lucide-react';
+import { CalendarCheck, Download, ExternalLink, Film, Loader2, Maximize2, Play, Plus, Search, Trash2, Undo2, Upload, X } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
 import { downloadHref, videoPlayback } from '../utils/videoEmbed.js';
@@ -9,8 +9,19 @@ const platformLabel = (k) => (PLATFORMS.find(([key]) => key === k) || [k, k || '
 const fmtDate = (v) => { if (!v) return '—'; const d = new Date(String(v).includes('T') || String(v).includes('Z') ? v : `${String(v).replace(' ', 'T')}Z`); return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('pt-BR'); };
 const fmtSize = (b) => (b ? `${(b / 1048576).toFixed(b > 10485760 ? 0 : 1)} MB` : '');
 
+function PlayerMedia({ video, p, big, vertical }) {
+  if (p.kind === 'iframe') {
+    const box = big ? 'h-[80vh] w-full' : vertical ? 'h-[520px] w-full' : 'aspect-video w-full';
+    return <iframe title={video.title} src={p.src} allow="autoplay; fullscreen" allowFullScreen className={`${box} rounded-xl border-0 bg-black`} />;
+  }
+  // Arquivo: mantém a proporção original (vertical ou horizontal), sem cortar.
+  return <video src={p.src} controls autoPlay={!big} playsInline preload="metadata" className={`mx-auto block w-auto max-w-full rounded-xl bg-black ${big ? 'max-h-[85vh]' : 'max-h-[460px]'}`} />;
+}
+
 function Player({ video }) {
   const [open, setOpen] = useState(false);
+  const [big, setBig] = useState(false);
+  const [vertical, setVertical] = useState(false);
   const p = videoPlayback(video);
   if (p.kind === 'none') return null;
   if (p.kind === 'link') {
@@ -24,10 +35,23 @@ function Player({ video }) {
       </button>
     );
   }
-  if (p.kind === 'iframe') {
-    return <iframe title={video.title} src={p.src} allow="autoplay; fullscreen" allowFullScreen className="mt-3 aspect-video w-full rounded-xl border-0 bg-black" />;
-  }
-  return <video src={p.src} controls autoPlay playsInline preload="metadata" className="mt-3 aspect-video w-full rounded-xl bg-black object-contain" />;
+  return (
+    <div className="mt-3">
+      <PlayerMedia video={video} p={p} vertical={vertical} />
+      <div className="mt-2 flex items-center justify-end gap-2">
+        {p.kind === 'iframe' && <button type="button" onClick={() => setVertical((v) => !v)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-bold text-slate-500 hover:text-[#3A85FD]">{vertical ? 'Formato horizontal' : 'Formato vertical'}</button>}
+        <button type="button" onClick={() => setBig(true)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-bold text-slate-500 hover:text-[#3A85FD]"><Maximize2 size={11} /> Ampliar</button>
+      </div>
+      {big && (
+        <ModalBackdrop onClose={() => setBig(false)}>
+          <div className="w-full max-w-5xl rounded-[24px] border border-slate-200 bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3"><h2 className="truncate text-sm font-black text-slate-950">{video.client_name} · {video.title}</h2><button type="button" onClick={() => setBig(false)} className="rounded-xl bg-slate-50 p-2 text-slate-400 hover:text-slate-700"><X size={16} /></button></div>
+            <PlayerMedia video={video} p={p} big />
+          </div>
+        </ModalBackdrop>
+      )}
+    </div>
+  );
 }
 
 function VideoCard({ video, canSchedule, canDelete, onSchedule, onUnschedule, onDelete }) {
