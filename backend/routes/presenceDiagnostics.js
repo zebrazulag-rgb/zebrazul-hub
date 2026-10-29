@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
 const { authRequired, canAccessClient } = require('../middleware/auth');
+const { createBackup } = require('../db/backup');
 
 const router = express.Router();
 router.use(authRequired);
@@ -230,6 +231,20 @@ router.delete('/:id', (req, res) => {
   db.prepare("UPDATE presence_diagnostics SET status = 'archived', updated_at = datetime('now') WHERE id = ? AND agency_id = ?")
     .run(row.id, req.user.agency_id);
   res.json({ ok: true });
+});
+
+// Exclusão definitiva (inclui diagnósticos concluídos): apaga as respostas e o resultado.
+router.delete('/:id/permanent', async (req, res) => {
+  if (!['admin', 'team'].includes(req.user?.role)) return res.status(403).json({ error: 'Apenas a equipe pode apagar diagnósticos.' });
+  if (req.body?.confirm !== true && req.query?.confirm !== 'true') return res.status(400).json({ error: 'Confirme a exclusão para continuar.' });
+  const row = db.prepare('SELECT * FROM presence_diagnostics WHERE id = ? AND agency_id = ?').get(Number(req.params.id), req.user.agency_id);
+  if (!row) return res.status(404).json({ error: 'Diagnóstico não encontrado.' });
+  const { client, error, status } = clientForRequest(req, row.client_id);
+  if (!client) return res.status(status || 400).json({ error });
+  try { await createBackup('antes-apagar-diagnostico'); }
+  catch { return res.status(500).json({ error: 'Não foi possível criar o backup de segurança. Nada foi apagado.' }); }
+  db.prepare('DELETE FROM presence_diagnostics WHERE id = ? AND agency_id = ?').run(row.id, req.user.agency_id);
+  res.json({ ok: true, deleted: 1 });
 });
 
 module.exports = router;

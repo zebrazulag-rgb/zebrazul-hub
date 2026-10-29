@@ -1069,6 +1069,29 @@ router.delete('/videos/:videoId/schedules/:scheduleId', (req, res) => {
   res.json({ ok: true });
 });
 
+// Apaga um vídeo da esteira (e suas datas de publicação, por cascata).
+// Vídeo já postado exige confirm:true. Posts do feed ainda não publicados ligados às datas são removidos;
+// posts já publicados no feed ficam intactos. A gravação e os demais vídeos não são afetados.
+router.delete('/videos/:id', requireAny(['audiovisual.manage']), (req, res) => {
+  const video = db.prepare('SELECT * FROM audiovisual_videos WHERE id = ? AND agency_id = ?').get(req.params.id, req.user.agency_id);
+  if (!video) return res.status(404).json({ error: 'Vídeo não encontrado.' });
+  if (!ensureClient(req, res, video.client_id)) return;
+  if (video.status === 'posted' && req.body?.confirm !== true) {
+    return res.status(409).json({ error: 'Este vídeo já foi postado. Confirme para apagá-lo mesmo assim.', requires_confirm: true });
+  }
+  db.transaction(() => {
+    const schedules = db.prepare('SELECT feed_post_id FROM audiovisual_video_schedules WHERE video_id = ? AND agency_id = ?').all(video.id, req.user.agency_id);
+    for (const schedule of schedules) {
+      if (schedule.feed_post_id) {
+        db.prepare("DELETE FROM posts WHERE id = ? AND agency_id = ? AND status IN ('draft','pending_approval','approved','rejected','scheduled')")
+          .run(schedule.feed_post_id, req.user.agency_id);
+      }
+    }
+    db.prepare('DELETE FROM audiovisual_videos WHERE id = ? AND agency_id = ?').run(video.id, req.user.agency_id);
+  })();
+  res.json({ ok: true, deleted: 1 });
+});
+
 router.post('/videos/:id/post', (req, res) => {
   if (!hasAny(req.user, ['audiovisual.manage', 'audiovisual.publish'])) {
     return res.status(403).json({ error: 'Você não possui permissão para marcar publicações.' });

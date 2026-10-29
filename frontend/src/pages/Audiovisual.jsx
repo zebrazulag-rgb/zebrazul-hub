@@ -443,6 +443,22 @@ export default function Audiovisual() {
     }
   }
 
+  async function deleteVideo(video) {
+    const posted = video.status === 'posted';
+    const text = `Apagar o vídeo "${video.title}"${posted ? ' (já postado)' : ''}? As datas de publicação dele também serão removidas. Esta ação não pode ser desfeita.`;
+    if (!window.confirm(text)) return;
+    setSaving(true);
+    try {
+      await api.delete(`/audiovisual/videos/${video.id}`, { data: { confirm: true } });
+      setNotice('Vídeo apagado.');
+      await loadData({ quiet: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || 'Não foi possível apagar o vídeo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function deleteSchedule(videoId, scheduleId) {
     try {
       await api.delete(`/audiovisual/videos/${videoId}/schedules/${scheduleId}`);
@@ -921,6 +937,8 @@ export default function Audiovisual() {
           setVideoStatus={setVideoStatus}
           setScheduleModal={setScheduleModal}
           deleteSchedule={deleteSchedule}
+          deleteVideo={deleteVideo}
+          canManage={canManage}
         />
       )}
 
@@ -1377,7 +1395,7 @@ function FinalVideoAsset({ links = [] }) {
   );
 }
 
-function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDraggedVideoId, currentDraggedVideo, setVideoStatus, setScheduleModal, deleteSchedule }) {
+function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDraggedVideoId, currentDraggedVideo, setVideoStatus, setScheduleModal, deleteSchedule, deleteVideo, canManage }) {
   const [focus, setFocus] = useState('all');
 
   function canDrag(video) {
@@ -1505,7 +1523,10 @@ function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDragged
                             <p className="truncate text-[10px] font-black uppercase tracking-[0.12em]" style={{ color: video.client_color || '#3A85FD' }}>{video.client_name}</p>
                             <h3 className="mt-1 line-clamp-2 text-sm font-black leading-5 text-[#17181C]">{video.title}</h3>
                           </div>
-                          <span className="shrink-0 rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-400">#{String(video.video_number).padStart(2, '0')}</span>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <span className="rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-400">#{String(video.video_number).padStart(2, '0')}</span>
+                            {canManage && <button type="button" title="Apagar vídeo" aria-label="Apagar vídeo" onClick={() => deleteVideo(video)} className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-50 hover:text-[#EC0567]"><Trash2 size={13} /></button>}
+                          </div>
                         </div>
 
                         <div className="mt-2.5 rounded-xl bg-slate-50 px-2.5 py-2">

@@ -295,6 +295,18 @@ export default function PresenceDiagnosis() {
     } catch (err) { setError(err.response?.data?.error || 'Não foi possível arquivar.'); }
   }
 
+  async function deleteSelectedPermanently() {
+    if (!selected?.id || isClient) return;
+    const concluded = selected.status === 'submitted' ? ' (diagnóstico concluído)' : '';
+    if (!window.confirm(`Apagar definitivamente as respostas e o resultado deste diagnóstico${concluded}? Esta ação não pode ser desfeita. Será criado um backup de segurança antes.`)) return;
+    try {
+      await api.delete(`/presence-diagnostics/${selected.id}/permanent`, { data: { confirm: true } });
+      setSelected(null); setSelectedId(null);
+      setMessage('Diagnóstico apagado.');
+      await loadList();
+    } catch (err) { setError(err.response?.data?.error || 'Não foi possível apagar o diagnóstico.'); }
+  }
+
   function publicShareUrl(item = shareDiagnostic) {
     return item?.share_token ? `${window.location.origin}/mapa-da-marca/${item.share_token}` : '';
   }
@@ -440,6 +452,7 @@ ${link}`;
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
                 <div className="flex items-center gap-3"><Clock3 size={16} className="text-slate-400" /><div><p className="text-xs font-black text-slate-800">{selected.status === 'submitted' ? 'Versão concluída' : 'Respostas salvas automaticamente'}</p><p className="text-[11px] text-slate-400">{saving ? 'Salvando...' : `Atualizado em ${dateLabel(selected.updated_at)}`}</p></div></div>
                 {!isClient && selected.status !== 'submitted' ? <button type="button" onClick={archiveSelected} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-xs font-black text-rose-600 hover:bg-rose-50"><Trash2 size={14} /> Arquivar</button> : null}
+                {!isClient ? <button type="button" onClick={deleteSelectedPermanently} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white hover:bg-rose-700"><Trash2 size={14} /> Apagar respostas</button> : null}
               </div>
               <iframe
                 ref={iframeRef}
