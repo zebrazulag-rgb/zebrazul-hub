@@ -451,7 +451,6 @@ export default function Layout({ children }) {
     { to: '/site-lp', label: 'Site/LP', icon: Code2, permission: 'site_lp.view', group: 'squad' },
     { to: '/aprovacao', label: ['Design', 'Audiovisual'].includes(user?.permission_role_name) ? 'Grade' : 'Aprovação', icon: CheckCircle2, permission: 'approval.view' },
     { to: '/agendamento', label: 'Agendamento', icon: CalendarCheck, permission: 'scheduling.view' },
-    { to: '/moodboard', label: 'Moodboard', icon: Grid3x3, permission: 'moodboard.view' },
     { to: '/leitor', label: 'Zebra Leitor', mobileLabel: 'Leitor', icon: Headphones, permission: 'reader.view' },
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },

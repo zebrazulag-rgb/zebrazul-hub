@@ -17,7 +17,6 @@ import Scheduling from './pages/Scheduling.jsx';
 import UnifiedCalendar from './pages/UnifiedCalendar.jsx';
 import OperationalIntelligence from './pages/OperationalIntelligence.jsx';
 import Automations from './pages/Automations.jsx';
-import Moodboard from './pages/Moodboard.jsx';
 import SiteLP from './pages/SiteLP.jsx';
 import PublicApproval from './pages/PublicApproval.jsx';
 import PublicDesignerApproval from './pages/PublicDesignerApproval.jsx';
@@ -189,7 +188,7 @@ export default function App() {
       <Route path="/feed" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/stories" element={<Navigate to="/social-media/stories" replace />} />
       <Route path="/designer" element={<ProtectedRoute roles={["admin","team"]} permission="designer.view"><Tasks workspace="designer" /></ProtectedRoute>} />
-      <Route path="/moodboard" element={<ProtectedRoute roles={["admin","team"]} permission="moodboard.view"><Moodboard /></ProtectedRoute>} />
+      <Route path="/moodboard" element={<Navigate to="/" replace />} />
       <Route path="/designer/moodboard" element={<Navigate to="/moodboard" replace />} />
       <Route path="/tarefas" element={<DesignerLegacyRedirect />} />
       <Route path="/site-lp" element={<ProtectedRoute roles={["admin","team"]} permission="site_lp.view"><SiteLP /></ProtectedRoute>} />

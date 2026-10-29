@@ -430,7 +430,7 @@ export default function CompetitorAnalysis({ embedded = false }) {
                         <p className="mt-2 line-clamp-4 text-xs leading-5 text-slate-600">{post.caption || 'Sem legenda.'}</p>
                         <div className="mt-3 flex gap-2">
                           <a href={post.permalink} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs font-black text-slate-600 hover:bg-slate-50">Ver no ar <ExternalLink size={12} /></a>
-                          {canEdit && <button type="button" onClick={() => addPostToMoodboard(post)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#17181C] px-2 py-2 text-xs font-black text-white"><ImagePlus size={13} /> Moodboard</button>}
+                          
                         </div>
                       </div>
                     </article>)}
