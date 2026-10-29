@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
+import ReadyVideosTab from './ReadyVideosTab.jsx';
 import TopbarPortal from '../components/TopbarPortal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
@@ -762,6 +763,7 @@ export default function Audiovisual() {
   const tabs = [
     ['overview', 'Painel'],
     ['agenda', 'Agenda'],
+    ['ready', 'Vídeos prontos'],
     ...(PRODUCTION_ENABLED ? [['production', 'Esteira']] : []),
     ['clients', 'Clientes'],
   ];
@@ -923,6 +925,14 @@ export default function Audiovisual() {
               setError(requestError.response?.data?.error || 'Não foi possível excluir a gravação.');
             }
           }}
+        />
+      )}
+
+      {tab === 'ready' && (
+        <ReadyVideosTab
+          canUpload={canEdit}
+          canSchedule={canPublish}
+          canDelete={canManage}
         />
       )}
 

@@ -29,6 +29,10 @@ function sendMedia(req, res, includeBody = true) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Accept-Ranges', 'bytes');
+  if (req.query.download) {
+    const safe = String(req.query.download).replace(/[^\w.\- ]+/g, '_').slice(0, 120) || req.params.filename;
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+  }
   if (located.repaired) res.setHeader('X-Zebrahub-Media-Repaired', '1');
 
   const range = req.headers.range;

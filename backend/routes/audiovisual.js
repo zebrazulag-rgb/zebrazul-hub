@@ -9,6 +9,7 @@ const { persistMediaBuffer } = require('../services/mediaStorage');
 
 const router = express.Router();
 router.use(authRequired);
+router.use('/ready-videos', require('./readyVideos'));
 
 const VIDEO_STATUSES = new Set(['recorded', 'editing', 'approved', 'dated', 'scheduled', 'posted']);
 const RECORDING_STATUSES = new Set(['scheduled', 'recorded', 'cancelled']);

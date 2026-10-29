@@ -351,6 +351,14 @@ app.listen(PORT, async () => {
     console.log(`[RADAR] Atualização automática ativa: a cada ${radarHours} hora(s).`);
   }
 
+  // Vídeos prontos: apaga os arquivos já agendados há mais de 3 dias (o registro fica como histórico).
+  const runReadyVideoPurge = () => {
+    try { const n = require('./routes/readyVideos').purgeExpired(); if (n) console.log(`[VIDEOS PRONTOS] ${n} arquivo(s) apagado(s) após o prazo.`); }
+    catch (error) { console.error('[VIDEOS PRONTOS] Falha ao limpar arquivos:', error.message); }
+  };
+  setTimeout(runReadyVideoPurge, 30 * 1000).unref();
+  setInterval(runReadyVideoPurge, 60 * 60 * 1000).unref();
+
   // Publicador do Instagram: verifica a fila a cada minuto no backend.
   try { await publishDuePosts(); } catch (error) { console.error('[INSTAGRAM PUBLISH] Falha ao processar fila no startup:', error.message); }
   const instagramPublishInterval = setInterval(async () => {
