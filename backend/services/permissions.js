@@ -388,6 +388,7 @@ function apiPermissionForRequest(req) {
   if (path.startsWith('/meta-organic')) return ['social.reports', 'social.published'];
   if (path.startsWith('/meta-oauth') || path.startsWith('/instagram-oauth') || path.startsWith('/meta')) return 'social.connections';
   if (path.startsWith('/commercial')) return path.includes('import') ? 'commercial.import' : (method === 'GET' ? 'commercial.view' : 'commercial.manage');
+  if (path.startsWith('/ready-videos')) return method === 'GET' ? ['approval.view', 'scheduling.view', 'audiovisual.view'] : ['approval.view', 'scheduling.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish'];
   if (path.startsWith('/audiovisual')) return method === 'GET' ? 'audiovisual.view' : ['audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish'];
   if (path.startsWith('/product')) return method === 'GET'
     ? 'product.view'

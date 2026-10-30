@@ -12,8 +12,8 @@ import VideoReviewWorkspace from './pages/VideoReviewWorkspace.jsx';
 import Tasks from './pages/Tasks.jsx';
 import ClientApproval from './pages/ClientApproval.jsx';
 import Radar from './pages/Radar.jsx';
-import DesignerApproval from './pages/DesignerApproval.jsx';
-import Scheduling from './pages/Scheduling.jsx';
+import ApprovalHub from './pages/ApprovalHub.jsx';
+import SchedulingHub from './pages/SchedulingHub.jsx';
 import UnifiedCalendar from './pages/UnifiedCalendar.jsx';
 import OperationalIntelligence from './pages/OperationalIntelligence.jsx';
 import Automations from './pages/Automations.jsx';
@@ -173,12 +173,12 @@ export default function App() {
       <Route path="/" element={<ProtectedRoute permission="dashboard.view"><Dashboard /></ProtectedRoute>} />
       <Route path="/minha-fila" element={<ProtectedRoute roles={["admin","team"]} permission="work_queue.view"><MyWork /></ProtectedRoute>} />
       <Route path="/alertas" element={<ProtectedRoute permission="alerts.view"><Alerts /></ProtectedRoute>} />
-      <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="approval.view"><DesignerApproval /></ProtectedRoute>} />
+      <Route path="/aprovacao" element={<ProtectedRoute roles={["admin","team"]} permission="approval.view"><ApprovalHub /></ProtectedRoute>} />
       <Route path="/radar" element={<ProtectedRoute roles={["admin","team"]} permission="radar.view"><Radar /></ProtectedRoute>} />
       <Route path="/cliente/radar" element={<ProtectedRoute roles={["client"]} permission="radar.view" trialAllowed><Radar /></ProtectedRoute>} />
       <Route path="/leitor" element={<ProtectedRoute roles={["admin","team"]} permission="reader.view"><ZebraLeitor /></ProtectedRoute>} />
       <Route path="/leitor/:id" element={<ProtectedRoute roles={["admin","team"]} permission="reader.view"><ZebraLeitorReader /></ProtectedRoute>} />
-      <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="scheduling.view"><Scheduling /></ProtectedRoute>} />
+      <Route path="/agendamento" element={<ProtectedRoute roles={["admin","team"]} permission="scheduling.view"><SchedulingHub /></ProtectedRoute>} />
       <Route path="/aprovacao/videos" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/aprovacao/videos/:id" element={<Navigate to="/aprovacao" replace />} />
       <Route path="/calendario" element={<ProtectedRoute roles={["admin","team"]} permission="calendar.view"><UnifiedCalendar /></ProtectedRoute>} />

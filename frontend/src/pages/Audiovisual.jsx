@@ -27,7 +27,6 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import ModalBackdrop from '../components/ModalBackdrop.jsx';
-import ReadyVideosTab from './ReadyVideosTab.jsx';
 import TopbarPortal from '../components/TopbarPortal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
@@ -353,9 +352,9 @@ export default function Audiovisual() {
         skip_videos: !PRODUCTION_ENABLED,
       });
       setCompleteModal(null);
-      setNotice(data.calendar_warning ? `Gravação concluída. Google Agenda: ${data.calendar_warning}` : (PRODUCTION_ENABLED ? `${form.video_count} vídeo(s) criados na produção.` : 'Gravação marcada como realizada.'));
+      setNotice(data.calendar_warning ? `Gravação concluída. Google Agenda: ${data.calendar_warning}` : 'Gravação marcada como realizada.');
       await loadData({ quiet: true });
-      setTab(PRODUCTION_ENABLED ? 'production' : 'agenda');
+      setTab('agenda');
     } catch (requestError) {
       setError(requestError.response?.data?.error || 'Não foi possível concluir a gravação.');
     } finally {
@@ -733,38 +732,24 @@ export default function Audiovisual() {
   const operationalClient = operationalClientId
     ? clientCatalog.find((client) => Number(client.id) === Number(operationalClientId))
     : null;
-  const productionOverview = {
-    raw: videos.filter((video) => video.status === 'recorded').length,
-    editing: videos.filter((video) => video.status === 'editing').length,
-    ready: videos.filter((video) => video.status === 'approved').length,
-    dated: videos.filter((video) => video.status === 'dated').length,
-    scheduled: videos.filter((video) => video.status === 'scheduled').length,
-    posted: videos.filter((video) => video.status === 'posted').length,
-  };
   const audiovisualHeadline = Number(stats.overdue_recordings || 0) > 0
     ? 'TEM GRAVAÇÃO PEDINDO FECHAMENTO.'
     : clientsNotScheduledThisMonth > 0
       ? 'TEM CLIENTE SEM DATA NA AGENDA.'
-      : productionOverview.editing > 0
-        ? 'A EDIÇÃO TÁ GIRANDO.'
-        : productionOverview.ready > 0
-          ? 'TEM VÍDEO PRONTO PRA SAIR.'
-          : 'CÂMERA EM DIA.';
+      : clientsMissingThisMonth > 0
+        ? 'TEM CLIENTE PRA GRAVAR.'
+        : 'CÂMERA EM DIA.';
   const audiovisualSubline = Number(stats.overdue_recordings || 0) > 0
     ? `${stats.overdue_recordings} gravação(ões) já passaram e ainda precisam ser encerradas.`
     : clientsNotScheduledThisMonth > 0
       ? `${clientsNotScheduledThisMonth} cliente(s) ainda não têm gravação marcada neste mês.`
-      : productionOverview.editing > 0
-        ? `${productionOverview.editing} vídeo(s) estão em edição agora. A esteira segue até entrar no ar.`
-        : productionOverview.ready > 0
-          ? `${productionOverview.ready} vídeo(s) já fecharam a edição e estão esperando data.`
-          : 'Captação, edição e publicação sem peça perdida no caminho.';
+      : clientsMissingThisMonth > 0
+        ? `${clientsMissingThisMonth} cliente(s) ainda não foram gravados neste mês.`
+        : 'Todos os clientes de gravação já foram gravados neste mês. Os vídeos seguem em Aprovação → Audiovisual.';
 
   const tabs = [
     ['overview', 'Painel'],
     ['agenda', 'Agenda'],
-    ['ready', 'Vídeos prontos'],
-    ...(PRODUCTION_ENABLED ? [['production', 'Esteira']] : []),
     ['clients', 'Clientes'],
   ];
 
@@ -826,16 +811,14 @@ export default function Audiovisual() {
             <h1 className="brand-display mt-3 max-w-3xl text-3xl font-black leading-[0.95] tracking-[-0.035em] sm:text-4xl lg:text-[46px]">{audiovisualHeadline}</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">{audiovisualSubline}</p>
           </div>
-          <div className="grid grid-cols-3 gap-2 lg:w-[330px]">
+          <div className="grid grid-cols-1 gap-2 lg:w-[150px]">
             {[
               { label: 'Pra gravar', value: clientsMissingThisMonth, color: '#EC0567' },
-              { label: 'Em edição', value: productionOverview.editing, color: '#3A85FD' },
-              { label: 'Prontos', value: productionOverview.ready, color: '#C9FF2F' },
             ].map((item) => (
               <button
                 key={item.label}
                 type="button"
-                onClick={() => item.label === 'Pra gravar' ? setTab('clients') : setTab('production')}
+                onClick={() => setTab('clients')}
                 className="rounded-[18px] border border-white/10 bg-white/[0.06] p-3 text-left backdrop-blur-sm transition hover:bg-white/[0.1]"
               >
                 <div className="mb-3 h-1.5 w-8 rounded-full" style={{ backgroundColor: item.color }} />
@@ -844,21 +827,6 @@ export default function Audiovisual() {
               </button>
             ))}
           </div>
-        </div>
-        <div className="relative mt-5 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
-          <span className="mr-1 text-[9px] font-black uppercase tracking-[0.2em] text-white/40">Fluxo</span>
-          {VIDEO_COLUMNS.map((column, index) => (
-            <button
-              key={column.key}
-              type="button"
-              onClick={() => setTab('production')}
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[10px] font-bold text-white/70 transition hover:bg-white/[0.09] hover:text-white"
-            >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: column.accent }} />
-              {column.label}
-              {index < VIDEO_COLUMNS.length - 1 && <span className="text-white/25">→</span>}
-            </button>
-          ))}
         </div>
       </section>
 
@@ -925,30 +893,6 @@ export default function Audiovisual() {
               setError(requestError.response?.data?.error || 'Não foi possível excluir a gravação.');
             }
           }}
-        />
-      )}
-
-      {tab === 'ready' && (
-        <ReadyVideosTab
-          canUpload={canEdit}
-          canSchedule={canPublish}
-          canDelete={canManage}
-        />
-      )}
-
-      {PRODUCTION_ENABLED && tab === 'production' && (
-        <ProductionTab
-          videos={videos}
-          canEdit={canEdit}
-          canPublish={canPublish}
-          draggedVideoId={draggedVideoId}
-          setDraggedVideoId={setDraggedVideoId}
-          currentDraggedVideo={currentDraggedVideo}
-          setVideoStatus={setVideoStatus}
-          setScheduleModal={setScheduleModal}
-          deleteSchedule={deleteSchedule}
-          deleteVideo={deleteVideo}
-          canManage={canManage}
         />
       )}
 
@@ -1401,193 +1345,6 @@ function FinalVideoAsset({ links = [] }) {
           <Link2 size={12} /> Abrir link externo
         </a>
       )}
-    </div>
-  );
-}
-
-function ProductionTab({ videos, canEdit, canPublish, draggedVideoId, setDraggedVideoId, currentDraggedVideo, setVideoStatus, setScheduleModal, deleteSchedule, deleteVideo, canManage }) {
-  const [focus, setFocus] = useState('all');
-
-  function canDrag(video) {
-    if (['recorded', 'editing', 'approved'].includes(video.status)) return canEdit;
-    if (['dated', 'scheduled', 'posted'].includes(video.status)) return canPublish;
-    return canPublish || canEdit;
-  }
-
-  const counts = useMemo(() => ({
-    all: videos.length,
-    edit: videos.filter((video) => ['recorded', 'editing'].includes(video.status)).length,
-    ready: videos.filter((video) => video.status === 'approved').length,
-    publish: videos.filter((video) => ['dated', 'scheduled'].includes(video.status)).length,
-    posted: videos.filter((video) => video.status === 'posted').length,
-  }), [videos]);
-
-  const focusStatuses = {
-    all: VIDEO_COLUMNS.map((column) => column.key),
-    edit: ['recorded', 'editing'],
-    ready: ['approved'],
-    publish: ['dated', 'scheduled'],
-    posted: ['posted'],
-  };
-  const visibleColumns = VIDEO_COLUMNS.filter((column) => (focusStatuses[focus] || focusStatuses.all).includes(column.key));
-  const minWidth = Math.max(760, visibleColumns.length * 270);
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {VIDEO_COLUMNS.map((column) => {
-          const ColumnIcon = column.icon;
-          const value = videos.filter((video) => video.status === column.key).length;
-          return (
-            <button
-              key={column.key}
-              type="button"
-              onClick={() => {
-                if (column.key === 'recorded' || column.key === 'editing') setFocus('edit');
-                else if (column.key === 'approved') setFocus('ready');
-                else if (column.key === 'dated' || column.key === 'scheduled') setFocus('publish');
-                else setFocus('posted');
-              }}
-              className="relative min-w-0 overflow-hidden rounded-[18px] border border-slate-200/80 bg-white px-3 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-slate-300"
-            >
-              <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: column.accent }} />
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 sm:text-[11px]">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: column.soft, color: column.accent }}><ColumnIcon size={12} /></span>
-                <span className="truncate">{column.label}</span>
-              </div>
-              <p className="mt-2 text-xl font-black leading-none text-[#17181C] sm:text-2xl">{value}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="toolbar-panel flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Olhar rápido</p>
-          <p className="mt-1 text-xs text-slate-500">A esteira mostra exatamente onde cada vídeo parou e qual é o próximo movimento.</p>
-        </div>
-        <div className="flex max-w-full gap-1.5 overflow-x-auto">
-          {[
-            { key: 'all', label: 'Tudo' },
-            { key: 'edit', label: 'Edição' },
-            { key: 'ready', label: 'Prontos' },
-            { key: 'publish', label: 'Pra publicar' },
-            { key: 'posted', label: 'No ar' },
-          ].map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => setFocus(item.key)}
-              className={`inline-flex min-w-max items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${focus === item.key ? 'border-[#17181C] bg-[#17181C] text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}
-            >
-              {item.label}<span className={focus === item.key ? 'text-[#C9FF2F]' : 'text-slate-300'}>{counts[item.key]}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="overflow-x-auto pb-3">
-        <div
-          className="grid gap-3"
-          style={{ minWidth: `${minWidth}px`, gridTemplateColumns: `repeat(${visibleColumns.length}, minmax(250px, 1fr))` }}
-        >
-          {visibleColumns.map((column) => {
-            const ColumnIcon = column.icon;
-            const items = videos.filter((video) => video.status === column.key);
-            return (
-              <section
-                key={column.key}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  if (currentDraggedVideo) setVideoStatus(currentDraggedVideo, column.key);
-                }}
-                className="relative min-h-[540px] overflow-hidden rounded-[24px] border p-3 transition"
-                style={{ borderColor: `${column.accent}33`, backgroundColor: column.soft }}
-              >
-                <div className="absolute inset-x-0 top-0 h-1.5" style={{ backgroundColor: column.accent }} />
-                <div className="mb-3 flex items-start justify-between gap-2 px-1 pt-2">
-                  <div className="flex min-w-0 items-start gap-2.5">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white" style={{ color: column.accent }}><ColumnIcon size={17} /></span>
-                    <div className="min-w-0">
-                      <h2 className="text-sm font-black text-[#17181C]">{column.label}</h2>
-                      <p className="mt-0.5 text-[10px] leading-4 text-slate-500">{column.description}</p>
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500">{items.length}</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {items.map((video) => (
-                    <article
-                      key={video.id}
-                      draggable={canDrag(video)}
-                      onDragStart={() => setDraggedVideoId(video.id)}
-                      onDragEnd={() => setDraggedVideoId(null)}
-                      className={`relative overflow-hidden rounded-[18px] border border-white bg-white p-3.5 transition ${canDrag(video) ? 'cursor-grab active:cursor-grabbing' : ''} ${Number(draggedVideoId) === Number(video.id) ? 'opacity-60' : ''}`}
-                    >
-                      <div className="absolute bottom-0 left-0 top-0 w-1" style={{ backgroundColor: column.accent }} />
-                      <div className="pl-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-[10px] font-black uppercase tracking-[0.12em]" style={{ color: video.client_color || '#3A85FD' }}>{video.client_name}</p>
-                            <h3 className="mt-1 line-clamp-2 text-sm font-black leading-5 text-[#17181C]">{video.title}</h3>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <span className="rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-400">#{String(video.video_number).padStart(2, '0')}</span>
-                            {canManage && <button type="button" title="Apagar vídeo" aria-label="Apagar vídeo" onClick={() => deleteVideo(video)} className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-50 hover:text-[#EC0567]"><Trash2 size={13} /></button>}
-                          </div>
-                        </div>
-
-                        <div className="mt-2.5 rounded-xl bg-slate-50 px-2.5 py-2">
-                          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Próximo movimento</p>
-                          <p className="mt-0.5 text-[11px] font-bold text-slate-700">{videoNextMove(video)}</p>
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400">
-                          <span>Gravado {formatDate(video.recording_date)}</span>
-                          {video.editor_name && <span>Editor: <strong className="font-bold text-slate-600">{video.editor_name}</strong></span>}
-                        </div>
-
-                        {(video.raw_links || []).length > 0 && <a href={video.raw_links[0]} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-[#3A85FD]"><Link2 size={12} /> Abrir brutos</a>}
-                        {['approved', 'dated', 'scheduled', 'posted'].includes(video.status) && <FinalVideoAsset links={video.final_links || []} />}
-
-                        {(video.schedules || []).length > 0 && (
-                          <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-2.5">
-                            {video.schedules.map((schedule) => (
-                              <div key={schedule.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[10px]">
-                                <span className="font-bold text-slate-600">{PLATFORM_LABELS[schedule.platform] || schedule.platform}</span>
-                                <span className="ml-auto text-slate-400">{formatDate(schedule.scheduled_at, { time: true })}</span>
-                                {canPublish && schedule.status === 'scheduled' && <button type="button" onClick={() => deleteSchedule(video.id, schedule.id)} className="text-slate-300 hover:text-[#EC0567]"><X size={11} /></button>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
-                          {canEdit && video.status === 'recorded' && <button type="button" onClick={() => setVideoStatus(video, 'editing')} className="rounded-lg bg-[#17181C] px-2.5 py-1.5 text-[10px] font-black text-white">Pegar pra editar</button>}
-                          {canEdit && video.status === 'editing' && <button type="button" onClick={() => setVideoStatus(video, 'approved')} className="rounded-lg bg-[#3A85FD] px-2.5 py-1.5 text-[10px] font-black text-white">Fechar edição</button>}
-                          {canPublish && video.status === 'approved' && <button type="button" onClick={() => setScheduleModal({ id: video.id, title: video.title, scheduled_at: localDateTimeInput(new Date(Date.now() + 86400000)), platform: 'instagram' })} className="rounded-lg bg-[#C9FF2F] px-2.5 py-1.5 text-[10px] font-black text-[#17181C]">Mandar pra grade</button>}
-                          {canPublish && video.status === 'dated' && <button type="button" onClick={() => setVideoStatus(video, 'scheduled')} className="rounded-lg bg-[#EC0567] px-2.5 py-1.5 text-[10px] font-black text-white">Confirmar agendado</button>}
-                          {canPublish && video.status === 'scheduled' && <button type="button" onClick={() => setVideoStatus(video, 'posted')} className="rounded-lg bg-[#17181C] px-2.5 py-1.5 text-[10px] font-black text-white">Marcar no ar</button>}
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                  {!items.length && (
-                    <div className="rounded-[18px] border border-dashed border-slate-300/70 bg-white/55 px-3 py-10 text-center">
-                      <CheckCircle2 size={18} className="mx-auto mb-2 text-slate-300" />
-                      <p className="text-[11px] font-bold text-slate-400">Nada parado aqui.</p>
-                    </div>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </div>
-
-      <p className="text-center text-[10px] text-slate-400">Filtro ativo: <strong className="font-bold text-slate-600">{productionFocusLabel(focus)}</strong> · arraste entre etapas ou use os botões do card.</p>
     </div>
   );
 }

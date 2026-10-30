@@ -1,5 +1,6 @@
-// Vídeos prontos: o audiovisual joga o vídeo (arquivo ou link), o social media baixa/assiste,
-// agenda e marca como agendado. O ARQUIVO é apagado 3 dias depois de marcado; fica só o registro.
+// Vídeos prontos: o audiovisual envia o vídeo (arquivo ou link) -> Direção aprova -> Cliente aprova ->
+// aparece no Agendamento (baixar, legenda, marcar como agendado). O ARQUIVO é apagado 3 dias depois de agendado; fica só o registro.
+// stage: direction (com a direção) | client (com o cliente) | correction (voltou p/ ajuste) | approved (liberado p/ agendar).
 const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -25,6 +26,8 @@ const upload = multer({
 });
 
 const hasAny = (user, keys) => keys.some((k) => hasPermission(user, k));
+const isDirection = (u) => Boolean(u && (u.role === 'admin' || u.is_agency_owner || u.is_platform_owner || u.is_operations_head));
+const isClientUser = (u) => u?.role === 'client';
 const text = (v, max = 300) => String(v ?? '').trim().slice(0, max);
 
 function ensureSchema() {
@@ -59,8 +62,17 @@ function ensureSchema() {
   `);
 }
 ensureSchema();
-if (!db.prepare("PRAGMA table_info(ready_videos)").all().some((c) => c.name === 'caption')) {
-  db.exec('ALTER TABLE ready_videos ADD COLUMN caption TEXT');
+{
+  const cols = db.prepare('PRAGMA table_info(ready_videos)').all().map((c) => c.name);
+  const add = (name, ddl) => { if (!cols.includes(name)) db.exec(`ALTER TABLE ready_videos ADD COLUMN ${name} ${ddl}`); };
+  const hadStage = cols.includes('stage');
+  add('caption', 'TEXT');
+  add('stage', "TEXT NOT NULL DEFAULT 'direction'");
+  add('review_note', 'TEXT');
+  add('reviewed_by_name', 'TEXT');
+  add('reviewed_at', 'TEXT');
+  // Vídeos já agendados antes do fluxo de aprovação contam como aprovados.
+  if (!hadStage) db.exec("UPDATE ready_videos SET stage = 'approved' WHERE status = 'scheduled'");
 }
 
 function present(row, now = Date.now()) {
@@ -70,7 +82,7 @@ function present(row, now = Date.now()) {
     title: row.title, caption: row.caption || '', notes: row.notes || '', source: row.source,
     media_url: row.file_deleted_at ? null : row.media_url,
     link_url: row.link_url, original_filename: row.original_filename, size_bytes: row.size_bytes,
-    status: row.status, uploaded_by_name: row.uploaded_by_name, created_at: row.created_at,
+    status: row.status, stage: row.stage || 'direction', review_note: row.review_note || '', reviewed_by_name: row.reviewed_by_name || null, reviewed_at: row.reviewed_at || null, uploaded_by_name: row.uploaded_by_name, created_at: row.created_at,
     scheduled_at: row.scheduled_at, scheduled_by_name: row.scheduled_by_name,
     scheduled_platform: row.scheduled_platform, scheduled_for: row.scheduled_for,
     purge_after: row.purge_after, file_deleted_at: row.file_deleted_at,
@@ -103,6 +115,7 @@ function purgeExpired() {
 }
 
 router.get('/', (req, res) => {
+  if (isClientUser(req.user)) return res.status(403).json({ error: 'Acesso restrito à equipe.' });
   const rows = db.prepare(`
     SELECT r.*, c.name AS client_name, c.logo_color AS client_color FROM ready_videos r
     JOIN clients c ON c.id = r.client_id
@@ -111,13 +124,20 @@ router.get('/', (req, res) => {
   const videos = rows.map((r) => present(r));
   res.json({
     videos,
-    counts: { ready: videos.filter((v) => v.status === 'ready').length, scheduled: videos.filter((v) => v.status === 'scheduled').length },
+    counts: {
+      direction: videos.filter((v) => v.status === 'ready' && v.stage === 'direction').length,
+      client: videos.filter((v) => v.status === 'ready' && v.stage === 'client').length,
+      correction: videos.filter((v) => v.status === 'ready' && v.stage === 'correction').length,
+      approved: videos.filter((v) => v.status === 'ready' && v.stage === 'approved').length,
+      ready: videos.filter((v) => v.status === 'ready' && v.stage === 'approved').length,
+      scheduled: videos.filter((v) => v.status === 'scheduled').length,
+    },
     purge_days: PURGE_DAYS,
   });
 });
 
 router.post('/', (req, res) => {
-  if (!hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit'])) return res.status(403).json({ error: 'Você não possui permissão para enviar vídeos.' });
+  if (isClientUser(req.user) || !hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit'])) return res.status(403).json({ error: 'Você não possui permissão para enviar vídeos.' });
   upload.single('file')(req, res, (uploadError) => {
     if (uploadError) {
       if (uploadError.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'O envio direto aceita até 120 MB. Para arquivos maiores, cole o link do Drive.' });
@@ -159,7 +179,7 @@ function loadVideo(req, res) {
 
 // Edita título e legenda (quem envia ou quem agenda).
 router.put('/:id', (req, res) => {
-  if (!hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish'])) return res.status(403).json({ error: 'Você não possui permissão para editar.' });
+  if (isClientUser(req.user) || !hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish'])) return res.status(403).json({ error: 'Você não possui permissão para editar.' });
   const row = loadVideo(req, res); if (!row) return;
   const title = req.body.title === undefined ? row.title : text(req.body.title, 160);
   if (!title) return res.status(400).json({ error: 'O título não pode ficar vazio.' });
@@ -172,6 +192,7 @@ router.post('/:id/schedule', (req, res) => {
   if (!hasAny(req.user, ['audiovisual.manage', 'audiovisual.publish'])) return res.status(403).json({ error: 'Você não possui permissão para marcar como agendado.' });
   const row = loadVideo(req, res); if (!row) return;
   if (row.status === 'scheduled') return res.status(409).json({ error: 'Este vídeo já foi marcado como agendado.' });
+  if (row.stage !== 'approved') return res.status(409).json({ error: 'O vídeo ainda não foi aprovado pela direção e pelo cliente.' });
   const platform = PLATFORMS.has(String(req.body.platform)) ? String(req.body.platform) : 'instagram';
   const forDate = text(req.body.scheduled_for, 40) || null;
   db.prepare(`
@@ -202,6 +223,89 @@ router.delete('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- Aprovação (equipe) ----
+const REVIEWABLE = "status = 'ready'";
+router.post('/:id/direction-approve', (req, res) => {
+  if (!isDirection(req.user)) return res.status(403).json({ error: 'A aprovação da direção é restrita à administração.' });
+  const row = loadVideo(req, res); if (!row) return;
+  if (row.status !== 'ready' || row.stage !== 'direction') return res.status(409).json({ error: 'Este vídeo não está aguardando a direção.' });
+  db.prepare("UPDATE ready_videos SET stage = 'client', review_note = NULL, reviewed_by_name = ?, reviewed_at = datetime('now') WHERE id = ? AND agency_id = ?")
+    .run(req.user.name || null, row.id, req.user.agency_id);
+  res.json({ ok: true, stage: 'client' });
+});
+
+router.post('/:id/direction-correction', (req, res) => {
+  if (!isDirection(req.user)) return res.status(403).json({ error: 'A aprovação da direção é restrita à administração.' });
+  const row = loadVideo(req, res); if (!row) return;
+  if (row.status !== 'ready' || row.stage !== 'direction') return res.status(409).json({ error: 'Este vídeo não está aguardando a direção.' });
+  const note = text(req.body.note, 1500);
+  if (!note) return res.status(400).json({ error: 'Descreva o que precisa ser corrigido.' });
+  db.prepare("UPDATE ready_videos SET stage = 'correction', review_note = ?, reviewed_by_name = ?, reviewed_at = datetime('now') WHERE id = ? AND agency_id = ?")
+    .run(note, `${req.user.name || 'Direção'} (direção)`, row.id, req.user.agency_id);
+  res.json({ ok: true, stage: 'correction' });
+});
+
+// O audiovisual corrige (troca arquivo/link, opcionalmente) e devolve para a direção.
+router.post('/:id/resubmit', (req, res) => {
+  if (isClientUser(req.user) || !hasAny(req.user, ['audiovisual.manage', 'audiovisual.edit'])) return res.status(403).json({ error: 'Você não possui permissão para reenviar vídeos.' });
+  upload.single('file')(req, res, (uploadError) => {
+    if (uploadError) return res.status(uploadError.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: uploadError.code === 'LIMIT_FILE_SIZE' ? 'O envio direto aceita até 120 MB.' : (uploadError.message || 'Não foi possível enviar o vídeo.') });
+    const row = loadVideo(req, res); if (!row) return;
+    if (row.status !== 'ready' || row.stage !== 'correction') return res.status(409).json({ error: 'Este vídeo não está em correção.' });
+    const link = text(req.body.link_url, 800);
+    let mediaUrl = row.media_url; let source = row.source; let linkUrl = row.link_url; let original = row.original_filename; let size = row.size_bytes;
+    if (req.file?.buffer) {
+      const ext = EXT[String(req.file.mimetype).toLowerCase()] || 'mp4';
+      const filename = `${crypto.randomBytes(16).toString('hex')}.${ext}`;
+      fs.mkdirSync(mediaStorageDirectory, { recursive: true });
+      fs.writeFileSync(path.join(mediaStorageDirectory, filename), req.file.buffer, { flag: 'wx' });
+      if (row.source === 'file' && row.media_url) deleteFile(row.media_url);
+      mediaUrl = `/api/media/${filename}`; source = 'file'; linkUrl = null; original = text(req.file.originalname, 200); size = req.file.size;
+    } else if (/^https?:\/\//i.test(link)) {
+      if (row.source === 'file' && row.media_url) deleteFile(row.media_url);
+      source = 'link'; linkUrl = link; mediaUrl = null; original = null; size = null;
+    }
+    db.prepare("UPDATE ready_videos SET stage = 'direction', source = ?, media_url = ?, link_url = ?, original_filename = ?, size_bytes = ?, review_note = NULL, reviewed_by_name = NULL, reviewed_at = NULL WHERE id = ? AND agency_id = ?")
+      .run(source, mediaUrl, linkUrl, original, size, row.id, req.user.agency_id);
+    res.json({ ok: true, stage: 'direction' });
+  });
+});
+
+// ---- Portal do cliente ----
+const clientRouter = express.Router();
+const clientRow = (req, res) => {
+  if (!isClientUser(req.user) || !req.user.client_id) { res.status(403).json({ error: 'Acesso restrito ao cliente.' }); return null; }
+  const row = db.prepare('SELECT * FROM ready_videos WHERE id = ? AND agency_id = ? AND client_id = ?').get(req.params.id, req.user.agency_id, req.user.client_id);
+  if (!row) { res.status(404).json({ error: 'Vídeo não encontrado.' }); return null; }
+  return row;
+};
+clientRouter.get('/', (req, res) => {
+  if (!isClientUser(req.user) || !req.user.client_id) return res.status(403).json({ error: 'Acesso restrito ao cliente.' });
+  const rows = db.prepare(`
+    SELECT r.*, c.name AS client_name FROM ready_videos r JOIN clients c ON c.id = r.client_id
+    WHERE r.agency_id = ? AND r.client_id = ? AND (r.stage IN ('client','approved') OR (r.stage = 'correction' AND r.reviewed_by_name LIKE '%(cliente)'))
+    ORDER BY CASE r.stage WHEN 'client' THEN 0 ELSE 1 END, r.created_at DESC LIMIT 200
+  `).all(req.user.agency_id, req.user.client_id);
+  res.json({ videos: rows.map((r) => present(r)) });
+});
+clientRouter.post('/:id/approve', (req, res) => {
+  const row = clientRow(req, res); if (!row) return;
+  if (row.status !== 'ready' || row.stage !== 'client') return res.status(409).json({ error: 'Este vídeo não está aguardando sua aprovação.' });
+  db.prepare("UPDATE ready_videos SET stage = 'approved', review_note = NULL, reviewed_by_name = ?, reviewed_at = datetime('now') WHERE id = ?")
+    .run(`${req.user.name || 'Cliente'} (cliente)`, row.id);
+  res.json({ ok: true, stage: 'approved' });
+});
+clientRouter.post('/:id/request-changes', (req, res) => {
+  const row = clientRow(req, res); if (!row) return;
+  if (row.status !== 'ready' || row.stage !== 'client') return res.status(409).json({ error: 'Este vídeo não está aguardando sua aprovação.' });
+  const note = text(req.body.note, 1500);
+  if (!note) return res.status(400).json({ error: 'Conte o que precisa mudar.' });
+  db.prepare("UPDATE ready_videos SET stage = 'correction', review_note = ?, reviewed_by_name = ?, reviewed_at = datetime('now') WHERE id = ?")
+    .run(note, `${req.user.name || 'Cliente'} (cliente)`, row.id);
+  res.json({ ok: true, stage: 'correction' });
+});
+
 module.exports = router;
+module.exports.client = clientRouter;
 module.exports.purgeExpired = purgeExpired;
 module.exports.ensureSchema = ensureSchema;
