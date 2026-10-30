@@ -9,11 +9,14 @@ import {
   Palette,
   RefreshCw,
   Sparkles,
+  Trash2,
   UserRoundCheck,
   Video,
 } from 'lucide-react';
 import api from '../api';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { hasPermission } from '../permissions.js';
 
 function localDay() {
   const now = new Date();
@@ -47,7 +50,7 @@ function AreaIcon({ item }) {
   return <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${cls}`}><Icon size={19} /></span>;
 }
 
-function WorkCard({ item, waiting = false }) {
+function WorkCard({ item, waiting = false, canDelete = false, onDelete }) {
   const severity = SEVERITY[Number(item.severity || 0)] || SEVERITY[0];
   return (
     <Link
@@ -72,6 +75,15 @@ function WorkCard({ item, waiting = false }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 self-center">
+          {canDelete && (
+            <button
+              type="button"
+              title="Excluir"
+              aria-label="Excluir"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation(); onDelete(item); }}
+              className="rounded-xl p-2 text-slate-300 transition hover:bg-rose-50 hover:text-[#EC0567]"
+            ><Trash2 size={16} /></button>
+          )}
           {!waiting && <span className="hidden rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-black text-slate-700 sm:block">{item.action}</span>}
           <ArrowRight size={17} className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#3A85FD]" />
         </div>
@@ -98,12 +110,31 @@ function Metric({ label, value, note, accent, icon: Icon, onClick, active }) {
 }
 
 export default function MyWork() {
+  const { user } = useAuth();
   const { selectedClient } = useClientFilter();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('action');
+
+  const canDeleteItem = (item) => (item.kind === 'video' ? hasPermission(user, 'audiovisual.manage') : hasPermission(user, 'tasks.create'));
+  async function deleteItem(item) {
+    const what = item.kind === 'video' ? 'o vídeo' : 'a tarefa';
+    if (!window.confirm(`Excluir ${what} "${item.title}"? Esta ação não pode ser desfeita.`)) return;
+    try {
+      if (item.kind === 'video') await api.delete(`/audiovisual/videos/${item.id}`, { data: { confirm: true } });
+      else await api.delete(`/tasks/${item.id}`);
+      setData((current) => (current ? {
+        ...current,
+        actions: (current.actions || []).filter((x) => !(x.kind === item.kind && x.id === item.id)),
+        waiting: (current.waiting || []).filter((x) => !(x.kind === item.kind && x.id === item.id)),
+      } : current));
+      load(true);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível excluir.');
+    }
+  }
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
@@ -200,7 +231,7 @@ export default function MyWork() {
           </div>
         ) : (
           <div className="grid gap-3 xl:grid-cols-2">
-            {visibleItems.map((item) => <WorkCard key={`${item.kind}-${item.id}-${item.phase}`} item={item} waiting={tab === 'waiting'} />)}
+            {visibleItems.map((item) => <WorkCard key={`${item.kind}-${item.id}-${item.phase}`} item={item} waiting={tab === 'waiting'} canDelete={canDeleteItem(item)} onDelete={deleteItem} />)}
           </div>
         )}
       </section>
