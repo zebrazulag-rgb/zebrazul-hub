@@ -32,6 +32,8 @@ const PERMISSION_CATALOG = [
   { key: 'social.messages', group: 'Social Media', label: 'Mensagens do Instagram', description: 'Visualizar conversas e responder DMs da conta profissional conectada.' },
   { key: 'social.reports', group: 'Social Media', label: 'Insights', description: 'Acessar relatórios orgânicos e de mídia paga.' },
   { key: 'social.connections', group: 'Social Media', label: 'Conexões Meta/Instagram', description: 'Gerenciar conexões e sincronizações das redes.' },
+  { key: 'reports.view', group: 'Relatórios (BI)', label: 'Ver Relatórios', description: 'Consultar relatórios mensais, histórico e apresentação.' },
+  { key: 'reports.edit', group: 'Relatórios (BI)', label: 'Criar e editar Relatórios', description: 'Criar relatórios, preencher módulos, anexar fontes, finalizar e reabrir.' },
   { key: 'radar.view', group: 'Radar de Conteúdo', label: 'Ver Radar de Conteúdo', description: 'Ver as notícias coletadas das fontes do cliente.' },
   { key: 'radar.refresh', group: 'Radar de Conteúdo', label: 'Atualizar notícias', description: 'Forçar a atualização das fontes do cliente.' },
   { key: 'radar.sources', group: 'Radar de Conteúdo', label: 'Gerenciar fontes e referências', description: 'Adicionar, ativar, desativar e remover fontes RSS/Atom e editar as referências editoriais do cliente.' },
@@ -75,7 +77,7 @@ const DEFAULTS = {
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish', 'audiovisual.calendar',
-    'radar.view', 'radar.refresh', 'radar.sources', 'radar.prompts', 'radar.history',
+    'radar.view', 'radar.refresh', 'radar.sources', 'radar.prompts', 'radar.history', 'reports.view', 'reports.edit',
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'activity.view_team', 'activity.export', 'settings.clients',
   ]),
   team: new Set([
@@ -85,7 +87,7 @@ const DEFAULTS = {
     'compass.view', 'social.view', 'social.feed', 'social.feed_create', 'social.feed_share', 'social.link_social_media',
     'social.covers', 'social.published', 'social.compare', 'social.calendar', 'social.stories', 'social.messages', 'social.reports', 'social.connections',
     'audiovisual.view', 'audiovisual.manage', 'audiovisual.edit', 'audiovisual.publish',
-    'radar.view', 'radar.refresh', 'radar.prompts', 'radar.history',
+    'radar.view', 'radar.refresh', 'radar.prompts', 'radar.history', 'reports.view', 'reports.edit',
     'reenrollments.view', 'materials.view', 'organizer.view', 'activity.view_own', 'settings.clients',
   ]),
   commercial_team: new Set([
@@ -337,6 +339,7 @@ function apiPermissionForRequest(req) {
     if (/^\/clients\/\d+\/accounts$/.test(path)) return 'social.connections';
     return method === 'GET' ? null : 'settings.clients';
   }
+  if (path === '/bi-reports' || path.startsWith('/bi-reports/')) return method === 'GET' ? 'reports.view' : 'reports.edit';
   if (path === '/radar' || path.startsWith('/radar/')) {
     if (/^\/radar\/clients\/\d+\/(items|overview|seen)$/.test(path) || path === '/radar/summary' || /^\/radar\/items\/\d+\/save$/.test(path)) return 'radar.view';
     if (/^\/radar\/clients\/\d+\/refresh$/.test(path)) return 'radar.refresh';

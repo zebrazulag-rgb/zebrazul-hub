@@ -204,6 +204,7 @@ app.use('/api/meta', metaRoutes);
 app.use('/api/meta-organic', metaOrganicRoutes);
 app.use('/api/commercial', commercialRoutes);
 app.use('/api/audiovisual', audiovisualRoutes);
+app.use('/api/bi-reports', authRequired, require('./routes/biReports'));
 app.use('/api/ready-videos', authRequired, require('./routes/readyVideos'));
 app.use('/api/client-videos', authRequired, require('./routes/readyVideos').client);
 app.use('/api/radar', radarRoutes);

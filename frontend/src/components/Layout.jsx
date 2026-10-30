@@ -427,7 +427,8 @@ export default function Layout({ children }) {
     { to: '/cliente/diagnostico', label: 'Diagnóstico', mobileLabel: 'Diagnóstico', icon: Target },
     { to: '/cliente/radar', label: 'Radar', mobileLabel: 'Radar', icon: Radar, permission: 'radar.view' },
     { to: '/comercial', label: 'Comercial', mobileLabel: 'Comercial', icon: Handshake, permission: 'commercial.view' },
-    { to: '/cliente/relatorios', label: 'Relatórios', mobileLabel: 'Relatórios', icon: BarChart3, permission: 'social.reports' },
+    { to: '/cliente/relatorios-mensais', label: 'Relatórios mensais', mobileLabel: 'Mensais', icon: BarChart3, permission: 'reports.view' },
+    { to: '/cliente/relatorios', label: 'Insights', mobileLabel: 'Insights', icon: BarChart3, permission: 'social.reports' },
     { to: '/cliente/materiais', label: 'Materiais', mobileLabel: 'Materiais', icon: FolderOpen, permission: 'materials.view' },
   ];
   const trialClientPortalItems = [
@@ -455,6 +456,7 @@ export default function Layout({ children }) {
     { to: '/bussola', label: 'Bússola', icon: Compass, permission: 'compass.view' },
     { to: '/social-media', label: 'Social Media', icon: Instagram, permission: 'social.view' },
     { to: '/comercial', label: 'Comercial', icon: Handshake, permission: 'commercial.view' },
+    { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'reports.view' },
     { to: '/rematriculas', label: 'Rematrículas', icon: RefreshCw, permission: 'reenrollments.view', beeOnly: true },
   ];
 
@@ -522,7 +524,8 @@ export default function Layout({ children }) {
     if (path.startsWith('/cliente/aprovacao') || path.startsWith('/cliente/grade')) return 'Aprovação';
     if (path.startsWith('/cliente/diagnostico')) return 'Mapa da Marca';
     if (path.startsWith('/cliente/radar')) return 'Radar';
-    if (path.startsWith('/cliente/relatorios')) return 'Relatórios';
+    if (path.startsWith('/cliente/relatorios-mensais')) return 'Relatórios mensais';
+    if (path.startsWith('/cliente/relatorios')) return 'Insights';
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
     if (path.startsWith('/minha-fila')) return 'Minha fila';
@@ -540,7 +543,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/leitor')) return 'Zebra Leitor';
     if (path.startsWith('/moodboard')) return 'Moodboard';
     if (path.startsWith('/conversas')) return 'Conversas';
-    if (path.startsWith('/relatorios')) return 'Insights';
+    if (path.startsWith('/relatorios')) return 'Relatórios';
     if (path.startsWith('/organizacao')) return 'Meu Espaço';
     if (path.startsWith('/ia') || path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
     if (path.startsWith('/comercial')) return 'Comercial';
@@ -1261,7 +1264,7 @@ function presenceAreaLabel(rawPath) {
   if (path.startsWith('/moodboard')) return 'Moodboard';
   if (path.startsWith('/bussola')) return 'Bússola';
   if (path.startsWith('/ia') || path.startsWith('/social-media') || path.startsWith('/feed') || path.startsWith('/stories')) return 'Social Media';
-  if (path.startsWith('/relatorios')) return 'Insights';
+  if (path.startsWith('/relatorios')) return 'Relatórios';
   if (path.startsWith('/comercial')) return 'Comercial';
   if (path.startsWith('/organizacao')) return 'Meu Espaço';
   if (path.startsWith('/configuracoes')) return 'Configurações';

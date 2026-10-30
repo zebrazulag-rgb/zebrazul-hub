@@ -45,6 +45,8 @@ import MaterialViewer from './pages/MaterialViewer.jsx';
 import Settings from './pages/Settings.jsx';
 import SocialMedia from './pages/SocialMedia.jsx';
 import Reports from './pages/Reports.jsx';
+import BiReports from './pages/BiReports.jsx';
+import BiReportDetail from './pages/BiReportDetail.jsx';
 import Organizer from './pages/Organizer.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
@@ -87,6 +89,13 @@ function DesignerLegacyRedirect() {
 function RedirectKeepSearch({ to }) {
   const location = useLocation();
   return <Navigate to={`${to}${location.search || ''}`} replace />;
+}
+
+// /relatorios agora é o BI. Links antigos (?view=concorrentes etc.) continuam levando ao Insights.
+function BiReportsRoute() {
+  const location = useLocation();
+  if (new URLSearchParams(location.search).has('view')) return <Navigate to={`/social-media/insights${location.search}`} replace />;
+  return <ProtectedRoute permission="reports.view"><BiReports /></ProtectedRoute>;
 }
 
 function LegacyAIRedirect() {
@@ -227,7 +236,10 @@ export default function App() {
       <Route path="/contratos" element={<Navigate to="/comercial/contratos" replace />} />
 
       <Route path="/rematriculas" element={<ProtectedRoute permission="reenrollments.view"><BeeRematriculas /></ProtectedRoute>} />
-      <Route path="/relatorios" element={<RedirectKeepSearch to="/social-media/insights" />} />
+      <Route path="/relatorios" element={<BiReportsRoute />} />
+      <Route path="/relatorios/:id" element={<ProtectedRoute permission="reports.view"><BiReportDetail /></ProtectedRoute>} />
+      <Route path="/cliente/relatorios-mensais" element={<ProtectedRoute roles={["client"]} permission="reports.view"><BiReports portal /></ProtectedRoute>} />
+      <Route path="/cliente/relatorios-mensais/:id" element={<ProtectedRoute roles={["client"]} permission="reports.view"><BiReportDetail portal /></ProtectedRoute>} />
       <Route path="/materiais" element={<Navigate to="/bussola/materiais" replace />} />
       <Route path="/materiais/:id" element={<ProtectedRoute permission="materials.view"><MaterialViewer /></ProtectedRoute>} />
       <Route path="/senhas" element={<Navigate to="/configuracoes/senhas" replace />} />
