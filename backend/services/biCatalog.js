@@ -57,15 +57,15 @@ const CATALOG = {
         m('lives_count', 'Lives', 'int', 'neutral'),
       ] },
       { key: 'reels', label: 'Reels', metrics: [
-        m('reels_views', 'Visualizações de Reels'), m('reels_reach', 'Alcance de Reels'), m('reels_likes', 'Curtidas'),
-        m('reels_comments', 'Comentários'), m('reels_shares', 'Compartilhamentos'), m('reels_saves', 'Salvamentos'),
+        m('reels_views', 'Visualizações de Reels'), m('reels_reach', 'Alcance de Reels'), m('reels_likes', 'Curtidas (Reels)'),
+        m('reels_comments', 'Comentários (Reels)'), m('reels_shares', 'Compartilhamentos (Reels)'), m('reels_saves', 'Salvamentos (Reels)'),
         m('reels_watch_time_min', 'Tempo assistido (min)', 'dec'), m('reels_retention', 'Retenção média', 'pct'),
-        m('reels_followers_gained', 'Seguidores gerados'),
+        m('reels_followers_gained', 'Seguidores gerados (Reels)'),
       ] },
       { key: 'feed', label: 'Feed (posts e carrosséis)', metrics: [
-        m('feed_reach', 'Alcance do feed'), m('feed_impressions', 'Impressões do feed'), m('feed_likes', 'Curtidas'),
-        m('feed_comments', 'Comentários'), m('feed_shares', 'Compartilhamentos'), m('feed_saves', 'Salvamentos'),
-        m('feed_profile_visits', 'Visitas ao perfil (feed)'), m('feed_followers_gained', 'Seguidores gerados'),
+        m('feed_reach', 'Alcance do feed'), m('feed_impressions', 'Impressões do feed'), m('feed_likes', 'Curtidas (Feed)'),
+        m('feed_comments', 'Comentários (Feed)'), m('feed_shares', 'Compartilhamentos (Feed)'), m('feed_saves', 'Salvamentos (Feed)'),
+        m('feed_profile_visits', 'Visitas ao perfil (feed)'), m('feed_followers_gained', 'Seguidores gerados (Feed)'),
       ] },
       { key: 'stories', label: 'Stories', metrics: [
         m('stories_reach', 'Alcance dos Stories'), m('stories_impressions', 'Impressões dos Stories'), m('stories_replies', 'Respostas'),
