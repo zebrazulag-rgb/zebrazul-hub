@@ -24,6 +24,11 @@ router.get('/', wrap((req, res) => {
   ayrton.ensureFresh(db, req.user.agency_id, today());
   return res.json({ ...ayrton.buildView(db, req.user, today(), opts(cid)), team: Object.values(AGENTS).map(({ key, name, role, active }) => ({ key, name, role, active })), ai: { available: ayrtonAI.available() } });
 }));
+router.get('/status', wrap((req, res) => {
+  ayrton.ensureFresh(db, req.user.agency_id, today());
+  const v = ayrton.buildView(db, req.user, today(), opts());
+  return res.json({ agent: v.agent, summary: { headline: v.summary.headline, counts: v.summary.counts, priority: v.summary.priority } });
+}));
 router.post('/scan', wrap((req, res) => res.json({ stats: ayrton.ensureFresh(db, req.user.agency_id, today(), { force: true }) })));
 router.post('/pause', wrap((req, res) => {
   if (!isManager(req.user)) return res.status(403).json({ error: 'Apenas gestores podem pausar o Ayrton.' });

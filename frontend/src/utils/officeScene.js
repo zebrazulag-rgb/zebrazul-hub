@@ -14,13 +14,16 @@ const ROW_Y = 90;
 const ROW_STEP = 52;
 const PLANTS_TOP = [[8, 110], [312, 124], [124, 152]];
 
-export function layoutFor(n) {
+export const AY_STRIP = 78;
+export const AYRTON_MEMBER = { id: 'ayrton', name: 'Ayrton', role_label: 'Guardião da Conta', look: { skin: 1, hcc: '#14181c', style: 'short', acc: 'glasses', shirtHex: '#17181C' } };
+
+export function layoutFor(n, withAyrton = false) {
   const count = Math.max(1, n);
   const rows = Math.max(2, Math.ceil(count / 3));
   const oy = (rows - 2) * ROW_STEP;
   const seats = [];
   for (let i = 0; i < count; i += 1) seats.push([COLS[i % 3], ROW_Y + ROW_STEP * Math.floor(i / 3)]);
-  return { rows, oy, H: 220 + oy, seats };
+  return { rows, oy, H: 220 + oy + (withAyrton ? AY_STRIP : 0), seats, ay: withAyrton ? [160, 220 + oy + 44] : null };
 }
 
 function plainFirstName(name) {
@@ -53,7 +56,7 @@ function shade(hex, a) {
   const p = Math.abs(a);
   return `#${[n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round((t - v) * p + v).toString(16).padStart(2, '0')).join('')}`;
 }
-const FONT = { A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110', E: '111100110100111', F: '111100110100100', G: '011100101101011', H: '101101111101101', I: '111010010010111', J: '001001001101010', K: '101101110101101', L: '100100100100111', M: '101111111101101', N: '110101101101101', O: '010101101101010', P: '110101110100100', Q: '010101101111011', R: '110101110101101', S: '011100010001110', T: '111010010010010', U: '101101101101111', V: '101101101101010', W: '101101111111101', X: '101101010101101', Y: '101101010010010', Z: '111001010100111' };
+const FONT = { 0: '111101101101111', 1: '010110010010111', 2: '111001111100111', 3: '111001111001111', 4: '101101111001001', 5: '111100111001111', 6: '111100111101111', 7: '111001010010010', 8: '111101111101111', 9: '111101111001111', A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110', E: '111100110100111', F: '111100110100100', G: '011100101101011', H: '101101111101101', I: '111010010010111', J: '001001001101010', K: '101101110101101', L: '100100100100111', M: '101111111101101', N: '110101101101101', O: '010101101101010', P: '110101110100100', Q: '010101101111011', R: '110101110101101', S: '011100010001110', T: '111010010010010', U: '101101101101111', V: '101101101101010', W: '101101111111101', X: '101101010101101', Y: '101101010010010', Z: '111001010100111' };
 function txt(c, s, x, y, col) {
   for (let i = 0; i < s.length; i += 1) {
     const g = FONT[s[i]];
@@ -89,7 +92,7 @@ function desk(c, cx, y, u) {
 
 function look(u) {
   const l = u.look || {};
-  return { skin: SKINS[l.skin] || SKINS[0], hair: /^#[0-9a-fA-F]{6}$/.test(l.hcc || '') ? l.hcc : (HAIRS[l.hc] || HAIRS[0]), shirt: SHIRTS[l.shirt] || SHIRTS[0], style: l.style, acc: l.acc };
+  return { skin: SKINS[l.skin] || SKINS[0], hair: /^#[0-9a-fA-F]{6}$/.test(l.hcc || '') ? l.hcc : (HAIRS[l.hc] || HAIRS[0]), shirt: l.shirtHex || SHIRTS[l.shirt] || SHIRTS[0], style: l.style, acc: l.acc };
 }
 
 export function drawChar(c, cx, y, u, o) {
@@ -192,6 +195,108 @@ function drawStation(c, lay, team, i, fr, hot) {
   if (st === 'away') { R(c, cx - 6, y - 10, 8, 8, '#ffd166'); R(c, cx - 5, y - 8, 6, 1, '#c69220'); R(c, cx - 5, y - 6, 4, 1, '#c69220'); R(c, cx - 5, y - 4, 5, 1, '#c69220'); }
 }
 
+
+// ---- Ayrton, Guardião da Conta: personagem digital da equipe. Estado vem da ronda real (status/contagens).
+const AY_PINK = '#EC0567'; const AY_ORANGE = '#E8890C'; const AY_BLUE = '#3A85FD'; const AY_LIME = '#C9FF2F';
+
+function ayDesk(c, cx, y) {
+  R(c, cx - 40, y, 80, 14, '#e0b27a'); R(c, cx - 40, y, 80, 1, '#f0cc9a'); R(c, cx - 40, y + 14, 80, 8, '#b98750'); R(c, cx - 40, y + 21, 80, 1, '#8c6238');
+  R(c, cx - 40, y + 22, 3, 5, '#8c6238'); R(c, cx + 37, y + 22, 3, 5, '#8c6238');
+  const w = twidth('AYRTON');
+  R(c, (cx - w / 2 - 2) | 0, y + 14, w + 4, 7, '#17181C'); txt(c, 'AYRTON', (cx - w / 2) | 0, y + 15, AY_LIME);
+  R(c, cx - 9, y + 7, 18, 3, '#e8e2d6');
+  for (let i = 0; i < 6; i += 1) R(c, cx - 8 + i * 3, y + 8, 2, 1, '#b9b2a3');
+}
+
+function ayScreens(c, cx, y, ay, f) {
+  const off = ay.status === 'PAUSADO';
+  // monitor esquerdo: contagens reais
+  R(c, cx - 38, y - 14, 30, 16, '#2b3340'); R(c, cx - 37, y - 13, 28, 14, off ? '#10141b' : '#0e1a24');
+  R(c, cx - 25, y + 2, 4, 2, '#1c222c');
+  if (!off) {
+    const n = ay.counts || {};
+    [[n.critical, AY_PINK], [n.attention, AY_ORANGE], [n.opportunity, AY_BLUE]].forEach(([v, col], k) => {
+      const x = cx - 35 + k * 9;
+      txt(c, String(Math.min(9, v || 0)), x + 2, y - 11, col);
+      R(c, x, y - 4, 7, 1, col);
+      R(c, x, y - 3, 7, 1, 'rgba(255,255,255,.08)');
+    });
+    R(c, cx - 35, y - 1, 24, 1, '#17313f');
+  }
+  // monitor direito: radar / tudo certo
+  R(c, cx + 8, y - 14, 30, 16, '#2b3340'); R(c, cx + 9, y - 13, 28, 14, off ? '#10141b' : '#0b1f1c');
+  R(c, cx + 21, y + 2, 4, 2, '#1c222c');
+  if (!off) {
+    const mx = cx + 23; const my = y - 6;
+    if (ay.status === 'TUDO CERTO') {
+      line(c, mx - 5, my, mx - 2, my + 3, '#5fe08f'); line(c, mx - 2, my + 3, mx + 5, my - 4, '#5fe08f');
+      line(c, mx - 5, my + 1, mx - 2, my + 4, '#5fe08f'); line(c, mx - 2, my + 4, mx + 5, my - 3, '#5fe08f');
+    } else {
+      [[8, 'rgba(62,214,192,.35)'], [5, 'rgba(62,214,192,.3)']].forEach(([r, col]) => {
+        for (let a = 0; a < 24; a += 1) R(c, mx + Math.round(Math.cos(a / 24 * 6.2832) * r), my + Math.round(Math.sin(a / 24 * 6.2832) * r * 0.75), 1, 1, col);
+      });
+      R(c, mx, my, 1, 1, '#3ed6c0');
+      const ang = ((f >> 1) % 16) / 16 * 6.2832;
+      line(c, mx, my, mx + Math.round(Math.cos(ang) * 8), my + Math.round(Math.sin(ang) * 6), '#3ed6c0');
+      const n = ay.counts || {};
+      const blips = [];
+      for (let k = 0; k < Math.min(3, n.critical || 0); k += 1) blips.push([[-4, -3], [3, 2], [-2, 4]][k], AY_PINK);
+      for (let k = 0; k < Math.min(3, n.attention || 0); k += 1) blips.push([[5, -2], [-6, 1], [1, -5]][k], AY_ORANGE);
+      for (let i = 0; i < blips.length; i += 2) R(c, mx + blips[i][0], my + blips[i][1], 2, 2, ((f >> 2) + i) % 3 ? blips[i + 1] : '#fff');
+    }
+  }
+}
+
+export function drawAyrton(c, lay, ay, f, hot) {
+  const [cx, y] = lay.ay;
+  const st = ay.status || 'MONITORANDO';
+  const away = st === 'PAUSADO';
+  const phase = (f / 21) | 0;
+  let act = 'type';
+  if (st === 'MONITORANDO') act = phase % 2 ? 'look' : 'type';
+  if (st === 'AGUARDANDO AÇÃO') act = phase % 3 === 2 ? 'look' : 'type';
+  if (st === 'TUDO CERTO') act = phase % 2 ? 'coffee' : 'look';
+  if (st === 'ANALISANDO') act = 'type';
+  // tapete
+  R(c, cx - 52, y - 32, 104, 62, 'rgba(23,24,28,.28)'); R(c, cx - 50, y - 30, 100, 1, 'rgba(201,255,47,.35)'); R(c, cx - 50, y + 29, 100, 1, 'rgba(201,255,47,.35)');
+  if (hot) { c.strokeStyle = '#ffb454'; c.lineWidth = 1; c.setLineDash([3, 3]); c.strokeRect(cx - 46.5, y - 36.5, 93, 69); c.setLineDash([]); }
+  if (away) {
+    R(c, cx + 34, y - 4, 12, 12, '#17181C'); R(c, cx + 34, y - 4, 12, 1, '#3a3f56'); R(c, cx + 35, y + 8, 10, 4, '#0e1020'); R(c, cx + 39, y + 12, 2, 5, '#2b3340'); R(c, cx + 36, y + 17, 8, 2, '#2b3340');
+    txt(c, 'ZZ', cx - 4, y - 24 - ((f >> 3) % 2), '#9aa3b8');
+  } else {
+    R(c, cx - 10, y - 25, 20, 21, '#17181C'); R(c, cx - 9, y - 26, 18, 1, '#17181C'); R(c, cx - 10, y - 25, 20, 1, '#3a3f56');
+    const L = { skin: 1, hcc: '#14181c', style: 'short', acc: 'glasses', shirtHex: '#17181C' };
+    const hy = drawChar(c, cx, y, { look: L, status: 'available' }, { f, act, status: 'available', bust: true });
+    R(c, cx - 1, hy + 10, 2, 7, AY_LIME); // gravata
+    R(c, cx - 8, hy + 10, 3, 1, '#3a3f56'); R(c, cx + 5, hy + 10, 3, 1, '#3a3f56');
+    R(c, cx - 7, hy + 13, 2, 2, AY_LIME); // crachá
+  }
+  ayScreens(c, cx, y, ay, f);
+  if (!away) {
+    const skin = SKINS[1]; const ty = act === 'type' ? 1 : 0;
+    if (act === 'coffee') {
+      R(c, cx + 8, y - 14, 4, 4, '#fff'); R(c, cx + 8, y - 14, 4, 1, '#8c5a3a'); R(c, cx + 12, y - 13, 1, 2, '#fff'); R(c, cx + 7, y - 10, 3, 2, skin); R(c, cx + 9, y - 17 - ((f >> 1) % 2), 1, 2, 'rgba(255,255,255,.55)'); R(c, cx - 8, y + 6, 3, 2, skin);
+    } else {
+      R(c, cx - 8, y + 6 + (((f >> 1) % 2) & ty), 3, 2, skin); R(c, cx + 5, y + 6 + ((((f >> 1) + 1) % 2) & ty), 3, 2, skin);
+    }
+  }
+  // luminária de alerta (só quando há algo crítico/atenção de verdade)
+  if (st === 'AGUARDANDO AÇÃO') {
+    const hotc = ((f >> 2) % 2) ? ((ay.counts?.critical || 0) > 0 ? AY_PINK : AY_ORANGE) : '#5b2a33';
+    R(c, cx + 30, y - 4, 6, 3, '#3a3f56'); R(c, cx + 31, y - 8, 4, 4, hotc);
+    if ((f >> 2) % 2) { R(c, cx + 29, y - 9, 1, 1, hotc); R(c, cx + 36, y - 9, 1, 1, hotc); R(c, cx + 32, y - 11, 2, 1, hotc); }
+  }
+  // balão de pensamento: reflete o estado real
+  const bx = cx + 12; const by = y - 44;
+  const bubble = st === 'ANALISANDO' ? 'dots' : st === 'AGUARDANDO AÇÃO' ? 'alert' : st === 'TUDO CERTO' ? 'ok' : null;
+  if (bubble && !away) {
+    R(c, bx, by, 16, 10, '#fff'); R(c, bx + 2, by + 10, 3, 2, '#fff');
+    if (bubble === 'dots') { const d = (f >> 1) % 3; for (let k = 0; k < 3; k += 1) R(c, bx + 3 + k * 4, by + 4 - (d === k ? 1 : 0), 2, 2, '#3a3f56'); }
+    if (bubble === 'alert') { R(c, bx + 7, by + 2, 2, 4, AY_PINK); R(c, bx + 7, by + 7, 2, 2, AY_PINK); }
+    if (bubble === 'ok') { line(c, bx + 4, by + 5, bx + 6, by + 7, '#2fa561'); line(c, bx + 6, by + 7, bx + 11, by + 2, '#2fa561'); }
+  }
+}
+
 // Cabeça e ombros para a lista e o cartão (32x22).
 export function drawBust(canvas, member, status) {
   const c = canvas.getContext('2d');
@@ -205,6 +310,7 @@ export function createScene(canvas) {
   const bg = document.createElement('canvas');
   const ov = document.createElement('canvas');
   let team = [];
+  let ayr = null;
   let lay = layoutFor(1);
   let bgKey = '';
   let sel = null;
@@ -284,7 +390,7 @@ export function createScene(canvas) {
   }
 
   function ensureBg() {
-    const key = `${timeBucket()}|${team.map((u) => `${u.id}:${u.first}`).join(',')}`;
+    const key = `${timeBucket()}|${ayr ? 'A' : ''}|${team.map((u) => `${u.id}:${u.first}`).join(',')}`;
     if (key !== bgKey) { bgKey = key; drawBg(timeBucket()); }
   }
 
@@ -307,12 +413,14 @@ export function createScene(canvas) {
     const br = (f >> 3) & 1; // gato dormindo no tapete
     R(ctx, 198, 200 + oy, 16, 8 + br, '#e8a35a'); R(ctx, 200, 198 + oy + br, 6, 5, '#e8a35a'); R(ctx, 200, 197 + oy + br, 2, 2, '#e8a35a'); R(ctx, 204, 197 + oy + br, 2, 2, '#e8a35a'); R(ctx, 206, 202 + oy, 10, 2, '#b9763a'); R(ctx, 202, 201 + oy + br, 3, 1, '#2b3340');
     for (let i = 0; i < team.length; i += 1) drawStation(ctx, lay, team, i, f, sel === team[i].id || hover === team[i].id);
+    if (ayr && lay.ay) drawAyrton(ctx, lay, ayr, f, sel === 'ayrton' || hover === 'ayrton');
     ctx.drawImage(ov, 0, 0);
   }
 
   return {
     get height() { return lay.H; },
-    setTeam(next) { team = next; lay = layoutFor(next.length); bgKey = ''; },
+    setTeam(next) { team = next; lay = layoutFor(next.length, !!ayr); bgKey = ''; },
+    setAyrton(next) { const had = !!ayr; ayr = next; if (had !== !!next) { lay = layoutFor(team.length, !!next); bgKey = ''; } },
     setSelected(id) { sel = id; },
     setHover(id) { hover = id; },
     draw,
@@ -321,6 +429,7 @@ export function createScene(canvas) {
       if (!r.width || !r.height) return null;
       const x = ((clientX - r.left) / r.width) * W;
       const y = ((clientY - r.top) / r.height) * lay.H;
+      if (ayr && lay.ay && x >= lay.ay[0] - 46 && x <= lay.ay[0] + 46 && y >= lay.ay[1] - 36 && y <= lay.ay[1] + 30) return 'ayrton';
       for (let i = 0; i < team.length; i += 1) {
         const [sx, sy] = lay.seats[i];
         if (x >= sx - 34 && x <= sx + 34 && y >= sy - 34 && y <= sy + 30) return team[i].id;

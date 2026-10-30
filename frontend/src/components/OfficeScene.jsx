@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import {
-  ACCS, HAIRS, SHIRTS, SKINS, STATUS_COLOR, STATUS_LABEL, STYLES, W,
+  AYRTON_MEMBER, ACCS, HAIRS, SHIRTS, SKINS, STATUS_COLOR, STATUS_LABEL, STYLES, W,
   createScene, drawBust, prepareTeam,
 } from '../utils/officeScene.js';
 
@@ -11,6 +12,7 @@ import {
 const POLL_MS = 20000;
 const TICK_MS = 125;
 const PICKABLE = ['available', 'focus', 'meeting', 'away'];
+const AY_COLOR = { MONITORANDO: '#5aa9ff', ANALISANDO: '#C9FF2F', 'AGUARDANDO AÇÃO': '#ffb454', 'TUDO CERTO': '#5fe08f', PAUSADO: '#9aa3b8' };
 const NOTES = {
   offline: 'Estação vazia: esta pessoa está offline.',
   away: 'Saiu da mesa por um momento.',
@@ -96,6 +98,8 @@ export default function OfficeScene() {
   const [state, setState] = useState('loading'); // loading | ok | hidden | error
   const [sel, setSel] = useState(null);
   const [live, setLive] = useState('');
+  const [ay, setAy] = useState(null);
+  const navigate = useNavigate();
   const cvRef = useRef(null);
   const frameRef = useRef(null);
   const sceneRef = useRef(null);
@@ -117,14 +121,20 @@ export default function OfficeScene() {
     }
   }, []);
 
+  const loadAyrton = useCallback(async () => {
+    try { const { data } = await api.get('/ayrton/status'); setAy(data); } catch { setAy(null); } // sem permissão/erro: o Ayrton simplesmente não aparece
+  }, []);
+
   useEffect(() => {
     ensureAssets();
-    load();
-    const timer = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
-    const onVis = () => { if (!document.hidden) load(); };
+    load(); loadAyrton();
+    const timer = setInterval(() => { if (!document.hidden) { load(); loadAyrton(); } }, POLL_MS);
+    const onVis = () => { if (!document.hidden) { load(); loadAyrton(); } };
     document.addEventListener('visibilitychange', onVis);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis); };
-  }, [load]);
+  }, [load, loadAyrton]);
+
+  const ayScene = useMemo(() => (ay ? { status: ay.agent.status, counts: ay.summary.counts } : null), [ay]);
 
   const fit = useCallback(() => {
     const cv = cvRef.current;
@@ -142,6 +152,7 @@ export default function OfficeScene() {
     if (state !== 'ok' || !cvRef.current) return undefined;
     if (!sceneRef.current) sceneRef.current = createScene(cvRef.current);
     const scene = sceneRef.current;
+    scene.setAyrton(ayScene);
     scene.setTeam(team);
     scene.setSelected(sel);
     fit();
@@ -153,7 +164,7 @@ export default function OfficeScene() {
       scene.draw(fRef.current);
     }, TICK_MS);
     return () => clearInterval(timer);
-  }, [state, team, sel, reduce, fit]);
+  }, [state, team, sel, reduce, fit, ayScene]);
 
   useEffect(() => {
     window.addEventListener('resize', fit);
@@ -196,6 +207,7 @@ export default function OfficeScene() {
 
   const choose = (id) => {
     setSel(id);
+    if (id === 'ayrton') { announce(`Ayrton, Guardião da Conta, ${ay?.agent?.status || ''}`); return; }
     const m = team.find((x) => x.id === id);
     if (m) announce(`${m.name}, ${m.role_label}, ${STATUS_LABEL[m.status]}`);
   };
@@ -216,6 +228,7 @@ export default function OfficeScene() {
   if (state === 'hidden' || state === 'loading') return null;
   const online = team.filter((m) => m.status !== 'offline').length;
   const chosen = team.find((m) => m.id === sel) || null;
+  const ayChosen = sel === 'ayrton' && ay;
   const offlineChecked = !!me && me.declared_status === 'offline';
 
   return (
@@ -239,7 +252,7 @@ export default function OfficeScene() {
                 ref={cvRef}
                 className="zo-cv"
                 role="img"
-                aria-label={`Escritório em pixel art com ${team.length} estações de trabalho. Use a lista de pessoas para ver detalhes.`}
+                aria-label={`Escritório em pixel art com ${team.length} estações de trabalho. Use a lista de pessoas para ver detalhes.${ay ? ' Inclui o Ayrton, guardião digital das contas.' : ''}`}
                 onClick={onClick}
                 onMouseMove={onMove}
                 onMouseLeave={onLeave}
@@ -279,9 +292,43 @@ export default function OfficeScene() {
               </ul>
             </div>
 
+            {ay && (
+              <div className="zo-box">
+                <h3>Equipe digital</h3>
+                <ul className="zo-team">
+                  <li>
+                    <button type="button" aria-pressed={sel === 'ayrton'} onClick={() => choose('ayrton')}>
+                      <Bust member={AYRTON_MEMBER} status="available" />
+                      <span>
+                        <span className="zo-n">Ayrton</span>
+                        <span className="zo-r">Guardião da Conta · {ay.agent.status}</span>
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            )}
+
             <div className="zo-box" aria-live="polite">
-              {!chosen && (<><h3>Quem é quem</h3><p className="zo-muted">Clique em uma pessoa para ver nome, função e status.</p></>)}
-              {chosen && (
+              {ayChosen && (
+                <>
+                  <div className="zo-top">
+                    <Bust member={AYRTON_MEMBER} status="available" />
+                    <div>
+                      <h3>Ayrton</h3>
+                      <div className="zo-muted">Guardião da Conta · agente digital</div>
+                      <div style={{ marginTop: 6 }}><span className="zo-chip" style={{ '--c': AY_COLOR[ay.agent.status] || '#9aa3b8' }}><i />{ay.agent.status}</span></div>
+                    </div>
+                  </div>
+                  <p>{ay.summary.headline}</p>
+                  {ay.summary.priority && <p><b>Prioridade:</b> {ay.summary.priority.text}</p>}
+                  <p>{ay.summary.counts.critical} crítica(s) · {ay.summary.counts.attention} atenção · {ay.summary.counts.opportunity} oportunidade(s) · {ay.summary.counts.normal} normal(is){ay.agent.last_scan_at ? ` · última ronda ${new Date(String(ay.agent.last_scan_at).replace(' ', 'T') + 'Z').toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Fortaleza' })}` : ''}</p>
+                  <button type="button" className="zo-st" style={{ marginTop: 10, '--c': '#C9FF2F' }} onClick={() => navigate('/alertas')}><i />Abrir o Ayrton</button>
+                  <p className="zo-note">O que ele faz na cena segue o estado real da ronda: contagens na tela, luz de alerta só quando há pendência, café quando está tudo certo.</p>
+                </>
+              )}
+              {!ayChosen && !chosen && (<><h3>Quem é quem</h3><p className="zo-muted">Clique em uma pessoa para ver nome, função e status.</p></>)}
+              {!ayChosen && chosen && (
                 <>
                   <div className="zo-top">
                     <Bust member={chosen} status={chosen.status} />
