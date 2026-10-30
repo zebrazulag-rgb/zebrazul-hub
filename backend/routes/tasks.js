@@ -980,6 +980,35 @@ router.post('/:id/send-to-client', (req, res) => {
   }
 });
 
+// Aprovação do cliente registrada pela direção (cliente aprovou por fora do link, ex.: WhatsApp).
+// Usa exatamente a mesma regra do link público: só peças já liberadas para o cliente.
+router.post('/:id/client-approval', (req, res) => {
+  const canApproveDirection = req.user.role === 'admin' || req.user.is_agency_owner || req.user.is_platform_owner || req.user.is_operations_head;
+  if (!canApproveDirection) {
+    return res.status(403).json({ error: 'Registrar a aprovação do cliente é restrito à administração.' });
+  }
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND agency_id = ?').get(Number(req.params.id), Number(req.user.agency_id));
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' });
+  if (!ensureTaskAccess(req, res, task)) return;
+  try {
+    const clientId = Number(task.client_id || db.prepare('SELECT client_id FROM tasks WHERE id = ? AND agency_id = ?').get(Number(task.parent_task_id || 0), Number(task.agency_id))?.client_id || 0);
+    const client = clientId ? db.prepare('SELECT id, agency_id, name FROM clients WHERE id = ? AND agency_id = ?').get(clientId, Number(req.user.agency_id)) : null;
+    if (!client) return res.status(400).json({ error: 'A peça precisa estar vinculada a um cliente.' });
+    const result = require('./public').updateTaskClientDecisionDirect({ client, taskId: Number(task.id), decision: 'approved', feedback: null });
+    if (result?.error === 'NOT_READY') return res.status(409).json({ error: 'Esta peça ainda não foi liberada para o cliente (falta aprovação da direção, envio ou imagem).' });
+    if (result?.error) return res.status(404).json({ error: 'Peça não encontrada.' });
+    require('../services/activity').recordActivity({
+      agencyId: req.user.agency_id, actorName: req.user.name, clientId: client.id, module: 'designer', action: 'approved',
+      entityType: 'task', entityId: Number(task.id), entityLabel: `Peça #${task.id}`,
+      summary: 'Registrou a aprovação do cliente (pela direção)', details: { source: 'direction_manual_client_approval' },
+      path: `/tasks/${task.id}/client-approval`, method: 'POST',
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Não foi possível registrar a aprovação do cliente.' });
+  }
+});
+
 // Persistência explícita do feedback de correção da Direção.
 // Esta rota mantém o texto sincronizado tanto na própria tarefa quanto no
 // estado auxiliar de aprovação, evitando que o feedback se perca entre telas.

@@ -886,3 +886,4 @@ router.put('/designer-approval/:token/items/:taskId', (req, res) => {
 });
 
 module.exports = router;
+module.exports.updateTaskClientDecisionDirect = updateTaskClientDecisionDirect;

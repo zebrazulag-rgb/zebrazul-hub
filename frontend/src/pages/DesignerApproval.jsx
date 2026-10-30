@@ -721,6 +721,52 @@ export default function DesignerApproval() {
     setUpdatingId(null);
   }
 
+  // "Aprovar todos": mesma rota de cada aprovação individual, uma a uma; falhas são contadas e informadas.
+  async function approveAllDirection() {
+    if (updatingId) return;
+    const pending = visibleItems.filter((entry) => !entry.legacy_post && !isCorrectionItem(entry) && !directionIsApproved(entry) && entry.direction_status !== 'changes_requested');
+    if (!pending.length) return;
+    if (!window.confirm(`Aprovar pela direção ${pending.length} ${pending.length === 1 ? 'peça' : 'peças'}? As aprovadas ficam retidas até você enviar ao cliente.`)) return;
+    setUpdatingId('bulk');
+    setError(''); setActionError('');
+    let failed = 0; let lastMessage = '';
+    for (const entry of pending) {
+      try {
+        const { data } = await api.post(`/tasks/${entry.id}/direction-approval`, { decision: 'approved', feedback: '' });
+        replaceItemState(entry.id, { direction_status: 'approved', direction_feedback: null, client_status: 'waiting', client_feedback: null, workflow_stage: 'approval', designer_completed: 1, approval_status: 'completed', ...(data?.state || {}) });
+        broadcastTaskUpdate(entry.id, entry.parent_task_id);
+        if (data?.link?.token) setApprovalLink(data.link);
+      } catch (requestError) {
+        failed += 1; lastMessage = requestError.response?.data?.error || lastMessage;
+      }
+    }
+    if (failed) setError(`${pending.length - failed} aprovada${pending.length - failed === 1 ? '' : 's'}; ${failed} não ${failed === 1 ? 'pôde' : 'puderam'} ser aprovada${failed === 1 ? '' : 's'}${lastMessage ? ` (${lastMessage})` : ''}.`);
+    else setLinkNotice(`${pending.length} ${pending.length === 1 ? 'peça aprovada' : 'peças aprovadas'} pela direção.`);
+    setUpdatingId(null);
+  }
+
+  async function approveAllClient() {
+    if (updatingId) return;
+    const pending = visibleItems.filter((entry) => !entry.legacy_post && !isCorrectionItem(entry) && entry.client_status !== 'approved' && String(entry.approval_status || '').toLowerCase() !== 'approved');
+    if (!pending.length) return;
+    if (!window.confirm(`Registrar a aprovação do cliente em ${pending.length} ${pending.length === 1 ? 'peça' : 'peças'}? Use só quando o cliente já aprovou.`)) return;
+    setUpdatingId('bulk');
+    setError(''); setActionError('');
+    let failed = 0; let lastMessage = '';
+    for (const entry of pending) {
+      try {
+        const { data } = await api.post(`/tasks/${entry.id}/client-approval`);
+        replaceItemState(entry.id, { direction_status: 'approved', client_status: 'approved', approval_status: 'approved', workflow_stage: 'approved', designer_completed: 1, ...(data?.state || {}) });
+        broadcastTaskUpdate(entry.id, entry.parent_task_id);
+      } catch (requestError) {
+        failed += 1; lastMessage = requestError.response?.data?.error || lastMessage;
+      }
+    }
+    if (failed) setError(`${pending.length - failed} aprovada${pending.length - failed === 1 ? '' : 's'}; ${failed} não ${failed === 1 ? 'pôde' : 'puderam'} ser aprovada${failed === 1 ? '' : 's'}${lastMessage ? ` (${lastMessage})` : ''}.`);
+    else setLinkNotice(`Aprovação do cliente registrada em ${pending.length} ${pending.length === 1 ? 'peça' : 'peças'}.`);
+    setUpdatingId(null);
+  }
+
   async function saveExistingCorrectionFeedback(item) {
     if (!item?.id || updatingId) return;
     const normalizedFeedback = String(correctionFeedback || '').trim();
@@ -889,6 +935,8 @@ export default function DesignerApproval() {
   const selectedClientStatus = selectedItem?.client_status || 'waiting';
   const canManageDirection = user?.role === 'admin' || user?.is_agency_owner || user?.is_platform_owner || user?.is_operations_head;
   const canDirectionApprove = mode === 'direction' && selectedDirectionStatus === 'pending';
+  const pendingDirectionCount = mode === 'direction' ? visibleItems.filter((e) => !e.legacy_post && !isCorrectionItem(e) && !directionIsApproved(e) && e.direction_status !== 'changes_requested').length : 0;
+  const pendingClientCount = mode === 'client' ? visibleItems.filter((e) => !e.legacy_post && !isCorrectionItem(e) && e.client_status !== 'approved' && String(e.approval_status || '').toLowerCase() !== 'approved').length : 0;
 
   return (
     <div className="space-y-5">
@@ -970,6 +1018,16 @@ export default function DesignerApproval() {
         <div className="flex items-center gap-3 border-l-4 border-[#3A85FD] bg-white px-4 py-3 text-sm text-[#17181C]">
           <CheckCircle2 size={18} className="shrink-0 text-[#3A85FD]" />
           <div className="flex-1"><strong>A bola está com a direção.</strong> {user?.name || 'A direção'} revisa aqui. Depois de aprovada, a peça continua retida até você decidir mandar para o cliente.</div>
+          {canManageDirection && pendingDirectionCount > 0 && (
+            <button
+              type="button"
+              disabled={Boolean(updatingId)}
+              onClick={approveAllDirection}
+              className="inline-flex shrink-0 items-center gap-2 bg-[#C9FF2F] px-3 py-2 text-xs font-black text-[#17181C] transition hover:bg-[#b7ee20] disabled:opacity-50"
+            >
+              {updatingId === 'bulk' ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Aprovar todos ({pendingDirectionCount})
+            </button>
+          )}
           {canManageDirection && heldCount > 0 && (
             <button
               type="button"
@@ -999,6 +1057,11 @@ export default function DesignerApproval() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              {canManageDirection && pendingClientCount > 0 && (
+                <button type="button" disabled={Boolean(updatingId)} onClick={approveAllClient} className="inline-flex items-center gap-2 rounded-xl bg-[#C9FF2F] px-3 py-2 text-sm font-bold text-[#17181C] hover:bg-[#b7ee20] disabled:opacity-50">
+                  {updatingId === 'bulk' ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Aprovar todos pelo cliente ({pendingClientCount})
+                </button>
+              )}
               {clientApprovalUrl ? (
                 <>
                   <button type="button" onClick={copyApprovalLink} className="inline-flex items-center gap-2 rounded-xl bg-[#3A85FD] px-3 py-2 text-sm font-bold text-white hover:bg-[#1f72ee]"><Copy size={15} /> Copiar link</button>
