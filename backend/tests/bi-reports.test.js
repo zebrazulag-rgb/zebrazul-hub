@@ -112,3 +112,44 @@ test('Nov/2026 compara com Out; histórico monta séries; cliente só vê os pr�
   CUR = { id: 1, name: 'Adm', role: 'admin', client_ids: [], agency_id: agencyId };
   assert.equal((await call('DELETE', `/${c.id}`)).status, 200);
 });
+
+test('importação CSV: modelo, prévia, criação em lote, mescla em rascunho, pula finalizado, erros por linha', async () => {
+  const t = await fetch(`${base}/bi/import/template?modules=instagram,traffic&client=Altus`);
+  assert.equal(t.status, 200); const buf = Buffer.from(await t.arrayBuffer()); const tpl = buf.toString("utf8"); assert.deepEqual([...buf.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  assert.match(tpl, /^﻿cliente;ano;mes;modulo/); assert.match(tpl, /Seguidores no final do período/); assert.match(tpl, /plataforma;Meta Ads;Investimento/);
+  const csv = [
+    'cliente;ano;mes;modulo;escopo_tipo;escopo;metrica;valor;unidade;observacao',
+    'Altus;2026;12;Instagram;;;Seguidores no início do período;"2.000";;',
+    'Altus;2026;dezembro;Instagram;;;Seguidores no final do período;2.150;;',
+    'Altus;2026;12;Instagram;;;Alcance;;;', // vazio = não informado
+    'Altus;2026;12;Instagram;;;Cliques no WhatsApp;37;;campanha natal', // personalizada
+    'Altus;2026;12;Tráfego pago;plataforma;Meta Ads;Investimento;"R$ 1.500,50";;',
+    'Altus;2026;12;Tráfego pago;plataforma;Meta Ads;Leads;30;;',
+    'Altus;2026;12;Instagram;item;Natal;Principais cidades;40;;',
+    'Altus;2026;10;Instagram;;;Alcance;999;;', // out/2026 já finalizado -> pula
+    'Fantasma;2026;12;Instagram;;;Alcance;5;;',
+    'Altus;2026;12;Instagram;;;Alcance;abc;;',
+    'Altus;2026;13;Instagram;;;Alcance;5;;',
+    'Altus;2026;12;Podcast;;;Alcance;5;;',
+  ].join('\n');
+  const f = () => { const fd = new FormData(); fd.append('file', new Blob([csv], { type: 'text/csv' }), 'x.csv'); return fd; };
+  const pv = await J(await fetch(`${base}/bi/import/preview`, { method: 'POST', body: f() }));
+  assert.equal(pv.errors.length, 4); assert.equal(pv.skipped_empty, 1); assert.equal(pv.custom_metrics, 1);
+  assert.equal(pv.reports.find((r) => r.month === 12).action, 'create'); assert.equal(pv.reports.find((r) => r.month === 10).action, 'skip_final');
+  const before = db.prepare("SELECT COUNT(*) n FROM bi_reports WHERE month = 12").get().n;
+  assert.equal(before, 0); // prévia não grava
+  const done = await J(await fetch(`${base}/bi/import/commit`, { method: 'POST', body: f() }));
+  assert.equal(done.created, 1); assert.equal(done.skipped.length, 1);
+  const list = (await J(await call('GET', `/?client_id=${client}&month=12`))).reports; assert.equal(list.length, 1);
+  const r = await J(await call('GET', `/${list[0].id}`));
+  assert.equal(r.analysis.flat['instagram.followers_net'].value, 150);
+  assert.equal(r.analysis.flat['traffic.spend'].value, 1500.5);
+  assert.equal(r.analysis.flat['instagram.reach'], undefined);
+  assert.ok(r.analysis.flat['instagram.c_cliques-no-whatsapp'] || Object.keys(r.analysis.flat).some((k) => k.includes('whatsapp')));
+  // reimportar mescla sem duplicar
+  const again = await J(await fetch(`${base}/bi/import/commit`, { method: 'POST', body: f() }));
+  assert.equal(again.created, 0); assert.equal(again.merged, 1);
+  const r2 = await J(await call('GET', `/${list[0].id}`));
+  assert.equal(mod(r2, 'traffic').metrics.filter((x) => x.key === 'spend').length, 1);
+  assert.equal(db.prepare("SELECT status FROM bi_reports WHERE id = ?").get(rid).status, 'final'); // finalizado intacto
+});

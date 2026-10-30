@@ -9,6 +9,7 @@ const { hasPermission } = require('../services/permissions');
 const { persistMediaBuffer } = require('../services/mediaStorage');
 const { CATALOG, SOURCES, CORE_AREAS } = require('../services/biCatalog');
 const engine = require('../services/biEngine');
+const biImport = require('../services/biImport');
 
 const router = express.Router();
 
@@ -187,6 +188,78 @@ function summary(report) {
 // ------------------------------------------------------------------ rotas
 router.get('/catalog', (req, res) => {
   res.json({ catalog: CATALOG, sources: SOURCES, core_areas: CORE_AREAS });
+});
+
+// ------------------------------------------------------------------ importação em lote (CSV)
+const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 1 } });
+const accessibleClients = (req) => db.prepare('SELECT id, name FROM clients WHERE agency_id = ?').all(req.user.agency_id).filter((c) => canAccessClient(req.user, c.id));
+
+router.get('/import/template', (req, res) => {
+  if (!canEdit(req.user)) return res.status(403).json({ error: 'Sem permissão.' });
+  const now = new Date();
+  const modules = String(req.query.modules || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const clientName = txt(req.query.client, 120) || 'Nome do cliente';
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="modelo-relatorios-zebrahub.csv"');
+  res.send(biImport.buildTemplate({ modules, clientName, year: Number(req.query.year) || now.getFullYear(), month: Number(req.query.month) || now.getMonth() + 1 }));
+});
+
+function planFromRequest(req) {
+  const csv = req.file ? req.file.buffer.toString('utf8') : String(req.body?.csv || '');
+  const plan = biImport.buildPlan(csv, accessibleClients(req));
+  for (const rep of plan.reports) {
+    const ex = db.prepare('SELECT id, status FROM bi_reports WHERE agency_id = ? AND client_id = ? AND year = ? AND month = ?').get(req.user.agency_id, rep.client_id, rep.year, rep.month);
+    rep.existing = ex ? { id: ex.id, status: ex.status } : null;
+    rep.action = !ex ? 'create' : (ex.status === 'final' ? 'skip_final' : 'merge');
+  }
+  return plan;
+}
+
+router.post('/import/preview', csvUpload.single('file'), (req, res) => {
+  if (!canEdit(req.user)) return res.status(403).json({ error: 'Sem permissão.' });
+  const plan = planFromRequest(req);
+  if (plan.error) return res.status(400).json({ error: plan.error });
+  res.json({ ...plan, reports: plan.reports.map((r) => ({ ...r, metric_count: r.modules.reduce((n, m) => n + m.metrics.length, 0), modules: r.modules.map((m) => ({ module_key: m.module_key, label: m.label, metrics: m.metrics.length, custom: m.metrics.filter((x) => x.is_custom).length })) })) });
+});
+
+// Confirma: cria rascunhos, mescla em rascunhos existentes e NUNCA mexe em relatório finalizado.
+router.post('/import/commit', csvUpload.single('file'), (req, res) => {
+  if (!canEdit(req.user)) return res.status(403).json({ error: 'Sem permissão.' });
+  const plan = planFromRequest(req);
+  if (plan.error) return res.status(400).json({ error: plan.error });
+  const pad = (n) => String(n).padStart(2, '0');
+  const out = { created: 0, merged: 0, skipped: [], metrics: 0, ids: [] };
+  const run = db.transaction(() => {
+    for (const rep of plan.reports) {
+      if (rep.action === 'skip_final') { out.skipped.push(`${rep.client_name} ${pad(rep.month)}/${rep.year} (já finalizado)`); continue; }
+      let rid = rep.existing?.id;
+      if (!rid) {
+        const last = new Date(rep.year, rep.month, 0).getDate();
+        rid = db.prepare('INSERT INTO bi_reports (agency_id, client_id, year, month, period_start, period_end, responsible_name, created_by_name, notes) VALUES (?,?,?,?,?,?,?,?,?)')
+          .run(req.user.agency_id, rep.client_id, rep.year, rep.month, `${rep.year}-${pad(rep.month)}-01`, `${rep.year}-${pad(rep.month)}-${pad(last)}`, userName(req.user), userName(req.user), 'Importado de CSV').lastInsertRowid;
+        out.created += 1;
+      } else { out.merged += 1; touch(rid); }
+      out.ids.push(Number(rid));
+      for (const m of rep.modules) {
+        let mod = db.prepare('SELECT id FROM bi_modules WHERE report_id = ? AND module_key = ? AND label = ?').get(rid, m.module_key, m.label);
+        if (!mod) mod = { id: db.prepare('INSERT INTO bi_modules (report_id, module_key, label, source, updated_by_name) VALUES (?,?,?,?,?)').run(rid, m.module_key, m.label, 'Importado de CSV', userName(req.user)).lastInsertRowid };
+        const ins = db.prepare('INSERT INTO bi_metrics (module_id, key, label, value_num, unit, scope_type, scope, note, is_custom, sort) VALUES (?,?,?,?,?,?,?,?,?,?)');
+        m.metrics.forEach((x, i) => {
+          // mescla: substitui só o mesmo indicador (mesma chave/escopo/item); o resto do que já foi digitado fica
+          if (x.is_custom) db.prepare('DELETE FROM bi_metrics WHERE module_id = ? AND is_custom = 1 AND label = ?').run(mod.id, x.label);
+          else if (x.scope_type !== undefined) db.prepare('DELETE FROM bi_metrics WHERE module_id = ? AND key = ? AND COALESCE(scope_type,\'\') = ? AND COALESCE(scope,\'\') = ?').run(mod.id, x.key, x.scope_type || '', x.scope || '');
+          else if (x.label) db.prepare('DELETE FROM bi_metrics WHERE module_id = ? AND key = ? AND label = ?').run(mod.id, x.key, x.label);
+          else db.prepare('DELETE FROM bi_metrics WHERE module_id = ? AND key = ?').run(mod.id, x.key);
+          const key = x.is_custom ? `custom_imp_${Date.now() % 100000}_${i}` : x.key;
+          ins.run(mod.id, key, x.label || null, x.value, x.unit || null, x.scope_type || null, x.scope || null, x.note || null, x.is_custom ? 1 : 0, 500 + i);
+          out.metrics += 1;
+        });
+        db.prepare("UPDATE bi_modules SET updated_by_name = ?, updated_at = datetime('now') WHERE id = ?").run(userName(req.user), mod.id);
+      }
+    }
+  });
+  run();
+  res.json({ ...out, errors: plan.errors.length });
 });
 
 router.get('/', (req, res) => {

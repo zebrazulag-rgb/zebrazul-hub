@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { BarChart3, ChevronRight, Plus } from 'lucide-react';
+import { BarChart3, ChevronRight, FileUp, Plus } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext.jsx';
 import { hasPermission } from '../permissions.js';
 import { useClientFilter } from '../context/ClientFilterContext.jsx';
 import AreaSwitch from '../components/AreaSwitch.jsx';
+import BiImportModal from '../components/bi/BiImportModal.jsx';
 import BiHistory from '../components/bi/BiHistory.jsx';
 import { Empty } from '../components/bi/BiParts.jsx';
 import { MONTHS, STATE_CLS, STATE_LABEL, useBiCatalog } from '../components/bi/biUtils.js';
@@ -54,6 +55,7 @@ export default function BiReports({ portal = false }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [q, setQ] = useState({ client_id: String(filter?.selectedClient?.id || ''), year: '', month: '', status: '' });
   const view = params.get('aba') === 'historico' ? 'historico' : 'lista';
   const base = portal ? '/cliente/relatorios-mensais' : '/relatorios';
@@ -78,7 +80,7 @@ export default function BiReports({ portal = false }) {
           <h1 className="brand-display flex items-center gap-2 text-2xl font-black text-slate-950"><BarChart3 size={22} className="text-[#3A85FD]" /> Relatórios</h1>
           <p className="text-xs text-slate-500">Relatórios mensais por cliente, com histórico, comparações e leitura do período.</p>
         </div>
-        {canEdit && <button type="button" onClick={() => setCreating(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#3A85FD] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2f74e6]"><Plus size={15} /> Novo relatório</button>}
+        {canEdit && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setImporting(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"><FileUp size={15} /> Importar CSV</button><button type="button" onClick={() => setCreating(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#3A85FD] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#2f74e6]"><Plus size={15} /> Novo relatório</button></div>}
       </div>
 
       <AreaSwitch value={view === 'historico' ? 'historico' : 'lista'} onChange={(k) => setParams(k === 'historico' ? { aba: 'historico' } : {}, { replace: true })} options={[{ key: 'lista', label: 'Relatórios' }, { key: 'historico', label: 'Histórico' }]} />
@@ -111,6 +113,7 @@ export default function BiReports({ portal = false }) {
           </div>
         )
       )}
+      {importing && <BiImportModal catalog={catalog} onClose={() => setImporting(false)} onDone={load} />}
       {creating && <NewReport clients={clients} catalog={catalog} defaultClient={q.client_id} onClose={() => setCreating(false)} onCreated={(id) => navigate(`${base}/${id}`)} />}
     </div>
   );
