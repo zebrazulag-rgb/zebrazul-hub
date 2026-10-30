@@ -350,7 +350,7 @@ function apiPermissionForRequest(req) {
   }
   if (path === '/manager-dashboard' || path.startsWith('/manager-dashboard/')) return 'dashboard.view';
   if (path === '/my-work' || path.startsWith('/my-work/')) return 'work_queue.view';
-  if (path === '/smart-alerts' || path.startsWith('/smart-alerts/')) return 'alerts.view';
+  if (path === '/smart-alerts' || path.startsWith('/smart-alerts/') || path === '/ayrton' || path.startsWith('/ayrton/')) return 'alerts.view';
   if (path === '/operational-calendar' || path.startsWith('/operational-calendar/')) return 'calendar.view';
   if (path === '/operational-intelligence' || path.startsWith('/operational-intelligence/')) return 'intelligence.view';
   if (path === '/automations' || path.startsWith('/automations/')) return 'dashboard.view';

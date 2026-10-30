@@ -442,7 +442,7 @@ export default function Layout({ children }) {
     { to: '/', label: 'Painel', icon: LayoutDashboard, permission: 'dashboard.view' },
     { to: '/minha-fila', label: 'Minha fila', icon: ListChecks, permission: 'work_queue.view' },
     { to: '/radar', label: 'Radar', icon: Radar, permission: 'radar.view' },
-    { to: '/alertas', label: 'Alertas', icon: BellRing, permission: 'alerts.view' },
+    { to: '/alertas', label: 'Ayrton', icon: BellRing, permission: 'alerts.view' },
     { to: '/calendario', label: 'Calendário', icon: CalendarDays, permission: 'calendar.view' },
     { to: '/inteligencia', label: 'Inteligência', icon: Gauge, permission: 'intelligence.view' },
     { to: '/automacoes', label: 'Automações', icon: Zap, permission: 'dashboard.view', managementOnly: true },
@@ -529,7 +529,7 @@ export default function Layout({ children }) {
     if (path.startsWith('/cliente/materiais')) return 'Materiais';
     if (path === '/') return 'Painel';
     if (path.startsWith('/minha-fila')) return 'Minha fila';
-    if (path.startsWith('/alertas')) return 'Alertas';
+    if (path.startsWith('/alertas')) return 'Ayrton';
     if (path.startsWith('/calendario')) return 'Calendário';
     if (path.startsWith('/inteligencia')) return 'Inteligência';
     if (path.startsWith('/automacoes')) return 'Automações';
@@ -1251,7 +1251,7 @@ function presenceAreaLabel(rawPath) {
   const path = String(rawPath || '').split('?')[0];
   if (!path || path === '/') return 'Painel';
   if (path.startsWith('/minha-fila')) return 'Minha fila';
-  if (path.startsWith('/alertas')) return 'Alertas';
+  if (path.startsWith('/alertas')) return 'Ayrton';
   if (path.startsWith('/inteligencia')) return 'Inteligência';
   if (path.startsWith('/automacoes')) return 'Automações';
   if (path.startsWith('/audiovisual')) return 'Audiovisual';

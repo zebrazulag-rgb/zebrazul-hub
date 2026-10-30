@@ -12,6 +12,7 @@ const taskRoutes = require('./routes/tasks');
 const managerDashboardRoutes = require('./routes/managerDashboard');
 const myWorkRoutes = require('./routes/myWork');
 const smartAlertsRoutes = require('./routes/smartAlerts');
+const ayrtonRoutes = require('./routes/ayrton');
 const operationalCalendarRoutes = require('./routes/operationalCalendar');
 const operationalIntelligenceRoutes = require('./routes/operationalIntelligence');
 const automationRoutes = require('./routes/automations');
@@ -187,6 +188,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/manager-dashboard', managerDashboardRoutes);
 app.use('/api/my-work', myWorkRoutes);
 app.use('/api/smart-alerts', smartAlertsRoutes);
+app.use('/api/ayrton', ayrtonRoutes);
 app.use('/api/operational-calendar', operationalCalendarRoutes);
 app.use('/api/operational-intelligence', operationalIntelligenceRoutes);
 app.use('/api/automations', automationRoutes);
@@ -361,6 +363,23 @@ app.listen(PORT, async () => {
   };
   setTimeout(runReadyVideoPurge, 30 * 1000).unref();
   setInterval(runReadyVideoPurge, 60 * 60 * 1000).unref();
+
+  // Ayrton: ronda horária por agência (regras); IA só interpreta contas com sinais cruzados e situação alterada.
+  const runAyrtonRound = async () => {
+    try {
+      const ayrtonSvc = require('./services/ayrton');
+      const ayrtonAI = require('./services/ayrtonAI');
+      const { todayInFortaleza } = require('./services/myWork');
+      for (const ag of db.prepare('SELECT id FROM agencies').all()) {
+        const r = ayrtonSvc.ensureFresh(db, ag.id, todayInFortaleza(), { force: true });
+        if (r.skipped || !ayrtonAI.available()) continue;
+        const cids = db.prepare("SELECT client_id FROM agent_alerts WHERE agency_id = ? AND agent = 'ayrton' AND status = 'open' AND level IN ('attention','critical') GROUP BY client_id HAVING COUNT(*) >= 2").all(ag.id);
+        for (const c of cids) await ayrtonAI.interpretAccount(db, ag.id, c.client_id);
+      }
+    } catch (error) { console.error('[AYRTON] ronda falhou:', error.message); }
+  };
+  setTimeout(runAyrtonRound, 30 * 1000).unref();
+  setInterval(runAyrtonRound, 60 * 60 * 1000).unref();
 
   // Publicador do Instagram: verifica a fila a cada minuto no backend.
   try { await publishDuePosts(); } catch (error) { console.error('[INSTAGRAM PUBLISH] Falha ao processar fila no startup:', error.message); }
